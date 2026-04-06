@@ -1,0 +1,224 @@
+name: patterns_041_exception
+repo:
+  initial_files:
+    src/exceptions.py: |
+      class ValidationError(Exception):
+          def __init__(self, field: str, message: str):
+              self.field = field
+              self.message = message
+              super().__init__(f"{field}: {message}")
+
+      class NotFoundError(Exception):
+          def __init__(self, resource: str, identifier: str):
+              self.resource = resource
+              self.identifier = identifier
+              super().__init__(f"{resource} with id {identifier} not found")
+    src/user_repository.py: |
+      from src.exceptions import NotFoundError, ValidationError
+
+      class UserRepository:
+          def __init__(self):
+              self.users = {}
+
+          def get(self, user_id: int):
+              if user_id not in self.users:
+                  raise NotFoundError("User", str(user_id))
+              return self.users[user_id]
+
+          def create(self, data: dict):
+              if "email" not in data:
+                  raise ValidationError("email", "is required")
+              user_id = len(self.users) + 1
+              self.users[user_id] = {**data, "id": user_id}
+              return self.users[user_id]
+    tests/test_user_repository.py: |
+      from src.user_repository import UserRepository
+
+      def test_create_user():
+          repo = UserRepository()
+          user = repo.create({"name": "Test", "email": "test@example.com"})
+          assert user["name"] == "Test"
+    src/auth_errors.py: |
+      class AuthenticationError(Exception):
+          pass
+
+      class TokenExpiredError(AuthenticationError):
+          def __init__(self, token_id: str):
+              self.token_id = token_id
+              super().__init__(f"Token {token_id} expired")
+
+      class InvalidCredentialsError(AuthenticationError):
+          def __init__(self, username: str):
+              self.username = username
+              super().__init__(f"Invalid credentials for {username}")
+    src/product_repository.py: |
+      from src.exceptions import NotFoundError, ValidationError
+
+      class ProductRepository:
+          def __init__(self):
+              self.products = {}
+
+          def get(self, product_id: int):
+              if product_id not in self.products:
+                  raise NotFoundError("Product", str(product_id))
+              return self.products[product_id]
+
+          def create(self, data: dict):
+              if "name" not in data:
+                  raise ValidationError("name", "is required")
+              product_id = len(self.products) + 1
+              self.products[product_id] = {**data, "id": product_id}
+              return self.products[product_id]
+  changed_files:
+    src/exceptions.py: |
+      class ValidationError(Exception):
+          def __init__(self, field: str, message: str):
+              self.field = field
+              self.message = message
+              super().__init__(f"{field}: {message}")
+
+      class NotFoundError(Exception):
+          def __init__(self, resource: str, identifier: str):
+              self.resource = resource
+              self.identifier = identifier
+              super().__init__(f"{resource} with id {identifier} not found")
+
+      class PermissionDeniedError(Exception):
+          def __init__(self, action: str, resource: str):
+              self.action = action
+              self.resource = resource
+              super().__init__(f"Permission denied: cannot {action} {resource}")
+    src/user_repository.py: |
+      from src.exceptions import NotFoundError, ValidationError
+
+      class UserRepository:
+          def __init__(self):
+              self.users = {}
+
+          def get(self, user_id: int):
+              if user_id not in self.users:
+                  raise NotFoundError("User", str(user_id))
+              return self.users[user_id]
+
+          def create(self, data: dict):
+              if "email" not in data:
+                  raise ValidationError("email", "is required")
+              if "name" not in data:
+                  raise ValidationError("name", "is required")
+              user_id = len(self.users) + 1
+              self.users[user_id] = {**data, "id": user_id}
+              return self.users[user_id]
+    tests/test_user_repository.py: |
+      import pytest
+      from src.user_repository import UserRepository
+      from src.exceptions import NotFoundError, ValidationError
+
+      def test_create_user():
+          repo = UserRepository()
+          user = repo.create({"name": "Test", "email": "test@example.com"})
+          assert user["name"] == "Test"
+
+      def test_get_nonexistent_raises_not_found():
+          repo = UserRepository()
+          with pytest.raises(NotFoundError) as exc_info:
+              repo.get(999)
+          assert exc_info.value.resource == "User"
+          assert exc_info.value.identifier == "999"
+
+      def test_create_without_email_raises_validation_error():
+          repo = UserRepository()
+          with pytest.raises(ValidationError) as exc_info:
+              repo.create({"name": "Test"})
+          assert exc_info.value.field == "email"
+          assert "required" in exc_info.value.message
+
+      def test_create_without_name_raises_validation_error():
+          repo = UserRepository()
+          with pytest.raises(ValidationError) as exc_info:
+              repo.create({"email": "test@example.com"})
+          assert exc_info.value.field == "name"
+    src/auth_errors.py: |
+      class AuthenticationError(Exception):
+          pass
+
+      class TokenExpiredError(AuthenticationError):
+          def __init__(self, token_id: str):
+              self.token_id = token_id
+              super().__init__(f"Token {token_id} expired")
+
+      class InvalidCredentialsError(AuthenticationError):
+          def __init__(self, username: str):
+              self.username = username
+              super().__init__(f"Invalid credentials for {username}")
+    src/product_repository.py: |
+      from src.exceptions import NotFoundError, ValidationError
+
+      class ProductRepository:
+          def __init__(self):
+              self.products = {}
+
+          def get(self, product_id: int):
+              if product_id not in self.products:
+                  raise NotFoundError("Product", str(product_id))
+              return self.products[product_id]
+
+          def create(self, data: dict):
+              if "name" not in data:
+                  raise ValidationError("name", "is required")
+              product_id = len(self.products) + 1
+              self.products[product_id] = {**data, "id": product_id}
+              return self.products[product_id]
+  commit_message: Update files
+fragments:
+- id: exceptions
+  selector:
+    path: src/exceptions.py
+    anchor: 'class PermissionDeniedError(Exception):'
+- id: test_user_repository
+  selector:
+    path: tests/test_user_repository.py
+    anchor: import pytest
+- id: test_user_repository_1
+  selector:
+    path: tests/test_user_repository.py
+    anchor: pytest.raises(NotFoundError)
+- id: user_repository
+  selector:
+    path: src/user_repository.py
+    anchor: raise ValidationError("name", "is required")
+- id: no_auth_errors
+  selector:
+    path: src/auth_errors.py
+- id: no_product_repository
+  selector:
+    path: src/product_repository.py
+- id: no_global_0
+  selector:
+    anchor: class AuthenticationError
+- id: no_global_1
+  selector:
+    anchor: TokenExpiredError
+- id: no_global_2
+  selector:
+    anchor: InvalidCredentialsError
+- id: no_global_3
+  selector:
+    anchor: class ProductRepository
+- id: no_global_4
+  selector:
+    anchor: '"Product"'
+oracle:
+  required:
+  - exceptions
+  - test_user_repository
+  - test_user_repository_1
+  - user_repository
+  allowed: []
+  forbidden:
+  - no_auth_errors
+  - no_product_repository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

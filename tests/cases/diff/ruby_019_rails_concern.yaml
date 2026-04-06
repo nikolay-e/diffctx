@@ -1,0 +1,457 @@
+name: ruby_019_rails_concern
+repo:
+  initial_files:
+    app/models/concerns/commentable.rb: |
+      module Commentable
+        def self.included(base)
+          base.class_eval do
+            define_method(:comments) { @comments ||= [] }
+            define_method(:add_comment) { |c| comments << c }
+            define_method(:comment_count) { comments.size }
+          end
+        end
+      end
+
+      module Taggable
+        def self.included(base)
+          base.class_eval do
+            define_method(:tags) { @tags ||= [] }
+            define_method(:add_tag) { |t| tags << t unless tags.include?(t) }
+            define_method(:tagged_with?) { |t| tags.include?(t) }
+          end
+        end
+      end
+    app/models/post.rb: |
+      class Post
+        attr_accessor :title, :body
+
+        def initialize(title:, body:)
+          @title = title
+          @body = body
+        end
+      end
+    app/models/concerns/searchable.rb: |
+      module Searchable
+        def self.included(base)
+          base.class_eval do
+            define_method(:search_index) { @search_index ||= {} }
+
+            define_method(:index_field) do |field|
+              value = send(field).to_s.downcase
+              words = value.split(/\s+/)
+              words.each do |word|
+                search_index[word] ||= []
+                search_index[word] << field unless search_index[word].include?(field)
+              end
+            end
+
+            define_method(:matches?) do |query|
+              terms = query.downcase.split(/\s+/)
+              terms.all? { |term| search_index.keys.any? { |k| k.include?(term) } }
+            end
+          end
+        end
+      end
+    app/models/author.rb: |
+      class Author
+        attr_accessor :name, :bio, :post_ids
+
+        def initialize(name:, bio: '')
+          @name = name
+          @bio = bio
+          @post_ids = []
+        end
+
+        def add_post(post_id)
+          @post_ids << post_id unless @post_ids.include?(post_id)
+        end
+
+        def remove_post(post_id)
+          @post_ids.delete(post_id)
+        end
+
+        def post_count
+          @post_ids.size
+        end
+
+        def prolific?
+          post_count >= 10
+        end
+
+        def display_name
+          "#{name} (#{post_count} posts)"
+        end
+      end
+    app/serializers/post_serializer.rb: |
+      class PostSerializer
+        def initialize(post)
+          @post = post
+        end
+
+        def to_hash
+          {
+            title: @post.title,
+            body: @post.body,
+            comment_count: @post.respond_to?(:comment_count) ? @post.comment_count : 0,
+            tags: @post.respond_to?(:tags) ? @post.tags : []
+          }
+        end
+
+        def to_json
+          require 'json'
+          JSON.generate(to_hash)
+        end
+
+        def summary_line
+          "#{@post.title} — #{to_hash[:comment_count]} comments"
+        end
+      end
+    app/models/concerns/auditable.rb: |
+      module Auditable
+        def self.included(base)
+          base.class_eval do
+            define_method(:audit_log) { @audit_log ||= [] }
+
+            define_method(:record_change) do |field, old_value, new_value|
+              audit_log << {
+                field: field,
+                from: old_value,
+                to: new_value,
+                at: Time.now
+              }
+            end
+
+            define_method(:last_change) { audit_log.last }
+            define_method(:change_count) { audit_log.size }
+          end
+        end
+      end
+    spec/models/post_spec.rb: |
+      require 'rspec'
+      require_relative '../../app/models/post'
+
+      RSpec.describe Post do
+        let(:post) { Post.new(title: 'Test Post', body: 'Hello world') }
+
+        describe '#summary' do
+          it 'includes title and counts' do
+            post.add_comment('Great post!')
+            post.add_tag('ruby')
+            expect(post.summary).to include('Test Post')
+            expect(post.summary).to include('1 comments')
+            expect(post.summary).to include('ruby')
+          end
+        end
+
+        describe '#add_comment' do
+          it 'increments comment count' do
+            post.add_comment('Nice')
+            expect(post.comment_count).to eq(1)
+          end
+        end
+
+        describe '#add_tag' do
+          it 'prevents duplicates' do
+            post.add_tag('ruby')
+            post.add_tag('ruby')
+            expect(post.tags.size).to eq(1)
+          end
+        end
+      end
+  changed_files:
+    app/models/concerns/commentable.rb: |
+      module Commentable
+        def self.included(base)
+          base.class_eval do
+            define_method(:comments) { @comments ||= [] }
+            define_method(:add_comment) { |c| comments << c }
+            define_method(:comment_count) { comments.size }
+          end
+        end
+      end
+
+      module Taggable
+        def self.included(base)
+          base.class_eval do
+            define_method(:tags) { @tags ||= [] }
+            define_method(:add_tag) { |t| tags << t unless tags.include?(t) }
+            define_method(:tagged_with?) { |t| tags.include?(t) }
+          end
+        end
+      end
+    app/models/post.rb: |
+      require_relative 'concerns/commentable'
+
+      class Post
+        include Commentable
+        include Taggable
+
+        attr_accessor :title, :body
+
+        def initialize(title:, body:)
+          @title = title
+          @body = body
+        end
+
+        def summary
+          "#{title} (#{comment_count} comments, tags: #{tags.join(', ')})"
+        end
+      end
+    app/models/concerns/searchable.rb: |
+      module Searchable
+        def self.included(base)
+          base.class_eval do
+            define_method(:search_index) { @search_index ||= {} }
+
+            define_method(:index_field) do |field|
+              value = send(field).to_s.downcase
+              words = value.split(/\s+/)
+              words.each do |word|
+                search_index[word] ||= []
+                search_index[word] << field unless search_index[word].include?(field)
+              end
+            end
+
+            define_method(:matches?) do |query|
+              terms = query.downcase.split(/\s+/)
+              terms.all? { |term| search_index.keys.any? { |k| k.include?(term) } }
+            end
+          end
+        end
+      end
+    app/models/author.rb: |
+      class Author
+        attr_accessor :name, :bio, :post_ids
+
+        def initialize(name:, bio: '')
+          @name = name
+          @bio = bio
+          @post_ids = []
+        end
+
+        def add_post(post_id)
+          @post_ids << post_id unless @post_ids.include?(post_id)
+        end
+
+        def remove_post(post_id)
+          @post_ids.delete(post_id)
+        end
+
+        def post_count
+          @post_ids.size
+        end
+
+        def prolific?
+          post_count >= 10
+        end
+
+        def display_name
+          "#{name} (#{post_count} posts)"
+        end
+      end
+    app/serializers/post_serializer.rb: |
+      class PostSerializer
+        def initialize(post)
+          @post = post
+        end
+
+        def to_hash
+          {
+            title: @post.title,
+            body: @post.body,
+            comment_count: @post.respond_to?(:comment_count) ? @post.comment_count : 0,
+            tags: @post.respond_to?(:tags) ? @post.tags : []
+          }
+        end
+
+        def to_json
+          require 'json'
+          JSON.generate(to_hash)
+        end
+
+        def summary_line
+          "#{@post.title} — #{to_hash[:comment_count]} comments"
+        end
+      end
+    app/models/concerns/auditable.rb: |
+      module Auditable
+        def self.included(base)
+          base.class_eval do
+            define_method(:audit_log) { @audit_log ||= [] }
+
+            define_method(:record_change) do |field, old_value, new_value|
+              audit_log << {
+                field: field,
+                from: old_value,
+                to: new_value,
+                at: Time.now
+              }
+            end
+
+            define_method(:last_change) { audit_log.last }
+            define_method(:change_count) { audit_log.size }
+          end
+        end
+      end
+    spec/models/post_spec.rb: |
+      require 'rspec'
+      require_relative '../../app/models/post'
+
+      RSpec.describe Post do
+        let(:post) { Post.new(title: 'Test Post', body: 'Hello world') }
+
+        describe '#summary' do
+          it 'includes title and counts' do
+            post.add_comment('Great post!')
+            post.add_tag('ruby')
+            expect(post.summary).to include('Test Post')
+            expect(post.summary).to include('1 comments')
+            expect(post.summary).to include('ruby')
+          end
+        end
+
+        describe '#add_comment' do
+          it 'increments comment count' do
+            post.add_comment('Nice')
+            expect(post.comment_count).to eq(1)
+          end
+        end
+
+        describe '#add_tag' do
+          it 'prevents duplicates' do
+            post.add_tag('ruby')
+            post.add_tag('ruby')
+            expect(post.tags.size).to eq(1)
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: post
+  selector:
+    path: app/models/post.rb
+    anchor: include Commentable
+- id: post_1
+  selector:
+    path: app/models/post.rb
+    anchor: include Taggable
+- id: post_2
+  selector:
+    path: app/models/post.rb
+    anchor: comment_count
+- id: post_3
+  selector:
+    path: app/models/post.rb
+    anchor: tags.join
+- id: commentable
+  selector:
+    path: app/models/concerns/commentable.rb
+    anchor: module Commentable
+- id: commentable_1
+  selector:
+    path: app/models/concerns/commentable.rb
+    anchor: define_method(:comment_count)
+- id: commentable_2
+  selector:
+    path: app/models/concerns/commentable.rb
+    anchor: module Taggable
+- id: commentable_3
+  selector:
+    path: app/models/concerns/commentable.rb
+    anchor: define_method(:tags)
+- id: no_searchable
+  selector:
+    path: app/models/concerns/searchable.rb
+- id: no_author
+  selector:
+    path: app/models/author.rb
+- id: no_post_serializer
+  selector:
+    path: app/serializers/post_serializer.rb
+- id: no_auditable
+  selector:
+    path: app/models/concerns/auditable.rb
+- id: no_post_spec
+  selector:
+    path: spec/models/post_spec.rb
+- id: no_global_0
+  selector:
+    anchor: Searchable
+- id: no_global_1
+  selector:
+    anchor: search_index
+- id: no_global_2
+  selector:
+    anchor: index_field
+- id: no_global_3
+  selector:
+    anchor: matches?
+- id: no_global_4
+  selector:
+    anchor: Author
+- id: no_global_5
+  selector:
+    anchor: prolific?
+- id: no_global_6
+  selector:
+    anchor: add_post
+- id: no_global_7
+  selector:
+    anchor: remove_post
+- id: no_global_8
+  selector:
+    anchor: PostSerializer
+- id: no_global_9
+  selector:
+    anchor: to_json
+- id: no_global_10
+  selector:
+    anchor: summary_line
+- id: no_global_11
+  selector:
+    anchor: Auditable
+- id: no_global_12
+  selector:
+    anchor: audit_log
+- id: no_global_13
+  selector:
+    anchor: record_change
+- id: no_global_14
+  selector:
+    anchor: RSpec.describe
+- id: no_global_15
+  selector:
+    anchor: expect(post.summary)
+oracle:
+  required:
+  - post
+  - post_1
+  - post_2
+  - post_3
+  - commentable
+  - commentable_1
+  - commentable_2
+  - commentable_3
+  allowed: []
+  forbidden:
+  - no_searchable
+  - no_author
+  - no_post_serializer
+  - no_auditable
+  - no_post_spec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

@@ -1,0 +1,46 @@
+name: comprehensive_023_structural_files_in_same_package
+repo:
+  initial_files:
+    utils/__init__.py: |
+      from .strings import slugify
+      from .numbers import round_up
+    utils/strings.py: |
+      def slugify(text):
+          return text.lower().replace(" ", "-")
+    utils/numbers.py: |
+      def round_up(n):
+          return int(n) + 1
+    utils/dates.py: |
+      def format_date(d):
+          return d.strftime("%Y-%m-%d")
+  changed_files:
+    utils/__init__.py: |
+      from .strings import slugify
+      from .numbers import round_up
+    utils/strings.py: |
+      import re
+
+      def slugify(text):
+          text = text.lower()
+          text = re.sub(r'[^a-z0-9]+', '-', text)
+          return text.strip('-')
+    utils/numbers.py: |
+      def round_up(n):
+          return int(n) + 1
+    utils/dates.py: |
+      def format_date(d):
+          return d.strftime("%Y-%m-%d")
+  commit_message: Update files
+fragments:
+- id: strings_file
+  selector:
+    path: utils/strings.py
+- id: req_global_0
+  selector:
+    anchor: text = text.lower()
+oracle:
+  required:
+  - strings_file
+  - req_global_0
+  allowed: []
+  forbidden: []

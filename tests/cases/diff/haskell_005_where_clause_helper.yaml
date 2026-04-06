@@ -1,0 +1,267 @@
+name: haskell_005_where_clause_helper
+repo:
+  initial_files:
+    src/Types.hs: |
+      module Types
+        ( Temperature(..)
+        , Measurement(..)
+        , Unit(..)
+        ) where
+
+      data Unit = Celsius | Fahrenheit | Kelvin
+        deriving (Show, Eq)
+
+      data Temperature = Temperature
+        { tempValue :: Double
+        , tempUnit  :: Unit
+        } deriving (Show, Eq)
+
+      data Measurement = Measurement
+        { measLabel :: String
+        , measTemp  :: Temperature
+        } deriving (Show, Eq)
+    src/Converter.hs: |
+      module Converter
+        ( convertTemp
+        ) where
+
+      import Types (Temperature(..), Unit(..))
+
+      convertTemp :: Temperature -> Unit -> Temperature
+      convertTemp temp targetUnit =
+        let celsiusVal = toCelsius temp
+        in fromCelsius celsiusVal targetUnit
+        where
+          toCelsius (Temperature v Celsius)    = v
+          toCelsius (Temperature v Fahrenheit) = (v - 32) * 5 / 9
+          toCelsius (Temperature v Kelvin)     = v - 273.15
+
+          fromCelsius c Celsius    = Temperature c Celsius
+          fromCelsius c Fahrenheit = Temperature (c * 9 / 5 + 32) Fahrenheit
+          fromCelsius c Kelvin     = Temperature (c + 273.15) Kelvin
+    src/Display.hs: |
+      module Display
+        ( displayTemp
+        ) where
+
+      import Types (Temperature(..), Unit(..))
+      GARBAGE_HS_005_DISPLAY_MARKER_A = "display"
+      GARBAGE_HS_005_FORMAT_TEMP_B = True
+
+      displayTemp :: Temperature -> String
+      displayTemp (Temperature v u) =
+        show v ++ " " ++ unitSymbol u
+        where
+          unitSymbol Celsius    = "°C"
+          unitSymbol Fahrenheit = "°F"
+          unitSymbol Kelvin     = "K"
+    src/Validator.hs: |
+      module Validator
+        ( validateRange
+        ) where
+
+      GARBAGE_HS_005_VALIDATOR_MARKER_C = "validator"
+      GARBAGE_HS_005_RANGE_CHECK_D = True
+
+      validateRange :: Double -> Double -> Double -> Bool
+      validateRange lo hi val = isInRange val
+        where
+          isInRange x = x >= lo && x <= hi
+    src/Reporter.hs: |
+      module Reporter
+        ( generateReport
+        ) where
+
+      import Types (Measurement(..), Temperature(..))
+      GARBAGE_HS_005_REPORTER_MARKER_E = "reporter"
+      GARBAGE_HS_005_REPORT_GEN_F = True
+
+      generateReport :: [Measurement] -> String
+      generateReport ms = unlines (map formatMeas ms)
+        where
+          formatMeas m = measLabel m ++ ": " ++ show (tempValue (measTemp m))
+    src/Parser.hs: |
+      module Parser
+        ( parseInput
+        ) where
+
+      GARBAGE_HS_005_PARSER_MARKER_G = "parser"
+      GARBAGE_HS_005_PARSE_LINE_H = True
+
+      parseInput :: String -> Maybe (String, Double)
+      parseInput line = case words line of
+        [label, val] -> Just (label, read val)
+        _            -> Nothing
+  changed_files:
+    src/Types.hs: |
+      module Types
+        ( Temperature(..)
+        , Measurement(..)
+        , Unit(..)
+        ) where
+
+      data Unit = Celsius | Fahrenheit | Kelvin
+        deriving (Show, Eq)
+
+      data Temperature = Temperature
+        { tempValue :: Double
+        , tempUnit  :: Unit
+        } deriving (Show, Eq)
+
+      data Measurement = Measurement
+        { measLabel :: String
+        , measTemp  :: Temperature
+        } deriving (Show, Eq)
+    src/Converter.hs: |
+      module Converter
+        ( convertTemp
+        , convertMeasurement
+        ) where
+
+      import Types (Temperature(..), Unit(..), Measurement(..))
+
+      convertTemp :: Temperature -> Unit -> Temperature
+      convertTemp temp targetUnit =
+        let celsiusVal = toCelsius temp
+        in fromCelsius celsiusVal targetUnit
+        where
+          toCelsius (Temperature v Celsius)    = v
+          toCelsius (Temperature v Fahrenheit) = (v - 32) * 5 / 9
+          toCelsius (Temperature v Kelvin)     = v - 273.15
+
+          fromCelsius c Celsius    = Temperature c Celsius
+          fromCelsius c Fahrenheit = Temperature (c * 9 / 5 + 32) Fahrenheit
+          fromCelsius c Kelvin     = Temperature (c + 273.15) Kelvin
+
+      convertMeasurement :: Measurement -> Unit -> Measurement
+      convertMeasurement meas targetUnit =
+        meas { measTemp = convertedTemp }
+        where
+          convertedTemp = convertTemp (measTemp meas) targetUnit
+    src/Display.hs: |
+      module Display
+        ( displayTemp
+        ) where
+
+      import Types (Temperature(..), Unit(..))
+      GARBAGE_HS_005_DISPLAY_MARKER_A = "display"
+      GARBAGE_HS_005_FORMAT_TEMP_B = True
+
+      displayTemp :: Temperature -> String
+      displayTemp (Temperature v u) =
+        show v ++ " " ++ unitSymbol u
+        where
+          unitSymbol Celsius    = "°C"
+          unitSymbol Fahrenheit = "°F"
+          unitSymbol Kelvin     = "K"
+    src/Validator.hs: |
+      module Validator
+        ( validateRange
+        ) where
+
+      GARBAGE_HS_005_VALIDATOR_MARKER_C = "validator"
+      GARBAGE_HS_005_RANGE_CHECK_D = True
+
+      validateRange :: Double -> Double -> Double -> Bool
+      validateRange lo hi val = isInRange val
+        where
+          isInRange x = x >= lo && x <= hi
+    src/Reporter.hs: |
+      module Reporter
+        ( generateReport
+        ) where
+
+      import Types (Measurement(..), Temperature(..))
+      GARBAGE_HS_005_REPORTER_MARKER_E = "reporter"
+      GARBAGE_HS_005_REPORT_GEN_F = True
+
+      generateReport :: [Measurement] -> String
+      generateReport ms = unlines (map formatMeas ms)
+        where
+          formatMeas m = measLabel m ++ ": " ++ show (tempValue (measTemp m))
+    src/Parser.hs: |
+      module Parser
+        ( parseInput
+        ) where
+
+      GARBAGE_HS_005_PARSER_MARKER_G = "parser"
+      GARBAGE_HS_005_PARSE_LINE_H = True
+
+      parseInput :: String -> Maybe (String, Double)
+      parseInput line = case words line of
+        [label, val] -> Just (label, read val)
+        _            -> Nothing
+  commit_message: Update files
+fragments:
+- id: converter
+  selector:
+    path: src/Converter.hs
+    anchor: 'convertMeasurement :: Measurement -> Unit -> Measurement'
+- id: converter_1
+  selector:
+    path: src/Converter.hs
+    anchor: convertedTemp = convertTemp (measTemp meas) targetUnit
+- id: types
+  selector:
+    path: src/Types.hs
+    anchor: data Measurement = Measurement
+- id: types_1
+  selector:
+    path: src/Types.hs
+    anchor: 'measTemp  :: Temperature'
+- id: no_display
+  selector:
+    path: src/Display.hs
+- id: no_validator
+  selector:
+    path: src/Validator.hs
+- id: no_reporter
+  selector:
+    path: src/Reporter.hs
+- id: no_parser
+  selector:
+    path: src/Parser.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_HS_005_DISPLAY_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_HS_005_FORMAT_TEMP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HS_005_VALIDATOR_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_HS_005_RANGE_CHECK_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_HS_005_REPORTER_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_HS_005_REPORT_GEN_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_HS_005_PARSER_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_HS_005_PARSE_LINE_H
+oracle:
+  required:
+  - converter
+  - converter_1
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_display
+  - no_validator
+  - no_reporter
+  - no_parser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

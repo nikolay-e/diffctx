@@ -1,0 +1,236 @@
+name: shell_015_trap
+repo:
+  initial_files:
+    worker.sh: |
+      #!/bin/bash
+      source ./cleanup.sh
+
+      trap cleanup EXIT
+
+      mkdir -p "$WORK_DIR"
+      touch "$LOCK_FILE"
+      echo "Working..."
+    cleanup.sh: |
+      #!/bin/bash
+      LOCK_FILE="/tmp/lockfile"
+      WORK_DIR="/tmp/workdir"
+
+      cleanup() {
+          echo "Cleaning up..."
+          rm -f "$LOCK_FILE"
+          rm -rf "$WORK_DIR"
+      }
+    scripts/watchdog.sh: |
+      #!/bin/bash
+      PID_FILE="/var/run/worker.pid"
+      if [[ -f "$PID_FILE" ]]; then
+          pid=$(cat "$PID_FILE")
+          kill -0 "$pid" 2>/dev/null || echo "Worker is dead"
+      fi
+    scripts/cron_entry.sh: |
+      #!/bin/bash
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      flock -n /tmp/worker.lock "$SCRIPT_DIR/../worker.sh" >> /var/log/worker.log 2>&1
+    scripts/supervisor.sh: |
+      #!/bin/bash
+      source ./cleanup.sh
+
+      trap cleanup EXIT
+
+      while true; do
+          if [[ ! -f "$LOCK_FILE" ]]; then
+              echo "Worker not running, starting..."
+              ./worker.sh &
+              WORKER_PID=$!
+          fi
+          sleep 10
+          if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+              echo "Worker died, restarting..."
+          fi
+      done
+    scripts/health_check.sh: |
+      #!/bin/bash
+      LOCK_FILE="/tmp/lockfile"
+      WORK_DIR="/tmp/workdir"
+      if [[ -f "$LOCK_FILE" ]] && [[ -d "$WORK_DIR" ]]; then
+          echo "Worker: HEALTHY"
+      else
+          echo "Worker: NOT RUNNING"
+      fi
+    lib/signal_utils.sh: |
+      #!/bin/bash
+      install_signal_handlers() {
+          local handler=$1
+          trap "$handler" INT TERM HUP
+      }
+
+      reset_signal_handlers() {
+          trap - INT TERM HUP ERR
+      }
+  changed_files:
+    worker.sh: |
+      #!/bin/bash
+      source ./cleanup.sh
+
+      trap cleanup EXIT
+      trap 'echo "Interrupted"; cleanup; exit 1' INT TERM
+      trap 'echo "Error on line $LINENO"; cleanup; exit 1' ERR
+
+      mkdir -p "$WORK_DIR"
+      touch "$LOCK_FILE"
+
+      echo "Working..."
+      sleep 60
+      echo "Done"
+    cleanup.sh: |
+      #!/bin/bash
+      LOCK_FILE="/tmp/lockfile"
+      WORK_DIR="/tmp/workdir"
+
+      cleanup() {
+          echo "Cleaning up..."
+          rm -f "$LOCK_FILE"
+          rm -rf "$WORK_DIR"
+      }
+    scripts/watchdog.sh: |
+      #!/bin/bash
+      PID_FILE="/var/run/worker.pid"
+      if [[ -f "$PID_FILE" ]]; then
+          pid=$(cat "$PID_FILE")
+          kill -0 "$pid" 2>/dev/null || echo "Worker is dead"
+      fi
+    scripts/cron_entry.sh: |
+      #!/bin/bash
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      flock -n /tmp/worker.lock "$SCRIPT_DIR/../worker.sh" >> /var/log/worker.log 2>&1
+    scripts/supervisor.sh: |
+      #!/bin/bash
+      source ./cleanup.sh
+
+      trap cleanup EXIT
+
+      while true; do
+          if [[ ! -f "$LOCK_FILE" ]]; then
+              echo "Worker not running, starting..."
+              ./worker.sh &
+              WORKER_PID=$!
+          fi
+          sleep 10
+          if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+              echo "Worker died, restarting..."
+          fi
+      done
+    scripts/health_check.sh: |
+      #!/bin/bash
+      LOCK_FILE="/tmp/lockfile"
+      WORK_DIR="/tmp/workdir"
+      if [[ -f "$LOCK_FILE" ]] && [[ -d "$WORK_DIR" ]]; then
+          echo "Worker: HEALTHY"
+      else
+          echo "Worker: NOT RUNNING"
+      fi
+    lib/signal_utils.sh: |
+      #!/bin/bash
+      install_signal_handlers() {
+          local handler=$1
+          trap "$handler" INT TERM HUP
+      }
+
+      reset_signal_handlers() {
+          trap - INT TERM HUP ERR
+      }
+  commit_message: Update files
+fragments:
+- id: cleanup
+  selector:
+    path: cleanup.sh
+    anchor: cleanup()
+- id: cleanup_1
+  selector:
+    path: cleanup.sh
+    anchor: LOCK_FILE="/tmp/lockfile"
+- id: cleanup_2
+  selector:
+    path: cleanup.sh
+    anchor: WORK_DIR="/tmp/workdir"
+- id: worker
+  selector:
+    path: worker.sh
+    anchor: trap cleanup EXIT
+- id: worker_1
+  selector:
+    path: worker.sh
+    anchor: Error on line $LINENO
+- id: no_watchdog
+  selector:
+    path: scripts/watchdog.sh
+- id: no_cron_entry
+  selector:
+    path: scripts/cron_entry.sh
+- id: no_supervisor
+  selector:
+    path: scripts/supervisor.sh
+- id: no_health_check
+  selector:
+    path: scripts/health_check.sh
+- id: no_signal_utils
+  selector:
+    path: lib/signal_utils.sh
+- id: no_global_0
+  selector:
+    anchor: PID_FILE
+- id: no_global_1
+  selector:
+    anchor: Worker is dead
+- id: no_global_2
+  selector:
+    anchor: flock -n
+- id: no_global_3
+  selector:
+    anchor: worker.lock
+- id: no_global_4
+  selector:
+    anchor: Worker not running
+- id: no_global_5
+  selector:
+    anchor: Worker died
+- id: no_global_6
+  selector:
+    anchor: WORKER_PID
+- id: no_global_7
+  selector:
+    anchor: 'Worker: HEALTHY'
+- id: no_global_8
+  selector:
+    anchor: 'Worker: NOT RUNNING'
+- id: no_global_9
+  selector:
+    anchor: install_signal_handlers
+- id: no_global_10
+  selector:
+    anchor: reset_signal_handlers
+oracle:
+  required:
+  - cleanup
+  - cleanup_1
+  - cleanup_2
+  - worker
+  - worker_1
+  allowed: []
+  forbidden:
+  - no_watchdog
+  - no_cron_entry
+  - no_supervisor
+  - no_health_check
+  - no_signal_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

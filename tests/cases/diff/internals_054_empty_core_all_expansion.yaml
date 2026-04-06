@@ -1,0 +1,45 @@
+name: internals_054_empty_core_all_expansion
+repo:
+  initial_files:
+    exp1.py: |
+      pass
+    exp2.py: |
+      pass
+    exp3.py: |
+      pass
+  changed_files:
+    exp1.py: |
+      def caller_a():
+          pass
+    exp2.py: |
+      def caller_b():
+          pass
+    exp3.py: |
+      def caller_c():
+          pass
+  commit_message: Update files
+fragments:
+- id: exp1_file
+  selector:
+    path: exp1.py
+- id: exp2_file
+  selector:
+    path: exp2.py
+- id: exp3_file
+  selector:
+    path: exp3.py
+- id: req_global_0
+  selector:
+    anchor: 'def caller_a():'
+- id: req_global_1
+  selector:
+    anchor: 'def caller_b():'
+oracle:
+  required:
+  - exp1_file
+  - exp2_file
+  - exp3_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

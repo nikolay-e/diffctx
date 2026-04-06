@@ -1,0 +1,219 @@
+name: internals_062_realistic_js_unrelated
+repo:
+  initial_files:
+    src/api/users.js: |
+      export function fetchUserProfile(userId) {
+          return { id: userId, status: 'active' };
+      }
+
+      export function updateUserPreferences(userId, prefs) {
+          return { ...prefs, userId };
+      }
+    utils/stringHelpers.js: |
+      const STRING_HELPER_MARKER_QWE123 = 'string_utils';
+
+      export function capitalizeFirstLetter(str) {
+          const CAPITALIZE_MARKER_RTY456 = true;
+          if (!str) return str;
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncateWithEllipsis(str, maxLength) {
+          const TRUNCATE_MARKER_UIO789 = true;
+          if (str.length <= maxLength) return str;
+          return str.slice(0, maxLength - 3) + '...';
+      }
+
+      export class StringFormatter {
+          static FORMATTER_MARKER_ASD012 = 'formatter';
+
+          static toCamelCase(str) {
+              return str.replace(/-./g, x => x[1].toUpperCase());
+          }
+
+          static toSnakeCase(str) {
+              return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+          }
+      }
+    utils/dateHelpers.js: |
+      const DATE_HELPER_MARKER_FGH345 = 'date_utils';
+
+      export function formatDateISO(date) {
+          const FORMAT_ISO_MARKER_JKL678 = true;
+          return date.toISOString().split('T')[0];
+      }
+
+      export function addDaysToDate(date, days) {
+          const ADD_DAYS_MARKER_ZXC901 = true;
+          const result = new Date(date);
+          result.setDate(result.getDate() + days);
+          return result;
+      }
+
+      export function calculateDaysBetween(start, end) {
+          const CALC_DAYS_MARKER_VBN234 = true;
+          const diffTime = Math.abs(end - start);
+          return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      export class DateRangeValidator {
+          static VALIDATOR_MARKER_MNB567 = 'validator';
+
+          static isValidRange(start, end) {
+              return start < end;
+          }
+      }
+  changed_files:
+    src/api/users.js: |
+      export function fetchUserProfile(userId) {
+          if (!userId || userId <= 0) {
+              throw new Error('Invalid userId');
+          }
+          return { id: userId, status: 'active', fetchedAt: new Date() };
+      }
+
+      export function updateUserPreferences(userId, prefs) {
+          if (!prefs || typeof prefs !== 'object') {
+              throw new Error('Invalid preferences');
+          }
+          return { ...prefs, userId, updatedAt: new Date() };
+      }
+    utils/stringHelpers.js: |
+      const STRING_HELPER_MARKER_QWE123 = 'string_utils';
+
+      export function capitalizeFirstLetter(str) {
+          const CAPITALIZE_MARKER_RTY456 = true;
+          if (!str) return str;
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncateWithEllipsis(str, maxLength) {
+          const TRUNCATE_MARKER_UIO789 = true;
+          if (str.length <= maxLength) return str;
+          return str.slice(0, maxLength - 3) + '...';
+      }
+
+      export class StringFormatter {
+          static FORMATTER_MARKER_ASD012 = 'formatter';
+
+          static toCamelCase(str) {
+              return str.replace(/-./g, x => x[1].toUpperCase());
+          }
+
+          static toSnakeCase(str) {
+              return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+          }
+      }
+    utils/dateHelpers.js: |
+      const DATE_HELPER_MARKER_FGH345 = 'date_utils';
+
+      export function formatDateISO(date) {
+          const FORMAT_ISO_MARKER_JKL678 = true;
+          return date.toISOString().split('T')[0];
+      }
+
+      export function addDaysToDate(date, days) {
+          const ADD_DAYS_MARKER_ZXC901 = true;
+          const result = new Date(date);
+          result.setDate(result.getDate() + days);
+          return result;
+      }
+
+      export function calculateDaysBetween(start, end) {
+          const CALC_DAYS_MARKER_VBN234 = true;
+          const diffTime = Math.abs(end - start);
+          return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      export class DateRangeValidator {
+          static VALIDATOR_MARKER_MNB567 = 'validator';
+
+          static isValidRange(start, end) {
+              return start < end;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: users
+  selector:
+    path: src/api/users.js
+    anchor: function fetchUserProfile(userId) {
+- id: users_1
+  selector:
+    path: src/api/users.js
+    anchor: function updateUserPreferences(userId, prefs) {
+- id: users_2
+  selector:
+    path: src/api/users.js
+    anchor: throw new Error('Invalid userId')
+- id: no_stringhelpers
+  selector:
+    path: utils/stringHelpers.js
+- id: no_datehelpers
+  selector:
+    path: utils/dateHelpers.js
+- id: no_global_0
+  selector:
+    anchor: STRING_HELPER_MARKER_QWE123
+- id: no_global_1
+  selector:
+    anchor: CAPITALIZE_MARKER_RTY456
+- id: no_global_2
+  selector:
+    anchor: TRUNCATE_MARKER_UIO789
+- id: no_global_3
+  selector:
+    anchor: FORMATTER_MARKER_ASD012
+- id: no_global_4
+  selector:
+    anchor: StringFormatter
+- id: no_global_5
+  selector:
+    anchor: capitalizeFirstLetter
+- id: no_global_6
+  selector:
+    anchor: truncateWithEllipsis
+- id: no_global_7
+  selector:
+    anchor: DATE_HELPER_MARKER_FGH345
+- id: no_global_8
+  selector:
+    anchor: FORMAT_ISO_MARKER_JKL678
+- id: no_global_9
+  selector:
+    anchor: ADD_DAYS_MARKER_ZXC901
+- id: no_global_10
+  selector:
+    anchor: CALC_DAYS_MARKER_VBN234
+- id: no_global_11
+  selector:
+    anchor: VALIDATOR_MARKER_MNB567
+- id: no_global_12
+  selector:
+    anchor: DateRangeValidator
+- id: no_global_13
+  selector:
+    anchor: calculateDaysBetween
+oracle:
+  required:
+  - users
+  - users_1
+  - users_2
+  allowed: []
+  forbidden:
+  - no_stringhelpers
+  - no_datehelpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

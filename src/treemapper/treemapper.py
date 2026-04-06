@@ -107,8 +107,7 @@ _ARCHITECTURAL_EDGE_TYPES: frozenset[str] = frozenset(
 def _format_cycles(g: GraphArgs, pg: Any) -> str:
     from .diffctx.graph_analytics import detect_cycles
 
-    edge_filter = set(g.edge_types) if g.edge_types else {"semantic"}
-    cycles = detect_cycles(pg, level=g.level, edge_types=edge_filter)
+    cycles = detect_cycles(pg, level=g.level, edge_types={"semantic"})
     if not cycles:
         return "No dependency cycles detected."
     lines = [f"{len(cycles)} dependency cycle(s) detected:\n"]
@@ -121,8 +120,7 @@ def _format_cycles(g: GraphArgs, pg: Any) -> str:
 def _format_hotspots(g: GraphArgs, pg: Any) -> str:
     from .diffctx.graph_analytics import hotspots
 
-    edge_filter = set(g.edge_types) if g.edge_types else set(_ARCHITECTURAL_EDGE_TYPES)
-    hot = hotspots(pg, top=g.hotspots or 10, edge_types=edge_filter)
+    hot = hotspots(pg, top=10, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
     lines = [f"Top {len(hot)} hotspots:"]
     for rank, (name, score, details) in enumerate(hot, 1):
         lines.append(f"  {rank}. {name}  score={score}  out_degree={details['out_degree']}  churn={details['churn']}")
@@ -132,8 +130,7 @@ def _format_hotspots(g: GraphArgs, pg: Any) -> str:
 def _format_metrics(g: GraphArgs, pg: Any) -> str:
     from .diffctx.graph_analytics import coupling_metrics
 
-    edge_filter = set(g.edge_types) if g.edge_types else set(_ARCHITECTURAL_EDGE_TYPES)
-    metrics = coupling_metrics(pg, level=g.level, edge_types=edge_filter)
+    metrics = coupling_metrics(pg, level=g.level, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
     lines = [f"Module metrics ({g.level} level):"]
     for m in metrics:
         flags = ""
@@ -145,52 +142,6 @@ def _format_metrics(g: GraphArgs, pg: Any) -> str:
             f"  {m.name}  cohesion={m.cohesion}  coupling={m.coupling}  "
             f"instability={m.instability}  fan_in={m.fan_in}  fan_out={m.fan_out}{flags}"
         )
-    return "\n".join(lines)
-
-
-def _format_impact(g: GraphArgs, pg: Any) -> str:
-    from pathlib import Path
-
-    from .diffctx.ppr import personalized_pagerank
-    from .diffctx.project_graph import _relative_path
-
-    assert g.impact is not None
-    seed_path = Path(g.impact).resolve()
-    seed_fids = {fid for fid in pg.fragments if fid.path.resolve() == seed_path}
-    if not seed_fids:
-        logger.error("File '%s' not found in project graph", g.impact)
-        sys.exit(1)
-    scores = personalized_pagerank(
-        pg.graph, seeds=set(seed_fids), alpha=0.5, seed_weights={fid: 1.0 / len(seed_fids) for fid in seed_fids}
-    )
-    ranked = sorted(scores.items(), key=lambda x: -x[1])
-    lines = [f"Impact subgraph for {g.impact}:"]
-    seen_files: set[str] = set()
-    for fid, score in ranked[:30]:
-        rel = _relative_path(fid.path, pg.root_dir)
-        if rel not in seen_files:
-            seen_files.add(rel)
-            lines.append(f"  {rel}  relevance={score:.4f}")
-    return "\n".join(lines)
-
-
-def _format_blast_radius(g: GraphArgs, pg: Any) -> str:
-    from pathlib import Path
-
-    from .diffctx.graph_analytics import blast_radius
-
-    assert g.blast_radius is not None
-    seed_path = Path(g.blast_radius).resolve()
-    result = blast_radius(pg, seed_files=[seed_path])
-    lines = [f"Blast radius for {g.blast_radius}:"]
-    for key, entries in result.items():
-        if key == "summary":
-            lines.append(f"\n  Summary: {', '.join(e[0] for e in entries)}")
-        else:
-            depth_num = key.replace("depth_", "")
-            lines.append(f"\n  Depth {depth_num}: {len(entries)} file(s)")
-            for name, count in entries:
-                lines.append(f"    {name} ({count} fragment(s))")
     return "\n".join(lines)
 
 
@@ -207,7 +158,6 @@ def _graph_to_string(pg: Any, fmt: str, level: str = "directory") -> str:
 
 
 def _handle_graph_mode(args: ParsedArgs) -> str:
-    from .diffctx.graph_analytics import quotient_graph, to_mermaid
     from .diffctx.graph_export import graph_summary
     from .diffctx.project_graph import build_project_graph
 
@@ -225,22 +175,11 @@ def _handle_graph_mode(args: ParsedArgs) -> str:
 
     if g.summary:
         parts.append(graph_summary(pg))
-    if g.cycles:
         parts.append(_format_cycles(g, pg))
-    if g.hotspots is not None:
         parts.append(_format_hotspots(g, pg))
-    if g.metrics:
         parts.append(_format_metrics(g, pg))
-    if g.impact:
-        parts.append(_format_impact(g, pg))
-    if g.blast_radius:
-        parts.append(_format_blast_radius(g, pg))
-    if g.mermaid:
-        qg = quotient_graph(pg, level=g.level)
-        parts.append(to_mermaid(qg))
 
-    has_analysis_flag = any([g.summary, g.cycles, g.hotspots is not None, g.metrics, g.impact, g.blast_radius, g.mermaid])
-    if not has_analysis_flag:
+    if not g.summary:
         parts.append(_graph_to_string(pg, g.format, level=g.level))
 
     return "\n".join(parts) + "\n" if parts else ""

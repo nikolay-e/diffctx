@@ -1,0 +1,145 @@
+name: cicd_and_docs_018_gha_environment
+repo:
+  initial_files:
+    .github/workflows/deploy.yml: |
+      name: Deploy
+      on:
+        push:
+          branches: [main]
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: ./deploy.sh
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      echo "Deploying application..."
+      aws s3 sync ./dist s3://prod-bucket/
+      aws cloudfront create-invalidation --distribution-id E123 --paths "/*"
+    src/config/deploy.ts: |
+      export interface DeploymentTarget {
+        name: string;
+        url: string;
+        region: string;
+      }
+
+      export const productionTarget: DeploymentTarget = {
+        name: 'production',
+        url: 'https://example.com',
+        region: 'us-east-1'
+      };
+    garbage_env.ts: |
+      const GARBAGE_CICD_DOCS_018_ENV_MARKER_A = "staging";
+      const GARBAGE_CICD_DOCS_018_REVIEW_MARKER_B = true;
+
+      class GarbageEnvironmentConfig {
+        static GARBAGE_CICD_DOCS_018_PROTECT_MARKER_C = true;
+        validate(): boolean { return false; }
+      }
+    garbage_approval.ts: |
+      const GARBAGE_CICD_DOCS_018_APPROVAL_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_018_REVIEWERS_MARKER_E = 2;
+
+      class GarbageApprovalFlow {
+        static GARBAGE_CICD_DOCS_018_TIMEOUT_MARKER_F = 86400;
+        requestApproval(): void {}
+      }
+  changed_files:
+    .github/workflows/deploy.yml: |
+      name: Deploy
+      on:
+        push:
+          branches: [main]
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          environment:
+            name: production
+            url: https://example.com
+          steps:
+            - uses: actions/checkout@v4
+            - run: ./deploy.sh
+              env:
+                DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      echo "Deploying application..."
+      aws s3 sync ./dist s3://prod-bucket/
+      aws cloudfront create-invalidation --distribution-id E123 --paths "/*"
+    src/config/deploy.ts: |
+      export interface DeploymentTarget {
+        name: string;
+        url: string;
+        region: string;
+      }
+
+      export const productionTarget: DeploymentTarget = {
+        name: 'production',
+        url: 'https://example.com',
+        region: 'us-east-1'
+      };
+    garbage_env.ts: |
+      const GARBAGE_CICD_DOCS_018_ENV_MARKER_A = "staging";
+      const GARBAGE_CICD_DOCS_018_REVIEW_MARKER_B = true;
+
+      class GarbageEnvironmentConfig {
+        static GARBAGE_CICD_DOCS_018_PROTECT_MARKER_C = true;
+        validate(): boolean { return false; }
+      }
+    garbage_approval.ts: |
+      const GARBAGE_CICD_DOCS_018_APPROVAL_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_018_REVIEWERS_MARKER_E = 2;
+
+      class GarbageApprovalFlow {
+        static GARBAGE_CICD_DOCS_018_TIMEOUT_MARKER_F = 86400;
+        requestApproval(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: deploy_file
+  selector:
+    path: .github/workflows/deploy.yml
+- id: req_global_0
+  selector:
+    anchor: 'name: production'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_APPROVAL_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_ENV_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_PROTECT_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_REVIEWERS_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_REVIEW_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_018_TIMEOUT_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: garbage_approval.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_env.ts
+oracle:
+  required:
+  - deploy_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

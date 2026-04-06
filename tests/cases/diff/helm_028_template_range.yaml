@@ -1,0 +1,66 @@
+name: helm_028_template_range
+repo:
+  initial_files:
+    values.yaml: |
+      ingress:
+        hosts:
+          - host: app.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+    templates/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      spec:
+        rules: []
+    unrelated.py: |
+      garbage_marker_12345 = True
+      unused_marker_67890 = False
+  changed_files:
+    values.yaml: |
+      ingress:
+        hosts:
+          - host: app.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+    templates/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      spec:
+        rules:
+          {{- range .Values.ingress.hosts }}
+          - host: {{ .host }}
+            http:
+              paths:
+                {{- range .paths }}
+                - path: {{ .path }}
+                  pathType: {{ .pathType }}
+                  backend:
+                    service:
+                      name: {{ $.Release.Name }}
+                      port:
+                        number: 80
+                {{- end }}
+          {{- end }}
+    unrelated.py: |
+      garbage_marker_12345 = True
+      unused_marker_67890 = False
+  commit_message: Update files
+fragments:
+- id: ingress_file
+  selector:
+    path: templates/ingress.yaml
+- id: req_global_0
+  selector:
+    anchor: '{{- range .Values.ingress.hosts }}'
+- id: no_global_0
+  selector:
+    anchor: unrelated.py
+oracle:
+  required:
+  - ingress_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

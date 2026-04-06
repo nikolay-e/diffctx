@@ -1,0 +1,183 @@
+name: javascript_020_new_class_constructor
+repo:
+  initial_files:
+    user.ts: |
+      export class MyClass {
+          private value: number;
+
+          constructor(value: number) {
+              this.value = value;
+          }
+
+          getValue(): number {
+              return this.value;
+          }
+      }
+    main.ts: |
+      console.log('initial');
+    my-class.test.ts: |
+      import { MyClass } from './user';
+
+      describe('MyClass', () => {
+          it('should store value from constructor', () => {
+              const instance = new MyClass(42);
+              expect(instance.getValue()).toBe(42);
+          });
+
+          it('should accept zero', () => {
+              const instance = new MyClass(0);
+              expect(instance.getValue()).toBe(0);
+          });
+
+          it('should accept negative values', () => {
+              const instance = new MyClass(-10);
+              expect(instance.getValue()).toBe(-10);
+          });
+      });
+    my-class-builder.ts: |
+      import { MyClass } from './user';
+
+      export class MyClassBuilder {
+          private value: number = 0;
+
+          withValue(value: number): MyClassBuilder {
+              this.value = value;
+              return this;
+          }
+
+          build(): MyClass {
+              return new MyClass(this.value);
+          }
+      }
+
+      export function createDefault(): MyClass {
+          return new MyClassBuilder().withValue(1).build();
+      }
+  changed_files:
+    user.ts: |
+      export class MyClass {
+          private value: number;
+
+          constructor(value: number) {
+              this.value = value;
+          }
+
+          getValue(): number {
+              return this.value;
+          }
+      }
+    main.ts: |
+      import { MyClass } from './user';
+
+      function createInstance() {
+          const instance = new MyClass(42);
+          return instance.getValue();
+      }
+
+      console.log(createInstance());
+    my-class.test.ts: |
+      import { MyClass } from './user';
+
+      describe('MyClass', () => {
+          it('should store value from constructor', () => {
+              const instance = new MyClass(42);
+              expect(instance.getValue()).toBe(42);
+          });
+
+          it('should accept zero', () => {
+              const instance = new MyClass(0);
+              expect(instance.getValue()).toBe(0);
+          });
+
+          it('should accept negative values', () => {
+              const instance = new MyClass(-10);
+              expect(instance.getValue()).toBe(-10);
+          });
+      });
+    my-class-builder.ts: |
+      import { MyClass } from './user';
+
+      export class MyClassBuilder {
+          private value: number = 0;
+
+          withValue(value: number): MyClassBuilder {
+              this.value = value;
+              return this;
+          }
+
+          build(): MyClass {
+              return new MyClass(this.value);
+          }
+      }
+
+      export function createDefault(): MyClass {
+          return new MyClassBuilder().withValue(1).build();
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { MyClass } from './user'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: new MyClass(42)
+- id: main_2
+  selector:
+    path: main.ts
+    anchor: instance.getValue()
+- id: user
+  selector:
+    path: user.ts
+    anchor: class MyClass
+- id: user_1
+  selector:
+    path: user.ts
+    anchor: 'constructor(value: number)'
+- id: user_2
+  selector:
+    path: user.ts
+    anchor: 'getValue(): number'
+- id: no_my_class_test
+  selector:
+    path: my-class.test.ts
+- id: no_my_class_builder
+  selector:
+    path: my-class-builder.ts
+- id: no_global_0
+  selector:
+    anchor: describe('MyClass'
+- id: no_global_1
+  selector:
+    anchor: expect(instance.getValue()).toBe
+- id: no_global_2
+  selector:
+    anchor: should store value
+- id: no_global_3
+  selector:
+    anchor: MyClassBuilder
+- id: no_global_4
+  selector:
+    anchor: withValue
+- id: no_global_5
+  selector:
+    anchor: createDefault
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_my_class_test
+  - no_my_class_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

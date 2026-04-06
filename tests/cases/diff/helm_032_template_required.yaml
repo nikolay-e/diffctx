@@ -1,0 +1,42 @@
+name: helm_032_template_required
+repo:
+  initial_files:
+    values.yaml: |
+      apiKey: ""
+    templates/secret.yaml: |
+      apiVersion: v1
+      kind: Secret
+      data:
+        api-key: {{ .Values.apiKey | b64enc }}
+    unrelated.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  changed_files:
+    values.yaml: |
+      apiKey: ""
+    templates/secret.yaml: |
+      apiVersion: v1
+      kind: Secret
+      data:
+        api-key: {{ required "apiKey is required" .Values.apiKey | b64enc }}
+    unrelated.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  commit_message: Update files
+fragments:
+- id: secret_file
+  selector:
+    path: templates/secret.yaml
+- id: req_global_0
+  selector:
+    anchor: 'api-key: {{ required "apiKey is required" .Values.apiKey | b64enc }}'
+- id: no_global_0
+  selector:
+    anchor: unrelated.txt
+oracle:
+  required:
+  - secret_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

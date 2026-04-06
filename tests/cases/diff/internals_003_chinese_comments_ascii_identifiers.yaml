@@ -1,0 +1,99 @@
+name: internals_003_chinese_comments_ascii_identifiers
+repo:
+  initial_files:
+    src/calculator/engine.py: |
+      from src.calculator.validators import validate_input
+      def calculate_sum(values: list) -> float:
+          validate_input(values)
+          return sum(values)
+      def calculate_average(values: list) -> float:
+          total = calculate_sum(values)
+          return total / len(values) if values else 0.0
+    src/calculator/validators.py: |
+      def validate_input(values: list) -> None:
+          if not isinstance(values, list):
+              raise TypeError("Expected list")
+    garbage_math_formatter.py: |
+      GARBAGE_INT_003_FORMAT_MARKER_A = "math"
+      GARBAGE_INT_003_DECIMAL_MARKER_B = "prec"
+
+      class GarbageMathFormatter:
+          def noop(self):
+              pass
+    garbage_number_parser.py: |
+      GARBAGE_INT_003_PARSE_MARKER_C = "num"
+      GARBAGE_INT_003_BASE_MARKER_D = "dec"
+
+      class GarbageNumberParser:
+          def noop(self):
+              pass
+  changed_files:
+    src/calculator/engine.py: |
+      from src.calculator.validators import validate_input
+      # 这是一个计算总和的函数
+      def calculate_sum(values: list) -> float:
+          validate_input(values)
+          return sum(values)
+      # 计算平均值
+      def calculate_average(values: list) -> float:
+          total = calculate_sum(values)
+          return total / len(values) if values else 0.0
+      # 返回统计信息
+      def get_statistics(values: list) -> dict:
+          return {"sum": calculate_sum(values), "avg": calculate_average(values)}
+    src/calculator/validators.py: |
+      def validate_input(values: list) -> None:
+          if not isinstance(values, list):
+              raise TypeError("Expected list")
+    garbage_math_formatter.py: |
+      GARBAGE_INT_003_FORMAT_MARKER_A = "math"
+      GARBAGE_INT_003_DECIMAL_MARKER_B = "prec"
+
+      class GarbageMathFormatter:
+          def noop(self):
+              pass
+    garbage_number_parser.py: |
+      GARBAGE_INT_003_PARSE_MARKER_C = "num"
+      GARBAGE_INT_003_BASE_MARKER_D = "dec"
+
+      class GarbageNumberParser:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: engine_file
+  selector:
+    path: src/calculator/engine.py
+- id: req_global_0
+  selector:
+    anchor: 'def get_statistics(values: list) -> dict:'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_003_BASE_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_003_DECIMAL_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_003_FORMAT_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_003_PARSE_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: garbage_math_formatter.py
+- id: no_global_5
+  selector:
+    anchor: garbage_number_parser.py
+oracle:
+  required:
+  - engine_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,150 @@
+name: terraform_040_terraform_functions
+repo:
+  initial_files:
+    main.tf: |
+      locals {
+        name = "myapp"
+      }
+
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = "t3.micro"
+        tags = {
+          Name = local.name
+        }
+      }
+    variables.tf: |
+      variable "common_tags" {
+        type    = map(string)
+        default = {
+          Project   = "myapp"
+          ManagedBy = "terraform"
+        }
+      }
+
+      variable "extra_tags" {
+        type    = map(string)
+        default = {}
+      }
+
+      variable "subnet_ids" {
+        type    = list(string)
+        default = []
+      }
+
+      variable "extra_subnet_ids" {
+        type    = list(string)
+        default = []
+      }
+
+      variable "min_count" {
+        type    = number
+        default = 1
+      }
+
+      variable "desired_count" {
+        type    = number
+        default = 2
+      }
+    config.json: |
+      {
+        "db_host": "db.internal",
+        "db_port": 5432,
+        "cache_ttl": 300
+      }
+    networking/transforms.tf: |
+      locals {
+        net_name = "network"
+
+        upper_net_name = upper(local.net_name)
+        merged_cidrs   = merge(var.private_cidrs, var.public_cidrs)
+        encoded_config = base64encode("network-config")
+      }
+    iam/roles.tf: |
+      resource "aws_iam_role" "lambda" {
+        name = "lambda-exec"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = {
+              Service = "lambda.amazonaws.com"
+            }
+          }]
+        })
+      }
+  changed_files:
+    main.tf: |
+      locals {
+        name = "myapp"
+
+        upper_name = upper(local.name)
+        trimmed    = trimspace("  hello  ")
+
+        merged_tags = merge(var.common_tags, var.extra_tags)
+        flattened   = flatten([var.subnet_ids, var.extra_subnet_ids])
+
+        encoded = base64encode("secret")
+        decoded = jsondecode(file("config.json"))
+
+        max_count = max(var.min_count, var.desired_count)
+      }
+
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = "t3.micro"
+        tags          = local.merged_tags
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "common_tags" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: variable "extra_tags" {
+- id: variables_2
+  selector:
+    path: variables.tf
+    anchor: variable "min_count" {
+- id: variables_3
+  selector:
+    path: variables.tf
+    anchor: variable "desired_count" {
+- id: config
+  selector:
+    path: config.json
+    anchor: db_host
+- id: no_transforms
+  selector:
+    path: networking/transforms.tf
+- id: no_roles
+  selector:
+    path: iam/roles.tf
+- id: no_global_0
+  selector:
+    anchor: upper_net_name
+- id: no_global_1
+  selector:
+    anchor: merged_cidrs
+- id: no_global_2
+  selector:
+    anchor: lambda-exec
+oracle:
+  required:
+  - variables
+  - variables_1
+  - variables_2
+  - variables_3
+  - config
+  allowed: []
+  forbidden:
+  - no_transforms
+  - no_roles
+  - no_global_0
+  - no_global_1
+  - no_global_2

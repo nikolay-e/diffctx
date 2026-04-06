@@ -1,0 +1,191 @@
+name: shell_020_subshell
+repo:
+  initial_files:
+    build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+
+      (cd "$BUILD_DIR" && make clean)
+      echo "Back in original directory: $(pwd)"
+    build_config.sh: |
+      #!/bin/bash
+      export BUILD_DIR="/tmp/build"
+      export BUILD_FLAGS="--release --optimized"
+      export ARTIFACT_DIR="/tmp/build/dist"
+    scripts/clean.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      rm -rf "$BUILD_DIR"/*
+      echo "Build directory cleaned: $BUILD_DIR"
+    scripts/package.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      tar czf release.tar.gz -C "$ARTIFACT_DIR" .
+      echo "Package created from $ARTIFACT_DIR"
+    scripts/test_build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+
+      (
+          cd "$BUILD_DIR"
+          make clean
+          make $BUILD_FLAGS --test-mode
+      )
+      echo "Test build complete"
+      echo "Back in: $(pwd)"
+    scripts/ci_build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      echo "CI: Building in $BUILD_DIR with $BUILD_FLAGS"
+      (cd "$BUILD_DIR" && make $BUILD_FLAGS)
+      exit_code=$?
+      echo "CI: Build exit code: $exit_code"
+      exit $exit_code
+    config/build_config_debug.sh: |
+      #!/bin/bash
+      export BUILD_DIR="/tmp/build-debug"
+      export BUILD_FLAGS="--debug --verbose"
+      export ARTIFACT_DIR="/tmp/build-debug/dist"
+  changed_files:
+    build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+
+      (cd "$BUILD_DIR" && make clean && make $BUILD_FLAGS)
+
+      result=$(
+          cd /tmp
+          echo "Working in: $(pwd)"
+          ls -la "$BUILD_DIR/dist"
+      )
+      echo "Build output: $result"
+
+      (
+          export CUSTOM_VAR="isolated_value"
+          export BUILD_FLAGS="$BUILD_FLAGS --debug"
+          ./run-with-custom-env.sh
+      )
+
+      echo "Still in original directory: $(pwd)"
+      echo "CUSTOM_VAR is unset: ${CUSTOM_VAR:-unset}"
+    build_config.sh: |
+      #!/bin/bash
+      export BUILD_DIR="/tmp/build"
+      export BUILD_FLAGS="--release --optimized"
+      export ARTIFACT_DIR="/tmp/build/dist"
+    scripts/clean.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      rm -rf "$BUILD_DIR"/*
+      echo "Build directory cleaned: $BUILD_DIR"
+    scripts/package.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      tar czf release.tar.gz -C "$ARTIFACT_DIR" .
+      echo "Package created from $ARTIFACT_DIR"
+    scripts/test_build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+
+      (
+          cd "$BUILD_DIR"
+          make clean
+          make $BUILD_FLAGS --test-mode
+      )
+      echo "Test build complete"
+      echo "Back in: $(pwd)"
+    scripts/ci_build.sh: |
+      #!/bin/bash
+      source ./build_config.sh
+      echo "CI: Building in $BUILD_DIR with $BUILD_FLAGS"
+      (cd "$BUILD_DIR" && make $BUILD_FLAGS)
+      exit_code=$?
+      echo "CI: Build exit code: $exit_code"
+      exit $exit_code
+    config/build_config_debug.sh: |
+      #!/bin/bash
+      export BUILD_DIR="/tmp/build-debug"
+      export BUILD_FLAGS="--debug --verbose"
+      export ARTIFACT_DIR="/tmp/build-debug/dist"
+  commit_message: Update files
+fragments:
+- id: build_config
+  selector:
+    path: build_config.sh
+    anchor: BUILD_DIR="/tmp/build"
+- id: build_config_1
+  selector:
+    path: build_config.sh
+    anchor: BUILD_FLAGS="--release --optimized"
+- id: build
+  selector:
+    path: build.sh
+    anchor: CUSTOM_VAR
+- id: build_1
+  selector:
+    path: build.sh
+    anchor: make $BUILD_FLAGS
+- id: no_clean
+  selector:
+    path: scripts/clean.sh
+- id: no_package
+  selector:
+    path: scripts/package.sh
+- id: no_test_build
+  selector:
+    path: scripts/test_build.sh
+- id: no_ci_build
+  selector:
+    path: scripts/ci_build.sh
+- id: no_build_config_debug
+  selector:
+    path: config/build_config_debug.sh
+- id: no_global_0
+  selector:
+    anchor: Build directory cleaned
+- id: no_global_1
+  selector:
+    anchor: release.tar.gz
+- id: no_global_2
+  selector:
+    anchor: Package created
+- id: no_global_3
+  selector:
+    anchor: --test-mode
+- id: no_global_4
+  selector:
+    anchor: Test build complete
+- id: no_global_5
+  selector:
+    anchor: 'CI: Building'
+- id: no_global_6
+  selector:
+    anchor: 'CI: Build exit code'
+- id: no_global_7
+  selector:
+    anchor: /tmp/build-debug
+- id: no_global_8
+  selector:
+    anchor: --debug --verbose
+oracle:
+  required:
+  - build_config
+  - build_config_1
+  - build
+  - build_1
+  allowed: []
+  forbidden:
+  - no_clean
+  - no_package
+  - no_test_build
+  - no_ci_build
+  - no_build_config_debug
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

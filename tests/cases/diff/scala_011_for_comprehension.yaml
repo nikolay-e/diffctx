@@ -1,0 +1,153 @@
+name: scala_011_for_comprehension
+repo:
+  initial_files:
+    Repository.scala: |
+      case class User(id: String, name: String)
+      case class Order(id: String, userId: String, total: Double)
+
+      class Repository {
+        def getUser(id: String): Option[User] = Some(User(id, "John"))
+        def getOrders(user: User): Option[List[Order]] = Some(List(Order("o1", user.id, 100.0)))
+      }
+    OrderService.scala: |
+      class OrderService {}
+    OrderValidator.scala: |
+      class OrderValidator {
+        def isValid(order: Order): Boolean =
+          order.id.nonEmpty && order.total > 0
+
+        def validateBatch(orders: List[Order]): List[String] =
+          orders.filterNot(isValid).map(o => s"Invalid order: ${o.id}")
+
+        def maxOrderAmount: Double = 10000.0
+      }
+    UserCache.scala: |
+      class UserCache {
+        private var cache: Map[String, User] = Map.empty
+
+        def getUser(id: String): Option[User] = cache.get(id)
+
+        def putUser(user: User): Unit = {
+          cache = cache + (user.id -> user)
+        }
+
+        def invalidate(id: String): Unit = {
+          cache = cache - id
+        }
+
+        def size: Int = cache.size
+      }
+  changed_files:
+    Repository.scala: |
+      case class User(id: String, name: String)
+      case class Order(id: String, userId: String, total: Double)
+
+      class Repository {
+        def getUser(id: String): Option[User] = Some(User(id, "John"))
+        def getOrders(user: User): Option[List[Order]] = Some(List(Order("o1", user.id, 100.0)))
+      }
+    OrderService.scala: |
+      class OrderService(repo: Repository) {
+        def getUserOrders(userId: String): Option[List[Order]] = {
+          for {
+            user <- repo.getUser(userId)
+            orders <- repo.getOrders(user)
+          } yield orders
+        }
+
+        def getTotalForUser(userId: String): Option[Double] = {
+          for {
+            user <- repo.getUser(userId)
+            orders <- repo.getOrders(user)
+            total = orders.map(_.total).sum
+          } yield total
+        }
+      }
+    OrderValidator.scala: |
+      class OrderValidator {
+        def isValid(order: Order): Boolean =
+          order.id.nonEmpty && order.total > 0
+
+        def validateBatch(orders: List[Order]): List[String] =
+          orders.filterNot(isValid).map(o => s"Invalid order: ${o.id}")
+
+        def maxOrderAmount: Double = 10000.0
+      }
+    UserCache.scala: |
+      class UserCache {
+        private var cache: Map[String, User] = Map.empty
+
+        def getUser(id: String): Option[User] = cache.get(id)
+
+        def putUser(user: User): Unit = {
+          cache = cache + (user.id -> user)
+        }
+
+        def invalidate(id: String): Unit = {
+          cache = cache - id
+        }
+
+        def size: Int = cache.size
+      }
+  commit_message: Update files
+fragments:
+- id: orderservice
+  selector:
+    path: OrderService.scala
+    anchor: 'class OrderService(repo: Repository) {'
+- id: orderservice_1
+  selector:
+    path: OrderService.scala
+    anchor: user <- repo.getUser(userId)
+- id: repository
+  selector:
+    path: Repository.scala
+    anchor: 'def getUser(id: String): Option[User]'
+- id: repository_1
+  selector:
+    path: Repository.scala
+    anchor: 'def getOrders(user: User): Option[List[Order]]'
+- id: no_ordervalidator
+  selector:
+    path: OrderValidator.scala
+- id: no_usercache
+  selector:
+    path: UserCache.scala
+- id: no_global_0
+  selector:
+    anchor: OrderValidator
+- id: no_global_1
+  selector:
+    anchor: isValid
+- id: no_global_2
+  selector:
+    anchor: validateBatch
+- id: no_global_3
+  selector:
+    anchor: maxOrderAmount
+- id: no_global_4
+  selector:
+    anchor: UserCache
+- id: no_global_5
+  selector:
+    anchor: putUser
+- id: no_global_6
+  selector:
+    anchor: invalidate
+oracle:
+  required:
+  - orderservice
+  - orderservice_1
+  - repository
+  - repository_1
+  allowed: []
+  forbidden:
+  - no_ordervalidator
+  - no_usercache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

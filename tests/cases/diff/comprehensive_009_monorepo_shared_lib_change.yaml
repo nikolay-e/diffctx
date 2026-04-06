@@ -1,0 +1,194 @@
+name: comprehensive_009_monorepo_shared_lib_change
+repo:
+  initial_files:
+    packages/shared/src/utils.ts: |
+      export function formatDate(date: Date): string {
+          return date.toISOString();
+      }
+
+      export function formatCurrency(amount: number, currency: string): string {
+          return `${currency}${amount.toFixed(2)}`;
+      }
+
+      export function slugify(text: string): string {
+          return text.toLowerCase().replace(/\s+/g, '-');
+      }
+    packages/web/src/components/DateDisplay.tsx: |
+      import { formatDate } from '@myorg/shared';
+
+      export function DateDisplay({ date }: { date: Date }) {
+          return <span>{formatDate(date)}</span>;
+      }
+
+      export function DateRange({ start, end }: { start: Date; end: Date }) {
+          return <span>{formatDate(start)} - {formatDate(end)}</span>;
+      }
+    packages/api/src/handlers/report.ts: |
+      import { formatDate, formatCurrency } from '@myorg/shared';
+
+      export function generateReport(date: Date, revenue: number) {
+          return {
+              generatedAt: formatDate(date),
+              totalRevenue: formatCurrency(revenue, '$'),
+          };
+      }
+
+      export function generateSummary(dates: Date[]) {
+          return dates.map(d => formatDate(d));
+      }
+    packages/shared/src/__tests__/slugify-test.ts: |
+      import { slugify } from '../utils';
+
+      function testSlugifyBasic() {
+        const result = slugify('Hello World');
+        if (result !== 'hello-world') throw new Error('slugify failed');
+      }
+
+      function testSlugifyMultipleSpaces() {
+        const result = slugify('multiple   spaces   here');
+        if (result !== 'multiple---spaces---here') throw new Error('multi-space failed');
+      }
+
+      function testSlugifyAlreadyLower() {
+        const result = slugify('already-slugged');
+        if (result !== 'already-slugged') throw new Error('idempotent failed');
+      }
+
+      testSlugifyBasic();
+      testSlugifyMultipleSpaces();
+      testSlugifyAlreadyLower();
+    packages/web/src/utils/currency-formatter.ts: |
+      interface CurrencyFormatOptions {
+        locale: string;
+        currency: string;
+        minimumFractionDigits: number;
+      }
+
+      const DEFAULT_OPTIONS: CurrencyFormatOptions = {
+        locale: 'en-US',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+      };
+
+      export function formatPrice(amount: number, options?: Partial<CurrencyFormatOptions>): string {
+        const merged = { ...DEFAULT_OPTIONS, ...options };
+        return new Intl.NumberFormat(merged.locale, {
+          style: 'currency',
+          currency: merged.currency,
+          minimumFractionDigits: merged.minimumFractionDigits,
+        }).format(amount);
+      }
+
+      export function parsePriceString(priceStr: string): number {
+        return parseFloat(priceStr.replace(/[^0-9.-]/g, ''));
+      }
+    packages/shared/package.json: |
+      {
+        "name": "@myorg/shared",
+        "version": "2.1.0",
+        "main": "dist/index.js",
+        "types": "dist/index.d.ts",
+        "license": "MIT"
+      }
+  changed_files:
+    packages/shared/src/utils.ts: |
+      export function formatDate(date: Date, format: string = 'iso'): string {
+          if (format === 'iso') {
+              return date.toISOString();
+          }
+          if (format === 'locale') {
+              return date.toLocaleDateString();
+          }
+          return date.toString();
+      }
+
+      export function parseDate(str: string): Date {
+          return new Date(str);
+      }
+
+      export function formatCurrency(amount: number, currency: string): string {
+          return `${currency}${amount.toFixed(2)}`;
+      }
+
+      export function slugify(text: string): string {
+          return text.toLowerCase().replace(/\s+/g, '-');
+      }
+  commit_message: Update files
+fragments:
+- id: utils
+  selector:
+    path: packages/shared/src/utils.ts
+    anchor: 'function formatDate(date: Date, format: string = ''iso'')'
+- id: utils_1
+  selector:
+    path: packages/shared/src/utils.ts
+    anchor: 'function parseDate(str: string): Date'
+- id: datedisplay
+  selector:
+    path: packages/web/src/components/DateDisplay.tsx
+    anchor: formatDate(date)
+- id: report
+  selector:
+    path: packages/api/src/handlers/report.ts
+    anchor: formatDate(date)
+- id: report_1
+  selector:
+    path: packages/api/src/handlers/report.ts
+    anchor: formatCurrency(revenue
+- id: no_slugify_test
+  selector:
+    path: packages/shared/src/__tests__/slugify-test.ts
+- id: no_currency_formatter
+  selector:
+    path: packages/web/src/utils/currency-formatter.ts
+- id: no_package
+  selector:
+    path: packages/shared/package.json
+- id: no_global_0
+  selector:
+    anchor: testSlugifyBasic
+- id: no_global_1
+  selector:
+    anchor: testSlugifyMultipleSpaces
+- id: no_global_2
+  selector:
+    anchor: testSlugifyAlreadyLower
+- id: no_global_3
+  selector:
+    anchor: formatPrice
+- id: no_global_4
+  selector:
+    anchor: parsePriceString
+- id: no_global_5
+  selector:
+    anchor: CurrencyFormatOptions
+- id: no_global_6
+  selector:
+    anchor: Intl.NumberFormat
+- id: no_global_7
+  selector:
+    anchor: '@myorg/shared'
+- id: no_global_8
+  selector:
+    anchor: dist/index.js
+oracle:
+  required:
+  - utils
+  - utils_1
+  - datedisplay
+  - report
+  - report_1
+  allowed: []
+  forbidden:
+  - no_slugify_test
+  - no_currency_formatter
+  - no_package
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

@@ -1,0 +1,208 @@
+name: scala_020_scalatest
+repo:
+  initial_files:
+    User.scala: |
+      case class User(name: String, email: String) {
+        def isValidEmail: Boolean = email.contains("@") && email.contains(".")
+        def normalizedEmail: String = email.toLowerCase.trim
+        def displayName: String = s"$name <$email>"
+        def domain: String = email.split("@").lastOption.getOrElse("")
+      }
+    UserSpec.scala: |
+      class UserSpec {}
+    UserRepository.scala: |
+      trait UserRepository {
+        def save(user: User): Unit
+        def findByEmail(email: String): Option[User]
+        def findAll(): List[User]
+        def delete(name: String): Boolean
+      }
+
+      class InMemoryUserRepository extends UserRepository {
+        private var users: List[User] = Nil
+        def save(user: User): Unit = { users = user :: users }
+        def findByEmail(email: String): Option[User] = users.find(_.email == email)
+        def findAll(): List[User] = users
+        def delete(name: String): Boolean = {
+          val before = users.size
+          users = users.filterNot(_.name == name)
+          users.size < before
+        }
+      }
+    UserFactory.scala: |
+      object UserFactory {
+        def defaultUser: User = User("Test User", "test@example.com")
+        def adminUser: User = User("Admin", "admin@example.com")
+        def invalidUser: User = User("Invalid", "no-at-sign")
+        def userWithSpaces: User = User("  Padded  ", "  CAPS@TEST.COM  ")
+
+        def createMany(count: Int): List[User] = {
+          (1 to count).map(i => User(s"User$i", s"user$i@example.com")).toList
+        }
+      }
+    EmailService.scala: |
+      class EmailService(smtpHost: String, smtpPort: Int = 587) {
+        def sendWelcome(to: String, name: String): Boolean = {
+          to.contains("@") && name.nonEmpty
+        }
+
+        def sendPasswordReset(to: String, token: String): Boolean = {
+          to.contains("@") && token.length >= 32
+        }
+
+        def validateRecipient(email: String): Boolean = {
+          email.contains("@") && email.contains(".")
+        }
+      }
+    UserValidator.scala: |
+      class UserValidator {
+        def validateEmail(email: String): Either[String, String] = {
+          if (!email.contains("@")) Left("Missing @ symbol")
+          else if (!email.contains(".")) Left("Missing domain separator")
+          else if (email.length > 254) Left("Email too long")
+          else Right(email.toLowerCase.trim)
+        }
+
+        def validateName(name: String): Either[String, String] = {
+          if (name.trim.isEmpty) Left("Name cannot be empty")
+          else Right(name.trim)
+        }
+      }
+    OrderSpec.scala: |
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      case class Order(id: Int, total: Double)
+
+      class OrderSpec extends AnyFlatSpec with Matchers {
+        "Order" should "store total" in {
+          Order(1, 99.99).total should be(99.99)
+        }
+
+        it should "have positive id" in {
+          Order(1, 50.0).id should be > 0
+        }
+      }
+  changed_files:
+    UserSpec.scala: |
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      class UserSpec extends AnyFlatSpec with Matchers {
+        "User" should "have valid email" in {
+          val user = User("John", "john@example.com")
+          user.isValidEmail should be(true)
+        }
+
+        it should "reject invalid email" in {
+          val user = User("John", "invalid-email")
+          user.isValidEmail should be(false)
+        }
+
+        it should "normalize email" in {
+          val user = User("John", "  JOHN@Example.COM  ")
+          user.normalizedEmail should equal("john@example.com")
+        }
+
+        "User creation" should "preserve name" in {
+          val user = User("Jane Doe", "jane@test.com")
+          user.name should be("Jane Doe")
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: User.scala
+    anchor: 'def isValidEmail: Boolean'
+- id: user_1
+  selector:
+    path: User.scala
+    anchor: 'def normalizedEmail: String = email.toLowerCase.trim'
+- id: user_2
+  selector:
+    path: User.scala
+    anchor: email.contains("@") && email.contains(".")
+- id: no_userrepository
+  selector:
+    path: UserRepository.scala
+- id: no_userfactory
+  selector:
+    path: UserFactory.scala
+- id: no_emailservice
+  selector:
+    path: EmailService.scala
+- id: no_uservalidator
+  selector:
+    path: UserValidator.scala
+- id: no_orderspec
+  selector:
+    path: OrderSpec.scala
+- id: no_global_0
+  selector:
+    anchor: InMemoryUserRepository
+- id: no_global_1
+  selector:
+    anchor: findByEmail
+- id: no_global_2
+  selector:
+    anchor: 'def save(user: User)'
+- id: no_global_3
+  selector:
+    anchor: object UserFactory
+- id: no_global_4
+  selector:
+    anchor: defaultUser
+- id: no_global_5
+  selector:
+    anchor: createMany
+- id: no_global_6
+  selector:
+    anchor: class EmailService
+- id: no_global_7
+  selector:
+    anchor: sendWelcome
+- id: no_global_8
+  selector:
+    anchor: sendPasswordReset
+- id: no_global_9
+  selector:
+    anchor: class UserValidator
+- id: no_global_10
+  selector:
+    anchor: Missing @ symbol
+- id: no_global_11
+  selector:
+    anchor: Missing domain separator
+- id: no_global_12
+  selector:
+    anchor: class OrderSpec
+- id: no_global_13
+  selector:
+    anchor: store total
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_userrepository
+  - no_userfactory
+  - no_emailservice
+  - no_uservalidator
+  - no_orderspec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

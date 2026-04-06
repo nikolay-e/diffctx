@@ -1,0 +1,362 @@
+name: jvm_and_compiled_001_cpp_class_template
+repo:
+  initial_files:
+    container.h: |
+      #pragma once
+      #include <vector>
+      #include <stdexcept>
+
+      template<typename T>
+      class Container {
+          std::vector<T> items;
+
+      public:
+          void add(const T& item) { items.push_back(item); }
+
+          T& get(size_t index) {
+              if (index >= items.size()) {
+                  throw std::out_of_range("Index out of range");
+              }
+              return items[index];
+          }
+
+          const T& get(size_t index) const {
+              if (index >= items.size()) {
+                  throw std::out_of_range("Index out of range");
+              }
+              return items[index];
+          }
+
+          size_t size() const { return items.size(); }
+          bool empty() const { return items.empty(); }
+          void clear() { items.clear(); }
+      };
+    serializer.h: |
+      #pragma once
+      #include <string>
+      #include <sstream>
+
+      class Serializer {
+      public:
+          static std::string serialize(int value) {
+              return std::to_string(value);
+          }
+
+          static std::string serialize(double value) {
+              std::ostringstream oss;
+              oss << value;
+              return oss.str();
+          }
+
+          static std::string serialize(const std::string& value) {
+              return "\"" + value + "\"";
+          }
+      };
+    main.cpp: |
+      #include <iostream>
+
+      int main() {
+          return 0;
+      }
+    tests/container_test.cpp: |
+      #include "container.h"
+      #include <cassert>
+      #include <string>
+
+      void test_add_and_size() {
+          Container<int> c;
+          assert(c.empty());
+          c.add(1);
+          c.add(2);
+          assert(c.size() == 2);
+          assert(!c.empty());
+      }
+
+      void test_get_valid() {
+          Container<std::string> c;
+          c.add("hello");
+          assert(c.get(0) == "hello");
+      }
+
+      void test_get_out_of_range() {
+          Container<int> c;
+          bool threw = false;
+          try {
+              c.get(0);
+          } catch (const std::out_of_range&) {
+              threw = true;
+          }
+          assert(threw);
+      }
+
+      void test_clear() {
+          Container<int> c;
+          c.add(1);
+          c.clear();
+          assert(c.empty());
+      }
+
+      int main() {
+          test_add_and_size();
+          test_get_valid();
+          test_get_out_of_range();
+          test_clear();
+          return 0;
+      }
+    cache.h: |
+      #pragma once
+      #include "container.h"
+      #include <string>
+      #include <unordered_map>
+
+      class LRUCache {
+          Container<std::string> accessOrder;
+          std::unordered_map<std::string, std::string> store;
+          size_t maxSize;
+
+      public:
+          explicit LRUCache(size_t max) : maxSize(max) {}
+
+          void put(const std::string& key, const std::string& value) {
+              if (store.size() >= maxSize && store.find(key) == store.end()) {
+                  evictOldest();
+              }
+              store[key] = value;
+              accessOrder.add(key);
+          }
+
+          std::string* get(const std::string& key) {
+              auto it = store.find(key);
+              if (it == store.end()) return nullptr;
+              accessOrder.add(key);
+              return &it->second;
+          }
+
+      private:
+          void evictOldest() {
+              if (!accessOrder.empty()) {
+                  store.erase(accessOrder.get(0));
+              }
+          }
+      };
+    json_serializer.h: |
+      #pragma once
+      #include "serializer.h"
+      #include <string>
+      #include <vector>
+      #include <sstream>
+
+      class JsonSerializer : public Serializer {
+      public:
+          static std::string serializeArray(const std::vector<int>& values) {
+              std::ostringstream oss;
+              oss << "[";
+              for (size_t i = 0; i < values.size(); ++i) {
+                  if (i > 0) oss << ", ";
+                  oss << serialize(values[i]);
+              }
+              oss << "]";
+              return oss.str();
+          }
+
+          static std::string serializeObject(const std::string& key, int value) {
+              return "{\"" + key + "\": " + serialize(value) + "}";
+          }
+      };
+    logger.h: |
+      #pragma once
+      #include <string>
+      #include <vector>
+      #include <iostream>
+      #include <chrono>
+
+      class Logger {
+          std::vector<std::string> messages;
+
+      public:
+          void log(const std::string& msg) {
+              auto now = std::chrono::system_clock::now();
+              auto time = std::chrono::system_clock::to_time_t(now);
+              messages.push_back(std::string(std::ctime(&time)) + ": " + msg);
+              std::cout << messages.back() << std::endl;
+          }
+
+          size_t messageCount() const { return messages.size(); }
+          void clear() { messages.clear(); }
+      };
+    config_parser.cpp: |
+      #include <string>
+      #include <unordered_map>
+      #include <fstream>
+      #include <stdexcept>
+
+      class ConfigParser {
+          std::unordered_map<std::string, std::string> values;
+
+      public:
+          void load(const std::string& filename) {
+              std::ifstream file(filename);
+              std::string line;
+              while (std::getline(file, line)) {
+                  auto pos = line.find('=');
+                  if (pos != std::string::npos) {
+                      values[line.substr(0, pos)] = line.substr(pos + 1);
+                  }
+              }
+          }
+
+          std::string get(const std::string& key) const {
+              auto it = values.find(key);
+              if (it == values.end()) {
+                  throw std::out_of_range("Config key not found: " + key);
+              }
+              return it->second;
+          }
+
+          bool has(const std::string& key) const {
+              return values.count(key) > 0;
+          }
+      };
+  changed_files:
+    main.cpp: |
+      #include "container.h"
+      #include "serializer.h"
+      #include <string>
+      #include <iostream>
+
+      int main() {
+          Container<int> intContainer;
+          intContainer.add(42);
+          intContainer.add(17);
+
+          Container<std::string> strContainer;
+          strContainer.add("hello");
+          strContainer.add("world");
+
+          std::cout << "Int size: " << intContainer.size() << std::endl;
+          std::cout << "Str first: " << strContainer.get(0) << std::endl;
+          std::cout << Serializer::serialize(intContainer.get(0)) << std::endl;
+          return 0;
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.cpp
+    anchor: Container<int> intContainer
+- id: main_1
+  selector:
+    path: main.cpp
+    anchor: Container<std::string> strContainer
+- id: main_2
+  selector:
+    path: main.cpp
+    anchor: Serializer::serialize(intContainer.get(0))
+- id: container
+  selector:
+    path: container.h
+    anchor: void add(const T& item)
+- id: container_1
+  selector:
+    path: container.h
+    anchor: throw std::out_of_range("Index out of range")
+- id: container_2
+  selector:
+    path: container.h
+    anchor: size_t size() const
+- id: serializer
+  selector:
+    path: serializer.h
+    anchor: static std::string serialize(int value)
+- id: serializer_1
+  selector:
+    path: serializer.h
+    anchor: return std::to_string(value)
+- id: no_container_test
+  selector:
+    path: tests/container_test.cpp
+- id: no_cache
+  selector:
+    path: cache.h
+- id: no_json_serializer
+  selector:
+    path: json_serializer.h
+- id: no_logger
+  selector:
+    path: logger.h
+- id: no_config_parser
+  selector:
+    path: config_parser.cpp
+- id: no_global_0
+  selector:
+    anchor: test_add_and_size
+- id: no_global_1
+  selector:
+    anchor: test_get_valid
+- id: no_global_2
+  selector:
+    anchor: test_get_out_of_range
+- id: no_global_3
+  selector:
+    anchor: test_clear
+- id: no_global_4
+  selector:
+    anchor: LRUCache
+- id: no_global_5
+  selector:
+    anchor: evictOldest
+- id: no_global_6
+  selector:
+    anchor: maxSize
+- id: no_global_7
+  selector:
+    anchor: JsonSerializer
+- id: no_global_8
+  selector:
+    anchor: serializeArray
+- id: no_global_9
+  selector:
+    anchor: serializeObject
+- id: no_global_10
+  selector:
+    anchor: messageCount
+- id: no_global_11
+  selector:
+    anchor: std::ctime
+- id: no_global_12
+  selector:
+    anchor: ConfigParser
+- id: no_global_13
+  selector:
+    anchor: Config key not found
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - container
+  - container_1
+  - container_2
+  - serializer
+  - serializer_1
+  allowed: []
+  forbidden:
+  - no_container_test
+  - no_cache
+  - no_json_serializer
+  - no_logger
+  - no_config_parser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

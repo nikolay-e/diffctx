@@ -1,0 +1,196 @@
+name: javascript_extended_002_describe_module
+repo:
+  initial_files:
+    src/calculator.ts: |
+      export function add(a: number, b: number): number {
+          return a + b;
+      }
+
+      export function subtract(a: number, b: number): number {
+          return a - b;
+      }
+
+      export function multiply(a: number, b: number): number {
+          return a * b;
+      }
+
+      export function divide(a: number, b: number): number {
+          if (b === 0) {
+              throw new Error('Division by zero');
+          }
+          return a / b;
+      }
+
+      export function modulo(a: number, b: number): number {
+          return a % b;
+      }
+    src/calculator.test.ts: |
+      console.log('placeholder');
+    src/unrelated/analytics.ts: |
+      export class AnalyticsTracker {
+          private events: string[] = [];
+
+          trackEvent(name: string): void {
+              this.events.push(name);
+          }
+
+          getEvents(): string[] {
+              return [...this.events];
+          }
+      }
+
+      export function flushEvents(): void {
+          console.log('flushing analytics events');
+      }
+    src/unrelated/i18n.ts: |
+      const translations: Record<string, Record<string, string>> = {
+          en: { greeting: 'Hello' },
+          fr: { greeting: 'Bonjour' },
+      };
+
+      export class Translator {
+          translate(key: string, locale: string = 'en'): string {
+              return translations[locale]?.[key] ?? key;
+          }
+      }
+
+      export function loadLocale(locale: string): void {
+          console.log('loading locale:', locale);
+      }
+  changed_files:
+    src/calculator.ts: |
+      export function add(a: number, b: number): number {
+          return a + b;
+      }
+
+      export function subtract(a: number, b: number): number {
+          return a - b;
+      }
+
+      export function multiply(a: number, b: number): number {
+          return a * b;
+      }
+
+      export function divide(a: number, b: number): number {
+          if (b === 0) {
+              throw new Error('Division by zero');
+          }
+          return a / b;
+      }
+
+      export function modulo(a: number, b: number): number {
+          return a % b;
+      }
+    src/calculator.test.ts: |
+      import { add, subtract, multiply, divide, modulo } from './calculator';
+
+      describe('Calculator', () => {
+          describe('add', () => {
+              it('should add two positive numbers', () => {
+                  expect(add(2, 3)).toBe(5);
+              });
+
+              it('should handle negative numbers', () => {
+                  expect(add(-1, -2)).toBe(-3);
+              });
+          });
+
+          describe('subtract', () => {
+              it('should subtract two numbers', () => {
+                  expect(subtract(5, 3)).toBe(2);
+              });
+          });
+
+          describe('multiply', () => {
+              it('should multiply two numbers', () => {
+                  expect(multiply(4, 5)).toBe(20);
+              });
+          });
+
+          describe('divide', () => {
+              it('should divide two numbers', () => {
+                  expect(divide(10, 2)).toBe(5);
+              });
+
+              it('should throw on division by zero', () => {
+                  expect(() => divide(1, 0)).toThrow('Division by zero');
+              });
+          });
+
+          describe('modulo', () => {
+              it('should return remainder', () => {
+                  expect(modulo(7, 3)).toBe(1);
+              });
+          });
+      });
+    src/unrelated/analytics.ts: |
+      export class AnalyticsTracker {
+          private events: string[] = [];
+
+          trackEvent(name: string): void {
+              this.events.push(name);
+          }
+
+          getEvents(): string[] {
+              return [...this.events];
+          }
+      }
+
+      export function flushEvents(): void {
+          console.log('flushing analytics events');
+      }
+    src/unrelated/i18n.ts: |
+      const translations: Record<string, Record<string, string>> = {
+          en: { greeting: 'Hello' },
+          fr: { greeting: 'Bonjour' },
+      };
+
+      export class Translator {
+          translate(key: string, locale: string = 'en'): string {
+              return translations[locale]?.[key] ?? key;
+          }
+      }
+
+      export function loadLocale(locale: string): void {
+          console.log('loading locale:', locale);
+      }
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: src/calculator.ts
+    anchor: function add
+- id: calculator_1
+  selector:
+    path: src/calculator.ts
+    anchor: Division by zero
+- id: no_global_0
+  selector:
+    anchor: AnalyticsTracker
+- id: no_global_1
+  selector:
+    anchor: flushEvents
+- id: no_global_2
+  selector:
+    anchor: trackEvent
+- id: no_global_3
+  selector:
+    anchor: Translator
+- id: no_global_4
+  selector:
+    anchor: loadLocale
+- id: no_global_5
+  selector:
+    anchor: Bonjour
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

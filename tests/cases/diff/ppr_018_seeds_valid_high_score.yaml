@@ -1,0 +1,243 @@
+name: ppr_018_seeds_valid_high_score
+repo:
+  initial_files:
+    auth/token.py: |
+      import hashlib
+      import time
+
+      def generate_token():
+          raw = f"session-{time.time()}"
+          token_value = hashlib.sha256(raw.encode()).hexdigest()[:16]
+          return token_value
+    consumer.py: |
+      from auth.token import generate_token
+
+      def build_auth_headers():
+          token = generate_token()
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json",
+          }
+          return headers
+
+      def make_request(url):
+          headers = build_auth_headers()
+          return {"url": url, "headers": headers}
+    auth/refresh.py: |
+      import time
+      GARBAGE_PPR018_REFRESH_A = "refresh_module"
+      GARBAGE_PPR018_REFRESH_B = 3600
+
+      def refresh_token(old_token):
+          GARBAGE_PPR018_REFRESH_C = time.time()
+          return f"refreshed-{old_token[:8]}"
+
+      class TokenRefresher:
+          GARBAGE_PPR018_REFRESH_D = 0
+
+          def refresh(self, token):
+              return refresh_token(token)
+    garbage_token_validator.py: |
+      GARBAGE_PPR018_VALID_E = "token_validator"
+      GARBAGE_PPR018_VALID_F = True
+
+      def validate_token(token):
+          GARBAGE_PPR018_VALID_G = 16
+          return len(token) >= GARBAGE_PPR018_VALID_G
+
+      class TokenValidator:
+          GARBAGE_PPR018_VALID_H = "strict"
+
+          def check(self, token):
+              return validate_token(token)
+    garbage_auth_logger.py: |
+      GARBAGE_PPR018_LOG_I = "auth_logger"
+      GARBAGE_PPR018_LOG_J = []
+
+      def log_auth_event(event_type, token_id):
+          GARBAGE_PPR018_LOG_K = f"auth:{event_type}:{token_id}"
+          GARBAGE_PPR018_LOG_J.append(GARBAGE_PPR018_LOG_K)
+
+      class AuthAuditLog:
+          GARBAGE_PPR018_LOG_L = "/var/log/auth"
+
+          def record(self, event):
+              log_auth_event("access", event)
+  changed_files:
+    auth/token.py: |
+      import hashlib
+      import time
+
+      def generate_token():
+          raw = f"session-{time.time()}"
+          token_value = hashlib.sha256(raw.encode()).hexdigest()[:16]
+          return f"Bearer {token_value}"
+    consumer.py: |
+      from auth.token import generate_token
+
+      def build_auth_headers():
+          token = generate_token()
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json",
+          }
+          return headers
+
+      def make_request(url):
+          headers = build_auth_headers()
+          return {"url": url, "headers": headers}
+    auth/refresh.py: |
+      import time
+      GARBAGE_PPR018_REFRESH_A = "refresh_module"
+      GARBAGE_PPR018_REFRESH_B = 3600
+
+      def refresh_token(old_token):
+          GARBAGE_PPR018_REFRESH_C = time.time()
+          return f"refreshed-{old_token[:8]}"
+
+      class TokenRefresher:
+          GARBAGE_PPR018_REFRESH_D = 0
+
+          def refresh(self, token):
+              return refresh_token(token)
+    garbage_token_validator.py: |
+      GARBAGE_PPR018_VALID_E = "token_validator"
+      GARBAGE_PPR018_VALID_F = True
+
+      def validate_token(token):
+          GARBAGE_PPR018_VALID_G = 16
+          return len(token) >= GARBAGE_PPR018_VALID_G
+
+      class TokenValidator:
+          GARBAGE_PPR018_VALID_H = "strict"
+
+          def check(self, token):
+              return validate_token(token)
+    garbage_auth_logger.py: |
+      GARBAGE_PPR018_LOG_I = "auth_logger"
+      GARBAGE_PPR018_LOG_J = []
+
+      def log_auth_event(event_type, token_id):
+          GARBAGE_PPR018_LOG_K = f"auth:{event_type}:{token_id}"
+          GARBAGE_PPR018_LOG_J.append(GARBAGE_PPR018_LOG_K)
+
+      class AuthAuditLog:
+          GARBAGE_PPR018_LOG_L = "/var/log/auth"
+
+          def record(self, event):
+              log_auth_event("access", event)
+  commit_message: Update files
+fragments:
+- id: token
+  selector:
+    path: auth/token.py
+    anchor: 'def generate_token():'
+- id: token_1
+  selector:
+    path: auth/token.py
+    anchor: return f"Bearer {token_value}"
+- id: consumer
+  selector:
+    path: consumer.py
+    anchor: from auth.token import generate_token
+- id: consumer_1
+  selector:
+    path: consumer.py
+    anchor: token = generate_token()
+- id: consumer_2
+  selector:
+    path: consumer.py
+    anchor: f"Bearer {token}"
+- id: no_refresh
+  selector:
+    path: auth/refresh.py
+- id: no_garbage_token_validator
+  selector:
+    path: garbage_token_validator.py
+- id: no_garbage_auth_logger
+  selector:
+    path: garbage_auth_logger.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR018_REFRESH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR018_REFRESH_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR018_REFRESH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR018_REFRESH_D
+- id: no_global_4
+  selector:
+    anchor: TokenRefresher
+- id: no_global_5
+  selector:
+    anchor: refresh_token
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR018_VALID_E
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR018_VALID_F
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_PPR018_VALID_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_PPR018_VALID_H
+- id: no_global_10
+  selector:
+    anchor: TokenValidator
+- id: no_global_11
+  selector:
+    anchor: validate_token
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_PPR018_LOG_I
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_PPR018_LOG_J
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_PPR018_LOG_K
+- id: no_global_15
+  selector:
+    anchor: GARBAGE_PPR018_LOG_L
+- id: no_global_16
+  selector:
+    anchor: AuthAuditLog
+- id: no_global_17
+  selector:
+    anchor: log_auth_event
+oracle:
+  required:
+  - token
+  - token_1
+  - consumer
+  - consumer_1
+  - consumer_2
+  allowed: []
+  forbidden:
+  - no_refresh
+  - no_garbage_token_validator
+  - no_garbage_auth_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

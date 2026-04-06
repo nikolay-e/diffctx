@@ -1,0 +1,39 @@
+name: helm_033_template_lookup
+repo:
+  initial_files:
+    templates/secret.yaml: |
+      apiVersion: v1
+      kind: Secret
+      data:
+        password: {{ randAlphaNum 20 | b64enc }}
+    junk.md: |
+      garbage_marker_12345
+      unused_marker_67890
+  changed_files:
+    templates/secret.yaml: |
+      {{- $secret := lookup "v1" "Secret" .Release.Namespace "existing-secret" -}}
+      apiVersion: v1
+      kind: Secret
+      data:
+        {{- if $secret }}
+        password: {{ index $secret.data "password" }}
+        {{- else }}
+        password: {{ randAlphaNum 20 | b64enc }}
+        {{- end }}
+    junk.md: |
+      garbage_marker_12345
+      unused_marker_67890
+  commit_message: Update files
+fragments:
+- id: secret_file
+  selector:
+    path: templates/secret.yaml
+- id: req_global_0
+  selector:
+    anchor: '{{- $secret := lookup "v1" "Secret" .Release.Namespace "existing-secret" -}}'
+oracle:
+  required:
+  - secret_file
+  - req_global_0
+  allowed: []
+  forbidden: []

@@ -1,0 +1,37 @@
+name: comprehensive_025_structural_init_changed_find_exports
+repo:
+  initial_files:
+    mypackage/__init__.py: |
+      from .old_module import OldClass
+    mypackage/old_module.py: |
+      class OldClass:
+          pass
+    mypackage/new_module.py: |
+      class NewClass:
+          def __init__(self):
+              self.value = 42
+  changed_files:
+    mypackage/__init__.py: |
+      from .old_module import OldClass
+      from .new_module import NewClass
+    mypackage/old_module.py: |
+      class OldClass:
+          pass
+    mypackage/new_module.py: |
+      class NewClass:
+          def __init__(self):
+              self.value = 42
+  commit_message: Update files
+fragments:
+- id: init_file
+  selector:
+    path: mypackage/__init__.py
+- id: req_global_0
+  selector:
+    anchor: from .new_module import NewClass
+oracle:
+  required:
+  - init_file
+  - req_global_0
+  allowed: []
+  forbidden: []

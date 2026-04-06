@@ -1,0 +1,158 @@
+name: ppr_019_seeds_multiple
+repo:
+  initial_files:
+    shared_utils.py: |
+      DEFAULT_FALLBACK = "N/A"
+
+      def normalize(text):
+          return text.strip().lower()
+
+      def validate(data):
+          return data is not None and len(data) > 0
+
+      def transform(value):
+          return value * 2
+    module_a.py: |
+      from shared_utils import normalize
+
+      def format_a(raw):
+          return normalize(raw)
+    module_b.py: |
+      from shared_utils import validate, DEFAULT_FALLBACK
+
+      def format_b(data):
+          return validate(data)
+    module_bundle.py: |
+      def normalize(text):
+          return text.replace(" ", "_")
+
+      def validate(data):
+          return True
+
+      class ModuleBundle:
+          def process(self):
+              return normalize(validate("test"))
+    module_d.py: |
+      from shared_utils import transform
+
+      def double_it(value):
+          return transform(value)
+
+      class ModuleDHandler:
+          def handle(self, x):
+              return double_it(x)
+    email_service.py: |
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+
+      class EmailSender:
+          def send(self, to, body):
+              pass
+  changed_files:
+    shared_utils.py: |
+      DEFAULT_FALLBACK = "N/A"
+
+      def normalize(text):
+          return text.strip().lower()
+
+      def validate(data):
+          return data is not None and len(data) > 0
+
+      def transform(value):
+          return value * 2
+    module_a.py: |
+      from shared_utils import normalize
+
+      def format_a(raw):
+          return normalize(raw).upper()
+    module_b.py: |
+      from shared_utils import validate, DEFAULT_FALLBACK
+
+      def format_b(data):
+          return validate(data) or DEFAULT_FALLBACK
+    module_bundle.py: |
+      def normalize(text):
+          return text.replace(" ", "_")
+
+      def validate(data):
+          return True
+
+      class ModuleBundle:
+          def process(self):
+              return normalize(validate("test"))
+    module_d.py: |
+      from shared_utils import transform
+
+      def double_it(value):
+          return transform(value)
+
+      class ModuleDHandler:
+          def handle(self, x):
+              return double_it(x)
+    email_service.py: |
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+
+      class EmailSender:
+          def send(self, to, body):
+              pass
+  commit_message: Update files
+fragments:
+- id: module_a
+  selector:
+    path: module_a.py
+    anchor: from shared_utils import normalize
+- id: module_a_1
+  selector:
+    path: module_a.py
+    anchor: 'def format_a(raw):'
+- id: module_a_2
+  selector:
+    path: module_a.py
+    anchor: return normalize(raw).upper()
+- id: module_b
+  selector:
+    path: module_b.py
+    anchor: from shared_utils import validate, DEFAULT_FALLBACK
+- id: module_b_1
+  selector:
+    path: module_b.py
+    anchor: 'def format_b(data):'
+- id: module_b_2
+  selector:
+    path: module_b.py
+    anchor: return validate(data) or DEFAULT_FALLBACK
+- id: no_module_d
+  selector:
+    path: module_d.py
+- id: no_email_service
+  selector:
+    path: email_service.py
+- id: no_global_0
+  selector:
+    anchor: ModuleDHandler
+- id: no_global_1
+  selector:
+    anchor: double_it
+- id: no_global_2
+  selector:
+    anchor: EmailSender
+- id: no_global_3
+  selector:
+    anchor: SMTP_HOST
+oracle:
+  required:
+  - module_a
+  - module_a_1
+  - module_a_2
+  - module_b
+  - module_b_1
+  - module_b_2
+  allowed: []
+  forbidden:
+  - no_module_d
+  - no_email_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

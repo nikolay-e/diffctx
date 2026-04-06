@@ -1,0 +1,180 @@
+name: php_018_laravel_migration
+repo:
+  initial_files:
+    Blueprint.php: |
+      <?php
+      class Blueprint {
+          private array $columns = [];
+
+          public function id(): self {
+              $this->columns[] = ['name' => 'id', 'type' => 'bigint'];
+              return $this;
+          }
+
+          public function string(string $name, int $length = 255): self {
+              $this->columns[] = ['name' => $name, 'type' => 'string', 'length' => $length];
+              return $this;
+          }
+
+          public function unique(): self {
+              return $this;
+          }
+
+          public function timestamps(): self {
+              $this->columns[] = ['name' => 'created_at', 'type' => 'timestamp'];
+              $this->columns[] = ['name' => 'updated_at', 'type' => 'timestamp'];
+              return $this;
+          }
+      }
+    CreateUsersTable.php: |
+      <?php
+      class CreateUsersTable {}
+    CreatePostsTable.php: |
+      <?php
+      require_once 'Blueprint.php';
+
+      class CreatePostsTable {
+          public function up(): void {
+              $table = new Blueprint();
+              $table->id();
+              $table->string('title');
+              $table->string('slug')->unique();
+              $table->timestamps();
+          }
+      }
+    SchemaBuilder.php: |
+      <?php
+      class SchemaBuilder {
+          public function create(string $tableName, callable $callback): void {
+              $blueprint = new Blueprint();
+              $callback($blueprint);
+          }
+
+          public function table(string $tableName): Blueprint {
+              return new Blueprint();
+          }
+
+          public function drop(string $tableName): void {}
+      }
+  changed_files:
+    Blueprint.php: |
+      <?php
+      class Blueprint {
+          private array $columns = [];
+
+          public function id(): self {
+              $this->columns[] = ['name' => 'id', 'type' => 'bigint'];
+              return $this;
+          }
+
+          public function string(string $name, int $length = 255): self {
+              $this->columns[] = ['name' => $name, 'type' => 'string', 'length' => $length];
+              return $this;
+          }
+
+          public function unique(): self {
+              return $this;
+          }
+
+          public function timestamps(): self {
+              $this->columns[] = ['name' => 'created_at', 'type' => 'timestamp'];
+              $this->columns[] = ['name' => 'updated_at', 'type' => 'timestamp'];
+              return $this;
+          }
+      }
+    CreateUsersTable.php: |
+      <?php
+      require_once 'Blueprint.php';
+
+      class CreateUsersTable {
+          public function up(): void {
+              $table = new Blueprint();
+              $table->id();
+              $table->string('name');
+              $table->string('email')->unique();
+              $table->string('password');
+              $table->timestamps();
+          }
+      }
+    CreatePostsTable.php: |
+      <?php
+      require_once 'Blueprint.php';
+
+      class CreatePostsTable {
+          public function up(): void {
+              $table = new Blueprint();
+              $table->id();
+              $table->string('title');
+              $table->string('slug')->unique();
+              $table->timestamps();
+          }
+      }
+    SchemaBuilder.php: |
+      <?php
+      class SchemaBuilder {
+          public function create(string $tableName, callable $callback): void {
+              $blueprint = new Blueprint();
+              $callback($blueprint);
+          }
+
+          public function table(string $tableName): Blueprint {
+              return new Blueprint();
+          }
+
+          public function drop(string $tableName): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: createuserstable
+  selector:
+    path: CreateUsersTable.php
+    anchor: new Blueprint
+- id: createuserstable_1
+  selector:
+    path: CreateUsersTable.php
+    anchor: id()
+- id: createuserstable_2
+  selector:
+    path: CreateUsersTable.php
+    anchor: timestamps
+- id: blueprint
+  selector:
+    path: Blueprint.php
+    anchor: public function string(string $name
+- id: blueprint_1
+  selector:
+    path: Blueprint.php
+    anchor: 'public function id(): self'
+- id: no_createpoststable
+  selector:
+    path: CreatePostsTable.php
+- id: no_schemabuilder
+  selector:
+    path: SchemaBuilder.php
+- id: no_global_0
+  selector:
+    anchor: CreatePostsTable
+- id: no_global_1
+  selector:
+    anchor: SchemaBuilder
+- id: no_global_2
+  selector:
+    anchor: class CreatePostsTable
+- id: no_global_3
+  selector:
+    anchor: class SchemaBuilder
+oracle:
+  required:
+  - createuserstable
+  - createuserstable_1
+  - createuserstable_2
+  - blueprint
+  - blueprint_1
+  allowed: []
+  forbidden:
+  - no_createpoststable
+  - no_schemabuilder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

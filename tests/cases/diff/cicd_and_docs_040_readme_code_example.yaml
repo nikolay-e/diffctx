@@ -1,0 +1,280 @@
+name: cicd_and_docs_040_readme_code_example
+repo:
+  initial_files:
+    README.md: |
+      # SpectralKit
+
+      A Python library for spectral analysis and signal processing.
+
+      ## Installation
+
+      ```bash
+      pip install spectralkit
+      ```
+
+      ## Quick Start
+
+      ```python
+      from spectralkit import chirp_synthesis
+
+      signal = chirp_synthesis(duration=1.0, freq_start=20, freq_end=2000)
+      ```
+    src/spectralkit/__init__.py: |
+      from .analysis import chirp_synthesis, wavelet_decompose
+
+      __all__ = ['chirp_synthesis', 'wavelet_decompose']
+    src/spectralkit/analysis.py: |
+      import numpy as np
+
+      def chirp_synthesis(duration: float, freq_start: float, freq_end: float) -> np.ndarray:
+          """Generate a linear chirp signal sweeping between two frequencies."""
+          sample_rate = 44100
+          t = np.linspace(0, duration, int(sample_rate * duration))
+          freq = np.linspace(freq_start, freq_end, len(t))
+          return np.sin(2 * np.pi * np.cumsum(freq) / sample_rate)
+
+      def wavelet_decompose(signal: np.ndarray, scales: int = 8) -> list:
+          """Perform continuous wavelet transform using Morlet wavelets."""
+          coefficients = []
+          for scale in range(1, scales + 1):
+              wavelet = np.exp(-0.5 * (np.arange(len(signal)) / scale) ** 2)
+              coeff = np.convolve(signal, wavelet, mode='same')
+              coefficients.append(coeff)
+          return coefficients
+    CHANGELOG.md: |
+      # Changelog
+
+      ## v2.0.0 (2026-01-15)
+
+      - Added `wavelet_decompose` for continuous wavelet transform analysis
+      - Improved `chirp_synthesis` frequency sweep accuracy by 15%
+      - Breaking: removed deprecated `fft_analyze` function
+      - Updated NumPy dependency to >=1.26
+
+      ## v1.0.0 (2025-06-01)
+
+      - Initial release with `chirp_synthesis` signal generation
+    src/spectralkit/signal_filters.py: |
+      import numpy as np
+
+      class ButterworthFilter:
+          """Digital Butterworth filter implementation."""
+
+          def __init__(self, order: int, cutoff_freq: float, sample_rate: float):
+              self.order = order
+              self.cutoff_freq = cutoff_freq
+              self.sample_rate = sample_rate
+
+          def bandpass(self, signal: np.ndarray, low: float, high: float) -> np.ndarray:
+              """Apply bandpass filter between low and high frequencies."""
+              return signal
+
+          def lowpass(self, signal: np.ndarray) -> np.ndarray:
+              """Apply lowpass filter at cutoff frequency."""
+              return signal
+    docs/architecture.md: |
+      # Architecture
+
+      ## Plugin System
+
+      SpectralKit uses a modular pipeline architecture where each processing
+      step is a composable plugin registered with the PluginRegistry.
+
+      ## Data Flow
+
+      Raw input → Preprocessor → AnalysisChain → PostProcessor → Output
+
+      Each stage communicates via immutable SignalFrame objects carrying
+      metadata alongside the sample data.
+  changed_files:
+    README.md: |
+      # SpectralKit
+
+      A Python library for spectral analysis and signal processing.
+
+      ## Installation
+
+      ```bash
+      pip install spectralkit
+      ```
+
+      ## Quick Start
+
+      ```python
+      from spectralkit import chirp_synthesis, wavelet_decompose
+
+      # Generate a test signal
+      signal = chirp_synthesis(duration=1.0, freq_start=20, freq_end=2000)
+
+      # Decompose with continuous wavelet transform
+      coefficients = wavelet_decompose(signal, scales=12)
+      ```
+
+      ## API Reference
+
+      See [Quick Start](#quick-start) for basic examples.
+
+      ### chirp_synthesis
+
+      Generates a linear chirp signal sweeping from `freq_start` to `freq_end`
+      over the specified duration. Uses 44100 Hz sample rate.
+
+      ### wavelet_decompose
+
+      Performs continuous wavelet transform decomposition using Morlet wavelets.
+      Returns a list of coefficient arrays, one per scale.
+
+      Parameters:
+      - `signal`: input signal as numpy array
+      - `scales`: number of wavelet scales (default: 8)
+    src/spectralkit/__init__.py: |
+      from .analysis import chirp_synthesis, wavelet_decompose
+
+      __all__ = ['chirp_synthesis', 'wavelet_decompose']
+    src/spectralkit/analysis.py: |
+      import numpy as np
+
+      def chirp_synthesis(duration: float, freq_start: float, freq_end: float) -> np.ndarray:
+          """Generate a linear chirp signal sweeping between two frequencies."""
+          sample_rate = 44100
+          t = np.linspace(0, duration, int(sample_rate * duration))
+          freq = np.linspace(freq_start, freq_end, len(t))
+          return np.sin(2 * np.pi * np.cumsum(freq) / sample_rate)
+
+      def wavelet_decompose(signal: np.ndarray, scales: int = 8) -> list:
+          """Perform continuous wavelet transform using Morlet wavelets."""
+          coefficients = []
+          for scale in range(1, scales + 1):
+              wavelet = np.exp(-0.5 * (np.arange(len(signal)) / scale) ** 2)
+              coeff = np.convolve(signal, wavelet, mode='same')
+              coefficients.append(coeff)
+          return coefficients
+    CHANGELOG.md: |
+      # Changelog
+
+      ## v2.0.0 (2026-01-15)
+
+      - Added `wavelet_decompose` for continuous wavelet transform analysis
+      - Improved `chirp_synthesis` frequency sweep accuracy by 15%
+      - Breaking: removed deprecated `fft_analyze` function
+      - Updated NumPy dependency to >=1.26
+
+      ## v1.0.0 (2025-06-01)
+
+      - Initial release with `chirp_synthesis` signal generation
+    src/spectralkit/signal_filters.py: |
+      import numpy as np
+
+      class ButterworthFilter:
+          """Digital Butterworth filter implementation."""
+
+          def __init__(self, order: int, cutoff_freq: float, sample_rate: float):
+              self.order = order
+              self.cutoff_freq = cutoff_freq
+              self.sample_rate = sample_rate
+
+          def bandpass(self, signal: np.ndarray, low: float, high: float) -> np.ndarray:
+              """Apply bandpass filter between low and high frequencies."""
+              return signal
+
+          def lowpass(self, signal: np.ndarray) -> np.ndarray:
+              """Apply lowpass filter at cutoff frequency."""
+              return signal
+    docs/architecture.md: |
+      # Architecture
+
+      ## Plugin System
+
+      SpectralKit uses a modular pipeline architecture where each processing
+      step is a composable plugin registered with the PluginRegistry.
+
+      ## Data Flow
+
+      Raw input → Preprocessor → AnalysisChain → PostProcessor → Output
+
+      Each stage communicates via immutable SignalFrame objects carrying
+      metadata alongside the sample data.
+  commit_message: Update files
+fragments:
+- id: readme
+  selector:
+    path: README.md
+    anchor: wavelet_decompose
+- id: readme_1
+  selector:
+    path: README.md
+    anchor: chirp_synthesis
+- id: readme_2
+  selector:
+    path: README.md
+    anchor: API Reference
+- id: analysis
+  selector:
+    path: src/spectralkit/analysis.py
+    anchor: def wavelet_decompose
+- id: analysis_1
+  selector:
+    path: src/spectralkit/analysis.py
+    anchor: def chirp_synthesis
+- id: analysis_2
+  selector:
+    path: src/spectralkit/analysis.py
+    anchor: Morlet wavelets
+- id: no_changelog
+  selector:
+    path: CHANGELOG.md
+- id: no_signal_filters
+  selector:
+    path: src/spectralkit/signal_filters.py
+- id: no_architecture
+  selector:
+    path: docs/architecture.md
+- id: no_global_0
+  selector:
+    anchor: removed deprecated
+- id: no_global_1
+  selector:
+    anchor: frequency sweep accuracy
+- id: no_global_2
+  selector:
+    anchor: fft_analyze
+- id: no_global_3
+  selector:
+    anchor: ButterworthFilter
+- id: no_global_4
+  selector:
+    anchor: bandpass
+- id: no_global_5
+  selector:
+    anchor: cutoff_freq
+- id: no_global_6
+  selector:
+    anchor: PluginRegistry
+- id: no_global_7
+  selector:
+    anchor: SignalFrame
+- id: no_global_8
+  selector:
+    anchor: modular pipeline architecture
+oracle:
+  required:
+  - readme
+  - readme_1
+  - readme_2
+  - analysis
+  - analysis_1
+  - analysis_2
+  allowed: []
+  forbidden:
+  - no_changelog
+  - no_signal_filters
+  - no_architecture
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

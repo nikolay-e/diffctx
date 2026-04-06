@@ -1,0 +1,232 @@
+name: terraform_046_backend_config
+repo:
+  initial_files:
+    main.tf: |
+      terraform {
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+      }
+    dynamodb.tf: |
+      resource "aws_dynamodb_table" "terraform_locks" {
+        name         = "terraform-locks"
+        billing_mode = "PAY_PER_REQUEST"
+        hash_key     = "LockID"
+
+        attribute {
+          name = "LockID"
+          type = "S"
+        }
+
+        tags = {
+          Name = "Terraform State Lock"
+        }
+      }
+    kms.tf: |
+      resource "aws_kms_key" "terraform_state" {
+        description             = "Encryption key for Terraform state"
+        deletion_window_in_days = 10
+        enable_key_rotation     = true
+      }
+
+      resource "aws_kms_alias" "terraform_state" {
+        name          = "alias/terraform-state"
+        target_key_id = aws_kms_key.terraform_state.key_id
+      }
+    state_bucket.tf: |
+      resource "aws_s3_bucket" "terraform_state" {
+        bucket = "my-terraform-state"
+
+        tags = {
+          Name    = "Terraform State"
+          Purpose = "state-storage"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "terraform_state" {
+        bucket = aws_s3_bucket.terraform_state.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+        bucket = aws_s3_bucket.terraform_state.id
+        rule {
+          apply_server_side_encryption_by_default {
+            sse_algorithm     = "aws:kms"
+            kms_master_key_id = aws_kms_key.terraform_state.arn
+          }
+        }
+      }
+    versions.tf: |
+      terraform {
+        required_providers {
+          azurerm = {
+            source  = "hashicorp/azurerm"
+            version = "~> 3.0"
+          }
+          aws = {
+            source  = "hashicorp/aws"
+            version = "~> 5.0"
+          }
+        }
+      }
+    data_bucket.tf: |
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data-bucket"
+
+        tags = {
+          Name    = "Application Data"
+          Purpose = "data-storage"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data" {
+        bucket = aws_s3_bucket.data.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+    monitoring.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu" {
+        alarm_name          = "high-cpu"
+        comparison_operator = "GreaterThanThreshold"
+        threshold           = 80
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+      }
+    environments/staging/backend.hcl: |
+      bucket         = "staging-terraform-state"
+      key            = "staging/terraform.tfstate"
+      region         = "us-west-2"
+      encrypt        = true
+      dynamodb_table = "staging-terraform-locks"
+  changed_files:
+    main.tf: |
+      terraform {
+        backend "s3" {
+          bucket         = "my-terraform-state"
+          key            = "prod/terraform.tfstate"
+          region         = "us-east-1"
+          encrypt        = true
+          dynamodb_table = "terraform-locks"
+          kms_key_id     = "alias/terraform-state"
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: backend "s3" {
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: bucket         = "my-terraform-state"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: encrypt        = true
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: dynamodb_table = "terraform-locks"
+- id: dynamodb
+  selector:
+    path: dynamodb.tf
+    anchor: resource "aws_dynamodb_table" "terraform_locks" {
+- id: dynamodb_1
+  selector:
+    path: dynamodb.tf
+    anchor: name         = "terraform-locks"
+- id: kms
+  selector:
+    path: kms.tf
+    anchor: alias/terraform-state
+- id: kms_1
+  selector:
+    path: kms.tf
+    anchor: enable_key_rotation     = true
+- id: no_versions
+  selector:
+    path: versions.tf
+- id: no_data_bucket
+  selector:
+    path: data_bucket.tf
+- id: no_monitoring
+  selector:
+    path: monitoring.tf
+- id: no_backend
+  selector:
+    path: environments/staging/backend.hcl
+- id: no_global_0
+  selector:
+    anchor: hashicorp/azurerm
+- id: no_global_1
+  selector:
+    anchor: hashicorp/aws
+- id: no_global_2
+  selector:
+    anchor: required_providers
+- id: no_global_3
+  selector:
+    anchor: app-data-bucket
+- id: no_global_4
+  selector:
+    anchor: Application Data
+- id: no_global_5
+  selector:
+    anchor: data-storage
+- id: no_global_6
+  selector:
+    anchor: CPUUtilization
+- id: no_global_7
+  selector:
+    anchor: high-cpu
+- id: no_global_8
+  selector:
+    anchor: staging-terraform-state
+- id: no_global_9
+  selector:
+    anchor: staging-terraform-locks
+- id: no_global_10
+  selector:
+    anchor: us-west-2
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - dynamodb
+  - dynamodb_1
+  - kms
+  - kms_1
+  allowed: []
+  forbidden:
+  - no_versions
+  - no_data_bucket
+  - no_monitoring
+  - no_backend
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

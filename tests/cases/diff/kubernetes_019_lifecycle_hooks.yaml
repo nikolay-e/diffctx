@@ -1,0 +1,281 @@
+name: kubernetes_019_lifecycle_hooks
+repo:
+  initial_files:
+    scripts/graceful-shutdown.sh: |
+      #!/bin/bash
+      set -e
+
+      echo "Received shutdown signal, starting graceful shutdown..."
+
+      curl -X POST http://localhost:8080/admin/drain
+      sleep 5
+
+      echo "Waiting for active connections to complete..."
+      while [ $(curl -s http://localhost:8080/metrics | grep active_connections | awk '{print $2}') -gt 0 ]; do
+        sleep 1
+      done
+
+      echo "Graceful shutdown complete"
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+          spec:
+            terminationGracePeriodSeconds: 30
+            containers:
+            - name: api
+              image: api-server:v1.0.0
+              ports:
+              - containerPort: 8080
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/apps/health-check-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: health-check-config
+        namespace: production
+      data:
+        config.json: |
+          {
+            "endpoints": {
+              "liveness": "/health/live",
+              "readiness": "/health/ready",
+              "startup": "/health/startup"
+            },
+            "timeouts": {
+              "liveness": 5,
+              "readiness": 3
+            }
+          }
+    k8s/infra/pod-lifecycle-events.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lifecycle-event-logger
+        namespace: kube-system
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: lifecycle-logger
+        template:
+          spec:
+            containers:
+            - name: logger
+              image: event-logger:v1.0
+              env:
+              - name: WATCH_NAMESPACE
+                value: "production"
+              - name: EVENT_TYPES
+                value: "Normal,Warning"
+  changed_files:
+    scripts/graceful-shutdown.sh: |
+      #!/bin/bash
+      set -e
+
+      echo "Received shutdown signal, starting graceful shutdown..."
+
+      curl -X POST http://localhost:8080/admin/drain
+      sleep 5
+
+      echo "Waiting for active connections to complete..."
+      while [ $(curl -s http://localhost:8080/metrics | grep active_connections | awk '{print $2}') -gt 0 ]; do
+        sleep 1
+      done
+
+      echo "Graceful shutdown complete"
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+          spec:
+            terminationGracePeriodSeconds: 60
+            containers:
+            - name: api
+              image: api-server:v1.0.0
+              ports:
+              - containerPort: 8080
+              lifecycle:
+                postStart:
+                  exec:
+                    command:
+                    - /bin/sh
+                    - -c
+                    - |
+                      echo "Container started at $(date)" >> /var/log/lifecycle.log
+                      curl -X POST http://localhost:8080/admin/register
+                preStop:
+                  httpGet:
+                    path: /admin/drain
+                    port: 8080
+                    scheme: HTTP
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/apps/health-check-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: health-check-config
+        namespace: production
+      data:
+        config.json: |
+          {
+            "endpoints": {
+              "liveness": "/health/live",
+              "readiness": "/health/ready",
+              "startup": "/health/startup"
+            },
+            "timeouts": {
+              "liveness": 5,
+              "readiness": 3
+            }
+          }
+    k8s/infra/pod-lifecycle-events.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lifecycle-event-logger
+        namespace: kube-system
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: lifecycle-logger
+        template:
+          spec:
+            containers:
+            - name: logger
+              image: event-logger:v1.0
+              env:
+              - name: WATCH_NAMESPACE
+                value: "production"
+              - name: EVENT_TYPES
+                value: "Normal,Warning"
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'terminationGracePeriodSeconds: 60'
+- id: deployment_1
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'path: /admin/drain'
+- id: deployment_2
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: /admin/register
+- id: deployment_3
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'postStart:'
+- id: deployment_4
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'preStop:'
+- id: no_health_check_config
+  selector:
+    path: k8s/apps/health-check-config.yaml
+- id: no_pod_lifecycle_events
+  selector:
+    path: k8s/infra/pod-lifecycle-events.yaml
+- id: no_global_0
+  selector:
+    anchor: health-check-config
+- id: no_global_1
+  selector:
+    anchor: /health/live
+- id: no_global_2
+  selector:
+    anchor: /health/ready
+- id: no_global_3
+  selector:
+    anchor: lifecycle-event-logger
+- id: no_global_4
+  selector:
+    anchor: lifecycle-logger
+- id: no_global_5
+  selector:
+    anchor: WATCH_NAMESPACE
+- id: no_global_6
+  selector:
+    anchor: EVENT_TYPES
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - deployment_3
+  - deployment_4
+  allowed: []
+  forbidden:
+  - no_health_check_config
+  - no_pod_lifecycle_events
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

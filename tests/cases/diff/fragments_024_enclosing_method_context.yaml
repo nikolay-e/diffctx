@@ -1,0 +1,94 @@
+name: fragments_024_enclosing_method_context
+repo:
+  initial_files:
+    small.py: |+
+      from typing import Any
+      import json
+
+      def func():
+          pass
+
+      def unrelated_before_091():
+
+      class UnrelatedClassA:
+
+          def method_a(self):
+
+      def unrelated_middle_091():
+
+      class UnrelatedClassB:
+
+          def method_b1(self):
+
+          def method_b2(self):
+
+      def unrelated_after_091():
+
+    garbage_small_091.py: |
+      def garbage_func_091():
+          return "GARBAGE_FRAG_garbfunc091"
+
+      class GarbageSmall091:
+          CONST = "GARBAGE_FRAG_garbsmall091"
+
+          def garbage_method(self):
+              return "GARBAGE_FRAG_garbmethod091"
+
+      GARBAGE_CONST = "GARBAGE_FRAG_garbconst091"
+  changed_files:
+    small.py: |+
+      from typing import Any
+      import json
+
+      def func():
+          return 1
+
+      def unrelated_before_091():
+
+      class UnrelatedClassA:
+
+          def method_a(self):
+
+      def unrelated_middle_091():
+
+      class UnrelatedClassB:
+
+          def method_b1(self):
+
+          def method_b2(self):
+
+      def unrelated_after_091():
+
+    garbage_small_091.py: |
+      def garbage_func_091():
+          return "GARBAGE_FRAG_garbfunc091"
+
+      class GarbageSmall091:
+          CONST = "GARBAGE_FRAG_garbsmall091"
+
+          def garbage_method(self):
+              return "GARBAGE_FRAG_garbmethod091"
+
+      GARBAGE_CONST = "GARBAGE_FRAG_garbconst091"
+  commit_message: Update files
+fragments:
+- id: small_file
+  selector:
+    path: small.py
+- id: req_global_0
+  selector:
+    anchor: return 1
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CONST
+- id: no_global_1
+  selector:
+    anchor: garbage_small_091.py
+oracle:
+  required:
+  - small_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

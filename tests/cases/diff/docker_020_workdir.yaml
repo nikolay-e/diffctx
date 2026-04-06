@@ -1,0 +1,222 @@
+name: docker_020_workdir
+repo:
+  initial_files:
+    src/main.go: |
+      package main
+      import (
+          "fmt"
+          "net/http"
+          "os"
+      )
+      func main() {
+          port := os.Getenv("PORT")
+          if port == "" {
+              port = "8080"
+          }
+          http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+              fmt.Fprintf(w, "OK")
+          })
+          http.ListenAndServe(":"+port, nil)
+      }
+    go.mod: |
+      module myapp
+      go 1.22
+      require github.com/gorilla/mux v1.8.1
+    go.sum: |
+      github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+      github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
+    Dockerfile: |
+      FROM golang:1.21-alpine
+      COPY . /go/src/app
+      RUN cd /go/src/app && go build -o /app
+      CMD ["/app"]
+    scripts/release.sh: |
+      #!/bin/bash
+      goreleaser release --rm-dist --snapshot
+    tests/main_test.go: |
+      package main
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+      func TestHealthEndpoint(t *testing.T) {
+          req := httptest.NewRequest("GET", "/health", nil)
+          w := httptest.NewRecorder()
+          handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+          handler.ServeHTTP(w, req)
+      }
+    internal/config/config.go: |
+      package config
+      import "os"
+      func GetPort() string {
+          port := os.Getenv("PORT")
+          if port == "" {
+              return "8080"
+          }
+          return port
+      }
+  changed_files:
+    src/main.go: |
+      package main
+      import (
+          "fmt"
+          "net/http"
+          "os"
+      )
+      func main() {
+          port := os.Getenv("PORT")
+          if port == "" {
+              port = "8080"
+          }
+          http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+              fmt.Fprintf(w, "OK")
+          })
+          http.ListenAndServe(":"+port, nil)
+      }
+    go.mod: |
+      module myapp
+      go 1.22
+      require github.com/gorilla/mux v1.8.1
+    go.sum: |
+      github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+      github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
+    Dockerfile: |
+      # Build stage with explicit WORKDIR
+      FROM golang:1.22-alpine AS builder
+      WORKDIR /build
+
+      # Cache dependencies
+      COPY go.mod go.sum ./
+      RUN go mod download && go mod verify
+
+      # Build with optimizations
+      COPY src/ ./src/
+      WORKDIR /build/src
+      RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -ldflags="-w -s -X main.Version=${VERSION}" \
+          -o /app ./...
+
+      # Production stage with minimal image
+      FROM gcr.io/distroless/static-debian12:nonroot AS production
+      WORKDIR /home/nonroot
+
+      COPY --from=builder --chown=nonroot:nonroot /app ./app
+
+      USER nonroot:nonroot
+      EXPOSE 8080
+
+      ENTRYPOINT ["./app"]
+    scripts/release.sh: |
+      #!/bin/bash
+      goreleaser release --rm-dist --snapshot
+    tests/main_test.go: |
+      package main
+      import (
+          "net/http"
+          "net/http/httptest"
+          "testing"
+      )
+      func TestHealthEndpoint(t *testing.T) {
+          req := httptest.NewRequest("GET", "/health", nil)
+          w := httptest.NewRecorder()
+          handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+          handler.ServeHTTP(w, req)
+      }
+    internal/config/config.go: |
+      package config
+      import "os"
+      func GetPort() string {
+          port := os.Getenv("PORT")
+          if port == "" {
+              return "8080"
+          }
+          return port
+      }
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: FROM golang:1.22-alpine AS builder
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: WORKDIR /build
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: COPY go.mod go.sum ./
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: RUN go mod download && go mod verify
+- id: dockerfile_4
+  selector:
+    path: Dockerfile
+    anchor: COPY src/ ./src/
+- id: dockerfile_5
+  selector:
+    path: Dockerfile
+    anchor: WORKDIR /build/src
+- id: dockerfile_6
+  selector:
+    path: Dockerfile
+    anchor: ENTRYPOINT ["./app"]
+- id: go
+  selector:
+    path: go.mod
+    anchor: module myapp
+- id: go_1
+  selector:
+    path: go.mod
+    anchor: go 1.22
+- id: no_release
+  selector:
+    path: scripts/release.sh
+- id: no_main_test
+  selector:
+    path: tests/main_test.go
+- id: no_config
+  selector:
+    path: internal/config/config.go
+- id: no_global_0
+  selector:
+    anchor: goreleaser release
+- id: no_global_1
+  selector:
+    anchor: --rm-dist
+- id: no_global_2
+  selector:
+    anchor: TestHealthEndpoint
+- id: no_global_3
+  selector:
+    anchor: httptest.NewRequest
+- id: no_global_4
+  selector:
+    anchor: func GetPort
+- id: no_global_5
+  selector:
+    anchor: package config
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - dockerfile_4
+  - dockerfile_5
+  - dockerfile_6
+  - go
+  - go_1
+  allowed: []
+  forbidden:
+  - no_release
+  - no_main_test
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

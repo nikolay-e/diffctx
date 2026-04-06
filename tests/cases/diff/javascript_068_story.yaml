@@ -1,0 +1,135 @@
+name: javascript_068_story
+repo:
+  initial_files:
+    src/Button.tsx: |
+      export interface ButtonProps {
+          label: string;
+          variant?: 'primary' | 'secondary';
+          size?: 'small' | 'medium' | 'large';
+          onClick?: () => void;
+      }
+
+      export function Button({ label, variant = 'primary', size = 'medium', onClick }: ButtonProps) {
+          return (
+              <button className={`btn btn-${variant} btn-${size}`} onClick={onClick}>
+                  {label}
+              </button>
+          );
+      }
+    src/Button.stories.tsx: |
+      console.log('placeholder');
+    src/Icon.stories.tsx: |
+      import type { Meta, StoryObj } from '@storybook/react';
+
+      const meta: Meta = {
+          title: 'Components/Icon',
+      };
+
+      export default meta;
+      type Story = StoryObj;
+
+      export const Default: Story = {
+          args: { name: 'check', size: 24 },
+      };
+    src/Button.test.tsx: |
+      import { render, screen, fireEvent } from '@testing-library/react';
+
+      describe('Button', () => {
+          it('renders label', () => {
+              expect(true).toBe(true);
+          });
+      });
+  changed_files:
+    src/Button.tsx: |
+      export interface ButtonProps {
+          label: string;
+          variant?: 'primary' | 'secondary';
+          size?: 'small' | 'medium' | 'large';
+          onClick?: () => void;
+      }
+
+      export function Button({ label, variant = 'primary', size = 'medium', onClick }: ButtonProps) {
+          return (
+              <button className={`btn btn-${variant} btn-${size}`} onClick={onClick}>
+                  {label}
+              </button>
+          );
+      }
+    src/Button.stories.tsx: |
+      import type { Meta, StoryObj } from '@storybook/react';
+      import { Button, ButtonProps } from './Button';
+
+      const meta: Meta<typeof Button> = {
+          title: 'Components/Button',
+          component: Button,
+          argTypes: {
+              variant: { control: 'select', options: ['primary', 'secondary'] },
+              size: { control: 'select', options: ['small', 'medium', 'large'] },
+          },
+      };
+
+      export default meta;
+      type Story = StoryObj<typeof Button>;
+
+      export const Primary: Story = {
+          args: {
+              label: 'Primary Button',
+              variant: 'primary',
+          },
+      };
+
+      export const Secondary: Story = {
+          args: {
+              label: 'Secondary Button',
+              variant: 'secondary',
+          },
+      };
+    src/Icon.stories.tsx: |
+      import type { Meta, StoryObj } from '@storybook/react';
+
+      const meta: Meta = {
+          title: 'Components/Icon',
+      };
+
+      export default meta;
+      type Story = StoryObj;
+
+      export const Default: Story = {
+          args: { name: 'check', size: 24 },
+      };
+    src/Button.test.tsx: |
+      import { render, screen, fireEvent } from '@testing-library/react';
+
+      describe('Button', () => {
+          it('renders label', () => {
+              expect(true).toBe(true);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: button
+  selector:
+    path: src/Button.tsx
+    anchor: ButtonProps
+- id: button_1
+  selector:
+    path: src/Button.tsx
+    anchor: '''primary'' | ''secondary'''
+- id: no_global_0
+  selector:
+    anchor: Components/Icon
+- id: no_global_1
+  selector:
+    anchor: renders label
+- id: no_global_2
+  selector:
+    anchor: fireEvent
+oracle:
+  required:
+  - button
+  - button_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2

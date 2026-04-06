@@ -1,0 +1,141 @@
+name: docker_016_from_base_image
+repo:
+  initial_files:
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+      psycopg2-binary==2.9.9
+      redis==5.0.1
+      celery==5.3.4
+    config/settings.py: |
+      DATABASE_URL = "postgresql://localhost/app"
+      REDIS_URL = "redis://localhost:6379/0"
+      CELERY_BROKER_URL = REDIS_URL
+    Dockerfile: |
+      FROM alpine:3.14
+      RUN apk add --no-cache python3 py3-pip
+      COPY requirements.txt .
+      RUN pip3 install -r requirements.txt
+      COPY . /app
+      WORKDIR /app
+      CMD ["python3", "main.py"]
+    scripts/backup.sh: |
+      #!/bin/bash
+      pg_dump $DATABASE_URL > backup.sql
+      gzip backup.sql
+    tests/conftest.py: |
+      import pytest
+      @pytest.fixture
+      def app():
+          from main import create_app
+          return create_app()
+    docs/deployment.md: |
+      # Deployment Guide
+      Build with: docker build -t app .
+      Run with: docker run -p 8000:8000 app
+  changed_files:
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+      psycopg2-binary==2.9.9
+      redis==5.0.1
+      celery==5.3.4
+    config/settings.py: |
+      DATABASE_URL = "postgresql://localhost/app"
+      REDIS_URL = "redis://localhost:6379/0"
+      CELERY_BROKER_URL = REDIS_URL
+    Dockerfile: |
+      FROM python:3.12-slim-bookworm AS base
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV PYTHONUNBUFFERED=1
+
+      FROM base AS dependencies
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      FROM base AS production
+      WORKDIR /app
+      COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+      COPY --from=dependencies /usr/local/bin /usr/local/bin
+      COPY . .
+      EXPOSE 8000
+      USER nobody
+      CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]
+    scripts/backup.sh: |
+      #!/bin/bash
+      pg_dump $DATABASE_URL > backup.sql
+      gzip backup.sql
+    tests/conftest.py: |
+      import pytest
+      @pytest.fixture
+      def app():
+          from main import create_app
+          return create_app()
+    docs/deployment.md: |
+      # Deployment Guide
+      Build with: docker build -t app .
+      Run with: docker run -p 8000:8000 app
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: FROM python:3.12-slim-bookworm AS base
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: FROM base AS dependencies
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]
+- id: requirements
+  selector:
+    path: requirements.txt
+    anchor: gunicorn==21.2.0
+- id: requirements_1
+  selector:
+    path: requirements.txt
+    anchor: psycopg2-binary==2.9.9
+- id: no_backup
+  selector:
+    path: scripts/backup.sh
+- id: no_conftest
+  selector:
+    path: tests/conftest.py
+- id: no_deployment
+  selector:
+    path: docs/deployment.md
+- id: no_global_0
+  selector:
+    anchor: pg_dump
+- id: no_global_1
+  selector:
+    anchor: gzip backup.sql
+- id: no_global_2
+  selector:
+    anchor: '@pytest.fixture'
+- id: no_global_3
+  selector:
+    anchor: Deployment Guide
+- id: no_global_4
+  selector:
+    anchor: docker run -p 8000:8000
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - requirements
+  - requirements_1
+  allowed: []
+  forbidden:
+  - no_backup
+  - no_conftest
+  - no_deployment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

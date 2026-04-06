@@ -61,3 +61,4 @@ ProtobufEdgeBuilder
 RLangEdgeBuilder
 SqlEdgeBuilder
 ZigEdgeBuilder
+blast_radius = graph_analytics.blast_radius

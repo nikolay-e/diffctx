@@ -1,0 +1,362 @@
+name: swift_004_optional_binding
+repo:
+  initial_files:
+    Sources/Models/UserRepository.swift: |
+      struct User {
+          let id: String
+          let name: String
+      }
+
+      class UserRepository {
+          private var users: [String: User] = [:]
+
+          func fetchUser(id: String) -> User? {
+              return users[id]
+          }
+
+          func save(user: User) {
+              users[user.id] = user
+          }
+
+          func deleteUser(id: String) {
+              users.removeValue(forKey: id)
+          }
+      }
+    Sources/Controllers/UserController.swift: |
+      class UserController {
+          let repository = UserRepository()
+
+          func placeholder() -> String { "" }
+      }
+    Sources/Services/SessionManager.swift: |
+      import Foundation
+
+      class SessionManager {
+          private var activeSessions: [String: Date] = [:]
+
+          func startSession(userId: String) {
+              activeSessions[userId] = Date()
+          }
+
+          func isSessionActive(userId: String) -> Bool {
+              guard let start = activeSessions[userId] else { return false }
+              return Date().timeIntervalSince(start) < 3600
+          }
+
+          func endSession(userId: String) {
+              activeSessions.removeValue(forKey: userId)
+          }
+      }
+    Sources/Models/Preferences.swift: |
+      struct Preferences {
+          let theme: String
+          let language: String
+          let notificationsEnabled: Bool
+          let fontSize: Int
+      }
+
+      class PreferencesStore {
+          private var store: [String: Preferences] = [:]
+
+          func get(userId: String) -> Preferences? {
+              return store[userId]
+          }
+
+          func save(userId: String, prefs: Preferences) {
+              store[userId] = prefs
+          }
+      }
+    Sources/Controllers/ProductController.swift: |
+      class ProductController {
+          let repository = ProductRepository()
+
+          func showProduct(id: String) -> String {
+              if let product = repository.fetchProduct(id: id) {
+                  return "Product: \(product.title)"
+              } else {
+                  return "Product not found"
+              }
+          }
+
+          func getProductPrice(id: String) -> Double? {
+              if let product = repository.fetchProduct(id: id) {
+                  return product.price
+              }
+              return nil
+          }
+      }
+    Sources/Views/UserProfileView.swift: |
+      import SwiftUI
+
+      struct UserProfileView: View {
+          let controller: UserController
+          let userId: String
+
+          var body: some View {
+              VStack {
+                  Text(controller.showUser(id: userId))
+                      .font(.title)
+                  if let name = controller.getUserName(id: userId) {
+                      Text("Name: \(name)")
+                          .font(.subheadline)
+                  }
+              }
+              .padding()
+          }
+      }
+    Sources/Models/ProductRepository.swift: |
+      struct Product {
+          let id: String
+          let title: String
+          let price: Double
+      }
+
+      class ProductRepository {
+          private var products: [String: Product] = [:]
+
+          func fetchProduct(id: String) -> Product? {
+              return products[id]
+          }
+
+          func save(product: Product) {
+              products[product.id] = product
+          }
+      }
+  changed_files:
+    Sources/Models/UserRepository.swift: |
+      struct User {
+          let id: String
+          let name: String
+      }
+
+      class UserRepository {
+          private var users: [String: User] = [:]
+
+          func fetchUser(id: String) -> User? {
+              return users[id]
+          }
+
+          func save(user: User) {
+              users[user.id] = user
+          }
+
+          func deleteUser(id: String) {
+              users.removeValue(forKey: id)
+          }
+      }
+    Sources/Controllers/UserController.swift: |
+      class UserController {
+          let repository = UserRepository()
+
+          func showUser(id: String) -> String {
+              if let user = repository.fetchUser(id: id) {
+                  return "User: \(user.name)"
+              } else {
+                  return "User not found"
+              }
+          }
+
+          func getUserName(id: String) -> String? {
+              if let user = repository.fetchUser(id: id) {
+                  return user.name
+              }
+              return nil
+          }
+      }
+    Sources/Services/SessionManager.swift: |
+      import Foundation
+
+      class SessionManager {
+          private var activeSessions: [String: Date] = [:]
+
+          func startSession(userId: String) {
+              activeSessions[userId] = Date()
+          }
+
+          func isSessionActive(userId: String) -> Bool {
+              guard let start = activeSessions[userId] else { return false }
+              return Date().timeIntervalSince(start) < 3600
+          }
+
+          func endSession(userId: String) {
+              activeSessions.removeValue(forKey: userId)
+          }
+      }
+    Sources/Models/Preferences.swift: |
+      struct Preferences {
+          let theme: String
+          let language: String
+          let notificationsEnabled: Bool
+          let fontSize: Int
+      }
+
+      class PreferencesStore {
+          private var store: [String: Preferences] = [:]
+
+          func get(userId: String) -> Preferences? {
+              return store[userId]
+          }
+
+          func save(userId: String, prefs: Preferences) {
+              store[userId] = prefs
+          }
+      }
+    Sources/Controllers/ProductController.swift: |
+      class ProductController {
+          let repository = ProductRepository()
+
+          func showProduct(id: String) -> String {
+              if let product = repository.fetchProduct(id: id) {
+                  return "Product: \(product.title)"
+              } else {
+                  return "Product not found"
+              }
+          }
+
+          func getProductPrice(id: String) -> Double? {
+              if let product = repository.fetchProduct(id: id) {
+                  return product.price
+              }
+              return nil
+          }
+      }
+    Sources/Views/UserProfileView.swift: |
+      import SwiftUI
+
+      struct UserProfileView: View {
+          let controller: UserController
+          let userId: String
+
+          var body: some View {
+              VStack {
+                  Text(controller.showUser(id: userId))
+                      .font(.title)
+                  if let name = controller.getUserName(id: userId) {
+                      Text("Name: \(name)")
+                          .font(.subheadline)
+                  }
+              }
+              .padding()
+          }
+      }
+    Sources/Models/ProductRepository.swift: |
+      struct Product {
+          let id: String
+          let title: String
+          let price: Double
+      }
+
+      class ProductRepository {
+          private var products: [String: Product] = [:]
+
+          func fetchProduct(id: String) -> Product? {
+              return products[id]
+          }
+
+          func save(product: Product) {
+              products[product.id] = product
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: usercontroller
+  selector:
+    path: Sources/Controllers/UserController.swift
+    anchor: 'if let user = repository.fetchUser(id: id)'
+- id: usercontroller_1
+  selector:
+    path: Sources/Controllers/UserController.swift
+    anchor: user.name
+- id: userrepository
+  selector:
+    path: Sources/Models/UserRepository.swift
+    anchor: 'func fetchUser(id: String) -> User?'
+- id: userrepository_1
+  selector:
+    path: Sources/Models/UserRepository.swift
+    anchor: struct User
+- id: userrepository_2
+  selector:
+    path: Sources/Models/UserRepository.swift
+    anchor: 'let name: String'
+- id: no_sessionmanager
+  selector:
+    path: Sources/Services/SessionManager.swift
+- id: no_preferences
+  selector:
+    path: Sources/Models/Preferences.swift
+- id: no_productcontroller
+  selector:
+    path: Sources/Controllers/ProductController.swift
+- id: no_userprofileview
+  selector:
+    path: Sources/Views/UserProfileView.swift
+- id: no_productrepository
+  selector:
+    path: Sources/Models/ProductRepository.swift
+- id: no_global_0
+  selector:
+    anchor: SessionManager
+- id: no_global_1
+  selector:
+    anchor: startSession
+- id: no_global_2
+  selector:
+    anchor: isSessionActive
+- id: no_global_3
+  selector:
+    anchor: Preferences
+- id: no_global_4
+  selector:
+    anchor: PreferencesStore
+- id: no_global_5
+  selector:
+    anchor: notificationsEnabled
+- id: no_global_6
+  selector:
+    anchor: ProductController
+- id: no_global_7
+  selector:
+    anchor: showProduct
+- id: no_global_8
+  selector:
+    anchor: getProductPrice
+- id: no_global_9
+  selector:
+    anchor: UserProfileView
+- id: no_global_10
+  selector:
+    anchor: controller.showUser
+- id: no_global_11
+  selector:
+    anchor: ProductRepository
+- id: no_global_12
+  selector:
+    anchor: fetchProduct
+oracle:
+  required:
+  - usercontroller
+  - usercontroller_1
+  - userrepository
+  - userrepository_1
+  - userrepository_2
+  allowed: []
+  forbidden:
+  - no_sessionmanager
+  - no_preferences
+  - no_productcontroller
+  - no_userprofileview
+  - no_productrepository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

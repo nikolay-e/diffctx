@@ -1,0 +1,258 @@
+name: yaml_002_feature_flags
+repo:
+  initial_files:
+    config/features.yaml: |
+      features:
+        new_ui: false
+        dark_mode: true
+    src/features.py: |
+      def is_feature_enabled(name: str) -> bool:
+          features = {"new_ui": False, "dark_mode": True}
+          return features.get(name, False)
+
+      def get_enabled_features() -> list:
+          features = {"new_ui": False, "dark_mode": True}
+          return [name for name, enabled in features.items() if enabled]
+    src/middleware/feature_gate.py: |
+      from src.features import is_feature_enabled
+
+      class FeatureGateMiddleware:
+          def __init__(self, app):
+              self.app = app
+
+          def process_request(self, request):
+              if request.path.startswith("/api/beta"):
+                  if not is_feature_enabled("beta_api"):
+                      return {"error": "Feature not available", "status": 403}
+              if request.path.startswith("/ui/v2"):
+                  if not is_feature_enabled("new_ui"):
+                      return {"error": "New UI not enabled", "status": 403}
+              return self.app.handle(request)
+    config/experiments.yaml: |
+      experiments:
+        search_v2:
+          enabled: false
+          rollout_percentage: 10
+          target_group: beta_users
+        checkout_redesign:
+          enabled: true
+          rollout_percentage: 50
+          target_group: all
+        new_ui_experiment:
+          enabled: false
+          rollout_percentage: 5
+          target_group: internal
+    src/analytics.py: |
+      from datetime import datetime
+
+      class AnalyticsTracker:
+          def __init__(self):
+              self.events = []
+
+          def track(self, event_name: str, properties: dict = None):
+              self.events.append({
+                  "name": event_name,
+                  "properties": properties or {},
+                  "timestamp": datetime.utcnow().isoformat(),
+              })
+
+          def track_feature_usage(self, feature_name: str, user_id: str):
+              self.track("feature_used", {
+                  "feature": feature_name,
+                  "user_id": user_id,
+              })
+
+          def flush(self):
+              batch = self.events[:]
+              self.events.clear()
+              return batch
+    src/ui/theme.py: |
+      from src.features import is_feature_enabled
+
+      class ThemeManager:
+          def __init__(self):
+              self.dark_mode = is_feature_enabled("dark_mode")
+
+          def get_styles(self) -> dict:
+              if self.dark_mode:
+                  return {
+                      "background": "#1a1a1a",
+                      "text": "#ffffff",
+                      "accent": "#4fc3f7",
+                  }
+              return {
+                  "background": "#ffffff",
+                  "text": "#333333",
+                  "accent": "#1976d2",
+              }
+
+          def toggle_theme(self):
+              self.dark_mode = not self.dark_mode
+    tests/test_features.py: |
+      from src.features import is_feature_enabled, get_enabled_features
+
+      class TestFeatures:
+          def test_new_ui_disabled_by_default(self):
+              assert not is_feature_enabled("new_ui")
+
+          def test_dark_mode_enabled(self):
+              assert is_feature_enabled("dark_mode")
+
+          def test_unknown_feature_returns_false(self):
+              assert not is_feature_enabled("nonexistent")
+
+          def test_get_enabled_features(self):
+              enabled = get_enabled_features()
+              assert "dark_mode" in enabled
+              assert "new_ui" not in enabled
+    config/rollout_schedule.yaml: |
+      rollout:
+        new_ui:
+          phase_1:
+            date: "2024-01-15"
+            percentage: 10
+          phase_2:
+            date: "2024-02-01"
+            percentage: 50
+          phase_3:
+            date: "2024-03-01"
+            percentage: 100
+        beta_api:
+          phase_1:
+            date: "2024-04-01"
+            percentage: 5
+  changed_files:
+    config/features.yaml: |
+      features:
+        new_ui: true
+        dark_mode: true
+        beta_api: false
+    src/features.py: |
+      def is_feature_enabled(name: str) -> bool:
+          features = {"new_ui": False, "dark_mode": True}
+          return features.get(name, False)
+
+      def get_enabled_features() -> list:
+          features = {"new_ui": False, "dark_mode": True}
+          return [name for name, enabled in features.items() if enabled]
+    src/middleware/feature_gate.py: |
+      from src.features import is_feature_enabled
+
+      class FeatureGateMiddleware:
+          def __init__(self, app):
+              self.app = app
+
+          def process_request(self, request):
+              if request.path.startswith("/api/beta"):
+                  if not is_feature_enabled("beta_api"):
+                      return {"error": "Feature not available", "status": 403}
+              if request.path.startswith("/ui/v2"):
+                  if not is_feature_enabled("new_ui"):
+                      return {"error": "New UI not enabled", "status": 403}
+              return self.app.handle(request)
+  commit_message: Update files
+fragments:
+- id: features
+  selector:
+    path: src/features.py
+    anchor: '"new_ui": False, "dark_mode": True'
+- id: features_1
+  selector:
+    path: src/features.py
+    anchor: features.get(name, False)
+- id: feature_gate
+  selector:
+    path: src/middleware/feature_gate.py
+    anchor: is_feature_enabled("beta_api")
+- id: feature_gate_1
+  selector:
+    path: src/middleware/feature_gate.py
+    anchor: is_feature_enabled("new_ui")
+- id: no_experiments
+  selector:
+    path: config/experiments.yaml
+- id: no_analytics
+  selector:
+    path: src/analytics.py
+- id: no_theme
+  selector:
+    path: src/ui/theme.py
+- id: no_test_features
+  selector:
+    path: tests/test_features.py
+- id: no_rollout_schedule
+  selector:
+    path: config/rollout_schedule.yaml
+- id: no_global_0
+  selector:
+    anchor: rollout_percentage
+- id: no_global_1
+  selector:
+    anchor: target_group
+- id: no_global_2
+  selector:
+    anchor: search_v2
+- id: no_global_3
+  selector:
+    anchor: new_ui_experiment
+- id: no_global_4
+  selector:
+    anchor: AnalyticsTracker
+- id: no_global_5
+  selector:
+    anchor: track_feature_usage
+- id: no_global_6
+  selector:
+    anchor: flush
+- id: no_global_7
+  selector:
+    anchor: ThemeManager
+- id: no_global_8
+  selector:
+    anchor: get_styles
+- id: no_global_9
+  selector:
+    anchor: toggle_theme
+- id: no_global_10
+  selector:
+    anchor: test_new_ui_disabled_by_default
+- id: no_global_11
+  selector:
+    anchor: test_dark_mode_enabled
+- id: no_global_12
+  selector:
+    anchor: phase_1
+- id: no_global_13
+  selector:
+    anchor: phase_2
+- id: no_global_14
+  selector:
+    anchor: 'percentage: 10'
+oracle:
+  required:
+  - features
+  - features_1
+  - feature_gate
+  - feature_gate_1
+  allowed: []
+  forbidden:
+  - no_experiments
+  - no_analytics
+  - no_theme
+  - no_test_features
+  - no_rollout_schedule
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

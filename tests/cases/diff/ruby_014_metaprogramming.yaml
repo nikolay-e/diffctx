@@ -1,0 +1,264 @@
+name: ruby_014_metaprogramming
+repo:
+  initial_files:
+    lib/dsl.rb: |
+      module DSL
+        def self.included(base)
+          base.extend(ClassMethods)
+        end
+
+        module ClassMethods
+          def define_accessors(*names)
+            names.each do |name|
+              define_method(name) do
+                instance_variable_get("@#{name}")
+              end
+
+              define_method("#{name}=") do |value|
+                instance_variable_set("@#{name}", value)
+              end
+            end
+          end
+
+          def define_validators(*names)
+            names.each do |name|
+              define_method("validate_#{name}") do
+                !send(name).nil?
+              end
+            end
+          end
+        end
+      end
+    lib/config.rb: |
+      class Config
+        def initialize
+          @data = {}
+        end
+      end
+    lib/serializer.rb: |
+      class AttributeSerializer
+        def initialize(object)
+          @object = object
+          @serialized = {}
+        end
+
+        def method_missing(name, *args)
+          if name.to_s.start_with?('serialize_')
+            attr_name = name.to_s.sub('serialize_', '')
+            @serialized[attr_name] = @object.send(attr_name)
+          else
+            super
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          name.to_s.start_with?('serialize_') || super
+        end
+
+        def to_hash
+          @serialized
+        end
+
+        def to_json
+          @serialized.to_s
+        end
+      end
+    lib/schema_builder.rb: |
+      class SchemaBuilder
+        def initialize(&block)
+          @fields = []
+          instance_eval(&block) if block_given?
+        end
+
+        def string(name, required: false)
+          @fields << { name: name, type: :string, required: required }
+        end
+
+        def integer(name, min: nil, max: nil)
+          @fields << { name: name, type: :integer, min: min, max: max }
+        end
+
+        def boolean(name, default: false)
+          @fields << { name: name, type: :boolean, default: default }
+        end
+
+        def validate(data)
+          @fields.all? do |field|
+            value = data[field[:name]]
+            next false if field[:required] && value.nil?
+            next true if value.nil?
+            validate_type(value, field[:type])
+          end
+        end
+
+        private
+
+        def validate_type(value, type)
+          case type
+          when :string then value.is_a?(String)
+          when :integer then value.is_a?(Integer)
+          when :boolean then [true, false].include?(value)
+          end
+        end
+      end
+  changed_files:
+    lib/dsl.rb: |
+      module DSL
+        def self.included(base)
+          base.extend(ClassMethods)
+        end
+
+        module ClassMethods
+          def define_accessors(*names)
+            names.each do |name|
+              define_method(name) do
+                instance_variable_get("@#{name}")
+              end
+
+              define_method("#{name}=") do |value|
+                instance_variable_set("@#{name}", value)
+              end
+            end
+          end
+
+          def define_validators(*names)
+            names.each do |name|
+              define_method("validate_#{name}") do
+                !send(name).nil?
+              end
+            end
+          end
+        end
+      end
+    lib/config.rb: |
+      require_relative 'dsl'
+
+      class Config
+        include DSL
+
+        define_accessors :host, :port, :debug, :timeout
+        define_validators :host, :port
+
+        def initialize(host: 'localhost', port: 3000, debug: false, timeout: 30)
+          @host = host
+          @port = port
+          @debug = debug
+          @timeout = timeout
+        end
+
+        def valid?
+          validate_host && validate_port
+        end
+      end
+    lib/serializer.rb: |
+      class AttributeSerializer
+        def initialize(object)
+          @object = object
+          @serialized = {}
+        end
+
+        def method_missing(name, *args)
+          if name.to_s.start_with?('serialize_')
+            attr_name = name.to_s.sub('serialize_', '')
+            @serialized[attr_name] = @object.send(attr_name)
+          else
+            super
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          name.to_s.start_with?('serialize_') || super
+        end
+
+        def to_hash
+          @serialized
+        end
+
+        def to_json
+          @serialized.to_s
+        end
+      end
+    lib/schema_builder.rb: |
+      class SchemaBuilder
+        def initialize(&block)
+          @fields = []
+          instance_eval(&block) if block_given?
+        end
+
+        def string(name, required: false)
+          @fields << { name: name, type: :string, required: required }
+        end
+
+        def integer(name, min: nil, max: nil)
+          @fields << { name: name, type: :integer, min: min, max: max }
+        end
+
+        def boolean(name, default: false)
+          @fields << { name: name, type: :boolean, default: default }
+        end
+
+        def validate(data)
+          @fields.all? do |field|
+            value = data[field[:name]]
+            next false if field[:required] && value.nil?
+            next true if value.nil?
+            validate_type(value, field[:type])
+          end
+        end
+
+        private
+
+        def validate_type(value, type)
+          case type
+          when :string then value.is_a?(String)
+          when :integer then value.is_a?(Integer)
+          when :boolean then [true, false].include?(value)
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: config_file
+  selector:
+    path: lib/config.rb
+- id: req_global_0
+  selector:
+    anchor: define_accessors :host, :port, :debug, :timeout
+- id: no_serializer
+  selector:
+    path: lib/serializer.rb
+- id: no_schema_builder
+  selector:
+    path: lib/schema_builder.rb
+- id: no_global_0
+  selector:
+    anchor: AttributeSerializer
+- id: no_global_1
+  selector:
+    anchor: SchemaBuilder
+- id: no_global_2
+  selector:
+    anchor: method_missing
+- id: no_global_3
+  selector:
+    anchor: validate_type
+- id: no_global_4
+  selector:
+    anchor: serializer.rb
+- id: no_global_5
+  selector:
+    anchor: schema_builder.rb
+oracle:
+  required:
+  - config_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_schema_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

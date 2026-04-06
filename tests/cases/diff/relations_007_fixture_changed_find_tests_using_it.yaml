@@ -1,0 +1,245 @@
+name: relations_007_fixture_changed_find_tests_using_it
+repo:
+  initial_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def mock_api():
+          return {"status": "ok"}
+
+      @pytest.fixture
+      def db_connection():
+          return {"host": "localhost", "port": 5432, "database": "test_db"}
+    tests/test_client.py: |
+      def test_fetch(mock_api):
+          assert mock_api["status"] == "ok"
+
+      def test_api_response_format(mock_api):
+          assert isinstance(mock_api, dict)
+          assert "status" in mock_api
+    tests/test_sync.py: |
+      def test_sync(mock_api):
+          assert mock_api["status"] == "ok"
+
+      def test_sync_retry(mock_api):
+          result = mock_api.get("status", "unknown")
+          assert result == "ok"
+    tests/test_auth.py: |
+      import pytest
+
+      def test_login_success():
+          credentials = {"username": "admin", "password": "secret123"}
+          assert credentials["username"] == "admin"
+
+      def test_login_failure():
+          credentials = {"username": "unknown", "password": "wrong"}
+          assert credentials["username"] != "admin"
+
+      def test_token_expiry():
+          token = {"expires_in": 3600, "type": "bearer"}
+          assert token["expires_in"] > 0
+    tests/helpers/api_factory.py: |
+      class ApiFactory:
+          @staticmethod
+          def create_mock_response(status_code=200, body=None):
+              return {
+                  "status_code": status_code,
+                  "body": body or {},
+                  "headers": {"content-type": "application/json"},
+              }
+
+          @staticmethod
+          def create_error_response(message="Internal Server Error"):
+              return ApiFactory.create_mock_response(500, {"error": message})
+    tests/test_cache.py: |
+      import pytest
+
+      @pytest.fixture
+      def cache_client():
+          return {"backend": "redis", "ttl": 300, "prefix": "test_"}
+
+      def test_cache_hit(cache_client):
+          assert cache_client["backend"] == "redis"
+
+      def test_cache_ttl(cache_client):
+          assert cache_client["ttl"] == 300
+
+      def test_cache_prefix(cache_client):
+          assert cache_client["prefix"].startswith("test")
+    tests/conftest_fixtures.py: |
+      import pytest
+      import tempfile
+
+      @pytest.fixture
+      def temp_dir():
+          with tempfile.TemporaryDirectory() as d:
+              yield d
+
+      @pytest.fixture
+      def db_session():
+          session = {"engine": "postgresql", "pool_size": 5}
+          yield session
+
+      @pytest.fixture
+      def app_config():
+          return {"debug": True, "testing": True, "secret_key": "test-secret"}
+  changed_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def mock_api():
+          return {"status": "ok", "version": "2.0"}
+
+      @pytest.fixture
+      def db_connection():
+          return {"host": "localhost", "port": 5432, "database": "test_db"}
+    tests/test_client.py: |
+      def test_fetch(mock_api):
+          assert mock_api["status"] == "ok"
+
+      def test_api_response_format(mock_api):
+          assert isinstance(mock_api, dict)
+          assert "status" in mock_api
+    tests/test_sync.py: |
+      def test_sync(mock_api):
+          assert mock_api["status"] == "ok"
+
+      def test_sync_retry(mock_api):
+          result = mock_api.get("status", "unknown")
+          assert result == "ok"
+    tests/test_auth.py: |
+      import pytest
+
+      def test_login_success():
+          credentials = {"username": "admin", "password": "secret123"}
+          assert credentials["username"] == "admin"
+
+      def test_login_failure():
+          credentials = {"username": "unknown", "password": "wrong"}
+          assert credentials["username"] != "admin"
+
+      def test_token_expiry():
+          token = {"expires_in": 3600, "type": "bearer"}
+          assert token["expires_in"] > 0
+    tests/helpers/api_factory.py: |
+      class ApiFactory:
+          @staticmethod
+          def create_mock_response(status_code=200, body=None):
+              return {
+                  "status_code": status_code,
+                  "body": body or {},
+                  "headers": {"content-type": "application/json"},
+              }
+
+          @staticmethod
+          def create_error_response(message="Internal Server Error"):
+              return ApiFactory.create_mock_response(500, {"error": message})
+    tests/test_cache.py: |
+      import pytest
+
+      @pytest.fixture
+      def cache_client():
+          return {"backend": "redis", "ttl": 300, "prefix": "test_"}
+
+      def test_cache_hit(cache_client):
+          assert cache_client["backend"] == "redis"
+
+      def test_cache_ttl(cache_client):
+          assert cache_client["ttl"] == 300
+
+      def test_cache_prefix(cache_client):
+          assert cache_client["prefix"].startswith("test")
+    tests/conftest_fixtures.py: |
+      import pytest
+      import tempfile
+
+      @pytest.fixture
+      def temp_dir():
+          with tempfile.TemporaryDirectory() as d:
+              yield d
+
+      @pytest.fixture
+      def db_session():
+          session = {"engine": "postgresql", "pool_size": 5}
+          yield session
+
+      @pytest.fixture
+      def app_config():
+          return {"debug": True, "testing": True, "secret_key": "test-secret"}
+  commit_message: Update files
+fragments:
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: 'return {"status": "ok", "version": "2.0"}'
+- id: no_test_auth
+  selector:
+    path: tests/test_auth.py
+- id: no_api_factory
+  selector:
+    path: tests/helpers/api_factory.py
+- id: no_test_cache
+  selector:
+    path: tests/test_cache.py
+- id: no_conftest_fixtures
+  selector:
+    path: tests/conftest_fixtures.py
+- id: no_global_0
+  selector:
+    anchor: test_login_success
+- id: no_global_1
+  selector:
+    anchor: test_login_failure
+- id: no_global_2
+  selector:
+    anchor: test_token_expiry
+- id: no_global_3
+  selector:
+    anchor: ApiFactory
+- id: no_global_4
+  selector:
+    anchor: create_mock_response
+- id: no_global_5
+  selector:
+    anchor: create_error_response
+- id: no_global_6
+  selector:
+    anchor: cache_client
+- id: no_global_7
+  selector:
+    anchor: test_cache_hit
+- id: no_global_8
+  selector:
+    anchor: test_cache_ttl
+- id: no_global_9
+  selector:
+    anchor: temp_dir
+- id: no_global_10
+  selector:
+    anchor: db_session
+- id: no_global_11
+  selector:
+    anchor: app_config
+oracle:
+  required:
+  - conftest
+  allowed: []
+  forbidden:
+  - no_test_auth
+  - no_api_factory
+  - no_test_cache
+  - no_conftest_fixtures
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

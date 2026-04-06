@@ -18,6 +18,7 @@ from .utils import load_yaml
         ("yaml", ".yaml"),
         ("json", ".json"),
         ("txt", ".txt"),
+        ("md", ".md"),
     ],
 )
 def test_format_output_to_file(run_mapper, temp_project, fmt, ext):
@@ -34,12 +35,14 @@ def test_format_output_to_file(run_mapper, temp_project, fmt, ext):
         tree = json.loads(content)
         assert tree["name"] == temp_project.name
         assert tree["type"] == "directory"
+    elif fmt == "md":
+        assert f"# {temp_project.name}/" in content
     else:
         assert f"{temp_project.name}/" in content
         assert "  " in content
 
 
-@pytest.mark.parametrize("fmt", ["yaml", "json", "txt"])
+@pytest.mark.parametrize("fmt", ["yaml", "json", "txt", "md"])
 def test_format_output_to_stdout(temp_project, fmt):
     result = run_treemapper_subprocess([str(temp_project), "--format", fmt])
     assert result.returncode == 0
@@ -50,6 +53,8 @@ def test_format_output_to_stdout(temp_project, fmt):
     elif fmt == "json":
         tree = json.loads(result.stdout)
         assert tree["name"] == temp_project.name
+    elif fmt == "md":
+        assert f"# {temp_project.name}/" in result.stdout
     else:
         assert f"{temp_project.name}/" in result.stdout
 
@@ -188,14 +193,31 @@ def test_write_string_to_file_creates_parent_dirs(tmp_path):
     assert output_file.parent.exists()
 
 
-@pytest.mark.parametrize("fmt", ["yaml", "json", "txt"])
+@pytest.mark.parametrize("fmt", ["yaml", "json", "txt", "md"])
 def test_write_string_to_file_formats(tmp_path, fmt):
-    tree = {"name": "test", "type": "directory", "children": [{"name": "file.txt", "type": "file", "content": "test\n"}]}
+    tree = {"name": "test", "type": "directory", "children": [{"name": "file.txt", "type": "file", "content": "hello_world\n"}]}
     output_file = tmp_path / f"output.{fmt}"
     write_string_to_file(tree_to_string(tree, fmt), output_file, fmt)
     assert output_file.exists()
     content = output_file.read_text(encoding="utf-8")
-    assert "test" in content
+    if fmt == "yaml":
+        parsed = yaml.safe_load(content)
+        assert parsed["name"] == "test"
+        assert parsed["type"] == "directory"
+        assert "hello_world" in content
+        assert "file.txt" in content
+    elif fmt == "json":
+        parsed = json.loads(content)
+        assert parsed["name"] == "test"
+        assert parsed["type"] == "directory"
+        assert "hello_world" in content
+        assert "file.txt" in content
+    elif fmt == "md":
+        assert "# test/" in content
+        assert "file.txt" in content
+    else:
+        assert "hello_world" in content
+        assert "file.txt" in content
 
 
 def test_write_string_to_file_directory_error(tmp_path):

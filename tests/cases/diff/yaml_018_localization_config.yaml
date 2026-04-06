@@ -1,0 +1,144 @@
+name: yaml_018_localization_config
+repo:
+  initial_files:
+    config/i18n.yaml: |
+      localization:
+        default_locale: en
+        supported_locales:
+          - en
+          - es
+    src/i18n.py: |
+      class Translator:
+          def __init__(self, default_locale: str = "en"):
+              self.default_locale = default_locale
+              self.translations: dict[str, dict[str, str]] = {}
+
+          def load(self, locale: str, data: dict[str, str]):
+              self.translations[locale] = data
+
+          def translate(self, key: str, locale: str = None) -> str:
+              locale = locale or self.default_locale
+              return self.translations.get(locale, {}).get(key, key)
+
+          def available_locales(self) -> list[str]:
+              return list(self.translations.keys())
+    config/timezone.yaml: |
+      timezone:
+        default: UTC
+        display_format: "YYYY-MM-DD HH:mm:ss Z"
+        supported:
+          - UTC
+          - America/New_York
+          - Europe/London
+          - Asia/Tokyo
+        auto_detect: true
+    src/currency.py: |
+      from decimal import Decimal
+
+      CURRENCY_FORMATS = {
+          "USD": {"symbol": "$", "decimal_places": 2, "position": "before"},
+          "EUR": {"symbol": "\u20ac", "decimal_places": 2, "position": "before"},
+          "GBP": {"symbol": "\u00a3", "decimal_places": 2, "position": "before"},
+          "JPY": {"symbol": "\u00a5", "decimal_places": 0, "position": "before"},
+      }
+
+      def format_currency(amount: Decimal, currency_code: str) -> str:
+          fmt = CURRENCY_FORMATS.get(currency_code, CURRENCY_FORMATS["USD"])
+          formatted = f"{amount:.{fmt['decimal_places']}f}"
+          if fmt["position"] == "before":
+              return f"{fmt['symbol']}{formatted}"
+          return f"{formatted}{fmt['symbol']}"
+  changed_files:
+    config/i18n.yaml: |
+      localization:
+        default_locale: en
+        supported_locales:
+          - en
+          - es
+          - fr
+          - de
+    src/i18n.py: |
+      class Translator:
+          def __init__(self, default_locale: str = "en"):
+              self.default_locale = default_locale
+              self.translations: dict[str, dict[str, str]] = {}
+
+          def load(self, locale: str, data: dict[str, str]):
+              self.translations[locale] = data
+
+          def translate(self, key: str, locale: str = None) -> str:
+              locale = locale or self.default_locale
+              return self.translations.get(locale, {}).get(key, key)
+
+          def available_locales(self) -> list[str]:
+              return list(self.translations.keys())
+    config/timezone.yaml: |
+      timezone:
+        default: UTC
+        display_format: "YYYY-MM-DD HH:mm:ss Z"
+        supported:
+          - UTC
+          - America/New_York
+          - Europe/London
+          - Asia/Tokyo
+        auto_detect: true
+    src/currency.py: |
+      from decimal import Decimal
+
+      CURRENCY_FORMATS = {
+          "USD": {"symbol": "$", "decimal_places": 2, "position": "before"},
+          "EUR": {"symbol": "\u20ac", "decimal_places": 2, "position": "before"},
+          "GBP": {"symbol": "\u00a3", "decimal_places": 2, "position": "before"},
+          "JPY": {"symbol": "\u00a5", "decimal_places": 0, "position": "before"},
+      }
+
+      def format_currency(amount: Decimal, currency_code: str) -> str:
+          fmt = CURRENCY_FORMATS.get(currency_code, CURRENCY_FORMATS["USD"])
+          formatted = f"{amount:.{fmt['decimal_places']}f}"
+          if fmt["position"] == "before":
+              return f"{fmt['symbol']}{formatted}"
+          return f"{formatted}{fmt['symbol']}"
+  commit_message: Update files
+fragments:
+- id: i18n
+  selector:
+    path: src/i18n.py
+    anchor: locale = locale or self.default_locale
+- id: i18n_1
+  selector:
+    path: src/i18n.py
+    anchor: self.translations.get(locale, {}).get(key, key)
+- id: no_timezone
+  selector:
+    path: config/timezone.yaml
+- id: no_currency
+  selector:
+    path: src/currency.py
+- id: no_global_0
+  selector:
+    anchor: auto_detect
+- id: no_global_1
+  selector:
+    anchor: display_format
+- id: no_global_2
+  selector:
+    anchor: Asia/Tokyo
+- id: no_global_3
+  selector:
+    anchor: CURRENCY_FORMATS
+- id: no_global_4
+  selector:
+    anchor: format_currency
+oracle:
+  required:
+  - i18n
+  - i18n_1
+  allowed: []
+  forbidden:
+  - no_timezone
+  - no_currency
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

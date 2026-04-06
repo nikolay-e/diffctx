@@ -1,0 +1,179 @@
+name: javascript_042_react_props_change
+repo:
+  initial_files:
+    types.ts: |
+      export interface ButtonProps {
+          label: string;
+          onClick: () => void;
+      }
+    Button.tsx: |
+      import { ButtonProps } from './types';
+
+      export function Button({ label, onClick }: ButtonProps) {
+          return <button onClick={onClick}>{label}</button>;
+      }
+    IconButton.tsx: |
+      import { ButtonProps } from './types';
+
+      interface IconButtonProps extends ButtonProps {
+          icon: string;
+      }
+
+      export function IconButton({ label, onClick, icon }: IconButtonProps) {
+          return <button onClick={onClick}><span>{icon}</span> {label}</button>;
+      }
+    button-styles.ts: |
+      export const buttonVariants = {
+          primary: { backgroundColor: '#007bff', color: 'white' },
+          secondary: { backgroundColor: '#6c757d', color: 'white' },
+          danger: { backgroundColor: '#dc3545', color: 'white' },
+      };
+
+      export function getButtonClass(variant: string, disabled: boolean): string {
+          return `btn-${variant}${disabled ? ' btn-disabled' : ''}`;
+      }
+    form-types.ts: |
+      export interface InputProps {
+          name: string;
+          value: string;
+          onChange: (value: string) => void;
+          disabled?: boolean;
+          required?: boolean;
+          placeholder?: string;
+      }
+
+      export interface SelectProps {
+          name: string;
+          options: { value: string; label: string }[];
+          onChange: (value: string) => void;
+          disabled?: boolean;
+      }
+  changed_files:
+    types.ts: |
+      export interface ButtonProps {
+          label: string;
+          onClick: () => void;
+          disabled?: boolean;
+          variant?: 'primary' | 'secondary';
+      }
+    Button.tsx: |
+      import { ButtonProps } from './types';
+
+      export function Button({ label, onClick }: ButtonProps) {
+          return <button onClick={onClick}>{label}</button>;
+      }
+    IconButton.tsx: |
+      import { ButtonProps } from './types';
+
+      interface IconButtonProps extends ButtonProps {
+          icon: string;
+      }
+
+      export function IconButton({ label, onClick, icon }: IconButtonProps) {
+          return <button onClick={onClick}><span>{icon}</span> {label}</button>;
+      }
+    button-styles.ts: |
+      export const buttonVariants = {
+          primary: { backgroundColor: '#007bff', color: 'white' },
+          secondary: { backgroundColor: '#6c757d', color: 'white' },
+          danger: { backgroundColor: '#dc3545', color: 'white' },
+      };
+
+      export function getButtonClass(variant: string, disabled: boolean): string {
+          return `btn-${variant}${disabled ? ' btn-disabled' : ''}`;
+      }
+    form-types.ts: |
+      export interface InputProps {
+          name: string;
+          value: string;
+          onChange: (value: string) => void;
+          disabled?: boolean;
+          required?: boolean;
+          placeholder?: string;
+      }
+
+      export interface SelectProps {
+          name: string;
+          options: { value: string; label: string }[];
+          onChange: (value: string) => void;
+          disabled?: boolean;
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.ts
+    anchor: interface ButtonProps {
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'disabled?: boolean'
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: 'variant?: ''primary'' | ''secondary'''
+- id: button
+  selector:
+    path: Button.tsx
+    anchor: import { ButtonProps } from './types'
+- id: button_1
+  selector:
+    path: Button.tsx
+    anchor: '{ label, onClick }: ButtonProps'
+- id: no_iconbutton
+  selector:
+    path: IconButton.tsx
+- id: no_button_styles
+  selector:
+    path: button-styles.ts
+- id: no_form_types
+  selector:
+    path: form-types.ts
+- id: no_global_0
+  selector:
+    anchor: IconButton
+- id: no_global_1
+  selector:
+    anchor: IconButtonProps
+- id: no_global_2
+  selector:
+    anchor: icon
+- id: no_global_3
+  selector:
+    anchor: buttonVariants
+- id: no_global_4
+  selector:
+    anchor: getButtonClass
+- id: no_global_5
+  selector:
+    anchor: btn-disabled
+- id: no_global_6
+  selector:
+    anchor: InputProps
+- id: no_global_7
+  selector:
+    anchor: SelectProps
+- id: no_global_8
+  selector:
+    anchor: placeholder
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - button
+  - button_1
+  allowed: []
+  forbidden:
+  - no_iconbutton
+  - no_button_styles
+  - no_form_types
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

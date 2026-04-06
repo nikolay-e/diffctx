@@ -1,0 +1,111 @@
+name: terraform_059_state_encryption
+repo:
+  initial_files:
+    backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket = "my-terraform-state"
+          key    = "terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+    kms.tf: |
+      resource "aws_kms_key" "state_encryption" {
+        description             = "Terraform state encryption"
+        deletion_window_in_days = 10
+        enable_key_rotation     = true
+      }
+
+      resource "aws_kms_alias" "state_encryption" {
+        name          = "alias/terraform-state-key"
+        target_key_id = aws_kms_key.state_encryption.key_id
+      }
+    dynamodb.tf: |
+      resource "aws_dynamodb_table" "state_lock" {
+        name         = "terraform-state-lock"
+        billing_mode = "PAY_PER_REQUEST"
+        hash_key     = "LockID"
+
+        attribute {
+          name = "LockID"
+          type = "S"
+        }
+      }
+    envs/staging/backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket         = "staging-terraform-state"
+          key            = "staging/terraform.tfstate"
+          region         = "eu-west-1"
+          encrypt        = true
+          dynamodb_table = "staging-state-lock"
+        }
+      }
+    logging/cloudwatch.tf: |
+      resource "aws_cloudwatch_log_group" "app" {
+        name              = "/app/production"
+        retention_in_days = 30
+      }
+  changed_files:
+    backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket         = "my-terraform-state"
+          key            = "terraform.tfstate"
+          region         = "us-east-1"
+          encrypt        = true
+          kms_key_id     = "arn:aws:kms:us-east-1:123456789:key/abc123"
+          dynamodb_table = "terraform-state-lock"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: backend
+  selector:
+    path: backend.tf
+    anchor: encrypt        = true
+- id: backend_1
+  selector:
+    path: backend.tf
+    anchor: kms_key_id     = "arn:aws:kms:us-east-1:123456789:key/abc123"
+- id: backend_2
+  selector:
+    path: backend.tf
+    anchor: dynamodb_table = "terraform-state-lock"
+- id: dynamodb
+  selector:
+    path: dynamodb.tf
+    anchor: resource "aws_dynamodb_table" "state_lock" {
+- id: dynamodb_1
+  selector:
+    path: dynamodb.tf
+    anchor: name         = "terraform-state-lock"
+- id: no_backend
+  selector:
+    path: envs/staging/backend.tf
+- id: no_cloudwatch
+  selector:
+    path: logging/cloudwatch.tf
+- id: no_global_0
+  selector:
+    anchor: staging-terraform-state
+- id: no_global_1
+  selector:
+    anchor: staging-state-lock
+- id: no_global_2
+  selector:
+    anchor: retention_in_days = 30
+oracle:
+  required:
+  - backend
+  - backend_1
+  - backend_2
+  - dynamodb
+  - dynamodb_1
+  allowed: []
+  forbidden:
+  - no_backend
+  - no_cloudwatch
+  - no_global_0
+  - no_global_1
+  - no_global_2

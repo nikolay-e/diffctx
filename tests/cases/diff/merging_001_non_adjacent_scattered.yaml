@@ -1,0 +1,376 @@
+name: merging_001_non_adjacent_scattered
+repo:
+  initial_files:
+    src/data_pipeline.py: |
+      import logging
+      from typing import List, Dict, Optional
+      from dataclasses import dataclass
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class PipelineConfig:
+          batch_size: int = 100
+          retry_count: int = 3
+          timeout_seconds: float = 30.0
+
+      def extract_records(source: str) -> List[Dict]:
+          logger.info(f"Extracting from {source}")
+          records = []
+          for i in range(10):
+              records.append({"id": i, "source": source})
+          return records
+
+      class DataValidator:
+          def __init__(self, schema: Dict):
+              self.schema = schema
+              self._errors: List[str] = []
+
+          def validate(self, record: Dict) -> bool:
+              for field_name in self.schema:
+                  if field_name not in record:
+                      self._errors.append(f"Missing: {field_name}")
+                      return False
+              return True
+
+          def get_errors(self) -> List[str]:
+              return self._errors.copy()
+
+      def transform_records(records: List[Dict], mapping: Dict) -> List[Dict]:
+          transformed = []
+          for record in records:
+              new_record = {}
+              for old_key, new_key in mapping.items():
+                  if old_key in record:
+                      new_record[new_key] = record[old_key]
+              transformed.append(new_record)
+          return transformed
+    src/pipeline_runner.py: |
+      from src.data_pipeline import extract_records, transform_records, DataValidator
+      from src.loaders.db_loader import load_records
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      FIELD_MAPPING = {
+          "id": "record_id",
+          "source": "origin",
+      }
+
+      SCHEMA = {
+          "record_id": {"type": "string"},
+          "origin": {"type": "string"},
+      }
+
+      def run(source: str) -> int:
+          raw = extract_records(source)
+          logger.info(f"Extracted {len(raw)} records from {source}")
+
+          validator = DataValidator(SCHEMA)
+          transformed = transform_records(raw, FIELD_MAPPING)
+
+          valid = [r for r in transformed if validator.validate(r)]
+          if validator.get_errors():
+              logger.warning(f"Validation errors: {validator.get_errors()}")
+
+          loaded = load_records(valid)
+          return loaded
+
+      def run_incremental(source: str, since: str) -> int:
+          raw = extract_records(source)
+          filtered = [r for r in raw if r.get("updated_after", "") >= since]
+          transformed = transform_records(filtered, FIELD_MAPPING)
+          return load_records(transformed)
+    src/loaders/db_loader.py: |
+      import logging
+      from typing import List, Dict
+
+      logger = logging.getLogger(__name__)
+
+      def load_records(records: List[Dict], table: str = "raw_data") -> int:
+          count = 0
+          for record in records:
+              columns = ", ".join(record.keys())
+              placeholders = ", ".join(["%s"] * len(record))
+              logger.debug(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})")
+              count += 1
+          logger.info(f"Loaded {count} records into {table}")
+          return count
+
+      def upsert_records(records: List[Dict], table: str, key_column: str) -> int:
+          count = 0
+          for record in records:
+              logger.debug(f"UPSERT into {table} on {key_column}")
+              count += 1
+          return count
+    src/quality/data_validator.py: |
+      from typing import Dict, Any, List
+
+      SUPPORTED_TYPES = ("string", "integer", "boolean", "float", "array")
+
+      class DataQualityValidator:
+          def __init__(self, rules: Dict[str, Any]):
+              self.rules = rules
+              self._violations: List[str] = []
+
+          def check_record(self, record: Dict) -> bool:
+              for field, rule in self.rules.items():
+                  if field not in record:
+                      self._violations.append(f"Missing required field: {field}")
+                      return False
+                  if rule.get("type") and not isinstance(record[field], self._type_map(rule["type"])):
+                      self._violations.append(f"Type mismatch for {field}")
+                      return False
+              return True
+
+          def _type_map(self, type_name: str) -> type:
+              return {"string": str, "integer": int, "boolean": bool, "float": float}.get(type_name, object)
+
+          def get_violations(self) -> List[str]:
+              return list(self._violations)
+    src/scheduling/batch_scheduler.py: |
+      from datetime import datetime, timedelta
+      from typing import List, Callable
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      SCHEDULE_INTERVAL = timedelta(minutes=15)
+
+      class BatchScheduler:
+          def __init__(self, interval: timedelta = SCHEDULE_INTERVAL):
+              self.interval = interval
+              self._jobs: List[dict] = []
+
+          def schedule(self, name: str, handler: Callable) -> None:
+              self._jobs.append({
+                  "name": name,
+                  "handler": handler,
+                  "next_run": datetime.utcnow() + self.interval,
+              })
+              logger.info(f"Scheduled job '{name}' every {self.interval}")
+
+          def pending_jobs(self) -> List[str]:
+              now = datetime.utcnow()
+              return [j["name"] for j in self._jobs if j["next_run"] <= now]
+
+          def run_pending(self) -> int:
+              ran = 0
+              for job in self._jobs:
+                  if job["next_run"] <= datetime.utcnow():
+                      job["handler"]()
+                      job["next_run"] = datetime.utcnow() + self.interval
+                      ran += 1
+              return ran
+    tests/test_data_pipeline.py: |
+      from src.data_pipeline import extract_records, transform_records, DataValidator
+
+      def test_extract_returns_records():
+          records = extract_records("test_source")
+          assert len(records) > 0
+          assert all("id" in r for r in records)
+
+      def test_transform_applies_mapping():
+          records = [{"id": 1, "source": "s3"}]
+          mapping = {"id": "record_id", "source": "origin"}
+          result = transform_records(records, mapping)
+          assert result[0]["record_id"] == 1
+          assert result[0]["origin"] == "s3"
+
+      def test_validator_catches_missing():
+          v = DataValidator({"name": {}, "age": {}})
+          assert not v.validate({"name": "test"})
+          assert len(v.get_errors()) == 1
+
+      def test_validator_passes_complete():
+          v = DataValidator({"name": {}, "age": {}})
+          assert v.validate({"name": "test", "age": 30})
+    src/config/pipeline_config.py: |
+      import os
+      from dataclasses import dataclass
+
+      @dataclass
+      class PipelineSettings:
+          batch_size: int = 100
+          retry_count: int = 3
+          timeout_seconds: float = 30.0
+          source_url: str = ""
+
+      def load_pipeline_config() -> PipelineSettings:
+          return PipelineSettings(
+              batch_size=int(os.getenv("BATCH_SIZE", "100")),
+              retry_count=int(os.getenv("RETRY_COUNT", "3")),
+              timeout_seconds=float(os.getenv("TIMEOUT", "30.0")),
+              source_url=os.getenv("SOURCE_URL", ""),
+          )
+  changed_files:
+    src/data_pipeline.py: |
+      import logging
+      from typing import List, Dict, Optional
+      from dataclasses import dataclass
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class PipelineConfig:
+          batch_size: int = 100
+          retry_count: int = 3
+          timeout_seconds: float = 30.0
+
+      def extract_records(source: str, limit: int = 50) -> List[Dict]:
+          logger.info(f"Extracting from {source} with limit={limit}")
+          records = []
+          for i in range(min(limit, 100)):
+              records.append({"id": i, "source": source, "valid": True})
+          return records
+
+      class DataValidator:
+          def __init__(self, schema: Dict):
+              self.schema = schema
+              self._errors: List[str] = []
+
+          def validate(self, record: Dict) -> bool:
+              for field_name in self.schema:
+                  if field_name not in record:
+                      self._errors.append(f"Missing: {field_name}")
+                      return False
+              return True
+
+          def get_errors(self) -> List[str]:
+              return self._errors.copy()
+
+      def transform_records(records: List[Dict], mapping: Dict) -> List[Dict]:
+          transformed = []
+          for record in records:
+              new_record = {"_transformed": True}
+              for old_key, new_key in mapping.items():
+                  if old_key in record:
+                      new_record[new_key] = record[old_key]
+              transformed.append(new_record)
+          logger.info(f"Transformed {len(transformed)} records")
+          return transformed
+  commit_message: Update files
+fragments:
+- id: data_pipeline
+  selector:
+    path: src/data_pipeline.py
+    anchor: 'def extract_records(source: str, limit: int = 50) -> List[Dict]'
+- id: data_pipeline_1
+  selector:
+    path: src/data_pipeline.py
+    anchor: 'new_record = {"_transformed": True}'
+- id: data_pipeline_2
+  selector:
+    path: src/data_pipeline.py
+    anchor: '"valid": True'
+- id: pipeline_runner
+  selector:
+    path: src/pipeline_runner.py
+    anchor: raw = extract_records(source)
+- id: pipeline_runner_1
+  selector:
+    path: src/pipeline_runner.py
+    anchor: transformed = transform_records(raw, FIELD_MAPPING)
+- id: pipeline_runner_2
+  selector:
+    path: src/pipeline_runner.py
+    anchor: '"id": "record_id"'
+- id: pipeline_runner_3
+  selector:
+    path: src/pipeline_runner.py
+    anchor: '"source": "origin"'
+- id: no_data_validator
+  selector:
+    path: src/quality/data_validator.py
+- id: no_db_loader
+  selector:
+    path: src/loaders/db_loader.py
+- id: no_batch_scheduler
+  selector:
+    path: src/scheduling/batch_scheduler.py
+- id: no_test_data_pipeline
+  selector:
+    path: tests/test_data_pipeline.py
+- id: no_pipeline_config
+  selector:
+    path: src/config/pipeline_config.py
+- id: no_global_0
+  selector:
+    anchor: DataQualityValidator
+- id: no_global_1
+  selector:
+    anchor: check_record
+- id: no_global_2
+  selector:
+    anchor: _type_map
+- id: no_global_3
+  selector:
+    anchor: SUPPORTED_TYPES
+- id: no_global_4
+  selector:
+    anchor: load_records
+- id: no_global_5
+  selector:
+    anchor: upsert_records
+- id: no_global_6
+  selector:
+    anchor: INSERT INTO
+- id: no_global_7
+  selector:
+    anchor: BatchScheduler
+- id: no_global_8
+  selector:
+    anchor: SCHEDULE_INTERVAL
+- id: no_global_9
+  selector:
+    anchor: run_pending
+- id: no_global_10
+  selector:
+    anchor: test_extract_returns_records
+- id: no_global_11
+  selector:
+    anchor: test_transform_applies_mapping
+- id: no_global_12
+  selector:
+    anchor: test_validator_catches_missing
+- id: no_global_13
+  selector:
+    anchor: PipelineSettings
+- id: no_global_14
+  selector:
+    anchor: load_pipeline_config
+- id: no_global_15
+  selector:
+    anchor: SOURCE_URL
+oracle:
+  required:
+  - data_pipeline
+  - data_pipeline_1
+  - data_pipeline_2
+  - pipeline_runner
+  - pipeline_runner_1
+  - pipeline_runner_2
+  - pipeline_runner_3
+  allowed: []
+  forbidden:
+  - no_data_validator
+  - no_db_loader
+  - no_batch_scheduler
+  - no_test_data_pipeline
+  - no_pipeline_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

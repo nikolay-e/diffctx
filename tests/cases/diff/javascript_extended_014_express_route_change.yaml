@@ -1,0 +1,154 @@
+name: javascript_extended_014_express_route_change
+repo:
+  initial_files:
+    src/routes/routes.ts: |
+      import { Router } from 'express';
+
+      export const userRouter = Router();
+
+      userRouter.get('/:id', (req, res) => {
+          res.json({ id: req.params.id });
+      });
+    src/routes/middleware.ts: |
+      import { userRouter } from './routes';
+
+      export function setupRoutes(app: any) {
+          app.use('/users', userRouter);
+      }
+    src/middleware/auth.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+          const token = req.headers.authorization?.replace('Bearer ', '');
+          if (!token) {
+              res.status(401).json({ error: 'Unauthorized' });
+              return;
+          }
+          next();
+      }
+
+      export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+          const role = (req as any).user?.role;
+          if (role !== 'admin') {
+              res.status(403).json({ error: 'Forbidden' });
+              return;
+          }
+          next();
+      }
+    src/validators/user-validator.ts: |
+      interface ValidationResult {
+          valid: boolean;
+          errors: string[];
+      }
+
+      export function validateCreateUser(body: any): ValidationResult {
+          const errors: string[] = [];
+          if (!body.name) errors.push('name is required');
+          if (!body.email) errors.push('email is required');
+          return { valid: errors.length === 0, errors };
+      }
+
+      export function validateUpdateUser(body: any): ValidationResult {
+          const errors: string[] = [];
+          if (body.email && !body.email.includes('@')) {
+              errors.push('invalid email format');
+          }
+          return { valid: errors.length === 0, errors };
+      }
+  changed_files:
+    src/routes/routes.ts: |
+      import { Router } from 'express';
+
+      export const userRouter = Router();
+
+      userRouter.get('/:id', (req, res) => {
+          res.json({ id: req.params.id });
+      });
+
+      userRouter.post('/', (req, res) => {
+          res.status(201).json(req.body);
+      });
+
+      userRouter.delete('/:id', (req, res) => {
+          res.status(204).send();
+      });
+    src/routes/middleware.ts: |
+      import { userRouter } from './routes';
+
+      export function setupRoutes(app: any) {
+          app.use('/users', userRouter);
+      }
+    src/middleware/auth.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+          const token = req.headers.authorization?.replace('Bearer ', '');
+          if (!token) {
+              res.status(401).json({ error: 'Unauthorized' });
+              return;
+          }
+          next();
+      }
+
+      export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+          const role = (req as any).user?.role;
+          if (role !== 'admin') {
+              res.status(403).json({ error: 'Forbidden' });
+              return;
+          }
+          next();
+      }
+    src/validators/user-validator.ts: |
+      interface ValidationResult {
+          valid: boolean;
+          errors: string[];
+      }
+
+      export function validateCreateUser(body: any): ValidationResult {
+          const errors: string[] = [];
+          if (!body.name) errors.push('name is required');
+          if (!body.email) errors.push('email is required');
+          return { valid: errors.length === 0, errors };
+      }
+
+      export function validateUpdateUser(body: any): ValidationResult {
+          const errors: string[] = [];
+          if (body.email && !body.email.includes('@')) {
+              errors.push('invalid email format');
+          }
+          return { valid: errors.length === 0, errors };
+      }
+  commit_message: Update files
+fragments:
+- id: routes_file
+  selector:
+    path: src/routes/routes.ts
+- id: req_global_0
+  selector:
+    anchor: userRouter = Router()
+- id: req_global_1
+  selector:
+    anchor: (req, res) => {
+- id: no_global_0
+  selector:
+    anchor: requireAuth
+- id: no_global_1
+  selector:
+    anchor: requireAdmin
+- id: no_global_2
+  selector:
+    anchor: validateCreateUser
+- id: no_global_3
+  selector:
+    anchor: validateUpdateUser
+oracle:
+  required:
+  - routes_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

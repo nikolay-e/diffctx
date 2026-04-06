@@ -1,0 +1,288 @@
+name: go_015_wire_build
+repo:
+  initial_files:
+    internal/wire/wire.go: |
+      //go:build wireinject
+      // +build wireinject
+
+      package wire
+
+      import (
+          "github.com/google/wire"
+          "myproject/internal/config"
+          "myproject/internal/repository"
+          "myproject/internal/service"
+      )
+
+      func InitializeApp(cfg *config.Config) (*App, error) {
+          wire.Build(
+              NewApp,
+              repository.NewUserRepository,
+              service.NewUserService,
+          )
+          return nil, nil
+      }
+    internal/wire/providers.go: |
+      package wire
+
+      import (
+          "myproject/internal/repository"
+          "myproject/internal/service"
+      )
+
+      type App struct {
+          userService *service.UserService
+      }
+
+      func NewApp(userService *service.UserService) *App {
+          return &App{userService: userService}
+      }
+    internal/repository/user_repository.go: |
+      package repository
+
+      import "database/sql"
+
+      type UserRepository struct {
+          db *sql.DB
+      }
+
+      func NewUserRepository(db *sql.DB) *UserRepository {
+          return &UserRepository{db: db}
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import "myproject/internal/repository"
+
+      type UserService struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserService(repo *repository.UserRepository) *UserService {
+          return &UserService{repo: repo}
+      }
+    internal/unrelated/di/container.go: |
+      package di
+
+      const GARBAGE_GO_DI_CONTAINER_001 = "di_garbage"
+
+      type GARBAGE_GO_TYPE_CONTAINER_002 struct {
+          services map[string]interface{}
+      }
+
+      func GARBAGE_GO_FUNC_CONTAINER_003() string {
+          return "GARBAGE_GO_CONTAINER_UNUSED_004"
+      }
+    internal/unrelated/di/injector.go: |
+      package di
+
+      const GARBAGE_GO_DI_INJECTOR_005 = "injector_garbage"
+
+      type GARBAGE_GO_TYPE_INJECTOR_006 struct {
+          bindings map[string]func() interface{}
+      }
+
+      func GARBAGE_GO_FUNC_INJECTOR_007() {
+          println("GARBAGE_GO_INJECTOR_OUTPUT_008")
+      }
+  changed_files:
+    internal/wire/wire.go: |
+      //go:build wireinject
+      // +build wireinject
+
+      package wire
+
+      import (
+          "github.com/google/wire"
+          "myproject/internal/cache"
+          "myproject/internal/config"
+          "myproject/internal/database"
+          "myproject/internal/repository"
+          "myproject/internal/service"
+      )
+
+      var RepositorySet = wire.NewSet(
+          repository.NewUserRepository,
+          repository.NewOrderRepository,
+          repository.NewProductRepository,
+      )
+
+      var ServiceSet = wire.NewSet(
+          service.NewUserService,
+          service.NewOrderService,
+          service.NewProductService,
+      )
+
+      var InfrastructureSet = wire.NewSet(
+          database.NewConnection,
+          cache.NewRedisCache,
+          ProvideLogger,
+      )
+
+      func InitializeApp(cfg *config.Config) (*App, error) {
+          wire.Build(
+              NewApp,
+              InfrastructureSet,
+              RepositorySet,
+              ServiceSet,
+          )
+          return nil, nil
+      }
+
+      func InitializeTestApp(cfg *config.Config) (*App, error) {
+          wire.Build(
+              NewApp,
+              database.NewTestConnection,
+              cache.NewMemoryCache,
+              ProvideTestLogger,
+              RepositorySet,
+              ServiceSet,
+          )
+          return nil, nil
+      }
+    internal/wire/providers.go: |
+      package wire
+
+      import (
+          "log"
+          "myproject/internal/cache"
+          "myproject/internal/config"
+          "myproject/internal/repository"
+          "myproject/internal/service"
+      )
+
+      type App struct {
+          config       *config.Config
+          userService  *service.UserService
+          orderService *service.OrderService
+          cache        *cache.RedisCache
+          logger       *log.Logger
+      }
+
+      func NewApp(
+          cfg *config.Config,
+          userService *service.UserService,
+          orderService *service.OrderService,
+          cache *cache.RedisCache,
+          logger *log.Logger,
+      ) *App {
+          return &App{
+              config:       cfg,
+              userService:  userService,
+              orderService: orderService,
+              cache:        cache,
+              logger:       logger,
+          }
+      }
+
+      func (a *App) Start() error {
+          a.logger.Println("Starting application...")
+          return nil
+      }
+
+      func (a *App) Shutdown() error {
+          a.logger.Println("Shutting down application...")
+          return a.cache.Close()
+      }
+    internal/repository/user_repository.go: |
+      package repository
+
+      import "database/sql"
+
+      type UserRepository struct {
+          db *sql.DB
+      }
+
+      func NewUserRepository(db *sql.DB) *UserRepository {
+          return &UserRepository{db: db}
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import "myproject/internal/repository"
+
+      type UserService struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserService(repo *repository.UserRepository) *UserService {
+          return &UserService{repo: repo}
+      }
+    internal/unrelated/di/container.go: |
+      package di
+
+      const GARBAGE_GO_DI_CONTAINER_001 = "di_garbage"
+
+      type GARBAGE_GO_TYPE_CONTAINER_002 struct {
+          services map[string]interface{}
+      }
+
+      func GARBAGE_GO_FUNC_CONTAINER_003() string {
+          return "GARBAGE_GO_CONTAINER_UNUSED_004"
+      }
+    internal/unrelated/di/injector.go: |
+      package di
+
+      const GARBAGE_GO_DI_INJECTOR_005 = "injector_garbage"
+
+      type GARBAGE_GO_TYPE_INJECTOR_006 struct {
+          bindings map[string]func() interface{}
+      }
+
+      func GARBAGE_GO_FUNC_INJECTOR_007() {
+          println("GARBAGE_GO_INJECTOR_OUTPUT_008")
+      }
+  commit_message: Update files
+fragments:
+- id: providers_file
+  selector:
+    path: internal/wire/providers.go
+- id: wire_file
+  selector:
+    path: internal/wire/wire.go
+- id: req_global_0
+  selector:
+    anchor: config       *config.Config
+- id: req_global_1
+  selector:
+    anchor: func (a *App) Start() error {
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GO_DI_CONTAINER_001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GO_DI_INJECTOR_005
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GO_FUNC_CONTAINER_003
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GO_FUNC_INJECTOR_007
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GO_TYPE_CONTAINER_002
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GO_TYPE_INJECTOR_006
+- id: no_global_6
+  selector:
+    anchor: container.go
+- id: no_global_7
+  selector:
+    anchor: injector.go
+oracle:
+  required:
+  - providers_file
+  - wire_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

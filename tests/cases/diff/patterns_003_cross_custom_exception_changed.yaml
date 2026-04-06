@@ -1,0 +1,449 @@
+name: patterns_003_cross_custom_exception_changed
+repo:
+  initial_files:
+    exceptions.py: |
+      class ValidationError(Exception):
+          pass
+
+      class NotFoundError(Exception):
+          def __init__(self, resource: str, identifier: str):
+              self.resource = resource
+              self.identifier = identifier
+              super().__init__(f"{resource} {identifier} not found")
+    validators.py: |
+      from exceptions import ValidationError
+
+      def validate_user_data(data):
+          if not data:
+              raise ValidationError("Data is empty")
+          if "email" not in data:
+              raise ValidationError("Email is required")
+          if "name" not in data:
+              raise ValidationError("Name is required")
+          return True
+
+      def validate_order_data(data):
+          if not data.get("items"):
+              raise ValidationError("Order must have items")
+          if data.get("total", 0) <= 0:
+              raise ValidationError("Total must be positive")
+          return True
+    handlers.py: |
+      from exceptions import ValidationError
+
+      def handle_request(data):
+          try:
+              return process(data)
+          except ValidationError as e:
+              return {"error": str(e), "status": 422}
+
+      def handle_batch_request(items):
+          results = []
+          for item in items:
+              try:
+                  results.append(process(item))
+              except ValidationError as e:
+                  results.append({"error": str(e), "item": item})
+          return results
+
+      def process(data):
+          return data
+    middleware/error_handler.py: |
+      import logging
+      from exceptions import ValidationError, NotFoundError
+
+      logger = logging.getLogger(__name__)
+
+      class ErrorHandlerMiddleware:
+          def __init__(self, app):
+              self.app = app
+
+          def process_request(self, request):
+              try:
+                  return self.app.handle(request)
+              except ValidationError as e:
+                  logger.warning(f"Validation error: {e}")
+                  return {"status": 422, "error": str(e)}
+              except NotFoundError as e:
+                  logger.info(f"Not found: {e}")
+                  return {"status": 404, "error": str(e)}
+              except Exception as e:
+                  logger.error(f"Unexpected error: {e}")
+                  return {"status": 500, "error": "Internal server error"}
+    services/user_service.py: |
+      from validators import validate_user_data
+
+      class UserService:
+          def __init__(self):
+              self._users: dict[int, dict] = {}
+              self._next_id = 1
+
+          def create_user(self, data: dict) -> dict:
+              validate_user_data(data)
+              user_id = self._next_id
+              self._next_id += 1
+              user = {"id": user_id, **data}
+              self._users[user_id] = user
+              return user
+
+          def get_user(self, user_id: int) -> dict | None:
+              return self._users.get(user_id)
+
+          def list_users(self) -> list[dict]:
+              return list(self._users.values())
+    tests/test_validation.py: |
+      import pytest
+      from exceptions import ValidationError
+      from validators import validate_user_data, validate_order_data
+
+      def test_validate_user_data_empty():
+          with pytest.raises(ValidationError):
+              validate_user_data(None)
+
+      def test_validate_user_data_missing_email():
+          with pytest.raises(ValidationError):
+              validate_user_data({"name": "Alice"})
+
+      def test_validate_user_data_missing_name():
+          with pytest.raises(ValidationError):
+              validate_user_data({"email": "alice@example.com"})
+
+      def test_validate_user_data_valid():
+          assert validate_user_data({"name": "Alice", "email": "alice@example.com"})
+
+      def test_validate_order_data_no_items():
+          with pytest.raises(ValidationError):
+              validate_order_data({"total": 100})
+
+      def test_validate_order_data_valid():
+          assert validate_order_data({"items": ["item1"], "total": 50})
+    utils/error_serializer.py: |
+      import traceback
+      from typing import Any
+
+      INCLUDE_TRACEBACK = False
+      MAX_MESSAGE_LENGTH = 500
+
+      class ErrorSerializer:
+          def serialize(self, error: Exception) -> dict[str, Any]:
+              result = {
+                  "type": type(error).__name__,
+                  "message": str(error)[:MAX_MESSAGE_LENGTH],
+                  "args": [str(a) for a in error.args],
+              }
+              if INCLUDE_TRACEBACK:
+                  result["traceback"] = traceback.format_exc()
+              return result
+
+          def serialize_many(self, errors: list[Exception]) -> list[dict]:
+              return [self.serialize(e) for e in errors]
+    models/form_field.py: |
+      from typing import Any
+
+      SUPPORTED_FIELD_TYPES = ["text", "email", "number", "date", "select"]
+
+      class FormField:
+          def __init__(self, name: str, field_type: str, required: bool = False):
+              self.name = name
+              self.field_type = field_type
+              self.required = required
+              self.validators: list[callable] = []
+
+          def validate(self, value: Any) -> list[str]:
+              errors = []
+              if self.required and not value:
+                  errors.append(f"{self.name} is required")
+              for validator in self.validators:
+                  error = validator(value)
+                  if error:
+                      errors.append(error)
+              return errors
+
+          def add_validator(self, fn: callable) -> None:
+              self.validators.append(fn)
+  changed_files:
+    exceptions.py: |
+      class ValidationError(Exception):
+          def __init__(self, field, message):
+              self.field = field
+              self.message = message
+              super().__init__(f"{field}: {message}")
+
+      class NotFoundError(Exception):
+          def __init__(self, resource: str, identifier: str):
+              self.resource = resource
+              self.identifier = identifier
+              super().__init__(f"{resource} {identifier} not found")
+    validators.py: |
+      from exceptions import ValidationError
+
+      def validate_user_data(data):
+          if not data:
+              raise ValidationError("Data is empty")
+          if "email" not in data:
+              raise ValidationError("Email is required")
+          if "name" not in data:
+              raise ValidationError("Name is required")
+          return True
+
+      def validate_order_data(data):
+          if not data.get("items"):
+              raise ValidationError("Order must have items")
+          if data.get("total", 0) <= 0:
+              raise ValidationError("Total must be positive")
+          return True
+    handlers.py: |
+      from exceptions import ValidationError
+
+      def handle_request(data):
+          try:
+              return process(data)
+          except ValidationError as e:
+              return {"error": str(e), "status": 422}
+
+      def handle_batch_request(items):
+          results = []
+          for item in items:
+              try:
+                  results.append(process(item))
+              except ValidationError as e:
+                  results.append({"error": str(e), "item": item})
+          return results
+
+      def process(data):
+          return data
+    middleware/error_handler.py: |
+      import logging
+      from exceptions import ValidationError, NotFoundError
+
+      logger = logging.getLogger(__name__)
+
+      class ErrorHandlerMiddleware:
+          def __init__(self, app):
+              self.app = app
+
+          def process_request(self, request):
+              try:
+                  return self.app.handle(request)
+              except ValidationError as e:
+                  logger.warning(f"Validation error: {e}")
+                  return {"status": 422, "error": str(e)}
+              except NotFoundError as e:
+                  logger.info(f"Not found: {e}")
+                  return {"status": 404, "error": str(e)}
+              except Exception as e:
+                  logger.error(f"Unexpected error: {e}")
+                  return {"status": 500, "error": "Internal server error"}
+    services/user_service.py: |
+      from validators import validate_user_data
+
+      class UserService:
+          def __init__(self):
+              self._users: dict[int, dict] = {}
+              self._next_id = 1
+
+          def create_user(self, data: dict) -> dict:
+              validate_user_data(data)
+              user_id = self._next_id
+              self._next_id += 1
+              user = {"id": user_id, **data}
+              self._users[user_id] = user
+              return user
+
+          def get_user(self, user_id: int) -> dict | None:
+              return self._users.get(user_id)
+
+          def list_users(self) -> list[dict]:
+              return list(self._users.values())
+    tests/test_validation.py: |
+      import pytest
+      from exceptions import ValidationError
+      from validators import validate_user_data, validate_order_data
+
+      def test_validate_user_data_empty():
+          with pytest.raises(ValidationError):
+              validate_user_data(None)
+
+      def test_validate_user_data_missing_email():
+          with pytest.raises(ValidationError):
+              validate_user_data({"name": "Alice"})
+
+      def test_validate_user_data_missing_name():
+          with pytest.raises(ValidationError):
+              validate_user_data({"email": "alice@example.com"})
+
+      def test_validate_user_data_valid():
+          assert validate_user_data({"name": "Alice", "email": "alice@example.com"})
+
+      def test_validate_order_data_no_items():
+          with pytest.raises(ValidationError):
+              validate_order_data({"total": 100})
+
+      def test_validate_order_data_valid():
+          assert validate_order_data({"items": ["item1"], "total": 50})
+    utils/error_serializer.py: |
+      import traceback
+      from typing import Any
+
+      INCLUDE_TRACEBACK = False
+      MAX_MESSAGE_LENGTH = 500
+
+      class ErrorSerializer:
+          def serialize(self, error: Exception) -> dict[str, Any]:
+              result = {
+                  "type": type(error).__name__,
+                  "message": str(error)[:MAX_MESSAGE_LENGTH],
+                  "args": [str(a) for a in error.args],
+              }
+              if INCLUDE_TRACEBACK:
+                  result["traceback"] = traceback.format_exc()
+              return result
+
+          def serialize_many(self, errors: list[Exception]) -> list[dict]:
+              return [self.serialize(e) for e in errors]
+    models/form_field.py: |
+      from typing import Any
+
+      SUPPORTED_FIELD_TYPES = ["text", "email", "number", "date", "select"]
+
+      class FormField:
+          def __init__(self, name: str, field_type: str, required: bool = False):
+              self.name = name
+              self.field_type = field_type
+              self.required = required
+              self.validators: list[callable] = []
+
+          def validate(self, value: Any) -> list[str]:
+              errors = []
+              if self.required and not value:
+                  errors.append(f"{self.name} is required")
+              for validator in self.validators:
+                  error = validator(value)
+                  if error:
+                      errors.append(error)
+              return errors
+
+          def add_validator(self, fn: callable) -> None:
+              self.validators.append(fn)
+  commit_message: Update files
+fragments:
+- id: exceptions
+  selector:
+    path: exceptions.py
+    anchor: 'def __init__(self, field, message):'
+- id: exceptions_1
+  selector:
+    path: exceptions.py
+    anchor: self.field = field
+- id: exceptions_2
+  selector:
+    path: exceptions.py
+    anchor: 'super().__init__(f"{field}: {message}")'
+- id: validators
+  selector:
+    path: validators.py
+    anchor: from exceptions import ValidationError
+- id: validators_1
+  selector:
+    path: validators.py
+    anchor: raise ValidationError("Data is empty")
+- id: validators_2
+  selector:
+    path: validators.py
+    anchor: raise ValidationError("Email is required")
+- id: handlers
+  selector:
+    path: handlers.py
+    anchor: from exceptions import ValidationError
+- id: handlers_1
+  selector:
+    path: handlers.py
+    anchor: 'except ValidationError as e:'
+- id: no_error_handler
+  selector:
+    path: middleware/error_handler.py
+- id: no_user_service
+  selector:
+    path: services/user_service.py
+- id: no_test_validation
+  selector:
+    path: tests/test_validation.py
+- id: no_error_serializer
+  selector:
+    path: utils/error_serializer.py
+- id: no_form_field
+  selector:
+    path: models/form_field.py
+- id: no_global_0
+  selector:
+    anchor: ErrorHandlerMiddleware
+- id: no_global_1
+  selector:
+    anchor: process_request
+- id: no_global_2
+  selector:
+    anchor: UserService
+- id: no_global_3
+  selector:
+    anchor: create_user
+- id: no_global_4
+  selector:
+    anchor: list_users
+- id: no_global_5
+  selector:
+    anchor: test_validate_user_data_empty
+- id: no_global_6
+  selector:
+    anchor: test_validate_user_data_missing_email
+- id: no_global_7
+  selector:
+    anchor: test_validate_order_data_no_items
+- id: no_global_8
+  selector:
+    anchor: ErrorSerializer
+- id: no_global_9
+  selector:
+    anchor: INCLUDE_TRACEBACK
+- id: no_global_10
+  selector:
+    anchor: MAX_MESSAGE_LENGTH
+- id: no_global_11
+  selector:
+    anchor: FormField
+- id: no_global_12
+  selector:
+    anchor: SUPPORTED_FIELD_TYPES
+- id: no_global_13
+  selector:
+    anchor: add_validator
+oracle:
+  required:
+  - exceptions
+  - exceptions_1
+  - exceptions_2
+  - validators
+  - validators_1
+  - validators_2
+  - handlers
+  - handlers_1
+  allowed: []
+  forbidden:
+  - no_error_handler
+  - no_user_service
+  - no_test_validation
+  - no_error_serializer
+  - no_form_field
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

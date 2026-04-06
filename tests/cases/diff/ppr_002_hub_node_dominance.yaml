@@ -1,0 +1,422 @@
+name: ppr_002_hub_node_dominance
+repo:
+  initial_files:
+    hub/central_utils.py: |
+      def utils_helper():
+          return internal_hub_processor()
+
+      def internal_hub_processor():
+          return "hub_processed"
+
+      def secondary_hub_util():
+          return utils_helper() + "_secondary"
+    hub/callers.py: |
+      from hub.central_utils import utils_helper, secondary_hub_util
+
+      def caller0():
+          return utils_helper()
+
+      def caller1():
+          return utils_helper()
+
+      def caller2():
+          return utils_helper()
+
+      def caller3():
+          return utils_helper()
+
+      def caller4():
+          return utils_helper()
+
+      def caller5():
+          return utils_helper()
+
+      def caller6():
+          return utils_helper()
+
+      def caller7():
+          return utils_helper()
+
+      def caller8():
+          return utils_helper()
+
+      def caller9():
+          return utils_helper()
+
+      def caller10():
+          return utils_helper()
+
+      def caller11():
+          return utils_helper()
+
+      def caller12():
+          return secondary_hub_util()
+
+      def orchestrator_caller():
+          results = []
+          results.append(caller0())
+          results.append(caller1())
+          results.append(caller2())
+          return results
+    hub/garbage_hub_consumer.py: |
+      from hub.central_utils import utils_helper
+      GARBAGE_PPR_002_HUB_CONSUMER_A = "hub_consumer_marker"
+      GARBAGE_PPR_002_HUB_CONSUMER_B = 42
+
+      class HubConsumerReport:
+          def generate(self):
+              return utils_helper()
+
+          def format_output(self, data):
+              return str(data)
+    hub/garbage_caller_collision.py: |
+      GARBAGE_PPR_002_CALLER_COLLISION_C = "collision_marker"
+      GARBAGE_PPR_002_CALLER_COLLISION_D = True
+
+      def caller0():
+          return "completely_different_caller0"
+
+      def caller0_wrapper():
+          return caller0() + "_wrapped"
+    hub/garbage_hub_metrics.py: |
+      GARBAGE_PPR_002_METRICS_SIBLING_E = "metrics_sibling"
+      GARBAGE_PPR_002_METRICS_VERSION_F = 3
+
+      def compute_hub_metrics(data):
+          return len(data)
+
+      def aggregate_hub_stats():
+          return compute_hub_metrics([1, 2, 3])
+    garbage/GARBAGE_PPR_j1k2l3_hub_noise.py: |
+      GARBAGE_HUB_MARKER_PPR002 = "hub_garbage"
+
+      def garbage_hub_func_ppr002_alpha():
+          return GARBAGE_HUB_MARKER_PPR002
+
+      def garbage_hub_func_ppr002_beta():
+          return garbage_hub_func_ppr002_alpha() + "_beta"
+
+      def garbage_hub_func_ppr002_gamma():
+          return garbage_hub_func_ppr002_beta() + "_gamma"
+
+      class GarbageHubClassPPR002:
+          def __init__(self):
+              self.value = GARBAGE_HUB_MARKER_PPR002
+
+          def garbage_hub_method(self):
+              return self.value
+    garbage/GARBAGE_PPR_m4n5o6_fake_callers.py: |
+      FAKE_CALLER_CONSTANT_PPR002 = 999
+
+      def fake_caller_ppr002_one():
+          return FAKE_CALLER_CONSTANT_PPR002
+
+      def fake_caller_ppr002_two():
+          return fake_caller_ppr002_one() * 2
+
+      def fake_caller_ppr002_three():
+          return fake_caller_ppr002_two() + fake_caller_ppr002_one()
+
+      def fake_caller_chain_ppr002():
+          return fake_caller_ppr002_three() + 100
+    garbage/GARBAGE_PPR_p7q8r9_isolated_hub.py: |
+      ISOLATED_HUB_FLAG_PPR002 = False
+
+      def isolated_hub_helper_ppr002():
+          return "isolated_helper"
+
+      def isolated_hub_caller_ppr002_a():
+          return isolated_hub_helper_ppr002()
+
+      def isolated_hub_caller_ppr002_b():
+          return isolated_hub_helper_ppr002()
+
+      def isolated_hub_caller_ppr002_c():
+          return isolated_hub_helper_ppr002()
+    unrelated/separate_module.py: |
+      def completely_separate_func():
+          return "separate"
+
+      def another_separate_func():
+          return completely_separate_func() + "_another"
+  changed_files:
+    hub/central_utils.py: |
+      def utils_helper():
+          return internal_hub_processor()
+
+      def internal_hub_processor():
+          return "hub_processed"
+
+      def secondary_hub_util():
+          return utils_helper() + "_secondary"
+    hub/callers.py: |
+      from hub.central_utils import utils_helper, secondary_hub_util
+
+      def caller0():
+          result = utils_helper()
+          return result + "_modified_hub_output"
+
+      def caller1():
+          return utils_helper()
+
+      def caller2():
+          return utils_helper()
+
+      def caller3():
+          return utils_helper()
+
+      def caller4():
+          return utils_helper()
+
+      def caller5():
+          return utils_helper()
+
+      def caller6():
+          return utils_helper()
+
+      def caller7():
+          return utils_helper()
+
+      def caller8():
+          return utils_helper()
+
+      def caller9():
+          return utils_helper()
+
+      def caller10():
+          return utils_helper()
+
+      def caller11():
+          return utils_helper()
+
+      def caller12():
+          return secondary_hub_util()
+
+      def orchestrator_caller():
+          results = []
+          results.append(caller0())
+          results.append(caller1())
+          results.append(caller2())
+          return results
+    hub/garbage_hub_consumer.py: |
+      from hub.central_utils import utils_helper
+      GARBAGE_PPR_002_HUB_CONSUMER_A = "hub_consumer_marker"
+      GARBAGE_PPR_002_HUB_CONSUMER_B = 42
+
+      class HubConsumerReport:
+          def generate(self):
+              return utils_helper()
+
+          def format_output(self, data):
+              return str(data)
+    hub/garbage_caller_collision.py: |
+      GARBAGE_PPR_002_CALLER_COLLISION_C = "collision_marker"
+      GARBAGE_PPR_002_CALLER_COLLISION_D = True
+
+      def caller0():
+          return "completely_different_caller0"
+
+      def caller0_wrapper():
+          return caller0() + "_wrapped"
+    hub/garbage_hub_metrics.py: |
+      GARBAGE_PPR_002_METRICS_SIBLING_E = "metrics_sibling"
+      GARBAGE_PPR_002_METRICS_VERSION_F = 3
+
+      def compute_hub_metrics(data):
+          return len(data)
+
+      def aggregate_hub_stats():
+          return compute_hub_metrics([1, 2, 3])
+    garbage/GARBAGE_PPR_j1k2l3_hub_noise.py: |
+      GARBAGE_HUB_MARKER_PPR002 = "hub_garbage"
+
+      def garbage_hub_func_ppr002_alpha():
+          return GARBAGE_HUB_MARKER_PPR002
+
+      def garbage_hub_func_ppr002_beta():
+          return garbage_hub_func_ppr002_alpha() + "_beta"
+
+      def garbage_hub_func_ppr002_gamma():
+          return garbage_hub_func_ppr002_beta() + "_gamma"
+
+      class GarbageHubClassPPR002:
+          def __init__(self):
+              self.value = GARBAGE_HUB_MARKER_PPR002
+
+          def garbage_hub_method(self):
+              return self.value
+    garbage/GARBAGE_PPR_m4n5o6_fake_callers.py: |
+      FAKE_CALLER_CONSTANT_PPR002 = 999
+
+      def fake_caller_ppr002_one():
+          return FAKE_CALLER_CONSTANT_PPR002
+
+      def fake_caller_ppr002_two():
+          return fake_caller_ppr002_one() * 2
+
+      def fake_caller_ppr002_three():
+          return fake_caller_ppr002_two() + fake_caller_ppr002_one()
+
+      def fake_caller_chain_ppr002():
+          return fake_caller_ppr002_three() + 100
+    garbage/GARBAGE_PPR_p7q8r9_isolated_hub.py: |
+      ISOLATED_HUB_FLAG_PPR002 = False
+
+      def isolated_hub_helper_ppr002():
+          return "isolated_helper"
+
+      def isolated_hub_caller_ppr002_a():
+          return isolated_hub_helper_ppr002()
+
+      def isolated_hub_caller_ppr002_b():
+          return isolated_hub_helper_ppr002()
+
+      def isolated_hub_caller_ppr002_c():
+          return isolated_hub_helper_ppr002()
+    unrelated/separate_module.py: |
+      def completely_separate_func():
+          return "separate"
+
+      def another_separate_func():
+          return completely_separate_func() + "_another"
+  commit_message: Update files
+fragments:
+- id: callers
+  selector:
+    path: hub/callers.py
+    anchor: 'def caller0():'
+- id: callers_1
+  selector:
+    path: hub/callers.py
+    anchor: result = utils_helper()
+- id: callers_2
+  selector:
+    path: hub/callers.py
+    anchor: return result + "_modified_hub_output"
+- id: no_garbage_ppr_j1k2l3_hub_noise
+  selector:
+    path: garbage/GARBAGE_PPR_j1k2l3_hub_noise.py
+- id: no_garbage_ppr_m4n5o6_fake_callers
+  selector:
+    path: garbage/GARBAGE_PPR_m4n5o6_fake_callers.py
+- id: no_garbage_ppr_p7q8r9_isolated_hub
+  selector:
+    path: garbage/GARBAGE_PPR_p7q8r9_isolated_hub.py
+- id: no_garbage_hub_consumer
+  selector:
+    path: hub/garbage_hub_consumer.py
+- id: no_garbage_caller_collision
+  selector:
+    path: hub/garbage_caller_collision.py
+- id: no_garbage_hub_metrics
+  selector:
+    path: hub/garbage_hub_metrics.py
+- id: no_separate_module
+  selector:
+    path: unrelated/separate_module.py
+- id: no_global_0
+  selector:
+    anchor: completely_separate_func
+- id: no_global_1
+  selector:
+    anchor: another_separate_func
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HUB_MARKER_PPR002
+- id: no_global_3
+  selector:
+    anchor: garbage_hub_func_ppr002_alpha
+- id: no_global_4
+  selector:
+    anchor: garbage_hub_func_ppr002_beta
+- id: no_global_5
+  selector:
+    anchor: garbage_hub_func_ppr002_gamma
+- id: no_global_6
+  selector:
+    anchor: GarbageHubClassPPR002
+- id: no_global_7
+  selector:
+    anchor: FAKE_CALLER_CONSTANT_PPR002
+- id: no_global_8
+  selector:
+    anchor: fake_caller_ppr002_one
+- id: no_global_9
+  selector:
+    anchor: fake_caller_ppr002_two
+- id: no_global_10
+  selector:
+    anchor: fake_caller_ppr002_three
+- id: no_global_11
+  selector:
+    anchor: fake_caller_chain_ppr002
+- id: no_global_12
+  selector:
+    anchor: ISOLATED_HUB_FLAG_PPR002
+- id: no_global_13
+  selector:
+    anchor: isolated_hub_helper_ppr002
+- id: no_global_14
+  selector:
+    anchor: isolated_hub_caller_ppr002_a
+- id: no_global_15
+  selector:
+    anchor: isolated_hub_caller_ppr002_b
+- id: no_global_16
+  selector:
+    anchor: isolated_hub_caller_ppr002_c
+- id: no_global_17
+  selector:
+    anchor: GARBAGE_PPR_002_HUB_CONSUMER_A
+- id: no_global_18
+  selector:
+    anchor: GARBAGE_PPR_002_HUB_CONSUMER_B
+- id: no_global_19
+  selector:
+    anchor: GARBAGE_PPR_002_CALLER_COLLISION_C
+- id: no_global_20
+  selector:
+    anchor: GARBAGE_PPR_002_CALLER_COLLISION_D
+- id: no_global_21
+  selector:
+    anchor: GARBAGE_PPR_002_METRICS_SIBLING_E
+- id: no_global_22
+  selector:
+    anchor: GARBAGE_PPR_002_METRICS_VERSION_F
+oracle:
+  required:
+  - callers
+  - callers_1
+  - callers_2
+  allowed: []
+  forbidden:
+  - no_garbage_ppr_j1k2l3_hub_noise
+  - no_garbage_ppr_m4n5o6_fake_callers
+  - no_garbage_ppr_p7q8r9_isolated_hub
+  - no_garbage_hub_consumer
+  - no_garbage_caller_collision
+  - no_garbage_hub_metrics
+  - no_separate_module
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21
+  - no_global_22

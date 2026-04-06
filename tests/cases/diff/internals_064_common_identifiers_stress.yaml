@@ -1,0 +1,222 @@
+name: internals_064_common_identifiers_stress
+repo:
+  initial_files:
+    src/data/repository.py: |
+      class UserRepository:
+          def get(self, id: int) -> dict:
+              return {"id": id}
+
+          def save(self, data: dict) -> bool:
+              return True
+    src/handlers/base_handler.py: |
+      BASE_HANDLER_MARKER_AAA111 = "base"
+
+      class BaseHandler:
+          HANDLER_CLASS_MARKER_BBB222 = "handler"
+
+          def handle(self, request: dict) -> dict:
+              HANDLE_METHOD_MARKER_CCC333 = True
+              return {}
+
+          def validate(self, data: dict) -> bool:
+              VALIDATE_METHOD_MARKER_DDD444 = True
+              return True
+
+          def process(self, item: dict) -> dict:
+              PROCESS_METHOD_MARKER_EEE555 = True
+              return item
+    src/handlers/event_handler.py: |
+      EVENT_HANDLER_MARKER_FFF666 = "event"
+
+      class EventHandler:
+          EVENT_CLASS_MARKER_GGG777 = "event_handler"
+
+          def handle(self, event: dict) -> dict:
+              EVENT_HANDLE_MARKER_HHH888 = True
+              return {"handled": True}
+
+          def validate(self, event: dict) -> bool:
+              EVENT_VALIDATE_MARKER_III999 = True
+              return "type" in event
+
+          def process(self, event: dict) -> dict:
+              EVENT_PROCESS_MARKER_JJJ000 = True
+              return event
+    src/services/processor_service.py: |
+      PROCESSOR_SERVICE_MARKER_KKK111 = "processor"
+
+      class ProcessorService:
+          SERVICE_CLASS_MARKER_LLL222 = "service"
+
+          def handle(self, data: dict) -> dict:
+              SERVICE_HANDLE_MARKER_MMM333 = True
+              return data
+
+          def validate(self, input_data: dict) -> bool:
+              SERVICE_VALIDATE_MARKER_NNN444 = True
+              return len(input_data) > 0
+
+          def process(self, payload: dict) -> dict:
+              SERVICE_PROCESS_MARKER_OOO555 = True
+              return payload
+  changed_files:
+    src/data/repository.py: |
+      class UserRepository:
+          def get(self, id: int) -> dict:
+              if id <= 0:
+                  raise ValueError("Invalid id")
+              return {"id": id, "found": True}
+
+          def save(self, data: dict) -> bool:
+              if "id" not in data:
+                  raise ValueError("Missing id")
+              return True
+
+          def delete(self, id: int) -> bool:
+              if id <= 0:
+                  raise ValueError("Invalid id")
+              return True
+    src/handlers/base_handler.py: |
+      BASE_HANDLER_MARKER_AAA111 = "base"
+
+      class BaseHandler:
+          HANDLER_CLASS_MARKER_BBB222 = "handler"
+
+          def handle(self, request: dict) -> dict:
+              HANDLE_METHOD_MARKER_CCC333 = True
+              return {}
+
+          def validate(self, data: dict) -> bool:
+              VALIDATE_METHOD_MARKER_DDD444 = True
+              return True
+
+          def process(self, item: dict) -> dict:
+              PROCESS_METHOD_MARKER_EEE555 = True
+              return item
+    src/handlers/event_handler.py: |
+      EVENT_HANDLER_MARKER_FFF666 = "event"
+
+      class EventHandler:
+          EVENT_CLASS_MARKER_GGG777 = "event_handler"
+
+          def handle(self, event: dict) -> dict:
+              EVENT_HANDLE_MARKER_HHH888 = True
+              return {"handled": True}
+
+          def validate(self, event: dict) -> bool:
+              EVENT_VALIDATE_MARKER_III999 = True
+              return "type" in event
+
+          def process(self, event: dict) -> dict:
+              EVENT_PROCESS_MARKER_JJJ000 = True
+              return event
+    src/services/processor_service.py: |
+      PROCESSOR_SERVICE_MARKER_KKK111 = "processor"
+
+      class ProcessorService:
+          SERVICE_CLASS_MARKER_LLL222 = "service"
+
+          def handle(self, data: dict) -> dict:
+              SERVICE_HANDLE_MARKER_MMM333 = True
+              return data
+
+          def validate(self, input_data: dict) -> bool:
+              SERVICE_VALIDATE_MARKER_NNN444 = True
+              return len(input_data) > 0
+
+          def process(self, payload: dict) -> dict:
+              SERVICE_PROCESS_MARKER_OOO555 = True
+              return payload
+  commit_message: Update files
+fragments:
+- id: repository
+  selector:
+    path: src/data/repository.py
+    anchor: raise ValueError("Invalid id")
+- id: repository_1
+  selector:
+    path: src/data/repository.py
+    anchor: 'if "id" not in data:'
+- id: repository_2
+  selector:
+    path: src/data/repository.py
+    anchor: 'def delete(self, id: int) -> bool:'
+- id: no_base_handler
+  selector:
+    path: src/handlers/base_handler.py
+- id: no_event_handler
+  selector:
+    path: src/handlers/event_handler.py
+- id: no_processor_service
+  selector:
+    path: src/services/processor_service.py
+- id: no_global_0
+  selector:
+    anchor: BASE_HANDLER_MARKER_AAA111
+- id: no_global_1
+  selector:
+    anchor: HANDLER_CLASS_MARKER_BBB222
+- id: no_global_2
+  selector:
+    anchor: HANDLE_METHOD_MARKER_CCC333
+- id: no_global_3
+  selector:
+    anchor: VALIDATE_METHOD_MARKER_DDD444
+- id: no_global_4
+  selector:
+    anchor: PROCESS_METHOD_MARKER_EEE555
+- id: no_global_5
+  selector:
+    anchor: EVENT_HANDLER_MARKER_FFF666
+- id: no_global_6
+  selector:
+    anchor: EVENT_CLASS_MARKER_GGG777
+- id: no_global_7
+  selector:
+    anchor: EVENT_HANDLE_MARKER_HHH888
+- id: no_global_8
+  selector:
+    anchor: EVENT_VALIDATE_MARKER_III999
+- id: no_global_9
+  selector:
+    anchor: EVENT_PROCESS_MARKER_JJJ000
+- id: no_global_10
+  selector:
+    anchor: PROCESSOR_SERVICE_MARKER_KKK111
+- id: no_global_11
+  selector:
+    anchor: SERVICE_CLASS_MARKER_LLL222
+- id: no_global_12
+  selector:
+    anchor: SERVICE_HANDLE_MARKER_MMM333
+- id: no_global_13
+  selector:
+    anchor: SERVICE_VALIDATE_MARKER_NNN444
+- id: no_global_14
+  selector:
+    anchor: SERVICE_PROCESS_MARKER_OOO555
+oracle:
+  required:
+  - repository
+  - repository_1
+  - repository_2
+  allowed: []
+  forbidden:
+  - no_base_handler
+  - no_event_handler
+  - no_processor_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

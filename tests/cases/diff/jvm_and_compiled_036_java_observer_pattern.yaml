@@ -1,0 +1,398 @@
+name: jvm_and_compiled_036_java_observer_pattern
+repo:
+  initial_files:
+    src/main/java/com/example/Event.java: |
+      package com.example;
+
+      public class Event {
+          private final String type;
+          private final Object data;
+
+          public Event(String type, Object data) {
+              this.type = type;
+              this.data = data;
+          }
+
+          public String getType() { return type; }
+          public Object getData() { return data; }
+
+          @Override
+          public String toString() {
+              return "Event{type='" + type + "', data=" + data + "}";
+          }
+      }
+    src/main/java/com/example/observer/PropertyChangeNotifier.java: |
+      package com.example.observer;
+
+      import java.beans.PropertyChangeListener;
+      import java.beans.PropertyChangeSupport;
+
+      public class PropertyChangeNotifier {
+          private final PropertyChangeSupport support = new PropertyChangeSupport(this);
+          private String value;
+
+          public void addPropertyChangeListener(PropertyChangeListener listener) {
+              support.addPropertyChangeListener(listener);
+          }
+
+          public void removePropertyChangeListener(PropertyChangeListener listener) {
+              support.removePropertyChangeListener(listener);
+          }
+
+          public void setValue(String newValue) {
+              String old = this.value;
+              this.value = newValue;
+              support.firePropertyChange("value", old, newValue);
+          }
+
+          public String getValue() { return value; }
+      }
+    src/main/java/com/example/handler/OrderEventHandler.java: |
+      package com.example.handler;
+
+      public class OrderEventHandler implements EventListener {
+          @Override
+          public void onEvent(Event event) {
+              System.out.println("Order event: " + event.getType() + " -> " + event.getData());
+          }
+      }
+    src/main/java/com/example/logging/EventLogger.java: |
+      package com.example.logging;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventLogger implements EventListener {
+          private final List<Event> log = new ArrayList<>();
+
+          @Override
+          public void onEvent(Event event) {
+              log.add(event);
+              System.out.println("[LOG] " + event);
+          }
+
+          public List<Event> getLog() {
+              return List.copyOf(log);
+          }
+      }
+    src/main/java/com/example/store/EventStore.java: |
+      package com.example.store;
+
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.stream.Collectors;
+
+      public class EventStore {
+          private final List<Event> events = new ArrayList<>();
+
+          public void store(Event event) {
+              events.add(event);
+          }
+
+          public List<Event> getByType(String type) {
+              return events.stream()
+                  .filter(e -> e.getType().equals(type))
+                  .collect(Collectors.toList());
+          }
+
+          public int count() { return events.size(); }
+      }
+    src/main/java/com/example/metrics/EventMetrics.java: |
+      package com.example.metrics;
+
+      import java.util.Map;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class EventMetrics {
+          private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+
+          public void record(String eventType) {
+              counts.computeIfAbsent(eventType, k -> new AtomicInteger()).incrementAndGet();
+          }
+
+          public int getCount(String eventType) {
+              AtomicInteger count = counts.get(eventType);
+              return count != null ? count.get() : 0;
+          }
+
+          public void reset() { counts.clear(); }
+      }
+  changed_files:
+    src/main/java/com/example/Event.java: |
+      package com.example;
+
+      public class Event {
+          private final String type;
+          private final Object data;
+
+          public Event(String type, Object data) {
+              this.type = type;
+              this.data = data;
+          }
+
+          public String getType() { return type; }
+          public Object getData() { return data; }
+
+          @Override
+          public String toString() {
+              return "Event{type='" + type + "', data=" + data + "}";
+          }
+      }
+    src/main/java/com/example/EventListener.java: |
+      package com.example;
+
+      @FunctionalInterface
+      public interface EventListener {
+          void onEvent(Event event);
+      }
+    src/main/java/com/example/EventBus.java: |
+      package com.example;
+
+      import java.util.ArrayList;
+      import java.util.HashMap;
+      import java.util.List;
+      import java.util.Map;
+
+      public class EventBus {
+          private final Map<String, List<EventListener>> listeners = new HashMap<>();
+
+          public void subscribe(String eventType, EventListener listener) {
+              listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+          }
+
+          public void unsubscribe(String eventType, EventListener listener) {
+              List<EventListener> list = listeners.get(eventType);
+              if (list != null) {
+                  list.remove(listener);
+              }
+          }
+
+          public void publish(Event event) {
+              List<EventListener> list = listeners.get(event.getType());
+              if (list != null) {
+                  for (EventListener listener : list) {
+                      listener.onEvent(event);
+                  }
+              }
+          }
+      }
+    src/main/java/com/example/UserEventHandler.java: |
+      package com.example;
+
+      public class UserEventHandler implements EventListener {
+          @Override
+          public void onEvent(Event event) {
+              System.out.println("User event: " + event.getType());
+          }
+      }
+    src/main/java/com/example/observer/PropertyChangeNotifier.java: |
+      package com.example.observer;
+
+      import java.beans.PropertyChangeListener;
+      import java.beans.PropertyChangeSupport;
+
+      public class PropertyChangeNotifier {
+          private final PropertyChangeSupport support = new PropertyChangeSupport(this);
+          private String value;
+
+          public void addPropertyChangeListener(PropertyChangeListener listener) {
+              support.addPropertyChangeListener(listener);
+          }
+
+          public void removePropertyChangeListener(PropertyChangeListener listener) {
+              support.removePropertyChangeListener(listener);
+          }
+
+          public void setValue(String newValue) {
+              String old = this.value;
+              this.value = newValue;
+              support.firePropertyChange("value", old, newValue);
+          }
+
+          public String getValue() { return value; }
+      }
+    src/main/java/com/example/handler/OrderEventHandler.java: |
+      package com.example.handler;
+
+      public class OrderEventHandler implements EventListener {
+          @Override
+          public void onEvent(Event event) {
+              System.out.println("Order event: " + event.getType() + " -> " + event.getData());
+          }
+      }
+    src/main/java/com/example/logging/EventLogger.java: |
+      package com.example.logging;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class EventLogger implements EventListener {
+          private final List<Event> log = new ArrayList<>();
+
+          @Override
+          public void onEvent(Event event) {
+              log.add(event);
+              System.out.println("[LOG] " + event);
+          }
+
+          public List<Event> getLog() {
+              return List.copyOf(log);
+          }
+      }
+    src/main/java/com/example/store/EventStore.java: |
+      package com.example.store;
+
+      import java.util.ArrayList;
+      import java.util.List;
+      import java.util.stream.Collectors;
+
+      public class EventStore {
+          private final List<Event> events = new ArrayList<>();
+
+          public void store(Event event) {
+              events.add(event);
+          }
+
+          public List<Event> getByType(String type) {
+              return events.stream()
+                  .filter(e -> e.getType().equals(type))
+                  .collect(Collectors.toList());
+          }
+
+          public int count() { return events.size(); }
+      }
+    src/main/java/com/example/metrics/EventMetrics.java: |
+      package com.example.metrics;
+
+      import java.util.Map;
+      import java.util.concurrent.ConcurrentHashMap;
+      import java.util.concurrent.atomic.AtomicInteger;
+
+      public class EventMetrics {
+          private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+
+          public void record(String eventType) {
+              counts.computeIfAbsent(eventType, k -> new AtomicInteger()).incrementAndGet();
+          }
+
+          public int getCount(String eventType) {
+              AtomicInteger count = counts.get(eventType);
+              return count != null ? count.get() : 0;
+          }
+
+          public void reset() { counts.clear(); }
+      }
+  commit_message: Update files
+fragments:
+- id: eventbus
+  selector:
+    path: src/main/java/com/example/EventBus.java
+    anchor: public void subscribe(String eventType, EventListener listener)
+- id: eventbus_1
+  selector:
+    path: src/main/java/com/example/EventBus.java
+    anchor: public void publish(Event event)
+- id: eventbus_2
+  selector:
+    path: src/main/java/com/example/EventBus.java
+    anchor: listeners.get(event.getType())
+- id: eventbus_3
+  selector:
+    path: src/main/java/com/example/EventBus.java
+    anchor: listener.onEvent(event)
+- id: eventlistener
+  selector:
+    path: src/main/java/com/example/EventListener.java
+    anchor: '@FunctionalInterface'
+- id: eventlistener_1
+  selector:
+    path: src/main/java/com/example/EventListener.java
+    anchor: void onEvent(Event event)
+- id: event
+  selector:
+    path: src/main/java/com/example/Event.java
+    anchor: public String getType()
+- id: no_propertychangenotifier
+  selector:
+    path: src/main/java/com/example/observer/PropertyChangeNotifier.java
+- id: no_ordereventhandler
+  selector:
+    path: src/main/java/com/example/handler/OrderEventHandler.java
+- id: no_eventlogger
+  selector:
+    path: src/main/java/com/example/logging/EventLogger.java
+- id: no_eventstore
+  selector:
+    path: src/main/java/com/example/store/EventStore.java
+- id: no_eventmetrics
+  selector:
+    path: src/main/java/com/example/metrics/EventMetrics.java
+- id: no_global_0
+  selector:
+    anchor: PropertyChangeNotifier
+- id: no_global_1
+  selector:
+    anchor: PropertyChangeListener
+- id: no_global_2
+  selector:
+    anchor: PropertyChangeSupport
+- id: no_global_3
+  selector:
+    anchor: firePropertyChange
+- id: no_global_4
+  selector:
+    anchor: OrderEventHandler
+- id: no_global_5
+  selector:
+    anchor: 'Order event:'
+- id: no_global_6
+  selector:
+    anchor: EventLogger
+- id: no_global_7
+  selector:
+    anchor: '[LOG]'
+- id: no_global_8
+  selector:
+    anchor: getLog
+- id: no_global_9
+  selector:
+    anchor: EventStore
+- id: no_global_10
+  selector:
+    anchor: getByType
+- id: no_global_11
+  selector:
+    anchor: EventMetrics
+- id: no_global_12
+  selector:
+    anchor: AtomicInteger
+oracle:
+  required:
+  - eventbus
+  - eventbus_1
+  - eventbus_2
+  - eventbus_3
+  - eventlistener
+  - eventlistener_1
+  - event
+  allowed: []
+  forbidden:
+  - no_propertychangenotifier
+  - no_ordereventhandler
+  - no_eventlogger
+  - no_eventstore
+  - no_eventmetrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

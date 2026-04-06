@@ -1,0 +1,186 @@
+name: infrastructure_validation_002_dataclass_field_change
+repo:
+  initial_files:
+    models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      from enum import Enum
+
+      class OrderStatus(Enum):
+          PENDING = "pending"
+          PROCESSING = "processing"
+          COMPLETED = "completed"
+          CANCELLED = "cancelled"
+
+      @dataclass
+      class Order:
+          id: int
+          customer_id: int
+          total: float
+          status: OrderStatus = OrderStatus.PENDING
+
+      @dataclass
+      class Customer:
+          id: int
+          name: str
+          email: str
+
+      def create_order(customer_id: int, total: float) -> Order:
+          return Order(id=0, customer_id=customer_id, total=total)
+    services.py: |
+      from models import Order, OrderStatus, create_order
+
+      def create_order_for_customer(customer_id: int, total: float) -> Order:
+          return create_order(customer_id=customer_id, total=total)
+
+      def process_order(order: Order) -> str:
+          order.status = OrderStatus.PROCESSING
+          return f"Processing order {order.id} for customer {order.customer_id}"
+
+      def complete_order(order: Order) -> str:
+          order.status = OrderStatus.COMPLETED
+          return f"Order {order.id} completed, total: {order.total}"
+    repository.py: |
+      from models import Order
+      from typing import List, Optional
+
+      orders_db: List[Order] = []
+
+      def save_order(order: Order) -> Order:
+          order.id = len(orders_db) + 1
+          orders_db.append(order)
+          return order
+
+      def find_order_by_id(order_id: int) -> Optional[Order]:
+          for order in orders_db:
+              if order.id == order_id:
+                  return order
+          return None
+    scripts/seed_data.sh: |
+      #!/bin/bash
+      python seed_orders.py
+    tests/test_models.py: |
+      def test_order_creation():
+          pass
+    docs/data-model.md: |
+      # Data Model
+    migrations/001_init.sql: |
+      CREATE TABLE orders (id SERIAL PRIMARY KEY);
+  changed_files:
+    models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      from enum import Enum
+
+      class OrderStatus(Enum):
+          PENDING = "pending"
+          PROCESSING = "processing"
+          COMPLETED = "completed"
+          CANCELLED = "cancelled"
+
+      @dataclass
+      class Order:
+          id: int
+          customer_id: int
+          total: float
+          priority: int = 0
+          status: OrderStatus = OrderStatus.PENDING
+
+      @dataclass
+      class Customer:
+          id: int
+          name: str
+          email: str
+
+      def create_order(customer_id: int, total: float) -> Order:
+          return Order(id=0, customer_id=customer_id, total=total)
+    services.py: |
+      from models import Order, OrderStatus, create_order
+
+      def create_order_for_customer(customer_id: int, total: float) -> Order:
+          return create_order(customer_id=customer_id, total=total)
+
+      def process_order(order: Order) -> str:
+          order.status = OrderStatus.PROCESSING
+          return f"Processing order {order.id} for customer {order.customer_id}"
+
+      def complete_order(order: Order) -> str:
+          order.status = OrderStatus.COMPLETED
+          return f"Order {order.id} completed, total: {order.total}"
+    repository.py: |
+      from models import Order
+      from typing import List, Optional
+
+      orders_db: List[Order] = []
+
+      def save_order(order: Order) -> Order:
+          order.id = len(orders_db) + 1
+          orders_db.append(order)
+          return order
+
+      def find_order_by_id(order_id: int) -> Optional[Order]:
+          for order in orders_db:
+              if order.id == order_id:
+                  return order
+          return None
+    scripts/seed_data.sh: |
+      #!/bin/bash
+      python seed_orders.py
+    tests/test_models.py: |
+      def test_order_creation():
+          pass
+    docs/data-model.md: |
+      # Data Model
+    migrations/001_init.sql: |
+      CREATE TABLE orders (id SERIAL PRIMARY KEY);
+  commit_message: Update files
+fragments:
+- id: models
+  selector:
+    path: models.py
+    anchor: 'priority: int = 0'
+- id: no_seed_data
+  selector:
+    path: scripts/seed_data.sh
+- id: no_test_models
+  selector:
+    path: tests/test_models.py
+- id: no_data_model
+  selector:
+    path: docs/data-model.md
+- id: no_001_init
+  selector:
+    path: migrations/001_init.sql
+- id: no_global_0
+  selector:
+    anchor: seed_orders
+- id: no_global_1
+  selector:
+    anchor: seed_data
+- id: no_global_2
+  selector:
+    anchor: test_order_creation
+- id: no_global_3
+  selector:
+    anchor: '# Data Model'
+- id: no_global_4
+  selector:
+    anchor: CREATE TABLE orders
+- id: no_global_5
+  selector:
+    anchor: SERIAL PRIMARY KEY
+oracle:
+  required:
+  - models
+  allowed: []
+  forbidden:
+  - no_seed_data
+  - no_test_models
+  - no_data_model
+  - no_001_init
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

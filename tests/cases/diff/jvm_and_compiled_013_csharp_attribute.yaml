@@ -1,0 +1,267 @@
+name: jvm_and_compiled_013_csharp_attribute
+repo:
+  initial_files:
+    Models/User.cs: |
+      namespace MyApp.Models
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+          }
+      }
+    Controllers/UsersController.cs: |
+      namespace MyApp.Controllers
+      {
+          class UsersController { }
+      }
+    Controllers/ProductsController.cs: |
+      using Microsoft.AspNetCore.Mvc;
+      using MyApp.Models;
+
+      namespace MyApp.Controllers
+      {
+          [ApiController]
+          [Route("api/[controller]")]
+          public class ProductsController : ControllerBase
+          {
+              [HttpGet("{id}")]
+              public ActionResult<Product> GetProduct(int id)
+              {
+                  return new Product { Id = id, Name = "Sample", Price = 9.99m };
+              }
+
+              [HttpPost]
+              public ActionResult<Product> CreateProduct([FromBody] Product product)
+              {
+                  return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
+              }
+          }
+      }
+    Services/UserService.cs: |
+      using MyApp.Models;
+
+      namespace MyApp.Services
+      {
+          public class UserService
+          {
+              private readonly List<User> _users = new();
+
+              public User GetById(int id)
+              {
+                  return _users.FirstOrDefault(u => u.Id == id);
+              }
+
+              public User Create(User user)
+              {
+                  user.Id = _users.Count + 1;
+                  _users.Add(user);
+                  return user;
+              }
+          }
+      }
+    Middleware/AuthenticationMiddleware.cs: |
+      using Microsoft.AspNetCore.Http;
+
+      namespace MyApp.Middleware
+      {
+          public class AuthenticationMiddleware
+          {
+              private readonly RequestDelegate _next;
+
+              public AuthenticationMiddleware(RequestDelegate next)
+              {
+                  _next = next;
+              }
+
+              public async Task InvokeAsync(HttpContext context)
+              {
+                  var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+                  if (string.IsNullOrEmpty(authHeader))
+                  {
+                      context.Response.StatusCode = 401;
+                      return;
+                  }
+                  await _next(context);
+              }
+          }
+      }
+    Models/ApiResponse.cs: |
+      namespace MyApp.Models
+      {
+          public class ApiResponse<T>
+          {
+              public bool Success { get; set; }
+              public T Data { get; set; }
+              public string Message { get; set; }
+
+              public static ApiResponse<T> Ok(T data) =>
+                  new() { Success = true, Data = data };
+
+              public static ApiResponse<T> Error(string message) =>
+                  new() { Success = false, Message = message };
+          }
+      }
+    Program.cs: |
+      using Microsoft.AspNetCore.Builder;
+
+      namespace MyApp
+      {
+          public class Program
+          {
+              public static void Main(string[] args)
+              {
+                  var builder = WebApplication.CreateBuilder(args);
+                  builder.Services.AddControllers();
+                  var app = builder.Build();
+                  app.MapControllers();
+                  app.Run();
+              }
+          }
+      }
+  changed_files:
+    Controllers/UsersController.cs: |
+      using Microsoft.AspNetCore.Mvc;
+      using MyApp.Models;
+
+      namespace MyApp.Controllers
+      {
+          [ApiController]
+          [Route("api/[controller]")]
+          public class UsersController : ControllerBase
+          {
+              [HttpGet("{id}")]
+              public ActionResult<User> GetUser(int id)
+              {
+                  return new User { Id = id, Name = "Test" };
+              }
+
+              [HttpPost]
+              public ActionResult<User> CreateUser([FromBody] User user)
+              {
+                  return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userscontroller
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: '[ApiController]'
+- id: userscontroller_1
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: '[Route("api/[controller]")]'
+- id: userscontroller_2
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: '[HttpGet("{id}")]'
+- id: userscontroller_3
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: ActionResult<User> GetUser(int id)
+- id: userscontroller_4
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: '[FromBody] User user'
+- id: userscontroller_5
+  selector:
+    path: Controllers/UsersController.cs
+    anchor: CreatedAtAction(nameof(GetUser)
+- id: user
+  selector:
+    path: Models/User.cs
+    anchor: public int Id { get; set; }
+- id: user_1
+  selector:
+    path: Models/User.cs
+    anchor: public string Name { get; set; }
+- id: no_productscontroller
+  selector:
+    path: Controllers/ProductsController.cs
+- id: no_userservice
+  selector:
+    path: Services/UserService.cs
+- id: no_authenticationmiddleware
+  selector:
+    path: Middleware/AuthenticationMiddleware.cs
+- id: no_apiresponse
+  selector:
+    path: Models/ApiResponse.cs
+- id: no_program
+  selector:
+    path: Program.cs
+- id: no_global_0
+  selector:
+    anchor: ProductsController
+- id: no_global_1
+  selector:
+    anchor: GetProduct
+- id: no_global_2
+  selector:
+    anchor: CreateProduct
+- id: no_global_3
+  selector:
+    anchor: ActionResult<Product>
+- id: no_global_4
+  selector:
+    anchor: UserService
+- id: no_global_5
+  selector:
+    anchor: GetById
+- id: no_global_6
+  selector:
+    anchor: _users.Count
+- id: no_global_7
+  selector:
+    anchor: AuthenticationMiddleware
+- id: no_global_8
+  selector:
+    anchor: InvokeAsync
+- id: no_global_9
+  selector:
+    anchor: Authorization
+- id: no_global_10
+  selector:
+    anchor: ApiResponse<T>
+- id: no_global_11
+  selector:
+    anchor: Ok(T data)
+- id: no_global_12
+  selector:
+    anchor: MapControllers
+- id: no_global_13
+  selector:
+    anchor: WebApplication
+oracle:
+  required:
+  - userscontroller
+  - userscontroller_1
+  - userscontroller_2
+  - userscontroller_3
+  - userscontroller_4
+  - userscontroller_5
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_productscontroller
+  - no_userservice
+  - no_authenticationmiddleware
+  - no_apiresponse
+  - no_program
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

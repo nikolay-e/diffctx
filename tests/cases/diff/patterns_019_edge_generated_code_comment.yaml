@@ -1,0 +1,148 @@
+name: patterns_019_edge_generated_code_comment
+repo:
+  initial_files:
+    codegen.yaml: |
+      generates:
+        src/generated/types.ts:
+          schema: schema.graphql
+          plugins:
+            - typescript
+    src/generated/types.ts: |
+      // THIS FILE IS GENERATED - DO NOT EDIT
+      // Generated from codegen.yaml
+
+      export interface User {
+          id: string;
+          name: string;
+      }
+    src/services/user.ts: |
+      import { User } from '../generated/types';
+
+      export function processUser(user: User) {
+          return user.name;
+      }
+    utils/schema_validator.py: |
+      SUPPORTED_SCHEMA_FORMATS = ["graphql", "json", "yaml"]
+      MAX_SCHEMA_SIZE_MB = 10
+
+      class SchemaValidator:
+          def validate_graphql(self, schema_path: str) -> list[str]:
+              return []
+
+          def check_breaking_changes(self, old_schema: str, new_schema: str) -> list[str]:
+              return []
+
+          def get_type_count(self, schema_path: str) -> int:
+              return 0
+    utils/codegen_cache.py: |
+      import hashlib
+
+      CACHE_DIR = ".codegen_cache"
+      CACHE_TTL_HOURS = 24
+
+      class CodegenCache:
+          def __init__(self, cache_dir: str = CACHE_DIR):
+              self.cache_dir = cache_dir
+
+          def get_hash(self, config_path: str) -> str:
+              return hashlib.md5(config_path.encode()).hexdigest()
+
+          def is_stale(self, config_path: str) -> bool:
+              return True
+  changed_files:
+    codegen.yaml: |
+      generates:
+        src/generated/types.ts:
+          schema: schema.graphql
+          plugins:
+            - typescript
+            - typescript-operations
+        src/generated/hooks.ts:
+          schema: schema.graphql
+          plugins:
+            - typescript-react-query
+    src/generated/types.ts: |
+      // THIS FILE IS GENERATED - DO NOT EDIT
+      // Generated from codegen.yaml
+
+      export interface User {
+          id: string;
+          name: string;
+      }
+    src/services/user.ts: |
+      import { User } from '../generated/types';
+
+      export function processUser(user: User) {
+          return user.name;
+      }
+    utils/schema_validator.py: |
+      SUPPORTED_SCHEMA_FORMATS = ["graphql", "json", "yaml"]
+      MAX_SCHEMA_SIZE_MB = 10
+
+      class SchemaValidator:
+          def validate_graphql(self, schema_path: str) -> list[str]:
+              return []
+
+          def check_breaking_changes(self, old_schema: str, new_schema: str) -> list[str]:
+              return []
+
+          def get_type_count(self, schema_path: str) -> int:
+              return 0
+    utils/codegen_cache.py: |
+      import hashlib
+
+      CACHE_DIR = ".codegen_cache"
+      CACHE_TTL_HOURS = 24
+
+      class CodegenCache:
+          def __init__(self, cache_dir: str = CACHE_DIR):
+              self.cache_dir = cache_dir
+
+          def get_hash(self, config_path: str) -> str:
+              return hashlib.md5(config_path.encode()).hexdigest()
+
+          def is_stale(self, config_path: str) -> bool:
+              return True
+  commit_message: Update files
+fragments:
+- id: codegen
+  selector:
+    path: codegen.yaml
+    anchor: '- typescript-operations'
+- id: no_schema_validator
+  selector:
+    path: utils/schema_validator.py
+- id: no_codegen_cache
+  selector:
+    path: utils/codegen_cache.py
+- id: no_global_0
+  selector:
+    anchor: SchemaValidator
+- id: no_global_1
+  selector:
+    anchor: SUPPORTED_SCHEMA_FORMATS
+- id: no_global_2
+  selector:
+    anchor: check_breaking_changes
+- id: no_global_3
+  selector:
+    anchor: CodegenCache
+- id: no_global_4
+  selector:
+    anchor: CACHE_DIR
+- id: no_global_5
+  selector:
+    anchor: CACHE_TTL_HOURS
+oracle:
+  required:
+  - codegen
+  allowed: []
+  forbidden:
+  - no_schema_validator
+  - no_codegen_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

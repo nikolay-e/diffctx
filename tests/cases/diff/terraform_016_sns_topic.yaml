@@ -1,0 +1,206 @@
+name: terraform_016_sns_topic
+repo:
+  initial_files:
+    monitoring.tf: |
+      # SNS resources
+    alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+        alarm_name          = "cpu-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        alarm_actions = [aws_sns_topic.alerts.arn]
+      }
+
+      resource "aws_cloudwatch_metric_alarm" "memory_high" {
+        alarm_name          = "memory-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 3
+        metric_name         = "MemoryUtilization"
+        namespace           = "CWAgent"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 90
+
+        alarm_actions = [aws_sns_topic.alerts.arn]
+      }
+    alert_handler.tf: |
+      resource "aws_lambda_function" "alert_handler" {
+        function_name = "alert-processor"
+        runtime       = "python3.11"
+        handler       = "handler.process_alert"
+        role          = aws_iam_role.alert_handler.arn
+        filename      = "alert_handler.zip"
+
+        environment {
+          variables = {
+            PAGERDUTY_KEY  = var.pagerduty_integration_key
+            SLACK_WEBHOOK  = var.slack_alert_webhook
+          }
+        }
+      }
+
+      resource "aws_sns_topic_subscription" "alert_handler" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "lambda"
+        endpoint  = aws_lambda_function.alert_handler.arn
+      }
+
+      resource "aws_lambda_permission" "sns_invoke" {
+        statement_id  = "AllowSNSInvoke"
+        action        = "lambda:InvokeFunction"
+        function_name = aws_lambda_function.alert_handler.function_name
+        principal     = "sns.amazonaws.com"
+        source_arn    = aws_sns_topic.alerts.arn
+      }
+    ops_notifications.tf: |
+      resource "aws_sns_topic" "ops" {
+        name = "ops-notifications"
+      }
+
+      resource "aws_sns_topic_subscription" "ops_slack" {
+        topic_arn = aws_sns_topic.ops.arn
+        protocol  = "https"
+        endpoint  = "https://hooks.slack.com/services/T00/B00/XXXX"
+      }
+
+      resource "aws_sns_topic_subscription" "ops_email" {
+        topic_arn = aws_sns_topic.ops.arn
+        protocol  = "email"
+        endpoint  = "ops-team@example.com"
+      }
+    billing_alerts.tf: |
+      resource "aws_sns_topic" "billing" {
+        name = "billing-alerts"
+      }
+
+      resource "aws_sns_topic_subscription" "billing_email" {
+        topic_arn = aws_sns_topic.billing.arn
+        protocol  = "email"
+        endpoint  = "finance@example.com"
+      }
+    messaging/sqs.tf: |
+      resource "aws_sqs_queue" "processing" {
+        name                      = "processing-queue"
+        delay_seconds             = 0
+        max_message_size          = 262144
+        message_retention_seconds = 345600
+      }
+    chatops/slack.tf: |
+      resource "aws_lambda_function" "slack_notifier" {
+        function_name = "slack-notifier"
+        runtime       = "nodejs18.x"
+        handler       = "index.handler"
+        role          = aws_iam_role.slack_notifier.arn
+        filename      = "slack_notifier.zip"
+
+        environment {
+          variables = {
+            SLACK_CHANNEL = "#ops-alerts"
+            SLACK_TOKEN   = var.slack_bot_token
+          }
+        }
+      }
+  changed_files:
+    monitoring.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "alerts-topic"
+      }
+
+      resource "aws_sns_topic_subscription" "email" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "email"
+        endpoint  = var.alert_email
+      }
+  commit_message: Update files
+fragments:
+- id: alarms
+  selector:
+    path: alarms.tf
+    anchor: alarm_actions = [aws_sns_topic.alerts.arn]
+- id: alarms_1
+  selector:
+    path: alarms.tf
+    anchor: metric_name         = "CPUUtilization"
+- id: alarms_2
+  selector:
+    path: alarms.tf
+    anchor: alarm_name          = "memory-high"
+- id: alert_handler
+  selector:
+    path: alert_handler.tf
+    anchor: topic_arn = aws_sns_topic.alerts.arn
+- id: alert_handler_1
+  selector:
+    path: alert_handler.tf
+    anchor: protocol  = "lambda"
+- id: no_ops_notifications
+  selector:
+    path: ops_notifications.tf
+- id: no_billing_alerts
+  selector:
+    path: billing_alerts.tf
+- id: no_sqs
+  selector:
+    path: messaging/sqs.tf
+- id: no_slack
+  selector:
+    path: chatops/slack.tf
+- id: no_global_0
+  selector:
+    anchor: ops-notifications
+- id: no_global_1
+  selector:
+    anchor: hooks.slack.com
+- id: no_global_2
+  selector:
+    anchor: ops-team@example.com
+- id: no_global_3
+  selector:
+    anchor: billing-alerts
+- id: no_global_4
+  selector:
+    anchor: finance@example.com
+- id: no_global_5
+  selector:
+    anchor: aws_sqs_queue
+- id: no_global_6
+  selector:
+    anchor: processing-queue
+- id: no_global_7
+  selector:
+    anchor: slack-notifier
+- id: no_global_8
+  selector:
+    anchor: '#ops-alerts'
+- id: no_global_9
+  selector:
+    anchor: slack_bot_token
+oracle:
+  required:
+  - alarms
+  - alarms_1
+  - alarms_2
+  - alert_handler
+  - alert_handler_1
+  allowed: []
+  forbidden:
+  - no_ops_notifications
+  - no_billing_alerts
+  - no_sqs
+  - no_slack
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

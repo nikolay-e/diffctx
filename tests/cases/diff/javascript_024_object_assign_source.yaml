@@ -1,0 +1,95 @@
+name: javascript_024_object_assign_source
+repo:
+  initial_files:
+    defaults.ts: |
+      export const defaultConfig = {
+          timeout: 5000,
+          retries: 3,
+          baseUrl: 'https://api.example.com',
+      };
+    config.ts: |
+      console.log('initial');
+    config.validator.ts: |
+      export function validateConfig(config: Record<string, unknown>): boolean {
+          if (typeof config.timeout !== 'number' || config.timeout < 0) return false;
+          if (typeof config.retries !== 'number' || config.retries < 0) return false;
+          if (typeof config.baseUrl !== 'string') return false;
+          return true;
+      }
+    env.ts: |
+      export function getEnvConfig() {
+          return {
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+              retries: parseInt(process.env.RETRIES ?? '3', 10),
+              baseUrl: process.env.BASE_URL ?? 'https://api.example.com',
+          };
+      }
+  changed_files:
+    defaults.ts: |
+      export const defaultConfig = {
+          timeout: 5000,
+          retries: 3,
+          baseUrl: 'https://api.example.com',
+      };
+    config.ts: |
+      import { defaultConfig } from './defaults';
+
+      export function createConfig(overrides: Partial<typeof defaultConfig>) {
+          return Object.assign({}, defaultConfig, overrides);
+      }
+    config.validator.ts: |
+      export function validateConfig(config: Record<string, unknown>): boolean {
+          if (typeof config.timeout !== 'number' || config.timeout < 0) return false;
+          if (typeof config.retries !== 'number' || config.retries < 0) return false;
+          if (typeof config.baseUrl !== 'string') return false;
+          return true;
+      }
+    env.ts: |
+      export function getEnvConfig() {
+          return {
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+              retries: parseInt(process.env.RETRIES ?? '3', 10),
+              baseUrl: process.env.BASE_URL ?? 'https://api.example.com',
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: defaults
+  selector:
+    path: defaults.ts
+    anchor: 'timeout: 5000'
+- id: defaults_1
+  selector:
+    path: defaults.ts
+    anchor: 'retries: 3'
+- id: defaults_2
+  selector:
+    path: defaults.ts
+    anchor: 'baseUrl: ''https://api.example.com'''
+- id: no_config_validator
+  selector:
+    path: config.validator.ts
+- id: no_env
+  selector:
+    path: env.ts
+- id: no_global_0
+  selector:
+    anchor: validateConfig
+- id: no_global_1
+  selector:
+    anchor: getEnvConfig
+- id: no_global_2
+  selector:
+    anchor: process.env
+oracle:
+  required:
+  - defaults
+  - defaults_1
+  - defaults_2
+  allowed: []
+  forbidden:
+  - no_config_validator
+  - no_env
+  - no_global_0
+  - no_global_1
+  - no_global_2

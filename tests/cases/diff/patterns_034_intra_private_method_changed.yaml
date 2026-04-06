@@ -1,0 +1,158 @@
+name: patterns_034_intra_private_method_changed
+repo:
+  initial_files:
+    cache.py: |
+      class CacheManager:
+          def __init__(self):
+              self._data = {}
+
+          def _serialize(self, value):
+              return str(value)
+
+          def _deserialize(self, data):
+              return data
+
+          def get(self, key):
+              raw = self._data.get(key)
+              if raw:
+                  return self._deserialize(raw)
+              return None
+
+          def set(self, key, value):
+              self._data[key] = self._serialize(value)
+    session_store.py: |
+      import pickle
+
+      class SessionStore:
+          def __init__(self):
+              self._sessions = {}
+
+          def _serialize(self, data):
+              return pickle.dumps(data)
+
+          def _deserialize(self, raw):
+              return pickle.loads(raw)
+
+          def get(self, session_id):
+              raw = self._sessions.get(session_id)
+              return self._deserialize(raw) if raw else None
+
+          def set(self, session_id, data):
+              self._sessions[session_id] = self._serialize(data)
+    json_utils.py: |
+      import json
+
+      def safe_dumps(data, default=None):
+          try:
+              return json.dumps(data, default=default)
+          except TypeError:
+              return str(data)
+
+      def safe_loads(text):
+          try:
+              return json.loads(text)
+          except (json.JSONDecodeError, TypeError):
+              return None
+  changed_files:
+    cache.py: |
+      import json
+
+      class CacheManager:
+          def __init__(self):
+              self._data = {}
+
+          def _serialize(self, value):
+              return json.dumps(value)
+
+          def _deserialize(self, data):
+              return json.loads(data)
+
+          def get(self, key):
+              raw = self._data.get(key)
+              if raw:
+                  return self._deserialize(raw)
+              return None
+
+          def set(self, key, value):
+              self._data[key] = self._serialize(value)
+    session_store.py: |
+      import pickle
+
+      class SessionStore:
+          def __init__(self):
+              self._sessions = {}
+
+          def _serialize(self, data):
+              return pickle.dumps(data)
+
+          def _deserialize(self, raw):
+              return pickle.loads(raw)
+
+          def get(self, session_id):
+              raw = self._sessions.get(session_id)
+              return self._deserialize(raw) if raw else None
+
+          def set(self, session_id, data):
+              self._sessions[session_id] = self._serialize(data)
+    json_utils.py: |
+      import json
+
+      def safe_dumps(data, default=None):
+          try:
+              return json.dumps(data, default=default)
+          except TypeError:
+              return str(data)
+
+      def safe_loads(text):
+          try:
+              return json.loads(text)
+          except (json.JSONDecodeError, TypeError):
+              return None
+  commit_message: Update files
+fragments:
+- id: cache
+  selector:
+    path: cache.py
+    anchor: return json.dumps(value)
+- id: cache_1
+  selector:
+    path: cache.py
+    anchor: return json.loads(data)
+- id: no_session_store
+  selector:
+    path: session_store.py
+- id: no_json_utils
+  selector:
+    path: json_utils.py
+- id: no_global_0
+  selector:
+    anchor: class SessionStore
+- id: no_global_1
+  selector:
+    anchor: pickle.dumps
+- id: no_global_2
+  selector:
+    anchor: pickle.loads
+- id: no_global_3
+  selector:
+    anchor: safe_dumps
+- id: no_global_4
+  selector:
+    anchor: safe_loads
+- id: no_global_5
+  selector:
+    anchor: JSONDecodeError
+oracle:
+  required:
+  - cache
+  - cache_1
+  allowed: []
+  forbidden:
+  - no_session_store
+  - no_json_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,196 @@
+name: operations_005_ignore_venv
+repo:
+  initial_files:
+    app.py: |
+      from typing import Any
+
+      class Config:
+          def __init__(self, env: str = "development"):
+              self.env = env
+              self.debug = env != "production"
+              self.log_level = "DEBUG" if self.debug else "INFO"
+
+          def is_production(self) -> bool:
+              return self.env == "production"
+
+          def to_dict(self) -> dict[str, Any]:
+              return {
+                  "env": self.env,
+                  "debug": self.debug,
+                  "log_level": self.log_level,
+              }
+
+      def create_app(env: str = "development") -> dict:
+          config = Config(env)
+          return {"config": config.to_dict(), "status": "initialized"}
+
+      def get_version() -> str:
+          return "1.0.0"
+    .venv/lib/python3.11/site-packages/setuptools/__init__.py: |
+      __version__ = "68.0.0"
+      def setup(**kwargs):
+          pass
+    .venv/lib/python3.11/site.py: |
+      ENABLE_USER_SITE = False
+    utils/health_checker.py: |
+      from typing import Any
+      from datetime import datetime
+
+      class HealthChecker:
+          def __init__(self, service_name: str = "app"):
+              self.service_name = service_name
+              self._checks: dict[str, bool] = {}
+
+          def register_check(self, name: str) -> None:
+              self._checks[name] = False
+
+          def mark_healthy(self, name: str) -> None:
+              self._checks[name] = True
+
+          def status(self) -> dict[str, Any]:
+              all_healthy = all(self._checks.values())
+              return {
+                  "service": self.service_name,
+                  "healthy": all_healthy,
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "checks": dict(self._checks),
+              }
+    utils/config_loader.py: |
+      import os
+      from typing import Any
+
+      DEFAULT_CONFIG_PATH = "/etc/app/config.yaml"
+
+      class ConfigLoader:
+          def __init__(self, path: str = DEFAULT_CONFIG_PATH):
+              self.path = path
+
+          def load(self) -> dict[str, Any]:
+              return {"path": self.path, "loaded": True}
+
+          def get_env(self, key: str, default: str = "") -> str:
+              return os.environ.get(key, default)
+  changed_files:
+    app.py: |
+      from typing import Any
+
+      class Config:
+          def __init__(self, env: str = "development"):
+              self.env = env
+              self.debug = env != "production"
+              self.log_level = "DEBUG" if self.debug else "INFO"
+
+          def is_production(self) -> bool:
+              return self.env == "production"
+
+          def to_dict(self) -> dict[str, Any]:
+              return {
+                  "env": self.env,
+                  "debug": self.debug,
+                  "log_level": self.log_level,
+              }
+
+      def create_app(env: str = "development") -> dict:
+          config = Config(env)
+          return {"config": config.to_dict(), "status": "initialized"}
+
+      def get_version() -> str:
+          return "1.1.0"
+    .venv/lib/python3.11/site-packages/setuptools/__init__.py: |
+      __version__ = "69.0.0"
+      def setup(**kwargs):
+          pass
+    .venv/lib/python3.11/site.py: |
+      ENABLE_USER_SITE = True
+    utils/health_checker.py: |
+      from typing import Any
+      from datetime import datetime
+
+      class HealthChecker:
+          def __init__(self, service_name: str = "app"):
+              self.service_name = service_name
+              self._checks: dict[str, bool] = {}
+
+          def register_check(self, name: str) -> None:
+              self._checks[name] = False
+
+          def mark_healthy(self, name: str) -> None:
+              self._checks[name] = True
+
+          def status(self) -> dict[str, Any]:
+              all_healthy = all(self._checks.values())
+              return {
+                  "service": self.service_name,
+                  "healthy": all_healthy,
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "checks": dict(self._checks),
+              }
+    utils/config_loader.py: |
+      import os
+      from typing import Any
+
+      DEFAULT_CONFIG_PATH = "/etc/app/config.yaml"
+
+      class ConfigLoader:
+          def __init__(self, path: str = DEFAULT_CONFIG_PATH):
+              self.path = path
+
+          def load(self) -> dict[str, Any]:
+              return {"path": self.path, "loaded": True}
+
+          def get_env(self, key: str, default: str = "") -> str:
+              return os.environ.get(key, default)
+  commit_message: Update files
+fragments:
+- id: app_file
+  selector:
+    path: app.py
+- id: no_init
+  selector:
+    path: .venv/lib/python3.11/site-packages/setuptools/__init__.py
+- id: no_site
+  selector:
+    path: .venv/lib/python3.11/site.py
+- id: no_health_checker
+  selector:
+    path: utils/health_checker.py
+- id: no_config_loader
+  selector:
+    path: utils/config_loader.py
+- id: no_global_0
+  selector:
+    anchor: site.py
+- id: no_global_1
+  selector:
+    anchor: .venv
+- id: no_global_2
+  selector:
+    anchor: HealthChecker
+- id: no_global_3
+  selector:
+    anchor: ConfigLoader
+- id: no_global_4
+  selector:
+    anchor: DEFAULT_CONFIG_PATH
+- id: no_global_5
+  selector:
+    anchor: health_checker.py
+- id: no_global_6
+  selector:
+    anchor: config_loader.py
+oracle:
+  required:
+  - app_file
+  allowed: []
+  forbidden:
+  - no_init
+  - no_site
+  - no_health_checker
+  - no_config_loader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

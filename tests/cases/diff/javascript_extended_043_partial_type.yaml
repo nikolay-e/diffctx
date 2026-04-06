@@ -1,0 +1,221 @@
+name: javascript_extended_043_partial_type
+repo:
+  initial_files:
+    src/config.ts: |
+      export interface FullConfig {
+          host: string;
+          port: number;
+          ssl: boolean;
+          timeout: number;
+      }
+
+      export function createConfig(host: string, port: number, ssl: boolean, timeout: number): FullConfig {
+          return { host, port, ssl, timeout };
+      }
+    src/updater.ts: |
+      console.log('placeholder');
+    src/defaults.ts: |
+      import { FullConfig } from './config';
+
+      export const DEFAULT_CONFIG: FullConfig = {
+          host: 'localhost',
+          port: 8080,
+          ssl: false,
+          timeout: 30000,
+      };
+
+      export function getDefaultConfig(): FullConfig {
+          return { ...DEFAULT_CONFIG };
+      }
+
+      export function withDefaults(overrides: Partial<FullConfig>): FullConfig {
+          return { ...DEFAULT_CONFIG, ...overrides };
+      }
+    src/validator.ts: |
+      import { FullConfig } from './config';
+
+      export interface ValidationError {
+          field: keyof FullConfig;
+          message: string;
+      }
+
+      export function validateConfig(config: FullConfig): ValidationError[] {
+          const errors: ValidationError[] = [];
+          if (config.port < 1 || config.port > 65535) {
+              errors.push({ field: 'port', message: 'Port must be between 1 and 65535' });
+          }
+          if (config.timeout < 0) {
+              errors.push({ field: 'timeout', message: 'Timeout must be non-negative' });
+          }
+          if (config.host.trim().length === 0) {
+              errors.push({ field: 'host', message: 'Host must not be empty' });
+          }
+          return errors;
+      }
+
+      export function isValidConfig(config: FullConfig): boolean {
+          return validateConfig(config).length === 0;
+      }
+    src/loader.ts: |
+      import { readFileSync } from 'fs';
+      import { FullConfig } from './config';
+
+      export function loadConfigFromFile(path: string): FullConfig {
+          const raw = readFileSync(path, 'utf-8');
+          const parsed = JSON.parse(raw);
+          return {
+              host: parsed.host ?? 'localhost',
+              port: parsed.port ?? 8080,
+              ssl: parsed.ssl ?? false,
+              timeout: parsed.timeout ?? 30000,
+          };
+      }
+
+      export function loadConfigFromEnv(): Partial<FullConfig> {
+          const config: Partial<FullConfig> = {};
+          if (process.env.APP_HOST) config.host = process.env.APP_HOST;
+          if (process.env.APP_PORT) config.port = parseInt(process.env.APP_PORT, 10);
+          if (process.env.APP_SSL) config.ssl = process.env.APP_SSL === 'true';
+          if (process.env.APP_TIMEOUT) config.timeout = parseInt(process.env.APP_TIMEOUT, 10);
+          return config;
+      }
+    src/envConfig.ts: |
+      import { FullConfig, createConfig } from './config';
+
+      const ENV_PREFIX = 'MYAPP_';
+
+      function getEnvVar(name: string): string | undefined {
+          return process.env[`${ENV_PREFIX}${name}`];
+      }
+
+      export function configFromEnvironment(): FullConfig {
+          const host = getEnvVar('HOST') ?? 'localhost';
+          const port = parseInt(getEnvVar('PORT') ?? '3000', 10);
+          const ssl = getEnvVar('SSL') === 'true';
+          const timeout = parseInt(getEnvVar('TIMEOUT') ?? '5000', 10);
+          return createConfig(host, port, ssl, timeout);
+      }
+
+      export function mergeEnvConfig(base: FullConfig): FullConfig {
+          const envHost = getEnvVar('HOST');
+          const envPort = getEnvVar('PORT');
+          return {
+              ...base,
+              ...(envHost && { host: envHost }),
+              ...(envPort && { port: parseInt(envPort, 10) }),
+          };
+      }
+  changed_files:
+    src/updater.ts: |
+      import { FullConfig } from './config';
+
+      export function updateConfig(current: FullConfig, updates: Partial<FullConfig>): FullConfig {
+          return { ...current, ...updates };
+      }
+
+      export function updateConfigField<K extends keyof FullConfig>(
+          config: FullConfig,
+          field: K,
+          value: FullConfig[K]
+      ): FullConfig {
+          return { ...config, [field]: value };
+      }
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/config.ts
+    anchor: FullConfig
+- id: config_1
+  selector:
+    path: src/config.ts
+    anchor: 'host: string'
+- id: config_2
+  selector:
+    path: src/config.ts
+    anchor: 'port: number'
+- id: config_3
+  selector:
+    path: src/config.ts
+    anchor: 'ssl: boolean'
+- id: config_4
+  selector:
+    path: src/config.ts
+    anchor: 'timeout: number'
+- id: no_defaults
+  selector:
+    path: src/defaults.ts
+- id: no_validator
+  selector:
+    path: src/validator.ts
+- id: no_loader
+  selector:
+    path: src/loader.ts
+- id: no_envconfig
+  selector:
+    path: src/envConfig.ts
+- id: no_global_0
+  selector:
+    anchor: DEFAULT_CONFIG
+- id: no_global_1
+  selector:
+    anchor: getDefaultConfig
+- id: no_global_2
+  selector:
+    anchor: withDefaults
+- id: no_global_3
+  selector:
+    anchor: ValidationError
+- id: no_global_4
+  selector:
+    anchor: validateConfig
+- id: no_global_5
+  selector:
+    anchor: isValidConfig
+- id: no_global_6
+  selector:
+    anchor: Port must be between
+- id: no_global_7
+  selector:
+    anchor: loadConfigFromFile
+- id: no_global_8
+  selector:
+    anchor: readFileSync
+- id: no_global_9
+  selector:
+    anchor: loadConfigFromEnv
+- id: no_global_10
+  selector:
+    anchor: configFromEnvironment
+- id: no_global_11
+  selector:
+    anchor: mergeEnvConfig
+- id: no_global_12
+  selector:
+    anchor: ENV_PREFIX
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - config_3
+  - config_4
+  allowed: []
+  forbidden:
+  - no_defaults
+  - no_validator
+  - no_loader
+  - no_envconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

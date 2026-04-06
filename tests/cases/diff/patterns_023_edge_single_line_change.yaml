@@ -1,0 +1,86 @@
+name: patterns_023_edge_single_line_change
+repo:
+  initial_files:
+    test.py: |
+      def calculate():
+          return x + 1
+    math_utils.py: |
+      def add(a, b):
+          return a + b
+
+      def multiply(a, b):
+          return a * b
+
+      class Calculator:
+          def compute(self, x, y):
+              return add(x, y)
+    constants.py: |
+      OFFSET = 1
+      MULTIPLIER = 2
+      MAX_VALUE = 100
+
+      def get_offset():
+          return OFFSET
+  changed_files:
+    test.py: |
+      def calculate():
+          return x + 2
+    math_utils.py: |
+      def add(a, b):
+          return a + b
+
+      def multiply(a, b):
+          return a * b
+
+      class Calculator:
+          def compute(self, x, y):
+              return add(x, y)
+    constants.py: |
+      OFFSET = 1
+      MULTIPLIER = 2
+      MAX_VALUE = 100
+
+      def get_offset():
+          return OFFSET
+  commit_message: Update files
+fragments:
+- id: test_file
+  selector:
+    path: test.py
+- id: req_global_0
+  selector:
+    anchor: return x + 2
+- id: no_math_utils
+  selector:
+    path: math_utils.py
+- id: no_constants
+  selector:
+    path: constants.py
+- id: no_global_0
+  selector:
+    anchor: Calculator
+- id: no_global_1
+  selector:
+    anchor: multiply
+- id: no_global_2
+  selector:
+    anchor: OFFSET
+- id: no_global_3
+  selector:
+    anchor: MULTIPLIER
+- id: no_global_4
+  selector:
+    anchor: get_offset
+oracle:
+  required:
+  - test_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_math_utils
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

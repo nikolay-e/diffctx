@@ -1,0 +1,195 @@
+name: javascript_extended_026_page_click
+repo:
+  initial_files:
+    tests/login.spec.ts: |
+      import { test } from '@playwright/test';
+
+      test('placeholder login test', async ({ page }) => {
+          await page.goto('/');
+      });
+    tests/pages/login.ts: |
+      export function getLoginUrl(): string {
+          return '/login';
+      }
+
+      export function getCredentials() {
+          return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+      }
+
+      export function getLoginFormSelectors() {
+          return {
+              usernameField: '[name=username]',
+              passwordField: '[name=password]',
+              submitButton: 'button[type=submit]',
+          };
+      }
+    tests/pages/dashboard.ts: |
+      export function getDashboardUrl(): string {
+          return '/dashboard';
+      }
+
+      export function getDashboardSelectors() {
+          return {
+              welcomeMessage: '[data-testid=welcome]',
+              logoutButton: '[data-testid=logout]',
+              navMenu: '[data-testid=nav-menu]',
+          };
+      }
+    tests/pages/settings.ts: |
+      export function getSettingsUrl(): string {
+          return '/settings';
+      }
+
+      export function getSettingsSelectors() {
+          return {
+              themeToggle: '[data-testid=theme-toggle]',
+              languageSelect: '[data-testid=language-select]',
+              saveButton: '[data-testid=save-settings]',
+          };
+      }
+
+      export function getDefaultSettings() {
+          return { theme: 'light', language: 'en', notifications: true };
+      }
+    tests/helpers/test-data.ts: |
+      export function randomEmail(): string {
+          return `test-${Date.now()}@example.com`;
+      }
+
+      export function randomUsername(): string {
+          return `user_${Math.random().toString(36).slice(2, 8)}`;
+      }
+
+      export function generateTestUser() {
+          return {
+              username: randomUsername(),
+              email: randomEmail(),
+              displayName: 'Test User',
+          };
+      }
+  changed_files:
+    tests/login.spec.ts: |
+      import { test, expect } from '@playwright/test';
+      import { getLoginUrl, getCredentials } from './pages/login';
+
+      test('user can log in', async ({ page }) => {
+          await page.goto(getLoginUrl());
+          const { username, password } = getCredentials();
+          await page.fill('[name=username]', username);
+          await page.fill('[name=password]', password);
+          await page.click('button[type=submit]');
+          await expect(page).toHaveURL('/dashboard');
+      });
+    tests/pages/login.ts: |
+      export function getLoginUrl(): string {
+          return '/login';
+      }
+
+      export function getCredentials() {
+          return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+      }
+
+      export function getLoginFormSelectors() {
+          return {
+              usernameField: '[name=username]',
+              passwordField: '[name=password]',
+              submitButton: 'button[type=submit]',
+          };
+      }
+    tests/pages/dashboard.ts: |
+      export function getDashboardUrl(): string {
+          return '/dashboard';
+      }
+
+      export function getDashboardSelectors() {
+          return {
+              welcomeMessage: '[data-testid=welcome]',
+              logoutButton: '[data-testid=logout]',
+              navMenu: '[data-testid=nav-menu]',
+          };
+      }
+    tests/pages/settings.ts: |
+      export function getSettingsUrl(): string {
+          return '/settings';
+      }
+
+      export function getSettingsSelectors() {
+          return {
+              themeToggle: '[data-testid=theme-toggle]',
+              languageSelect: '[data-testid=language-select]',
+              saveButton: '[data-testid=save-settings]',
+          };
+      }
+
+      export function getDefaultSettings() {
+          return { theme: 'light', language: 'en', notifications: true };
+      }
+    tests/helpers/test-data.ts: |
+      export function randomEmail(): string {
+          return `test-${Date.now()}@example.com`;
+      }
+
+      export function randomUsername(): string {
+          return `user_${Math.random().toString(36).slice(2, 8)}`;
+      }
+
+      export function generateTestUser() {
+          return {
+              username: randomUsername(),
+              email: randomEmail(),
+              displayName: 'Test User',
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: login
+  selector:
+    path: tests/pages/login.ts
+    anchor: getLoginUrl
+- id: login_1
+  selector:
+    path: tests/pages/login.ts
+    anchor: '''/login'''
+- id: login_2
+  selector:
+    path: tests/pages/login.ts
+    anchor: getCredentials
+- id: no_settings
+  selector:
+    path: tests/pages/settings.ts
+- id: no_test_data
+  selector:
+    path: tests/helpers/test-data.ts
+- id: no_global_0
+  selector:
+    anchor: getSettingsUrl
+- id: no_global_1
+  selector:
+    anchor: getSettingsSelectors
+- id: no_global_2
+  selector:
+    anchor: getDefaultSettings
+- id: no_global_3
+  selector:
+    anchor: randomEmail
+- id: no_global_4
+  selector:
+    anchor: randomUsername
+- id: no_global_5
+  selector:
+    anchor: generateTestUser
+oracle:
+  required:
+  - login
+  - login_1
+  - login_2
+  allowed: []
+  forbidden:
+  - no_settings
+  - no_test_data
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

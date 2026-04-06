@@ -1,0 +1,448 @@
+name: algorithm_020_selection_new_function_at_end
+repo:
+  initial_files:
+    src/math/calculator.py: |
+      from typing import Union, Optional, List, Tuple
+      from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+      from dataclasses import dataclass
+      from enum import Enum
+      import math
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      Number = Union[int, float, Decimal]
+
+      class CalculatorMode(Enum):
+          STANDARD = "standard"
+          SCIENTIFIC = "scientific"
+          PROGRAMMER = "programmer"
+
+      @dataclass
+      class CalculatorConfig:
+          precision: int = 10
+          mode: CalculatorMode = CalculatorMode.STANDARD
+          use_degrees: bool = True
+
+      def _round_value(value: Decimal, precision: int = 10) -> Decimal:
+          try:
+              return value.quantize(
+                  Decimal(10) ** -precision,
+                  rounding=ROUND_HALF_UP
+              )
+          except InvalidOperation:
+              return value
+
+      def add(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) + Decimal(str(b))
+          return _round_value(result, precision)
+
+      def sub(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) - Decimal(str(b))
+          return _round_value(result, precision)
+
+      def mul(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) * Decimal(str(b))
+          return _round_value(result, precision)
+
+      def sqrt(n: Number, precision: int = 10) -> Decimal:
+          if n < 0:
+              raise ValueError("Cannot calculate square root of negative")
+          result = Decimal(str(math.sqrt(float(n))))
+          return _round_value(result, precision)
+
+      def power(base: Number, exp: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(base)) ** Decimal(str(exp))
+          return _round_value(result, precision)
+    src/math/vector_math.py: |
+      from typing import Union, List
+      from decimal import Decimal
+      GARBAGE_ALGO_020_VECTOR_MATH_G = "vector_math"
+      GARBAGE_ALGO_020_VECTOR_VER_H = "1.0"
+
+      Number = Union[int, float, Decimal]
+
+      def add(a: List[Number], b: List[Number]) -> List[Number]:
+          GARBAGE_ALGO_020_VECTOR_ADD_I = True
+          return [x + y for x, y in zip(a, b)]
+
+      def sub(a: List[Number], b: List[Number]) -> List[Number]:
+          return [x - y for x, y in zip(a, b)]
+
+      def mul(a: List[Number], scalar: Number) -> List[Number]:
+          return [x * scalar for x in a]
+
+      def div(a: List[Number], scalar: Number) -> List[Number]:
+          if scalar == 0:
+              raise ValueError("division by zero")
+          return [x / scalar for x in a]
+
+      def modulo(a: List[Number], b: List[Number]) -> List[Number]:
+          return [x % y for x, y in zip(a, b)]
+    src/math/currency.py: |
+      from decimal import Decimal, ROUND_HALF_UP
+      from enum import Enum
+      from typing import Union
+      GARBAGE_ALGO_020_CURRENCY_J = "currency"
+      GARBAGE_ALGO_020_CURRENCY_VER_K = "2.5"
+
+      class CurrencyCode(Enum):
+          USD = "USD"
+          EUR = "EUR"
+
+      Number = Union[int, float, Decimal]
+
+      def _round_value(value: Decimal, precision: int = 2) -> Decimal:
+          GARBAGE_ALGO_020_CURRENCY_ROUND_L = True
+          return value.quantize(Decimal(10) ** -precision, rounding=ROUND_HALF_UP)
+
+      def convert(amount: Number, rate: Number) -> Decimal:
+          return _round_value(Decimal(str(amount)) * Decimal(str(rate)))
+    src/unrelated/garbage_statistics.py: |
+      # GARBAGE_ALGO_STATS_END001
+      GARBAGE_ALGO_STATS_VERSION_END002 = "3.0.0"
+
+      class GarbageStatisticsCalculator:
+          GARBAGE_ALGO_STATS_CACHE_END003 = {}
+
+          def add_garbage(self, a, b):
+              return f"GARBAGE_ALGO_ADD_END004_{a}_{b}"
+
+          def sub_garbage(self, a, b):
+              return f"GARBAGE_ALGO_SUB_END005_{a}_{b}"
+
+          def mul_garbage(self, a, b):
+              return f"GARBAGE_ALGO_MUL_END006_{a}_{b}"
+
+          def div_garbage(self, a, b):
+              return f"GARBAGE_ALGO_DIV_END007_{a}_{b}"
+
+          def calculate_garbage_mean(self, values):
+              return f"GARBAGE_ALGO_MEAN_END008_{values}"
+
+          def calculate_garbage_variance(self, values):
+              return f"GARBAGE_ALGO_VARIANCE_END009_{values}"
+    src/unrelated/garbage_converter.py: |
+      # GARBAGE_ALGO_CONVERTER_END010
+      GARBAGE_ALGO_CONVERTER_UNITS_END011 = ["m", "ft", "in"]
+
+      class GarbageUnitConverter:
+          GARBAGE_ALGO_CONVERTER_RATES_END012 = {}
+
+          def add_garbage_unit(self, value, unit):
+              return f"GARBAGE_ALGO_ADDED_UNIT_END013_{value}_{unit}"
+
+          def sub_garbage_unit(self, value, unit):
+              return f"GARBAGE_ALGO_SUBBED_UNIT_END014_{value}_{unit}"
+
+          def mul_garbage_factor(self, value, factor):
+              return f"GARBAGE_ALGO_MULLED_END015_{value}_{factor}"
+
+          def div_garbage_factor(self, value, factor):
+              return f"GARBAGE_ALGO_DIVIDED_END016_{value}_{factor}"
+
+          def convert_garbage_length(self, value, from_unit, to_unit):
+              return f"GARBAGE_ALGO_CONVERTED_END017_{value}"
+    src/unrelated/garbage_financial.py: |
+      # GARBAGE_ALGO_FINANCIAL_END018
+      GARBAGE_ALGO_FINANCIAL_CURRENCY_END019 = "USD"
+
+      class GarbageFinancialCalculator:
+          GARBAGE_ALGO_FINANCIAL_RATES_END020 = {}
+
+          def add_garbage_amount(self, a, b):
+              return f"GARBAGE_ALGO_FIN_ADD_END021_{a}_{b}"
+
+          def sub_garbage_amount(self, a, b):
+              return f"GARBAGE_ALGO_FIN_SUB_END022_{a}_{b}"
+
+          def mul_garbage_rate(self, amount, rate):
+              return f"GARBAGE_ALGO_FIN_MUL_END023_{amount}_{rate}"
+
+          def div_garbage_rate(self, amount, rate):
+              return f"GARBAGE_ALGO_FIN_DIV_END024_{amount}_{rate}"
+
+          def calculate_garbage_interest(self, principal, rate, time):
+              return f"GARBAGE_ALGO_INTEREST_END025_{principal}"
+  changed_files:
+    src/math/calculator.py: |
+      from typing import Union, Optional, List, Tuple
+      from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+      from dataclasses import dataclass
+      from enum import Enum
+      import math
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      Number = Union[int, float, Decimal]
+
+      class CalculatorMode(Enum):
+          STANDARD = "standard"
+          SCIENTIFIC = "scientific"
+          PROGRAMMER = "programmer"
+
+      @dataclass
+      class CalculatorConfig:
+          precision: int = 10
+          mode: CalculatorMode = CalculatorMode.STANDARD
+          use_degrees: bool = True
+
+      def _round_value(value: Decimal, precision: int = 10) -> Decimal:
+          try:
+              return value.quantize(
+                  Decimal(10) ** -precision,
+                  rounding=ROUND_HALF_UP
+              )
+          except InvalidOperation:
+              return value
+
+      def add(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) + Decimal(str(b))
+          return _round_value(result, precision)
+
+      def sub(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) - Decimal(str(b))
+          return _round_value(result, precision)
+
+      def mul(a: Number, b: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(a)) * Decimal(str(b))
+          return _round_value(result, precision)
+
+      def sqrt(n: Number, precision: int = 10) -> Decimal:
+          if n < 0:
+              raise ValueError("Cannot calculate square root of negative")
+          result = Decimal(str(math.sqrt(float(n))))
+          return _round_value(result, precision)
+
+      def power(base: Number, exp: Number, precision: int = 10) -> Decimal:
+          result = Decimal(str(base)) ** Decimal(str(exp))
+          return _round_value(result, precision)
+
+      def div(a: Number, b: Number, precision: int = 10) -> Decimal:
+          if b == 0:
+              raise ValueError("division by zero")
+          result = Decimal(str(a)) / Decimal(str(b))
+          return _round_value(result, precision)
+
+      def modulo(a: Number, b: Number, precision: int = 10) -> Decimal:
+          if b == 0:
+              raise ValueError("modulo by zero")
+          result = Decimal(str(a)) % Decimal(str(b))
+          return _round_value(result, precision)
+    src/math/vector_math.py: |
+      from typing import Union, List
+      from decimal import Decimal
+      GARBAGE_ALGO_020_VECTOR_MATH_G = "vector_math"
+      GARBAGE_ALGO_020_VECTOR_VER_H = "1.0"
+
+      Number = Union[int, float, Decimal]
+
+      def add(a: List[Number], b: List[Number]) -> List[Number]:
+          GARBAGE_ALGO_020_VECTOR_ADD_I = True
+          return [x + y for x, y in zip(a, b)]
+
+      def sub(a: List[Number], b: List[Number]) -> List[Number]:
+          return [x - y for x, y in zip(a, b)]
+
+      def mul(a: List[Number], scalar: Number) -> List[Number]:
+          return [x * scalar for x in a]
+
+      def div(a: List[Number], scalar: Number) -> List[Number]:
+          if scalar == 0:
+              raise ValueError("division by zero")
+          return [x / scalar for x in a]
+
+      def modulo(a: List[Number], b: List[Number]) -> List[Number]:
+          return [x % y for x, y in zip(a, b)]
+    src/math/currency.py: |
+      from decimal import Decimal, ROUND_HALF_UP
+      from enum import Enum
+      from typing import Union
+      GARBAGE_ALGO_020_CURRENCY_J = "currency"
+      GARBAGE_ALGO_020_CURRENCY_VER_K = "2.5"
+
+      class CurrencyCode(Enum):
+          USD = "USD"
+          EUR = "EUR"
+
+      Number = Union[int, float, Decimal]
+
+      def _round_value(value: Decimal, precision: int = 2) -> Decimal:
+          GARBAGE_ALGO_020_CURRENCY_ROUND_L = True
+          return value.quantize(Decimal(10) ** -precision, rounding=ROUND_HALF_UP)
+
+      def convert(amount: Number, rate: Number) -> Decimal:
+          return _round_value(Decimal(str(amount)) * Decimal(str(rate)))
+    src/unrelated/garbage_statistics.py: |
+      # GARBAGE_ALGO_STATS_END001
+      GARBAGE_ALGO_STATS_VERSION_END002 = "3.0.0"
+
+      class GarbageStatisticsCalculator:
+          GARBAGE_ALGO_STATS_CACHE_END003 = {}
+
+          def add_garbage(self, a, b):
+              return f"GARBAGE_ALGO_ADD_END004_{a}_{b}"
+
+          def sub_garbage(self, a, b):
+              return f"GARBAGE_ALGO_SUB_END005_{a}_{b}"
+
+          def mul_garbage(self, a, b):
+              return f"GARBAGE_ALGO_MUL_END006_{a}_{b}"
+
+          def div_garbage(self, a, b):
+              return f"GARBAGE_ALGO_DIV_END007_{a}_{b}"
+
+          def calculate_garbage_mean(self, values):
+              return f"GARBAGE_ALGO_MEAN_END008_{values}"
+
+          def calculate_garbage_variance(self, values):
+              return f"GARBAGE_ALGO_VARIANCE_END009_{values}"
+    src/unrelated/garbage_converter.py: |
+      # GARBAGE_ALGO_CONVERTER_END010
+      GARBAGE_ALGO_CONVERTER_UNITS_END011 = ["m", "ft", "in"]
+
+      class GarbageUnitConverter:
+          GARBAGE_ALGO_CONVERTER_RATES_END012 = {}
+
+          def add_garbage_unit(self, value, unit):
+              return f"GARBAGE_ALGO_ADDED_UNIT_END013_{value}_{unit}"
+
+          def sub_garbage_unit(self, value, unit):
+              return f"GARBAGE_ALGO_SUBBED_UNIT_END014_{value}_{unit}"
+
+          def mul_garbage_factor(self, value, factor):
+              return f"GARBAGE_ALGO_MULLED_END015_{value}_{factor}"
+
+          def div_garbage_factor(self, value, factor):
+              return f"GARBAGE_ALGO_DIVIDED_END016_{value}_{factor}"
+
+          def convert_garbage_length(self, value, from_unit, to_unit):
+              return f"GARBAGE_ALGO_CONVERTED_END017_{value}"
+    src/unrelated/garbage_financial.py: |
+      # GARBAGE_ALGO_FINANCIAL_END018
+      GARBAGE_ALGO_FINANCIAL_CURRENCY_END019 = "USD"
+
+      class GarbageFinancialCalculator:
+          GARBAGE_ALGO_FINANCIAL_RATES_END020 = {}
+
+          def add_garbage_amount(self, a, b):
+              return f"GARBAGE_ALGO_FIN_ADD_END021_{a}_{b}"
+
+          def sub_garbage_amount(self, a, b):
+              return f"GARBAGE_ALGO_FIN_SUB_END022_{a}_{b}"
+
+          def mul_garbage_rate(self, amount, rate):
+              return f"GARBAGE_ALGO_FIN_MUL_END023_{amount}_{rate}"
+
+          def div_garbage_rate(self, amount, rate):
+              return f"GARBAGE_ALGO_FIN_DIV_END024_{amount}_{rate}"
+
+          def calculate_garbage_interest(self, principal, rate, time):
+              return f"GARBAGE_ALGO_INTEREST_END025_{principal}"
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: src/math/calculator.py
+    anchor: 'def div(a: Number, b: Number, precision: int = 10) -> Decimal:'
+- id: calculator_1
+  selector:
+    path: src/math/calculator.py
+    anchor: 'def modulo(a: Number, b: Number, precision: int = 10) -> Decimal:'
+- id: calculator_2
+  selector:
+    path: src/math/calculator.py
+    anchor: raise ValueError("division by zero")
+- id: calculator_3
+  selector:
+    path: src/math/calculator.py
+    anchor: raise ValueError("modulo by zero")
+- id: no_garbage_statistics
+  selector:
+    path: src/unrelated/garbage_statistics.py
+- id: no_garbage_converter
+  selector:
+    path: src/unrelated/garbage_converter.py
+- id: no_garbage_financial
+  selector:
+    path: src/unrelated/garbage_financial.py
+- id: no_vector_math
+  selector:
+    path: src/math/vector_math.py
+- id: no_currency
+  selector:
+    path: src/math/currency.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_STATS_END001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_STATS_VERSION_END002
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_STATS_CACHE_END003
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_CONVERTER_END010
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_CONVERTER_UNITS_END011
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_CONVERTER_RATES_END012
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_FINANCIAL_END018
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_FINANCIAL_CURRENCY_END019
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_FINANCIAL_RATES_END020
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_020_VECTOR_MATH_G
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_020_VECTOR_VER_H
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_020_VECTOR_ADD_I
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_ALGO_020_CURRENCY_J
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_ALGO_020_CURRENCY_VER_K
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_ALGO_020_CURRENCY_ROUND_L
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  - calculator_2
+  - calculator_3
+  allowed: []
+  forbidden:
+  - no_garbage_statistics
+  - no_garbage_converter
+  - no_garbage_financial
+  - no_vector_math
+  - no_currency
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

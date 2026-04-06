@@ -1,0 +1,147 @@
+name: terraform_015_cloudwatch_alarm
+repo:
+  initial_files:
+    monitoring.tf: |
+      # Monitoring resources
+    compute.tf: |
+      resource "aws_autoscaling_group" "web" {
+        name             = "web-asg"
+        min_size         = 1
+        max_size         = 10
+        desired_capacity = 2
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+      }
+    sns.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "alerts-topic"
+      }
+
+      resource "aws_sns_topic_subscription" "email" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "email"
+        endpoint  = var.alert_email
+      }
+    monitoring_memory.tf: |
+      resource "aws_cloudwatch_metric_alarm" "memory_high" {
+        alarm_name          = "memory-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 3
+        metric_name         = "MemoryUtilization"
+        namespace           = "CWAgent"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 90
+
+        alarm_actions = [aws_sns_topic.ops.arn]
+      }
+    logging.tf: |
+      resource "aws_cloudwatch_log_group" "application" {
+        name              = "/app/${var.environment}/application"
+        retention_in_days = 30
+      }
+  changed_files:
+    monitoring.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+        alarm_name          = "cpu-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        dimensions = {
+          AutoScalingGroupName = aws_autoscaling_group.web.name
+        }
+
+        alarm_actions = [aws_sns_topic.alerts.arn]
+      }
+    compute.tf: |
+      resource "aws_autoscaling_group" "web" {
+        name             = "web-asg"
+        min_size         = 1
+        max_size         = 10
+        desired_capacity = 2
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+      }
+    sns.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "alerts-topic"
+      }
+
+      resource "aws_sns_topic_subscription" "email" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "email"
+        endpoint  = var.alert_email
+      }
+    monitoring_memory.tf: |
+      resource "aws_cloudwatch_metric_alarm" "memory_high" {
+        alarm_name          = "memory-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 3
+        metric_name         = "MemoryUtilization"
+        namespace           = "CWAgent"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 90
+
+        alarm_actions = [aws_sns_topic.ops.arn]
+      }
+    logging.tf: |
+      resource "aws_cloudwatch_log_group" "application" {
+        name              = "/app/${var.environment}/application"
+        retention_in_days = 30
+      }
+  commit_message: Update files
+fragments:
+- id: compute
+  selector:
+    path: compute.tf
+    anchor: resource "aws_autoscaling_group" "web" {
+- id: compute_1
+  selector:
+    path: compute.tf
+    anchor: name             = "web-asg"
+- id: no_monitoring_memory
+  selector:
+    path: monitoring_memory.tf
+- id: no_logging
+  selector:
+    path: logging.tf
+- id: no_global_0
+  selector:
+    anchor: memory-high
+- id: no_global_1
+  selector:
+    anchor: MemoryUtilization
+- id: no_global_2
+  selector:
+    anchor: aws_sns_topic.ops.arn
+- id: no_global_3
+  selector:
+    anchor: aws_cloudwatch_log_group
+- id: no_global_4
+  selector:
+    anchor: retention_in_days
+oracle:
+  required:
+  - compute
+  - compute_1
+  allowed: []
+  forbidden:
+  - no_monitoring_memory
+  - no_logging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

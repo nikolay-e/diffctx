@@ -1,0 +1,116 @@
+name: terraform_069_security_group
+repo:
+  initial_files:
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-sg"
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          from_port   = 80
+          to_port     = 80
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami                    = "ami-12345678"
+        instance_type          = "t3.micro"
+        vpc_security_group_ids = [aws_security_group.web.id]
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    acm.tf: |
+      resource "aws_acm_certificate" "main" {
+        domain_name       = "example.com"
+        validation_method = "DNS"
+
+        subject_alternative_names = ["*.example.com"]
+      }
+    database/security.tf: |
+      resource "aws_security_group" "database" {
+        name   = "database-sg"
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          from_port       = 5432
+          to_port         = 5432
+          protocol        = "tcp"
+          security_groups = [aws_security_group.web.id]
+        }
+      }
+    outputs.tf: |
+      output "web_sg_id" {
+        value = aws_security_group.web.id
+      }
+  changed_files:
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-sg"
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: security
+  selector:
+    path: security.tf
+    anchor: from_port   = 443
+- id: security_1
+  selector:
+    path: security.tf
+    anchor: to_port     = 443
+- id: main
+  selector:
+    path: main.tf
+    anchor: vpc_security_group_ids = [aws_security_group.web.id]
+- id: no_security
+  selector:
+    path: database/security.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_global_0
+  selector:
+    anchor: database-sg
+- id: no_global_1
+  selector:
+    anchor: from_port       = 5432
+- id: no_global_2
+  selector:
+    anchor: output "web_sg_id" {
+oracle:
+  required:
+  - security
+  - security_1
+  - main
+  allowed: []
+  forbidden:
+  - no_security
+  - no_outputs
+  - no_global_0
+  - no_global_1
+  - no_global_2

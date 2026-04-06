@@ -1,0 +1,302 @@
+name: algorithm_005_fragment_multiple_decorators_all_included
+repo:
+  initial_files:
+    decorators/base.py: |
+      from functools import wraps
+      from typing import Callable, Any, TypeVar
+      import time
+      import logging
+
+      F = TypeVar('F', bound=Callable[..., Any])
+
+      def timing(func: F) -> F:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              start = time.perf_counter()
+              result = func(*args, **kwargs)
+              elapsed = time.perf_counter() - start
+              logging.info(f"{func.__name__} took {elapsed:.4f}s")
+              return result
+          return wrapper
+
+      def validate_input(func: F) -> F:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              if not args and not kwargs:
+                  raise ValueError("No input provided")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def cache_result(func: F) -> F:
+          cache = {}
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              key = (args, tuple(sorted(kwargs.items())))
+              if key not in cache:
+                  cache[key] = func(*args, **kwargs)
+              return cache[key]
+          return wrapper
+    services/data_processor.py: |
+      from decorators.base import timing, validate_input, cache_result
+      from typing import List, Dict, Any
+
+      class DataProcessor:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.batch_size = config.get("batch_size", 100)
+
+          @timing
+          @validate_input
+          @cache_result
+          def process_batch(self, items: List[Dict]) -> List[Dict]:
+              results = []
+              for item in items:
+                  processed = self._transform_item(item)
+                  results.append(processed)
+              return results
+
+          def _transform_item(self, item: Dict) -> Dict:
+              return {"id": item.get("id"), "processed": True}
+    services/image_processor.py: |
+      from decorators.base import timing, cache_result
+      GARBAGE_ALGO_005_IMG_PROCESSOR_G = "image_pipeline"
+      GARBAGE_ALGO_005_RESIZE_MARKER_H = True
+
+      class ImageProcessor:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.batch_size = config.get("batch_size", 50)
+
+          @timing
+          @cache_result
+          def process_batch(self, images: List[str]) -> List[str]:
+              GARBAGE_ALGO_005_BATCH_RESULT_I = []
+              return []
+
+          def _transform_item(self, path: str) -> str:
+              return path
+    services/pipeline_runner.py: |
+      from decorators.base import timing, validate_input, cache_result
+      GARBAGE_ALGO_005_PIPELINE_MARKER_J = "pipeline"
+      GARBAGE_ALGO_005_STAGE_MARKER_K = 3
+
+      class PipelineRunner:
+          @timing
+          @validate_input
+          def run_stage(self, stage_name: str, data: dict) -> dict:
+              GARBAGE_ALGO_005_RUN_MARKER_L = True
+              return data
+    garbage_logging.py: |
+      GARBAGE_ALGO_005_LOGGING_MARKER_A = "logging"
+      GARBAGE_ALGO_005_HANDLER_MARKER_B = True
+
+      class LogHandler:
+          GARBAGE_ALGO_005_LEVEL_MARKER_C = "DEBUG"
+
+          def log(self, message: str) -> None:
+              pass
+    garbage_events.py: |
+      GARBAGE_ALGO_005_EVENT_MARKER_D = "event"
+      GARBAGE_ALGO_005_LISTENER_MARKER_E = []
+
+      class EventEmitter:
+          GARBAGE_ALGO_005_EMIT_MARKER_F = True
+
+          def emit(self, event: str) -> None:
+              pass
+  changed_files:
+    decorators/base.py: |
+      from functools import wraps
+      from typing import Callable, Any, TypeVar
+      import time
+      import logging
+
+      F = TypeVar('F', bound=Callable[..., Any])
+
+      def timing(func: F) -> F:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              start = time.perf_counter()
+              result = func(*args, **kwargs)
+              elapsed = time.perf_counter() - start
+              logging.info(f"{func.__name__} took {elapsed:.4f}s")
+              return result
+          return wrapper
+
+      def validate_input(func: F) -> F:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              if not args and not kwargs:
+                  raise ValueError("No input provided")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def cache_result(func: F) -> F:
+          cache = {}
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              key = (args, tuple(sorted(kwargs.items())))
+              if key not in cache:
+                  cache[key] = func(*args, **kwargs)
+              return cache[key]
+          return wrapper
+    services/data_processor.py: |
+      from decorators.base import timing, validate_input, cache_result
+      from typing import List, Dict, Any, Optional
+
+      class DataProcessor:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.batch_size = config.get("batch_size", 100)
+
+          @timing
+          @validate_input
+          @cache_result
+          def process_batch(self, items: List[Dict], filter_fn: Optional[Callable] = None) -> List[Dict]:
+              results = []
+              for item in items:
+                  if filter_fn and not filter_fn(item):
+                      continue
+                  processed = self._transform_item(item)
+                  results.append(processed)
+              return results
+
+          def _transform_item(self, item: Dict) -> Dict:
+              return {"id": item.get("id"), "processed": True, "version": 2}
+    services/image_processor.py: |
+      from decorators.base import timing, cache_result
+      GARBAGE_ALGO_005_IMG_PROCESSOR_G = "image_pipeline"
+      GARBAGE_ALGO_005_RESIZE_MARKER_H = True
+
+      class ImageProcessor:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.batch_size = config.get("batch_size", 50)
+
+          @timing
+          @cache_result
+          def process_batch(self, images: List[str]) -> List[str]:
+              GARBAGE_ALGO_005_BATCH_RESULT_I = []
+              return []
+
+          def _transform_item(self, path: str) -> str:
+              return path
+    services/pipeline_runner.py: |
+      from decorators.base import timing, validate_input, cache_result
+      GARBAGE_ALGO_005_PIPELINE_MARKER_J = "pipeline"
+      GARBAGE_ALGO_005_STAGE_MARKER_K = 3
+
+      class PipelineRunner:
+          @timing
+          @validate_input
+          def run_stage(self, stage_name: str, data: dict) -> dict:
+              GARBAGE_ALGO_005_RUN_MARKER_L = True
+              return data
+    garbage_logging.py: |
+      GARBAGE_ALGO_005_LOGGING_MARKER_A = "logging"
+      GARBAGE_ALGO_005_HANDLER_MARKER_B = True
+
+      class LogHandler:
+          GARBAGE_ALGO_005_LEVEL_MARKER_C = "DEBUG"
+
+          def log(self, message: str) -> None:
+              pass
+    garbage_events.py: |
+      GARBAGE_ALGO_005_EVENT_MARKER_D = "event"
+      GARBAGE_ALGO_005_LISTENER_MARKER_E = []
+
+      class EventEmitter:
+          GARBAGE_ALGO_005_EMIT_MARKER_F = True
+
+          def emit(self, event: str) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: data_processor
+  selector:
+    path: services/data_processor.py
+    anchor: from typing import List, Dict, Any, Optional
+- id: data_processor_1
+  selector:
+    path: services/data_processor.py
+    anchor: 'def process_batch(self, items: List[Dict], filter_fn: Optional[Callable] = None) -> List[Dict]:'
+- id: data_processor_2
+  selector:
+    path: services/data_processor.py
+    anchor: if filter_fn and not filter_fn(item)
+- id: data_processor_3
+  selector:
+    path: services/data_processor.py
+    anchor: '"version": 2'
+- id: no_garbage_logging
+  selector:
+    path: garbage_logging.py
+- id: no_garbage_events
+  selector:
+    path: garbage_events.py
+- id: no_image_processor
+  selector:
+    path: services/image_processor.py
+- id: no_pipeline_runner
+  selector:
+    path: services/pipeline_runner.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_005_LOGGING_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_005_HANDLER_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_005_LEVEL_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_005_EVENT_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_005_LISTENER_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_005_EMIT_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_005_IMG_PROCESSOR_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_005_RESIZE_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_005_BATCH_RESULT_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_005_PIPELINE_MARKER_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_005_STAGE_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_005_RUN_MARKER_L
+oracle:
+  required:
+  - data_processor
+  - data_processor_1
+  - data_processor_2
+  - data_processor_3
+  allowed: []
+  forbidden:
+  - no_garbage_logging
+  - no_garbage_events
+  - no_image_processor
+  - no_pipeline_runner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,131 @@
+name: infrastructure_validation_001_budget_test
+repo:
+  initial_files:
+    src/models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Config:
+          x: int = 1
+          name: str = "default"
+          enabled: bool = True
+
+      @dataclass
+      class Settings:
+          config: Config
+          debug: bool = False
+
+      def create_default_config():
+          return Config()
+
+      def create_settings(config: Optional[Config] = None):
+          if config is None:
+              config = create_default_config()
+          return Settings(config=config)
+    src/processor.py: |
+      from models import Config, create_settings
+
+      def process_config(cfg: Config):
+          if cfg.enabled:
+              return f"Processing {cfg.name} with x={cfg.x}"
+          return "Disabled"
+
+      def run():
+          settings = create_settings()
+          return process_config(settings.config)
+    scripts/benchmark.sh: |
+      #!/bin/bash
+      python -m timeit "import processor; processor.run()"
+    tests/test_perf.py: |
+      def test_performance():
+          pass
+    docs/budget.md: |
+      # Budget Guide
+  changed_files:
+    src/models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Config:
+          x: int = 2
+          y: int = 3
+          name: str = "default"
+          enabled: bool = True
+
+      @dataclass
+      class Settings:
+          config: Config
+          debug: bool = False
+
+      def create_default_config():
+          return Config()
+
+      def create_settings(config: Optional[Config] = None):
+          if config is None:
+              config = create_default_config()
+          return Settings(config=config)
+    src/processor.py: |
+      from models import Config, create_settings
+
+      def process_config(cfg: Config):
+          if cfg.enabled:
+              return f"Processing {cfg.name} with x={cfg.x}"
+          return "Disabled"
+
+      def run():
+          settings = create_settings()
+          return process_config(settings.config)
+    scripts/benchmark.sh: |
+      #!/bin/bash
+      python -m timeit "import processor; processor.run()"
+    tests/test_perf.py: |
+      def test_performance():
+          pass
+    docs/budget.md: |
+      # Budget Guide
+  commit_message: Update files
+fragments:
+- id: models
+  selector:
+    path: src/models.py
+    anchor: 'x: int = 2'
+- id: models_1
+  selector:
+    path: src/models.py
+    anchor: 'y: int = 3'
+- id: no_benchmark
+  selector:
+    path: scripts/benchmark.sh
+- id: no_test_perf
+  selector:
+    path: tests/test_perf.py
+- id: no_budget
+  selector:
+    path: docs/budget.md
+- id: no_global_0
+  selector:
+    anchor: benchmark
+- id: no_global_1
+  selector:
+    anchor: timeit
+- id: no_global_2
+  selector:
+    anchor: test_performance
+- id: no_global_3
+  selector:
+    anchor: Budget Guide
+oracle:
+  required:
+  - models
+  - models_1
+  allowed: []
+  forbidden:
+  - no_benchmark
+  - no_test_perf
+  - no_budget
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

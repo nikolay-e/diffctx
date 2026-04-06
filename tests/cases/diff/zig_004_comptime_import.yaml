@@ -1,0 +1,314 @@
+name: zig_004_comptime_import
+repo:
+  initial_files:
+    src/meta.zig: |
+      const std = @import("std");
+
+      pub fn fieldCount(comptime T: type) usize {
+          return @typeInfo(T).Struct.fields.len;
+      }
+
+      pub fn hasField(comptime T: type, comptime name: []const u8) bool {
+          inline for (@typeInfo(T).Struct.fields) |field| {
+              if (std.mem.eql(u8, field.name, name)) return true;
+          }
+          return false;
+      }
+
+      pub fn fieldNames(comptime T: type) []const []const u8 {
+          const info = @typeInfo(T).Struct;
+          var names: [info.fields.len][]const u8 = undefined;
+          inline for (info.fields, 0..) |field, i| {
+              names[i] = field.name;
+          }
+          return &names;
+      }
+    src/models.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      pub const User = struct {
+          id: u64,
+          name: []const u8,
+          email: []const u8,
+          active: bool,
+      };
+
+      pub const user_field_count = meta.fieldCount(User);
+    src/validator.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_VALID_MARKER_A: []const u8 = "validator_module";
+      const TRAP_ZIG_004_CHECK_FLAG_B: bool = true;
+
+      pub fn validateStruct(comptime T: type, instance: T) bool {
+          _ = instance;
+          return meta.fieldCount(T) > 0;
+      }
+    src/schema_checker.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_SCHEMA_MARKER_C: []const u8 = "schema_checker_module";
+      const TRAP_ZIG_004_SCHEMA_FLAG_D: bool = true;
+
+      pub fn ensureFieldExists(comptime T: type, comptime name: []const u8) void {
+          if (!meta.hasField(T, name)) {
+              @compileError("Required field missing: " ++ name);
+          }
+      }
+    src/debug_printer.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_DEBUG_MARKER_E: []const u8 = "debug_printer_module";
+      const TRAP_ZIG_004_PRINT_FLAG_F: bool = true;
+
+      pub fn printFieldNames(comptime T: type) void {
+          const names = meta.fieldNames(T);
+          for (names) |name| {
+              std.debug.print("{s}\n", .{name});
+          }
+      }
+    src/serializer.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_004_SERIAL_MARKER_G: []const u8 = "serializer_module";
+      const TRAP_ZIG_004_ENCODE_FLAG_H: bool = true;
+
+      pub fn comptimeHash(comptime s: []const u8) u64 {
+          var hash: u64 = 5381;
+          for (s) |c| {
+              hash = ((hash << 5) +% hash) +% c;
+          }
+          return hash;
+      }
+    src/repository.zig: |
+      const std = @import("std");
+      const models = @import("models.zig");
+
+      const TRAP_ZIG_004_REPO_MARKER_I: []const u8 = "repository_module";
+      const TRAP_ZIG_004_STORE_FLAG_J: bool = true;
+
+      pub fn createUser(name: []const u8, email: []const u8) models.User {
+          return .{
+              .id = 0,
+              .name = name,
+              .email = email,
+              .active = true,
+          };
+      }
+    src/runtime_utils.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_004_RUNTIME_MARKER_K: []const u8 = "runtime_utils_module";
+      const TRAP_ZIG_004_ALLOC_FLAG_L: bool = true;
+
+      pub fn duplicateString(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+          const copy = try allocator.alloc(u8, s.len);
+          @memcpy(copy, s);
+          return copy;
+      }
+  changed_files:
+    src/meta.zig: |
+      const std = @import("std");
+
+      pub fn fieldCount(comptime T: type) usize {
+          return @typeInfo(T).Struct.fields.len;
+      }
+
+      pub fn hasField(comptime T: type, comptime name: []const u8) bool {
+          inline for (@typeInfo(T).Struct.fields) |field| {
+              if (std.mem.eql(u8, field.name, name)) return true;
+          }
+          return false;
+      }
+
+      pub fn fieldNames(comptime T: type) []const []const u8 {
+          const info = @typeInfo(T).Struct;
+          var names: [info.fields.len][]const u8 = undefined;
+          inline for (info.fields, 0..) |field, i| {
+              names[i] = field.name;
+          }
+          return &names;
+      }
+    src/models.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      pub const User = struct {
+          id: u64,
+          name: []const u8,
+          email: []const u8,
+          active: bool,
+      };
+
+      pub const user_field_count = meta.fieldCount(User);
+      pub const has_email_field = meta.hasField(User, "email");
+      pub const user_fields = meta.fieldNames(User);
+    src/validator.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_VALID_MARKER_A: []const u8 = "validator_module";
+      const TRAP_ZIG_004_CHECK_FLAG_B: bool = true;
+
+      pub fn validateStruct(comptime T: type, instance: T) bool {
+          _ = instance;
+          return meta.fieldCount(T) > 0;
+      }
+    src/schema_checker.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_SCHEMA_MARKER_C: []const u8 = "schema_checker_module";
+      const TRAP_ZIG_004_SCHEMA_FLAG_D: bool = true;
+
+      pub fn ensureFieldExists(comptime T: type, comptime name: []const u8) void {
+          if (!meta.hasField(T, name)) {
+              @compileError("Required field missing: " ++ name);
+          }
+      }
+    src/debug_printer.zig: |
+      const std = @import("std");
+      const meta = @import("meta.zig");
+
+      const TRAP_ZIG_004_DEBUG_MARKER_E: []const u8 = "debug_printer_module";
+      const TRAP_ZIG_004_PRINT_FLAG_F: bool = true;
+
+      pub fn printFieldNames(comptime T: type) void {
+          const names = meta.fieldNames(T);
+          for (names) |name| {
+              std.debug.print("{s}\n", .{name});
+          }
+      }
+    src/serializer.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_004_SERIAL_MARKER_G: []const u8 = "serializer_module";
+      const TRAP_ZIG_004_ENCODE_FLAG_H: bool = true;
+
+      pub fn comptimeHash(comptime s: []const u8) u64 {
+          var hash: u64 = 5381;
+          for (s) |c| {
+              hash = ((hash << 5) +% hash) +% c;
+          }
+          return hash;
+      }
+    src/repository.zig: |
+      const std = @import("std");
+      const models = @import("models.zig");
+
+      const TRAP_ZIG_004_REPO_MARKER_I: []const u8 = "repository_module";
+      const TRAP_ZIG_004_STORE_FLAG_J: bool = true;
+
+      pub fn createUser(name: []const u8, email: []const u8) models.User {
+          return .{
+              .id = 0,
+              .name = name,
+              .email = email,
+              .active = true,
+          };
+      }
+    src/runtime_utils.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_004_RUNTIME_MARKER_K: []const u8 = "runtime_utils_module";
+      const TRAP_ZIG_004_ALLOC_FLAG_L: bool = true;
+
+      pub fn duplicateString(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+          const copy = try allocator.alloc(u8, s.len);
+          @memcpy(copy, s);
+          return copy;
+      }
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: models
+  selector:
+    path: src/models.zig
+    anchor: has_email_field = meta.hasField(User, "email")
+- id: models_1
+  selector:
+    path: src/models.zig
+    anchor: user_fields = meta.fieldNames(User)
+- id: no_validator
+  selector:
+    path: src/validator.zig
+- id: no_schema_checker
+  selector:
+    path: src/schema_checker.zig
+- id: no_debug_printer
+  selector:
+    path: src/debug_printer.zig
+- id: no_serializer
+  selector:
+    path: src/serializer.zig
+- id: no_repository
+  selector:
+    path: src/repository.zig
+- id: no_runtime_utils
+  selector:
+    path: src/runtime_utils.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_ZIG_004_VALID_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_ZIG_004_CHECK_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_ZIG_004_SCHEMA_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_ZIG_004_SCHEMA_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_ZIG_004_DEBUG_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_ZIG_004_PRINT_FLAG_F
+- id: no_global_6
+  selector:
+    anchor: TRAP_ZIG_004_SERIAL_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: TRAP_ZIG_004_ENCODE_FLAG_H
+- id: no_global_8
+  selector:
+    anchor: TRAP_ZIG_004_REPO_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: TRAP_ZIG_004_STORE_FLAG_J
+- id: no_global_10
+  selector:
+    anchor: TRAP_ZIG_004_RUNTIME_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: TRAP_ZIG_004_ALLOC_FLAG_L
+oracle:
+  required:
+  - models
+  - models_1
+  allowed: []
+  forbidden:
+  - no_validator
+  - no_schema_checker
+  - no_debug_printer
+  - no_serializer
+  - no_repository
+  - no_runtime_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

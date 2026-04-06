@@ -1,0 +1,104 @@
+name: javascript_037_exported_function_change_pulls_importers
+repo:
+  initial_files:
+    utils.ts: |
+      export function fetchUser(id: string) {
+          return fetch(`/api/users/${id}`);
+      }
+    consumer.ts: |
+      import { fetchUser } from './utils';
+
+      async function loadUser(id: string) {
+          const response = await fetchUser(id);
+          return response.json();
+      }
+    url-builder.ts: |
+      export function buildApiUrl(path: string, params?: Record<string, string>): string {
+          const base = '/api';
+          const url = new URL(`${base}${path}`, 'http://localhost');
+          if (params) {
+              Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+          }
+          return url.pathname + url.search;
+      }
+    user-cache.ts: |
+      const cache = new Map<string, { data: unknown; expiry: number }>();
+
+      export function getCachedUser(id: string): unknown | null {
+          const entry = cache.get(id);
+          if (!entry || entry.expiry < Date.now()) return null;
+          return entry.data;
+      }
+
+      export function setCachedUser(id: string, data: unknown, ttl: number = 60000): void {
+          cache.set(id, { data, expiry: Date.now() + ttl });
+      }
+  changed_files:
+    utils.ts: |
+      export function fetchUser(id: string, options?: RequestInit) {
+          return fetch(`/api/users/${id}`, options);
+      }
+    consumer.ts: |
+      import { fetchUser } from './utils';
+
+      async function loadUser(id: string) {
+          const response = await fetchUser(id);
+          return response.json();
+      }
+    url-builder.ts: |
+      export function buildApiUrl(path: string, params?: Record<string, string>): string {
+          const base = '/api';
+          const url = new URL(`${base}${path}`, 'http://localhost');
+          if (params) {
+              Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+          }
+          return url.pathname + url.search;
+      }
+    user-cache.ts: |
+      const cache = new Map<string, { data: unknown; expiry: number }>();
+
+      export function getCachedUser(id: string): unknown | null {
+          const entry = cache.get(id);
+          if (!entry || entry.expiry < Date.now()) return null;
+          return entry.data;
+      }
+
+      export function setCachedUser(id: string, data: unknown, ttl: number = 60000): void {
+          cache.set(id, { data, expiry: Date.now() + ttl });
+      }
+  commit_message: Update files
+fragments:
+- id: consumer
+  selector:
+    path: consumer.ts
+    anchor: import { fetchUser } from './utils'
+- id: consumer_1
+  selector:
+    path: consumer.ts
+    anchor: fetchUser(id)
+- id: no_url_builder
+  selector:
+    path: url-builder.ts
+- id: no_user_cache
+  selector:
+    path: user-cache.ts
+- id: no_global_0
+  selector:
+    anchor: buildApiUrl
+- id: no_global_1
+  selector:
+    anchor: getCachedUser
+- id: no_global_2
+  selector:
+    anchor: setCachedUser
+oracle:
+  required:
+  - consumer
+  - consumer_1
+  allowed: []
+  forbidden:
+  - no_url_builder
+  - no_user_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2

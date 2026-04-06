@@ -1,0 +1,26 @@
+name: internals_014_diff_with_mixed_unicode
+repo:
+  initial_files:
+    mixed_unicode.py: |
+      def placeholder():
+          pass
+  changed_files:
+    mixed_unicode.py: |
+      # 这是注释
+      def compute_arabic():
+          arabic_greeting = "مرحبا"
+          return arabic_greeting
+  commit_message: Update files
+fragments:
+- id: mixed_unicode_file
+  selector:
+    path: mixed_unicode.py
+- id: req_global_0
+  selector:
+    anchor: 'def compute_arabic():'
+oracle:
+  required:
+  - mixed_unicode_file
+  - req_global_0
+  allowed: []
+  forbidden: []

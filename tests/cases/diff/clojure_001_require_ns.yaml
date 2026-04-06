@@ -1,0 +1,218 @@
+name: clojure_001_require_ns
+repo:
+  initial_files:
+    src/myapp/db.clj: |
+      (ns myapp.db
+        (:require [clojure.java.jdbc :as jdbc]))
+
+      (def db-spec
+        {:dbtype "postgresql"
+         :dbname "myapp"
+         :host "localhost"
+         :port 5432})
+
+      (defn find-user-by-id [id]
+        (first (jdbc/query db-spec
+                 ["SELECT * FROM users WHERE id = ?" id])))
+
+      (defn find-all-users []
+        (jdbc/query db-spec ["SELECT * FROM users"]))
+
+      (defn insert-user! [user-data]
+        (jdbc/insert! db-spec :users user-data))
+    src/myapp/handler.clj: |
+      (ns myapp.handler
+        (:require [myapp.db :as db]
+                  [clojure.data.json :as json]))
+
+      (defn get-user-handler [request]
+        (let [id (get-in request [:params :id])
+              user (db/find-user-by-id id)]
+          (if user
+            {:status 200 :body (json/write-str user)}
+            {:status 404 :body "Not found"})))
+    src/myapp/admin.clj: |
+      (ns myapp.admin
+        (:require [myapp.db :as db]
+                  [clojure.data.json :as json]))
+
+      (def GARBAGE_CLJ_001_ADMIN_MARKER_A "admin")
+      (def GARBAGE_CLJ_001_ADMIN_ROLE_B "superuser")
+
+      (defn list-all-users-handler [request]
+        (let [users (db/find-all-users)]
+          {:status 200 :body (json/write-str users)}))
+    src/myapp/serializer.clj: |
+      (ns myapp.serializer
+        (:require [clojure.data.json :as json]))
+
+      (def GARBAGE_CLJ_001_SERIAL_MARKER_C "serializer")
+      (def GARBAGE_CLJ_001_FORMAT_TYPE_D "json")
+
+      (defn serialize [data]
+        (json/write-str data))
+
+      (defn deserialize [s]
+        (json/read-str s :key-fn keyword))
+    src/myapp/health.clj: |
+      (ns myapp.health)
+
+      (def GARBAGE_CLJ_001_HEALTH_MARKER_E "health")
+      (def GARBAGE_CLJ_001_STATUS_CHECK_F "ok")
+
+      (defn health-check-handler [request]
+        {:status 200 :body "OK"})
+    src/myapp/config.clj: |
+      (ns myapp.config)
+
+      (def GARBAGE_CLJ_001_CONFIG_MARKER_G "config")
+      (def GARBAGE_CLJ_001_ENV_MARKER_H "production")
+
+      (def app-config
+        {:port 8080
+         :host "0.0.0.0"})
+  changed_files:
+    src/myapp/db.clj: |
+      (ns myapp.db
+        (:require [clojure.java.jdbc :as jdbc]))
+
+      (def db-spec
+        {:dbtype "postgresql"
+         :dbname "myapp"
+         :host "localhost"
+         :port 5432})
+
+      (defn find-user-by-id [id]
+        (first (jdbc/query db-spec
+                 ["SELECT * FROM users WHERE id = ?" id])))
+
+      (defn find-all-users []
+        (jdbc/query db-spec ["SELECT * FROM users"]))
+
+      (defn insert-user! [user-data]
+        (jdbc/insert! db-spec :users user-data))
+    src/myapp/handler.clj: |
+      (ns myapp.handler
+        (:require [myapp.db :as db]
+                  [clojure.data.json :as json]))
+
+      (defn get-user-handler [request]
+        (let [id (get-in request [:params :id])
+              user (db/find-user-by-id id)]
+          (if user
+            {:status 200 :body (json/write-str user)}
+            {:status 404 :body "Not found"})))
+
+      (defn create-user-handler [request]
+        (let [body (json/read-str (slurp (:body request)) :key-fn keyword)
+              result (db/insert-user! body)]
+          {:status 201 :body (json/write-str result)}))
+    src/myapp/admin.clj: |
+      (ns myapp.admin
+        (:require [myapp.db :as db]
+                  [clojure.data.json :as json]))
+
+      (def GARBAGE_CLJ_001_ADMIN_MARKER_A "admin")
+      (def GARBAGE_CLJ_001_ADMIN_ROLE_B "superuser")
+
+      (defn list-all-users-handler [request]
+        (let [users (db/find-all-users)]
+          {:status 200 :body (json/write-str users)}))
+    src/myapp/serializer.clj: |
+      (ns myapp.serializer
+        (:require [clojure.data.json :as json]))
+
+      (def GARBAGE_CLJ_001_SERIAL_MARKER_C "serializer")
+      (def GARBAGE_CLJ_001_FORMAT_TYPE_D "json")
+
+      (defn serialize [data]
+        (json/write-str data))
+
+      (defn deserialize [s]
+        (json/read-str s :key-fn keyword))
+    src/myapp/health.clj: |
+      (ns myapp.health)
+
+      (def GARBAGE_CLJ_001_HEALTH_MARKER_E "health")
+      (def GARBAGE_CLJ_001_STATUS_CHECK_F "ok")
+
+      (defn health-check-handler [request]
+        {:status 200 :body "OK"})
+    src/myapp/config.clj: |
+      (ns myapp.config)
+
+      (def GARBAGE_CLJ_001_CONFIG_MARKER_G "config")
+      (def GARBAGE_CLJ_001_ENV_MARKER_H "production")
+
+      (def app-config
+        {:port 8080
+         :host "0.0.0.0"})
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: src/myapp/handler.clj
+    anchor: defn create-user-handler
+- id: handler_1
+  selector:
+    path: src/myapp/handler.clj
+    anchor: db/insert-user!
+- id: db
+  selector:
+    path: src/myapp/db.clj
+    anchor: defn insert-user! [user-data]
+- id: no_admin
+  selector:
+    path: src/myapp/admin.clj
+- id: no_serializer
+  selector:
+    path: src/myapp/serializer.clj
+- id: no_health
+  selector:
+    path: src/myapp/health.clj
+- id: no_config
+  selector:
+    path: src/myapp/config.clj
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CLJ_001_ADMIN_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CLJ_001_ADMIN_ROLE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CLJ_001_SERIAL_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CLJ_001_FORMAT_TYPE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CLJ_001_HEALTH_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CLJ_001_STATUS_CHECK_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CLJ_001_CONFIG_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CLJ_001_ENV_MARKER_H
+oracle:
+  required:
+  - handler
+  - handler_1
+  - db
+  allowed: []
+  forbidden:
+  - no_admin
+  - no_serializer
+  - no_health
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

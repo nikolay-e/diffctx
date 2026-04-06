@@ -1,0 +1,222 @@
+name: terraform_052_provisioner_local_exec
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        subnet_id     = var.private_subnet_id
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-sg"
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          from_port   = 8080
+          to_port     = 8080
+          protocol    = "tcp"
+          cidr_blocks = ["10.0.0.0/8"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    scripts/manage_inventory.py: |
+      import sys
+
+      def load_inventory(path: str = "private_ips.txt") -> list:
+          with open(path) as f:
+              return [line.strip() for line in f if line.strip()]
+
+      def check_health(ip: str, port: int = 8080) -> bool:
+          import socket
+          try:
+              sock = socket.create_connection((ip, port), timeout=5)
+              sock.close()
+              return True
+          except (socket.timeout, ConnectionRefusedError):
+              return False
+
+      def main():
+          ips = load_inventory()
+          for ip in ips:
+              status = "healthy" if check_health(ip) else "unhealthy"
+              print(f"{ip}: {status}")
+
+      if __name__ == "__main__":
+          main()
+    database/setup.tf: |
+      resource "aws_db_instance" "setup" {
+        identifier     = "setup-db"
+        engine         = "postgres"
+        instance_class = "db.t3.micro"
+
+        provisioner "local-exec" {
+          command = "psql -f init.sql ${self.endpoint}"
+        }
+
+        provisioner "local-exec" {
+          when    = destroy
+          command = "psql -f cleanup.sql ${self.endpoint}"
+        }
+      }
+    worker/main.tf: |
+      resource "aws_instance" "worker" {
+        ami           = var.ami_id
+        instance_type = "t3.small"
+        subnet_id     = var.private_subnet_id
+
+        provisioner "local-exec" {
+          command = "echo ${self.private_ip} >> worker_ips.txt"
+        }
+
+        provisioner "local-exec" {
+          when    = destroy
+          command = "sed -i '/${self.private_ip}/d' worker_ips.txt"
+        }
+
+        tags = {
+          Name = "worker-node"
+        }
+      }
+    scripts/inventory.sh: |
+      #!/bin/bash
+      echo "Managing server inventory..."
+      cat private_ips.txt
+      echo "---"
+      wc -l private_ips.txt
+    ansible/inventory.ini: |
+      [webservers]
+      10.0.1.10 ansible_user=ec2-user
+      10.0.1.11 ansible_user=ec2-user
+
+      [workers]
+      10.0.2.10 ansible_user=ec2-user
+      10.0.2.11 ansible_user=ec2-user
+  changed_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami                    = var.ami_id
+        instance_type          = "t3.micro"
+        subnet_id              = var.private_subnet_id
+        vpc_security_group_ids = [aws_security_group.web.id]
+
+        provisioner "local-exec" {
+          command = "echo ${self.private_ip} >> private_ips.txt"
+        }
+
+        provisioner "local-exec" {
+          when    = destroy
+          command = "sed -i '/${self.private_ip}/d' private_ips.txt"
+        }
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: provisioner "local-exec" {
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: command = "echo ${self.private_ip} >> private_ips.txt"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: when    = destroy
+- id: security
+  selector:
+    path: security.tf
+    anchor: resource "aws_security_group" "web" {
+- id: security_1
+  selector:
+    path: security.tf
+    anchor: from_port   = 8080
+- id: manage_inventory
+  selector:
+    path: scripts/manage_inventory.py
+    anchor: 'def load_inventory(path: str = "private_ips.txt")'
+- id: manage_inventory_1
+  selector:
+    path: scripts/manage_inventory.py
+    anchor: def check_health
+- id: no_setup
+  selector:
+    path: database/setup.tf
+- id: no_main
+  selector:
+    path: worker/main.tf
+- id: no_inventory
+  selector:
+    path: scripts/inventory.sh
+- id: no_inventory_1
+  selector:
+    path: ansible/inventory.ini
+- id: no_global_0
+  selector:
+    anchor: psql -f init.sql
+- id: no_global_1
+  selector:
+    anchor: psql -f cleanup.sql
+- id: no_global_2
+  selector:
+    anchor: setup-db
+- id: no_global_3
+  selector:
+    anchor: worker_ips.txt
+- id: no_global_4
+  selector:
+    anchor: worker-node
+- id: no_global_5
+  selector:
+    anchor: t3.small
+- id: no_global_6
+  selector:
+    anchor: Managing server inventory
+- id: no_global_7
+  selector:
+    anchor: wc -l
+- id: no_global_8
+  selector:
+    anchor: ansible_user
+- id: no_global_9
+  selector:
+    anchor: webservers
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - security
+  - security_1
+  - manage_inventory
+  - manage_inventory_1
+  allowed: []
+  forbidden:
+  - no_setup
+  - no_main
+  - no_inventory
+  - no_inventory_1
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

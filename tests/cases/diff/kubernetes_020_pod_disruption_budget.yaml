@@ -1,0 +1,258 @@
+name: kubernetes_020_pod_disruption_budget
+repo:
+  initial_files:
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: critical-api
+        namespace: production
+        labels:
+          app: critical-api
+          tier: backend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: critical-api
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 2
+            maxUnavailable: 0
+        template:
+          metadata:
+            labels:
+              app: critical-api
+              tier: backend
+          spec:
+            topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app: critical-api
+            containers:
+            - name: api
+              image: critical-api:v1.0.0
+              ports:
+              - containerPort: 8080
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: critical-api-pdb
+        namespace: production
+      spec:
+        minAvailable: 1
+        selector:
+          matchLabels:
+            app: critical-api
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: critical-api
+        namespace: production
+      spec:
+        selector:
+          app: critical-api
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/infra/priority-class.yaml: |
+      apiVersion: scheduling.k8s.io/v1
+      kind: PriorityClass
+      metadata:
+        name: critical-workload
+      value: 1000000
+      globalDefault: false
+      preemptionPolicy: PreemptLowerPriority
+      description: "Priority class for critical production workloads"
+    k8s/apps/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: critical-api-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: critical-api
+        minReplicas: 5
+        maxReplicas: 20
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 60
+  changed_files:
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: critical-api
+        namespace: production
+        labels:
+          app: critical-api
+          tier: backend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: critical-api
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 2
+            maxUnavailable: 0
+        template:
+          metadata:
+            labels:
+              app: critical-api
+              tier: backend
+          spec:
+            topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app: critical-api
+            containers:
+            - name: api
+              image: critical-api:v1.0.0
+              ports:
+              - containerPort: 8080
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: critical-api-pdb
+        namespace: production
+        labels:
+          app: critical-api
+      spec:
+        minAvailable: 3
+        selector:
+          matchLabels:
+            app: critical-api
+        maxUnavailable: 1
+        unhealthyPodEvictionPolicy: IfHealthyBudget
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: critical-api
+        namespace: production
+      spec:
+        selector:
+          app: critical-api
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/infra/priority-class.yaml: |
+      apiVersion: scheduling.k8s.io/v1
+      kind: PriorityClass
+      metadata:
+        name: critical-workload
+      value: 1000000
+      globalDefault: false
+      preemptionPolicy: PreemptLowerPriority
+      description: "Priority class for critical production workloads"
+    k8s/apps/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: critical-api-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: critical-api
+        minReplicas: 5
+        maxReplicas: 20
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 60
+  commit_message: Update files
+fragments:
+- id: pdb
+  selector:
+    path: k8s/apps/pdb.yaml
+    anchor: 'minAvailable: 3'
+- id: pdb_1
+  selector:
+    path: k8s/apps/pdb.yaml
+    anchor: 'unhealthyPodEvictionPolicy: IfHealthyBudget'
+- id: pdb_2
+  selector:
+    path: k8s/apps/pdb.yaml
+    anchor: 'maxUnavailable: 1'
+- id: deployment
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'replicas: 5'
+- id: no_priority_class
+  selector:
+    path: k8s/infra/priority-class.yaml
+- id: no_hpa
+  selector:
+    path: k8s/apps/hpa.yaml
+- id: no_global_0
+  selector:
+    anchor: critical-workload
+- id: no_global_1
+  selector:
+    anchor: PriorityClass
+- id: no_global_2
+  selector:
+    anchor: PreemptLowerPriority
+- id: no_global_3
+  selector:
+    anchor: critical-api-hpa
+- id: no_global_4
+  selector:
+    anchor: HorizontalPodAutoscaler
+- id: no_global_5
+  selector:
+    anchor: averageUtilization
+oracle:
+  required:
+  - pdb
+  - pdb_1
+  - pdb_2
+  - deployment
+  allowed: []
+  forbidden:
+  - no_priority_class
+  - no_hpa
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

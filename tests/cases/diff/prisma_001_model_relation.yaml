@@ -1,0 +1,261 @@
+name: prisma_001_model_relation
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model User {
+        id        Int      @id @default(autoincrement())
+        email     String   @unique
+        name      String?
+        posts     Post[]
+        createdAt DateTime @default(now())
+        updatedAt DateTime @updatedAt
+      }
+
+      model Post {
+        id        Int      @id @default(autoincrement())
+        title     String
+        content   String?
+        published Boolean  @default(false)
+        author    User     @relation(fields: [authorId], references: [id])
+        authorId  Int
+        createdAt DateTime @default(now())
+        updatedAt DateTime @updatedAt
+
+        @@index([authorId])
+      }
+    prisma/migrations/20240101_init/migration.sql: |
+      -- GARBAGE_PRISMA_001_A: init_migration_marker
+      CREATE TABLE "User" (
+        "id" SERIAL PRIMARY KEY,
+        "email" TEXT NOT NULL UNIQUE,
+        "name" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+      );
+
+      CREATE TABLE "Post" (
+        "id" SERIAL PRIMARY KEY,
+        "title" TEXT NOT NULL,
+        "content" TEXT,
+        "published" BOOLEAN NOT NULL DEFAULT false,
+        "authorId" INTEGER NOT NULL REFERENCES "User"("id"),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+      );
+    prisma/seed.ts: |
+      // GARBAGE_PRISMA_001_B: seed_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      async function main() {
+        await prisma.user.create({
+          data: {
+            email: 'alice@example.com',
+            name: 'Alice',
+            posts: {
+              create: [
+                { title: 'First Post', content: 'Hello World', published: true },
+              ],
+            },
+          },
+        });
+      }
+
+      main()
+        .catch(console.error)
+        .finally(() => prisma.$disconnect());
+    src/services/user.service.ts: |
+      // GARBAGE_PRISMA_001_C: user_service_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function findUserByEmail(email: string) {
+        return prisma.user.findUnique({
+          where: { email },
+          include: { posts: true },
+        });
+      }
+    src/services/comment.service.ts: |
+      // GARBAGE_PRISMA_001_D: comment_service_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getComments(postId: number) {
+        return prisma.post.findUnique({
+          where: { id: postId },
+        });
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model User {
+        id        Int      @id @default(autoincrement())
+        email     String   @unique
+        name      String?
+        posts     Post[]
+        createdAt DateTime @default(now())
+        updatedAt DateTime @updatedAt
+      }
+
+      model Post {
+        id         Int       @id @default(autoincrement())
+        title      String
+        content    String?
+        published  Boolean   @default(false)
+        author     User      @relation(fields: [authorId], references: [id])
+        authorId   Int
+        category   Category? @relation(fields: [categoryId], references: [id])
+        categoryId Int?
+        createdAt  DateTime  @default(now())
+        updatedAt  DateTime  @updatedAt
+
+        @@index([authorId])
+        @@index([categoryId])
+      }
+
+      model Category {
+        id          Int      @id @default(autoincrement())
+        name        String   @unique
+        slug        String   @unique
+        description String?
+        posts       Post[]
+        createdAt   DateTime @default(now())
+      }
+    prisma/migrations/20240101_init/migration.sql: |
+      -- GARBAGE_PRISMA_001_A: init_migration_marker
+      CREATE TABLE "User" (
+        "id" SERIAL PRIMARY KEY,
+        "email" TEXT NOT NULL UNIQUE,
+        "name" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+      );
+
+      CREATE TABLE "Post" (
+        "id" SERIAL PRIMARY KEY,
+        "title" TEXT NOT NULL,
+        "content" TEXT,
+        "published" BOOLEAN NOT NULL DEFAULT false,
+        "authorId" INTEGER NOT NULL REFERENCES "User"("id"),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL
+      );
+    prisma/seed.ts: |
+      // GARBAGE_PRISMA_001_B: seed_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      async function main() {
+        await prisma.user.create({
+          data: {
+            email: 'alice@example.com',
+            name: 'Alice',
+            posts: {
+              create: [
+                { title: 'First Post', content: 'Hello World', published: true },
+              ],
+            },
+          },
+        });
+      }
+
+      main()
+        .catch(console.error)
+        .finally(() => prisma.$disconnect());
+    src/services/user.service.ts: |
+      // GARBAGE_PRISMA_001_C: user_service_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function findUserByEmail(email: string) {
+        return prisma.user.findUnique({
+          where: { email },
+          include: { posts: true },
+        });
+      }
+    src/services/comment.service.ts: |
+      // GARBAGE_PRISMA_001_D: comment_service_marker
+      import { PrismaClient } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getComments(postId: number) {
+        return prisma.post.findUnique({
+          where: { id: postId },
+        });
+      }
+  commit_message: Update files
+fragments:
+- id: schema
+  selector:
+    path: prisma/schema.prisma
+    anchor: model Category
+- id: schema_1
+  selector:
+    path: prisma/schema.prisma
+    anchor: categoryId
+- id: schema_2
+  selector:
+    path: prisma/schema.prisma
+    anchor: slug
+- id: no_migration
+  selector:
+    path: prisma/migrations/20240101_init/migration.sql
+- id: no_seed
+  selector:
+    path: prisma/seed.ts
+- id: no_user_service
+  selector:
+    path: src/services/user.service.ts
+- id: no_comment_service
+  selector:
+    path: src/services/comment.service.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PRISMA_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PRISMA_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PRISMA_001_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PRISMA_001_D
+oracle:
+  required:
+  - schema
+  - schema_1
+  - schema_2
+  allowed: []
+  forbidden:
+  - no_migration
+  - no_seed
+  - no_user_service
+  - no_comment_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

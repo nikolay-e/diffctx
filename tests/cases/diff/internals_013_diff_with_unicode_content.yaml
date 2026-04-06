@@ -1,0 +1,25 @@
+name: internals_013_diff_with_unicode_content
+repo:
+  initial_files:
+    unicode_diff.py: |
+      def placeholder():
+          pass
+  changed_files:
+    unicode_diff.py: |
+      def greet_user():
+          greeting_text = "Привет мир"
+          return greeting_text
+  commit_message: Update files
+fragments:
+- id: unicode_diff_file
+  selector:
+    path: unicode_diff.py
+- id: req_global_0
+  selector:
+    anchor: 'def greet_user():'
+oracle:
+  required:
+  - unicode_diff_file
+  - req_global_0
+  allowed: []
+  forbidden: []

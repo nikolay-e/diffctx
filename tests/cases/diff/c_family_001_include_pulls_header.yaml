@@ -1,0 +1,95 @@
+name: c_family_001_include_pulls_header
+repo:
+  initial_files:
+    math_utils.h: |
+      #ifndef MATH_UTILS_H
+      #define MATH_UTILS_H
+
+      int add(int a, int b);
+      int multiply(int a, int b);
+
+      #endif
+
+    math_utils.c: |
+      #include "math_utils.h"
+
+      int add(int a, int b) {
+          return a + b;
+      }
+
+      int multiply(int a, int b) {
+          return a * b;
+      }
+
+    string_utils.h: |
+      #ifndef C_FAMILY_NOISE_001_STRUTILS_H
+      #define C_FAMILY_NOISE_001_STRUTILS_H
+
+      int C_FAMILY_NOISE_001_strlen(const char *s);
+      void C_FAMILY_NOISE_001_strrev(char *s);
+
+      #endif
+
+    string_utils.c: |
+      #include "string_utils.h"
+
+      int C_FAMILY_NOISE_001_strlen(const char *s) {
+          int n = 0;
+          while (*s++) n++;
+          return n;
+      }
+
+      void C_FAMILY_NOISE_001_strrev(char *s) {
+          int len = C_FAMILY_NOISE_001_strlen(s);
+          for (int i = 0; i < len / 2; i++) {
+              char tmp = s[i];
+              s[i] = s[len - 1 - i];
+              s[len - 1 - i] = tmp;
+          }
+      }
+
+  changed_files:
+    math_utils.h: |
+      #ifndef MATH_UTILS_H
+      #define MATH_UTILS_H
+
+      int add(int a, int b);
+      int multiply(int a, int b);
+      int subtract(int a, int b);
+
+      #endif
+
+  commit_message: Update files
+
+fragments:
+- id: math_h_subtract
+  selector:
+    path: math_utils.h
+    anchor: subtract
+- id: math_c
+  selector:
+    path: math_utils.c
+    anchor: add
+- id: no_string_h
+  selector:
+    path: string_utils.h
+- id: no_string_c
+  selector:
+    path: string_utils.c
+- id: no_global_0
+  selector:
+    anchor: C_FAMILY_NOISE_001_strlen
+- id: no_global_1
+  selector:
+    anchor: C_FAMILY_NOISE_001_strrev
+
+oracle:
+  required:
+  - math_h_subtract
+  - math_c
+  allowed: []
+  forbidden:
+  - no_string_h
+  - no_string_c
+  - no_global_0
+  - no_global_1

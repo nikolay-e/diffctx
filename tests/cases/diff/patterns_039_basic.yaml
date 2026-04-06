@@ -1,0 +1,172 @@
+name: patterns_039_basic
+repo:
+  initial_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+
+      def divide(a: int, b: int) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add
+
+      def test_add_basic():
+          assert add(1, 2) == 3
+    src/math_utils.py: |
+      import math
+
+      def add_floats(a: float, b: float) -> float:
+          return round(a + b, 10)
+
+      def multiply_matrix(matrix_a, matrix_b):
+          rows = len(matrix_a)
+          cols = len(matrix_b[0])
+          result = [[0] * cols for _ in range(rows)]
+          for i in range(rows):
+              for j in range(cols):
+                  for k in range(len(matrix_b)):
+                      result[i][j] += matrix_a[i][k] * matrix_b[k][j]
+          return result
+
+      def factorial(n: int) -> int:
+          return math.factorial(n)
+    tests/test_math_utils.py: |
+      import pytest
+      from src.math_utils import add_floats, factorial
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (0.1, 0.2, 0.3),
+          (1.5, 2.5, 4.0),
+      ])
+      def test_add_floats(a, b, expected):
+          assert add_floats(a, b) == expected
+
+      def test_factorial():
+          assert factorial(5) == 120
+  changed_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+
+      def divide(a: int, b: int) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add, subtract, multiply
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (1, 2, 3),
+          (0, 0, 0),
+          (-1, 1, 0),
+          (100, 200, 300),
+          (-5, -3, -8),
+      ])
+      def test_add_parametrized(a, b, expected):
+          assert add(a, b) == expected
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (5, 3, 2),
+          (0, 0, 0),
+          (-1, -1, 0),
+      ])
+      def test_subtract_parametrized(a, b, expected):
+          assert subtract(a, b) == expected
+
+      def test_multiply_basic():
+          assert multiply(2, 3) == 6
+    src/math_utils.py: |
+      import math
+
+      def add_floats(a: float, b: float) -> float:
+          return round(a + b, 10)
+
+      def multiply_matrix(matrix_a, matrix_b):
+          rows = len(matrix_a)
+          cols = len(matrix_b[0])
+          result = [[0] * cols for _ in range(rows)]
+          for i in range(rows):
+              for j in range(cols):
+                  for k in range(len(matrix_b)):
+                      result[i][j] += matrix_a[i][k] * matrix_b[k][j]
+          return result
+
+      def factorial(n: int) -> int:
+          return math.factorial(n)
+    tests/test_math_utils.py: |
+      import pytest
+      from src.math_utils import add_floats, factorial
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (0.1, 0.2, 0.3),
+          (1.5, 2.5, 4.0),
+      ])
+      def test_add_floats(a, b, expected):
+          assert add_floats(a, b) == expected
+
+      def test_factorial():
+          assert factorial(5) == 120
+  commit_message: Update files
+fragments:
+- id: test_calculator
+  selector:
+    path: tests/test_calculator.py
+    anchor: from src.calculator import add, subtract, multiply
+- id: test_calculator_1
+  selector:
+    path: tests/test_calculator.py
+    anchor: '@pytest.mark.parametrize("a,b,expected", ['
+- id: calculator_file
+  selector:
+    path: src/calculator.py
+- id: no_math_utils
+  selector:
+    path: src/math_utils.py
+- id: no_test_math_utils
+  selector:
+    path: tests/test_math_utils.py
+- id: no_global_0
+  selector:
+    anchor: add_floats
+- id: no_global_1
+  selector:
+    anchor: multiply_matrix
+- id: no_global_2
+  selector:
+    anchor: math.factorial
+- id: no_global_3
+  selector:
+    anchor: test_add_floats
+- id: no_global_4
+  selector:
+    anchor: test_factorial
+oracle:
+  required:
+  - test_calculator
+  - test_calculator_1
+  - calculator_file
+  allowed: []
+  forbidden:
+  - no_math_utils
+  - no_test_math_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

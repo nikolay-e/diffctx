@@ -1,0 +1,200 @@
+name: docker_025_cmd
+repo:
+  initial_files:
+    src/server.py: |
+      import argparse
+      import uvicorn
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+      @app.get("/health")
+      def health():
+          return {"status": "healthy"}
+
+      def main():
+          parser = argparse.ArgumentParser()
+          parser.add_argument('--host', default='0.0.0.0')
+          parser.add_argument('--port', type=int, default=8080)
+          parser.add_argument('--workers', type=int, default=4)
+          parser.add_argument('--reload', action='store_true')
+          args = parser.parse_args()
+
+          uvicorn.run(
+              "server:app",
+              host=args.host,
+              port=args.port,
+              workers=args.workers,
+              reload=args.reload
+          )
+
+      if __name__ == '__main__':
+          main()
+    requirements.txt: |
+      fastapi==0.108.0
+      uvicorn[standard]==0.25.0
+      pydantic==2.5.3
+    Dockerfile: |
+      FROM python:3.11-slim
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install -r requirements.txt
+      COPY src/ ./src/
+      ENTRYPOINT ["python", "src/server.py"]
+    scripts/run_dev.sh: |
+      #!/bin/bash
+      export PYTHONPATH=.
+      python src/server.py --reload --host 127.0.0.1
+    k8s/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fastapi-app
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                command: ["python", "-m", "src.server"]
+                args: ["--host", "0.0.0.0", "--port", "8080"]
+    docker-compose.override.yml: |
+      version: '3.8'
+      services:
+        app:
+          command: ["--reload", "--host", "0.0.0.0"]
+  changed_files:
+    src/server.py: |
+      import argparse
+      import uvicorn
+      from fastapi import FastAPI
+
+      app = FastAPI()
+
+      @app.get("/health")
+      def health():
+          return {"status": "healthy"}
+
+      def main():
+          parser = argparse.ArgumentParser()
+          parser.add_argument('--host', default='0.0.0.0')
+          parser.add_argument('--port', type=int, default=8080)
+          parser.add_argument('--workers', type=int, default=4)
+          parser.add_argument('--reload', action='store_true')
+          args = parser.parse_args()
+
+          uvicorn.run(
+              "server:app",
+              host=args.host,
+              port=args.port,
+              workers=args.workers,
+              reload=args.reload
+          )
+
+      if __name__ == '__main__':
+          main()
+    requirements.txt: |
+      fastapi==0.108.0
+      uvicorn[standard]==0.25.0
+      pydantic==2.5.3
+    Dockerfile: |
+      FROM python:3.12-slim-bookworm AS base
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV PYTHONUNBUFFERED=1
+
+      # Build arguments
+      ARG WORKERS=4
+      ARG PORT=8080
+
+      FROM base AS dependencies
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      FROM base AS production
+      WORKDIR /app
+
+      # Runtime environment
+      ENV WORKERS=${WORKERS}
+      ENV PORT=${PORT}
+      ENV HOST=0.0.0.0
+
+      COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+      COPY --from=dependencies /usr/local/bin /usr/local/bin
+      COPY src/ ./src/
+
+      RUN useradd --create-home appuser
+      USER appuser
+
+      EXPOSE ${PORT}
+
+      # Entrypoint for common initialization
+      ENTRYPOINT ["python", "-m", "src.server"]
+
+      # Default arguments - easily overridable
+      CMD ["--host", "0.0.0.0", "--port", "8080", "--workers", "4"]
+
+      HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+          CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+    scripts/run_dev.sh: |
+      #!/bin/bash
+      export PYTHONPATH=.
+      python src/server.py --reload --host 127.0.0.1
+    k8s/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fastapi-app
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                command: ["python", "-m", "src.server"]
+                args: ["--host", "0.0.0.0", "--port", "8080"]
+    docker-compose.override.yml: |
+      version: '3.8'
+      services:
+        app:
+          command: ["--reload", "--host", "0.0.0.0"]
+  commit_message: Update files
+fragments:
+- id: server
+  selector:
+    path: src/server.py
+    anchor: parser.add_argument('--host', default='0.0.0.0')
+- id: server_1
+  selector:
+    path: src/server.py
+    anchor: parser.add_argument('--port', type=int, default=8080)
+- id: server_2
+  selector:
+    path: src/server.py
+    anchor: parser.add_argument('--workers', type=int, default=4)
+- id: requirements
+  selector:
+    path: requirements.txt
+    anchor: uvicorn[standard]==0.25.0
+- id: dockerfile_file
+  selector:
+    path: Dockerfile
+- id: no_run_dev
+  selector:
+    path: scripts/run_dev.sh
+- id: no_deployment
+  selector:
+    path: k8s/deployment.yaml
+- id: no_docker_compose_override
+  selector:
+    path: docker-compose.override.yml
+oracle:
+  required:
+  - server
+  - server_1
+  - server_2
+  - requirements
+  - dockerfile_file
+  allowed: []
+  forbidden:
+  - no_run_dev
+  - no_deployment
+  - no_docker_compose_override

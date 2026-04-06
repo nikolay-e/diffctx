@@ -1,0 +1,248 @@
+name: dependencies_024_reverse_abstract_base_class_change
+repo:
+  initial_files:
+    base/handler.py: |
+      from abc import ABC, abstractmethod
+
+      class BaseHandler(ABC):
+          @abstractmethod
+          def handle(self, request: dict) -> dict:
+              pass
+
+          @abstractmethod
+          def validate(self, request: dict) -> bool:
+              pass
+    handlers/user_handler.py: |
+      from base.handler import BaseHandler
+
+      class UserHandler(BaseHandler):
+          def handle(self, request: dict) -> dict:
+              return {"user": request.get("user_id")}
+
+          def validate(self, request: dict) -> bool:
+              return "user_id" in request
+    handlers/order_handler.py: |
+      from base.handler import BaseHandler
+
+      class OrderHandler(BaseHandler):
+          def handle(self, request: dict) -> dict:
+              return {"order": request.get("order_id")}
+
+          def validate(self, request: dict) -> bool:
+              return "order_id" in request
+    framework/handler.py: |
+      from abc import ABC, abstractmethod
+      from typing import Optional
+      GARBAGE_DEP_024_FRAMEWORK_A = "framework_handler"
+      GARBAGE_DEP_024_FRAMEWORK_VER_B = "2.0"
+
+      class BaseHandler(ABC):
+          GARBAGE_DEP_024_FRAMEWORK_CLASS_C = True
+
+          @abstractmethod
+          def handle(self, request: dict) -> dict:
+              pass
+
+          @abstractmethod
+          def validate(self, request: dict) -> bool:
+              pass
+
+          @abstractmethod
+          def authorize(self, request: dict) -> bool:
+              pass
+
+          def pre_process(self, request: dict) -> Optional[dict]:
+              return request
+    handlers/payment_handler.py: |
+      from base.handler import BaseHandler
+      GARBAGE_DEP_024_PAYMENT_IMPORT_D = "payment_consumer"
+      GARBAGE_DEP_024_PAYMENT_PROC_E = "stripe"
+
+      class PaymentHandler(BaseHandler):
+          GARBAGE_DEP_024_PAYMENT_CLASS_F = True
+
+          def handle(self, request: dict) -> dict:
+              return {"payment": request.get("amount")}
+
+          def validate(self, request: dict) -> bool:
+              return "amount" in request
+    handlers/health_check.py: |
+      GARBAGE_DEP_024_HEALTH_MOD_G = "health_sibling"
+      GARBAGE_DEP_024_HEALTH_STATUS_H = "ok"
+
+      class HealthCheckHandler:
+          GARBAGE_DEP_024_HEALTH_CLASS_I = True
+
+          def handle(self, request: dict) -> dict:
+              return {"status": "healthy"}
+
+          def validate(self, request: dict) -> bool:
+              return True
+  changed_files:
+    base/handler.py: |
+      from abc import ABC, abstractmethod
+      from typing import Optional
+
+      class BaseHandler(ABC):
+          @abstractmethod
+          def handle(self, request: dict) -> dict:
+              pass
+
+          @abstractmethod
+          def validate(self, request: dict) -> bool:
+              pass
+
+          @abstractmethod
+          def authorize(self, request: dict) -> bool:
+              pass
+
+          def pre_process(self, request: dict) -> Optional[dict]:
+              return request
+
+          def post_process(self, response: dict) -> dict:
+              return response
+    handlers/user_handler.py: |
+      from base.handler import BaseHandler
+
+      class UserHandler(BaseHandler):
+          def handle(self, request: dict) -> dict:
+              return {"user": request.get("user_id")}
+
+          def validate(self, request: dict) -> bool:
+              return "user_id" in request
+    handlers/order_handler.py: |
+      from base.handler import BaseHandler
+
+      class OrderHandler(BaseHandler):
+          def handle(self, request: dict) -> dict:
+              return {"order": request.get("order_id")}
+
+          def validate(self, request: dict) -> bool:
+              return "order_id" in request
+    framework/handler.py: |
+      from abc import ABC, abstractmethod
+      from typing import Optional
+      GARBAGE_DEP_024_FRAMEWORK_A = "framework_handler"
+      GARBAGE_DEP_024_FRAMEWORK_VER_B = "2.0"
+
+      class BaseHandler(ABC):
+          GARBAGE_DEP_024_FRAMEWORK_CLASS_C = True
+
+          @abstractmethod
+          def handle(self, request: dict) -> dict:
+              pass
+
+          @abstractmethod
+          def validate(self, request: dict) -> bool:
+              pass
+
+          @abstractmethod
+          def authorize(self, request: dict) -> bool:
+              pass
+
+          def pre_process(self, request: dict) -> Optional[dict]:
+              return request
+    handlers/payment_handler.py: |
+      from base.handler import BaseHandler
+      GARBAGE_DEP_024_PAYMENT_IMPORT_D = "payment_consumer"
+      GARBAGE_DEP_024_PAYMENT_PROC_E = "stripe"
+
+      class PaymentHandler(BaseHandler):
+          GARBAGE_DEP_024_PAYMENT_CLASS_F = True
+
+          def handle(self, request: dict) -> dict:
+              return {"payment": request.get("amount")}
+
+          def validate(self, request: dict) -> bool:
+              return "amount" in request
+    handlers/health_check.py: |
+      GARBAGE_DEP_024_HEALTH_MOD_G = "health_sibling"
+      GARBAGE_DEP_024_HEALTH_STATUS_H = "ok"
+
+      class HealthCheckHandler:
+          GARBAGE_DEP_024_HEALTH_CLASS_I = True
+
+          def handle(self, request: dict) -> dict:
+              return {"status": "healthy"}
+
+          def validate(self, request: dict) -> bool:
+              return True
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: base/handler.py
+    anchor: from typing import Optional
+- id: handler_1
+  selector:
+    path: base/handler.py
+    anchor: 'def authorize(self, request: dict) -> bool:'
+- id: handler_2
+  selector:
+    path: base/handler.py
+    anchor: 'class BaseHandler(ABC):'
+- id: handler_3
+  selector:
+    path: base/handler.py
+    anchor: 'def pre_process(self, request: dict) -> Optional[dict]:'
+- id: handler_4
+  selector:
+    path: base/handler.py
+    anchor: 'def post_process(self, response: dict) -> dict:'
+- id: no_handler
+  selector:
+    path: framework/handler.py
+- id: no_payment_handler
+  selector:
+    path: handlers/payment_handler.py
+- id: no_health_check
+  selector:
+    path: handlers/health_check.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_024_FRAMEWORK_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_024_FRAMEWORK_VER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_024_FRAMEWORK_CLASS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_024_PAYMENT_IMPORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_024_PAYMENT_PROC_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_024_PAYMENT_CLASS_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_024_HEALTH_MOD_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_024_HEALTH_STATUS_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_024_HEALTH_CLASS_I
+oracle:
+  required:
+  - handler
+  - handler_1
+  - handler_2
+  - handler_3
+  - handler_4
+  allowed: []
+  forbidden:
+  - no_handler
+  - no_payment_handler
+  - no_health_check
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

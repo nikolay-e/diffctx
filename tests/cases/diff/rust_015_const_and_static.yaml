@@ -1,0 +1,289 @@
+name: rust_015_const_and_static
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod config;
+      pub mod env;
+      pub mod defaults;
+    src/config.rs: |
+      pub const MAX_SIZE: usize = 100;
+
+      pub fn get_max_size() -> usize {
+          MAX_SIZE
+      }
+
+      pub struct Settings {
+          pub size: usize,
+      }
+
+      impl Settings {
+          pub fn new(size: usize) -> Self {
+              Self { size: size.min(MAX_SIZE) }
+          }
+      }
+
+      impl Default for Settings {
+          fn default() -> Self {
+              Self { size: MAX_SIZE }
+          }
+      }
+    src/env.rs: |
+      use std::collections::HashMap;
+
+      pub struct Environment {
+          vars: HashMap<String, String>,
+      }
+
+      impl Environment {
+          pub fn new() -> Self {
+              Self { vars: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.vars.get(key)
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.vars.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get_or_default(&self, key: &str, default: &str) -> String {
+              self.vars.get(key).cloned().unwrap_or_else(|| default.to_string())
+          }
+
+          pub fn contains(&self, key: &str) -> bool {
+              self.vars.contains_key(key)
+          }
+      }
+    src/defaults.rs: |
+      pub const DEFAULT_WINDOW_WIDTH: u32 = 1024;
+      pub const DEFAULT_WINDOW_HEIGHT: u32 = 768;
+      pub const DEFAULT_FONT_SIZE: u8 = 14;
+      pub const DEFAULT_THEME: &str = "dark";
+
+      pub struct UiDefaults {
+          pub width: u32,
+          pub height: u32,
+          pub font_size: u8,
+          pub theme: String,
+      }
+
+      impl Default for UiDefaults {
+          fn default() -> Self {
+              Self {
+                  width: DEFAULT_WINDOW_WIDTH,
+                  height: DEFAULT_WINDOW_HEIGHT,
+                  font_size: DEFAULT_FONT_SIZE,
+                  theme: DEFAULT_THEME.to_string(),
+              }
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod config;
+      pub mod env;
+      pub mod defaults;
+    src/config.rs: |
+      use std::sync::atomic::{AtomicUsize, Ordering};
+
+      pub const MAX_SIZE: usize = 100;
+      pub const MIN_SIZE: usize = 10;
+      pub const DEFAULT_NAME: &str = "unnamed";
+      pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+      pub static INSTANCE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+      static mut GLOBAL_CONFIG: Option<Config> = None;
+
+      pub fn get_max_size() -> usize {
+          MAX_SIZE
+      }
+
+      pub fn get_instance_count() -> usize {
+          INSTANCE_COUNT.load(Ordering::SeqCst)
+      }
+
+      pub fn increment_instance_count() -> usize {
+          INSTANCE_COUNT.fetch_add(1, Ordering::SeqCst)
+      }
+
+      #[derive(Debug, Clone)]
+      pub struct Config {
+          pub name: String,
+          pub size: usize,
+          pub enabled: bool,
+      }
+
+      impl Config {
+          pub fn new(name: &str, size: usize) -> Self {
+              increment_instance_count();
+              Self {
+                  name: name.to_string(),
+                  size: size.clamp(MIN_SIZE, MAX_SIZE),
+                  enabled: true,
+              }
+          }
+
+          pub fn with_defaults() -> Self {
+              Self::new(DEFAULT_NAME, MAX_SIZE)
+          }
+
+          pub fn is_valid(&self) -> bool {
+              self.size >= MIN_SIZE && self.size <= MAX_SIZE
+          }
+      }
+
+      impl Default for Config {
+          fn default() -> Self {
+              Self::with_defaults()
+          }
+      }
+
+      pub fn get_default_config() -> Config {
+          Config::with_defaults()
+      }
+
+      pub struct Settings {
+          pub size: usize,
+          pub name: String,
+      }
+
+      impl Settings {
+          pub fn new(size: usize) -> Self {
+              Self {
+                  size: size.clamp(MIN_SIZE, MAX_SIZE),
+                  name: DEFAULT_NAME.to_string(),
+              }
+          }
+
+          pub fn with_name(size: usize, name: &str) -> Self {
+              Self {
+                  size: size.clamp(MIN_SIZE, MAX_SIZE),
+                  name: name.to_string(),
+              }
+          }
+      }
+
+      impl Default for Settings {
+          fn default() -> Self {
+              Self::new(MAX_SIZE)
+          }
+      }
+    src/env.rs: |
+      use std::collections::HashMap;
+
+      pub struct Environment {
+          vars: HashMap<String, String>,
+      }
+
+      impl Environment {
+          pub fn new() -> Self {
+              Self { vars: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.vars.get(key)
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.vars.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get_or_default(&self, key: &str, default: &str) -> String {
+              self.vars.get(key).cloned().unwrap_or_else(|| default.to_string())
+          }
+
+          pub fn contains(&self, key: &str) -> bool {
+              self.vars.contains_key(key)
+          }
+      }
+    src/defaults.rs: |
+      pub const DEFAULT_WINDOW_WIDTH: u32 = 1024;
+      pub const DEFAULT_WINDOW_HEIGHT: u32 = 768;
+      pub const DEFAULT_FONT_SIZE: u8 = 14;
+      pub const DEFAULT_THEME: &str = "dark";
+
+      pub struct UiDefaults {
+          pub width: u32,
+          pub height: u32,
+          pub font_size: u8,
+          pub theme: String,
+      }
+
+      impl Default for UiDefaults {
+          fn default() -> Self {
+              Self {
+                  width: DEFAULT_WINDOW_WIDTH,
+                  height: DEFAULT_WINDOW_HEIGHT,
+                  font_size: DEFAULT_FONT_SIZE,
+                  theme: DEFAULT_THEME.to_string(),
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/config.rs
+    anchor: use std::sync::atomic::{AtomicUsize, Ordering};
+- id: config_1
+  selector:
+    path: src/config.rs
+    anchor: pub fn get_instance_count() -> usize {
+- id: config_2
+  selector:
+    path: src/config.rs
+    anchor: 'pub const MIN_SIZE: usize = 10;'
+- id: config_3
+  selector:
+    path: src/config.rs
+    anchor: 'pub static INSTANCE_COUNT: AtomicUsize'
+- id: config_4
+  selector:
+    path: src/config.rs
+    anchor: 'static mut GLOBAL_CONFIG: Option<Config>'
+- id: no_env
+  selector:
+    path: src/env.rs
+- id: no_defaults
+  selector:
+    path: src/defaults.rs
+- id: no_global_0
+  selector:
+    anchor: Environment
+- id: no_global_1
+  selector:
+    anchor: get_or_default
+- id: no_global_2
+  selector:
+    anchor: contains
+- id: no_global_3
+  selector:
+    anchor: UiDefaults
+- id: no_global_4
+  selector:
+    anchor: DEFAULT_WINDOW_WIDTH
+- id: no_global_5
+  selector:
+    anchor: DEFAULT_FONT_SIZE
+- id: no_global_6
+  selector:
+    anchor: DEFAULT_THEME
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - config_3
+  - config_4
+  allowed: []
+  forbidden:
+  - no_env
+  - no_defaults
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

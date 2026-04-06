@@ -1,0 +1,70 @@
+name: fragments_007_syntax_error_fallback_generic
+repo:
+  initial_files:
+    broken.py: |+
+      import os
+      from pathlib import Path
+
+      def valid_before_broken():
+
+      def broken(:
+          x = [1, 2
+          return x
+
+      def valid_after_broken():
+
+      class GarbageAfterClass:
+
+    garbage_broken_030.py: |
+      def garbage_function_030():
+          return "GARBAGE_FRAG_garbagefunc030"
+
+      class GarbageBroken030:
+          VALUE = "GARBAGE_FRAG_garbagevalue030"
+
+      GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
+  changed_files:
+    broken.py: |+
+      import os
+      from pathlib import Path
+
+      def valid_before_broken():
+
+      def broken(:
+          x = [1, 2, 3
+          return x
+
+      def valid_after_broken():
+
+      class GarbageAfterClass:
+
+    garbage_broken_030.py: |
+      def garbage_function_030():
+          return "GARBAGE_FRAG_garbagefunc030"
+
+      class GarbageBroken030:
+          VALUE = "GARBAGE_FRAG_garbagevalue030"
+
+      GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
+  commit_message: Update files
+fragments:
+- id: broken_file
+  selector:
+    path: broken.py
+- id: req_global_0
+  selector:
+    anchor: x = [1, 2, 3
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_MODULE_CONST
+- id: no_global_1
+  selector:
+    anchor: garbage_broken_030.py
+oracle:
+  required:
+  - broken_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

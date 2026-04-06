@@ -1,0 +1,352 @@
+name: shell_005_extglob
+repo:
+  initial_files:
+    lib/glob-patterns.sh: |
+      #!/bin/bash
+      shopt -s extglob
+
+      match_images() {
+          local file=$1
+          case "$file" in
+              *.@(jpg|png|gif|webp)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_archives() {
+          local file=$1
+          case "$file" in
+              *.+(tar|gz|bz2|xz)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_temp_files() {
+          local file=$1
+          case "$file" in
+              *.@(tmp|bak|swp)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_logs() {
+          local file=$1
+          case "$file" in
+              *.@(log|out|err)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+    clean.sh: |
+      #!/bin/bash
+      source ./lib/glob-patterns.sh
+
+      for f in /data/*; do
+          if match_images "$f"; then
+              echo "Skipping image: $f"
+          fi
+      done
+    regex-utils.sh: |
+      #!/bin/bash
+
+      matches_version_string() {
+          local input=$1
+          if [[ "$input" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              return 0
+          fi
+          return 1
+      }
+
+      matches_email() {
+          local input=$1
+          if [[ "$input" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+              return 0
+          fi
+          return 1
+      }
+
+      matches_ip_address() {
+          local input=$1
+          if [[ "$input" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+              return 0
+          fi
+          return 1
+      }
+    find-wrapper.sh: |
+      #!/bin/bash
+
+      find_large_files() {
+          local dir=$1
+          local size=${2:-100M}
+          find "$dir" -type f -size "+$size" -print
+      }
+
+      find_old_files() {
+          local dir=$1
+          local days=${2:-30}
+          find "$dir" -type f -mtime "+$days" -print
+      }
+
+      find_empty_dirs() {
+          local dir=$1
+          find "$dir" -type d -empty -print
+      }
+    purge.sh: |
+      #!/bin/bash
+      source ./lib/glob-patterns.sh
+
+      DISK_THRESHOLD=90
+      PURGE_DIR="/data/archive"
+
+      check_disk_usage() {
+          df -h "$PURGE_DIR" | awk 'NR==2 {print $5}' | tr -d '%'
+      }
+
+      purge_archives() {
+          local usage
+          usage=$(check_disk_usage)
+          if (( usage > DISK_THRESHOLD )); then
+              for f in "$PURGE_DIR"/*; do
+                  if match_archives "$f"; then
+                      echo "Purging archive: $f"
+                      rm -f "$f"
+                  fi
+              done
+          fi
+      }
+
+      purge_old_temps() {
+          for f in "$PURGE_DIR"/*; do
+              if match_temp_files "$f"; then
+                  local age
+                  age=$(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) ))
+                  if (( age > 86400 )); then
+                      rm -f "$f"
+                  fi
+              fi
+          done
+      }
+    mime-check.sh: |
+      #!/bin/bash
+
+      get_mime_type() {
+          local file=$1
+          file -bi "$file" 2>/dev/null | cut -d';' -f1
+      }
+
+      is_text_file() {
+          local mime
+          mime=$(get_mime_type "$1")
+          [[ "$mime" == text/* ]]
+      }
+
+      is_image_file() {
+          local mime
+          mime=$(get_mime_type "$1")
+          [[ "$mime" == image/* ]]
+      }
+
+      is_archive_file() {
+          local mime
+          mime=$(get_mime_type "$1")
+          case "$mime" in
+              application/gzip|application/x-tar|application/x-bzip2|application/x-xz)
+                  return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+    lib/case-patterns.sh: |
+      #!/bin/bash
+      shopt -s extglob
+
+      classify_env() {
+          local env_name=$1
+          case "$env_name" in
+              @(prod|production|live)) echo "production" ;;
+              @(staging|stage|uat)) echo "staging" ;;
+              @(dev|development|local)) echo "development" ;;
+              *) echo "unknown" ;;
+          esac
+      }
+
+      parse_log_level() {
+          local level=$1
+          case "$level" in
+              @(debug|DEBUG)) return 0 ;;
+              @(info|INFO)) return 1 ;;
+              @(warn|WARN|warning|WARNING)) return 2 ;;
+              @(error|ERROR)) return 3 ;;
+              *) return 255 ;;
+          esac
+      }
+  changed_files:
+    lib/glob-patterns.sh: |
+      #!/bin/bash
+      shopt -s extglob
+
+      match_images() {
+          local file=$1
+          case "$file" in
+              *.@(jpg|png|gif|webp)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_archives() {
+          local file=$1
+          case "$file" in
+              *.+(tar|gz|bz2|xz)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_temp_files() {
+          local file=$1
+          case "$file" in
+              *.@(tmp|bak|swp)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      match_logs() {
+          local file=$1
+          case "$file" in
+              *.@(log|out|err)) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+    clean.sh: |
+      #!/bin/bash
+      source ./lib/glob-patterns.sh
+
+      for f in /data/*; do
+          if match_images "$f"; then
+              echo "Skipping image: $f"
+              continue
+          fi
+
+          if match_archives "$f"; then
+              echo "Removing archive: $f"
+              rm -f "$f"
+              continue
+          fi
+
+          if match_temp_files "$f"; then
+              echo "Removing temp file: $f"
+              rm -f "$f"
+          fi
+      done
+  commit_message: Update files
+fragments:
+- id: glob_patterns
+  selector:
+    path: lib/glob-patterns.sh
+    anchor: match_archives()
+- id: glob_patterns_1
+  selector:
+    path: lib/glob-patterns.sh
+    anchor: match_temp_files()
+- id: glob_patterns_2
+  selector:
+    path: lib/glob-patterns.sh
+    anchor: shopt -s extglob
+- id: clean
+  selector:
+    path: clean.sh
+    anchor: match_archives
+- id: clean_1
+  selector:
+    path: clean.sh
+    anchor: match_temp_files
+- id: no_regex_utils
+  selector:
+    path: regex-utils.sh
+- id: no_find_wrapper
+  selector:
+    path: find-wrapper.sh
+- id: no_purge
+  selector:
+    path: purge.sh
+- id: no_mime_check
+  selector:
+    path: mime-check.sh
+- id: no_case_patterns
+  selector:
+    path: lib/case-patterns.sh
+- id: no_global_0
+  selector:
+    anchor: matches_version_string
+- id: no_global_1
+  selector:
+    anchor: matches_email
+- id: no_global_2
+  selector:
+    anchor: matches_ip_address
+- id: no_global_3
+  selector:
+    anchor: find_large_files
+- id: no_global_4
+  selector:
+    anchor: find_old_files
+- id: no_global_5
+  selector:
+    anchor: find_empty_dirs
+- id: no_global_6
+  selector:
+    anchor: DISK_THRESHOLD
+- id: no_global_7
+  selector:
+    anchor: PURGE_DIR
+- id: no_global_8
+  selector:
+    anchor: check_disk_usage
+- id: no_global_9
+  selector:
+    anchor: purge_archives
+- id: no_global_10
+  selector:
+    anchor: purge_old_temps
+- id: no_global_11
+  selector:
+    anchor: get_mime_type
+- id: no_global_12
+  selector:
+    anchor: is_text_file
+- id: no_global_13
+  selector:
+    anchor: is_archive_file
+- id: no_global_14
+  selector:
+    anchor: classify_env
+- id: no_global_15
+  selector:
+    anchor: parse_log_level
+oracle:
+  required:
+  - glob_patterns
+  - glob_patterns_1
+  - glob_patterns_2
+  - clean
+  - clean_1
+  allowed: []
+  forbidden:
+  - no_regex_utils
+  - no_find_wrapper
+  - no_purge
+  - no_mime_check
+  - no_case_patterns
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

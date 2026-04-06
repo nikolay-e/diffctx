@@ -1,0 +1,137 @@
+name: relations_006_test_changed_find_fixtures
+repo:
+  initial_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def db_session():
+          return {"connected": True}
+
+      @pytest.fixture
+      def sample_products():
+          return [
+              {"id": 1, "name": "Widget"},
+              {"id": 2, "name": "Gadget"},
+          ]
+    tests/test_orders.py: |
+      def test_create_order():
+          assert True
+    tests/test_inventory.py: |
+      def test_check_stock(sample_products):
+          assert len(sample_products) > 0
+
+      def test_reorder_threshold():
+          threshold = 10
+          current_stock = 5
+          assert current_stock < threshold
+
+      def test_product_lookup(sample_products):
+          widget = next((p for p in sample_products if p["name"] == "Widget"), None)
+          assert widget is not None
+    fixtures/sample_data.json: |
+      {
+        "orders": [
+          {"id": 1, "product_id": 1, "quantity": 5, "status": "pending"},
+          {"id": 2, "product_id": 2, "quantity": 3, "status": "shipped"}
+        ],
+        "customers": [
+          {"id": 1, "name": "Acme Corp", "tier": "premium"}
+        ]
+      }
+  changed_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def db_session():
+          return {"connected": True}
+
+      @pytest.fixture
+      def sample_products():
+          return [
+              {"id": 1, "name": "Widget"},
+              {"id": 2, "name": "Gadget"},
+          ]
+    tests/test_orders.py: |
+      def test_create_order(db_session):
+          assert db_session["connected"]
+
+      def test_bulk_order(db_session, sample_products):
+          assert len(sample_products) == 2
+    tests/test_inventory.py: |
+      def test_check_stock(sample_products):
+          assert len(sample_products) > 0
+
+      def test_reorder_threshold():
+          threshold = 10
+          current_stock = 5
+          assert current_stock < threshold
+
+      def test_product_lookup(sample_products):
+          widget = next((p for p in sample_products if p["name"] == "Widget"), None)
+          assert widget is not None
+    fixtures/sample_data.json: |
+      {
+        "orders": [
+          {"id": 1, "product_id": 1, "quantity": 5, "status": "pending"},
+          {"id": 2, "product_id": 2, "quantity": 3, "status": "shipped"}
+        ],
+        "customers": [
+          {"id": 1, "name": "Acme Corp", "tier": "premium"}
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: test_orders
+  selector:
+    path: tests/test_orders.py
+    anchor: 'def test_create_order(db_session):'
+- id: test_orders_1
+  selector:
+    path: tests/test_orders.py
+    anchor: 'def test_bulk_order(db_session, sample_products):'
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: 'def db_session():'
+- id: conftest_1
+  selector:
+    path: tests/conftest.py
+    anchor: 'def sample_products():'
+- id: no_test_inventory
+  selector:
+    path: tests/test_inventory.py
+- id: no_sample_data
+  selector:
+    path: fixtures/sample_data.json
+- id: no_global_0
+  selector:
+    anchor: test_check_stock
+- id: no_global_1
+  selector:
+    anchor: test_reorder_threshold
+- id: no_global_2
+  selector:
+    anchor: test_product_lookup
+- id: no_global_3
+  selector:
+    anchor: Acme Corp
+- id: no_global_4
+  selector:
+    anchor: '"status": "shipped"'
+oracle:
+  required:
+  - test_orders
+  - test_orders_1
+  - conftest
+  - conftest_1
+  allowed: []
+  forbidden:
+  - no_test_inventory
+  - no_sample_data
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

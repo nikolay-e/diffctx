@@ -1,0 +1,106 @@
+name: output_004_symbol_present_for_function
+repo:
+  initial_files:
+    funcs.py: |
+      def named_function():
+          pass
+    utils/email_dispatcher.py: |
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+
+      class EmailDispatcher:
+          def __init__(self, host: str = SMTP_HOST, port: int = SMTP_PORT):
+              self.host = host
+              self.port = port
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+
+          def send_bulk(self, recipients: list[str], subject: str, body: str) -> int:
+              return len(recipients)
+    utils/template_compiler.py: |
+      TEMPLATE_SYNTAX = "jinja2"
+      AUTOESCAPE_ENABLED = True
+
+      class TemplateCompiler:
+          def compile(self, source: str) -> callable:
+              return lambda ctx: source
+
+          def render(self, template_name: str, context: dict) -> str:
+              return f"rendered: {template_name}"
+  changed_files:
+    funcs.py: |
+      def named_function():
+          return 1
+    utils/email_dispatcher.py: |
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+
+      class EmailDispatcher:
+          def __init__(self, host: str = SMTP_HOST, port: int = SMTP_PORT):
+              self.host = host
+              self.port = port
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+
+          def send_bulk(self, recipients: list[str], subject: str, body: str) -> int:
+              return len(recipients)
+    utils/template_compiler.py: |
+      TEMPLATE_SYNTAX = "jinja2"
+      AUTOESCAPE_ENABLED = True
+
+      class TemplateCompiler:
+          def compile(self, source: str) -> callable:
+              return lambda ctx: source
+
+          def render(self, template_name: str, context: dict) -> str:
+              return f"rendered: {template_name}"
+  commit_message: Update files
+fragments:
+- id: funcs_file
+  selector:
+    path: funcs.py
+- id: req_global_0
+  selector:
+    anchor: |-
+      def named_function():
+          return 1
+- id: no_email_dispatcher
+  selector:
+    path: utils/email_dispatcher.py
+- id: no_template_compiler
+  selector:
+    path: utils/template_compiler.py
+- id: no_global_0
+  selector:
+    anchor: EmailDispatcher
+- id: no_global_1
+  selector:
+    anchor: SMTP_HOST
+- id: no_global_2
+  selector:
+    anchor: send_bulk
+- id: no_global_3
+  selector:
+    anchor: TemplateCompiler
+- id: no_global_4
+  selector:
+    anchor: TEMPLATE_SYNTAX
+- id: no_global_5
+  selector:
+    anchor: AUTOESCAPE_ENABLED
+oracle:
+  required:
+  - funcs_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_email_dispatcher
+  - no_template_compiler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

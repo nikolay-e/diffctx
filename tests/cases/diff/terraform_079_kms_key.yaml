@@ -1,0 +1,105 @@
+name: terraform_079_kms_key
+repo:
+  initial_files:
+    kms.tf: |
+      resource "aws_kms_key" "main" {
+        description = "Main encryption key"
+      }
+    main.tf: |
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data"
+      }
+
+      resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+        bucket = aws_s3_bucket.data.id
+
+        rule {
+          apply_server_side_encryption_by_default {
+            sse_algorithm     = "aws:kms"
+            kms_master_key_id = aws_kms_key.main.arn
+          }
+        }
+      }
+
+      resource "aws_db_instance" "main" {
+        identifier     = "app-db"
+        engine         = "postgres"
+        instance_class = "db.t3.micro"
+        kms_key_id     = aws_kms_key.main.arn
+      }
+    aliases.tf: |
+      resource "aws_kms_alias" "main" {
+        name          = "alias/app-encryption"
+        target_key_id = aws_kms_key.main.key_id
+      }
+    s3_encryption/kms.tf: |
+      resource "aws_kms_key" "s3_encryption" {
+        description             = "S3 bucket encryption key"
+        deletion_window_in_days = 30
+        enable_key_rotation     = true
+      }
+
+      resource "aws_kms_alias" "s3_encryption" {
+        name          = "alias/s3-encryption"
+        target_key_id = aws_kms_key.s3_encryption.key_id
+      }
+    src/encrypt.py: |
+      import boto3
+
+      def encrypt_data(key_id: str, plaintext: bytes) -> bytes:
+          kms = boto3.client("kms")
+          response = kms.encrypt(KeyId=key_id, Plaintext=plaintext)
+          return response["CiphertextBlob"]
+  changed_files:
+    kms.tf: |
+      resource "aws_kms_key" "main" {
+        description             = "Main encryption key"
+        deletion_window_in_days = 7
+        enable_key_rotation     = true
+      }
+  commit_message: Update files
+fragments:
+- id: kms
+  selector:
+    path: kms.tf
+    anchor: deletion_window_in_days = 7
+- id: kms_1
+  selector:
+    path: kms.tf
+    anchor: enable_key_rotation     = true
+- id: kms_2
+  selector:
+    path: kms.tf
+    anchor: resource "aws_kms_key" "main"
+- id: main
+  selector:
+    path: main.tf
+    anchor: kms_master_key_id = aws_kms_key.main.arn
+- id: no_kms
+  selector:
+    path: s3_encryption/kms.tf
+- id: no_encrypt
+  selector:
+    path: src/encrypt.py
+- id: no_global_0
+  selector:
+    anchor: S3 bucket encryption key
+- id: no_global_1
+  selector:
+    anchor: alias/s3-encryption
+- id: no_global_2
+  selector:
+    anchor: CiphertextBlob
+oracle:
+  required:
+  - kms
+  - kms_1
+  - kms_2
+  - main
+  allowed: []
+  forbidden:
+  - no_kms
+  - no_encrypt
+  - no_global_0
+  - no_global_1
+  - no_global_2

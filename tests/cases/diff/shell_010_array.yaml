@@ -1,0 +1,216 @@
+name: shell_010_array
+repo:
+  initial_files:
+    deploy.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      files=("${WEB_SERVERS[@]}" "${DB_SERVERS[@]}")
+
+      for server in "${files[@]}"; do
+          echo "Deploying to: $server"
+      done
+
+      echo "Total servers: ${#files[@]}"
+    inventory.sh: |
+      #!/bin/bash
+      WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+      DB_SERVERS=("db01.prod" "db02.prod")
+      ALL_ENVS=("staging" "production")
+    scripts/health.sh: |
+      #!/bin/bash
+      for host in web01.prod web02.prod db01.prod db02.prod; do
+          ping -c1 -W2 "$host" > /dev/null 2>&1 && echo "$host: UP" || echo "$host: DOWN"
+      done
+    scripts/rollback.sh: |
+      #!/bin/bash
+      SERVERS=("web01.prod" "web02.prod")
+      for s in "${SERVERS[@]}"; do
+          ssh "$s" "systemctl restart app"
+      done
+    scripts/provision.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      for server in "${WEB_SERVERS[@]}"; do
+          echo "Provisioning web: $server"
+          ssh "$server" "apt-get update && apt-get install -y nginx"
+      done
+      for server in "${DB_SERVERS[@]}"; do
+          echo "Provisioning db: $server"
+          ssh "$server" "apt-get update && apt-get install -y postgresql"
+      done
+    scripts/metrics.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      for server in "${WEB_SERVERS[@]}"; do
+          cpu=$(ssh "$server" "uptime | awk '{print \$NF}'")
+          echo "$server CPU load: $cpu"
+      done
+    config/staging_inventory.sh: |
+      #!/bin/bash
+      WEB_SERVERS=("web01.staging" "web02.staging")
+      DB_SERVERS=("db01.staging")
+      ALL_ENVS=("staging")
+  changed_files:
+    deploy.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      declare -A server_roles
+
+      for s in "${WEB_SERVERS[@]}"; do
+          server_roles["$s"]="web"
+      done
+      for s in "${DB_SERVERS[@]}"; do
+          server_roles["$s"]="database"
+      done
+
+      declare -a results
+
+      for server in "${!server_roles[@]}"; do
+          role="${server_roles[$server]}"
+          if ssh "$server" "deploy --role=$role" 2>/dev/null; then
+              results+=("$server: OK")
+          else
+              results+=("$server: FAILED")
+          fi
+      done
+
+      echo "Results:"
+      for result in "${results[@]}"; do
+          echo "  $result"
+      done
+      echo "Total: ${#server_roles[@]} servers"
+    inventory.sh: |
+      #!/bin/bash
+      WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+      DB_SERVERS=("db01.prod" "db02.prod")
+      ALL_ENVS=("staging" "production")
+    scripts/health.sh: |
+      #!/bin/bash
+      for host in web01.prod web02.prod db01.prod db02.prod; do
+          ping -c1 -W2 "$host" > /dev/null 2>&1 && echo "$host: UP" || echo "$host: DOWN"
+      done
+    scripts/rollback.sh: |
+      #!/bin/bash
+      SERVERS=("web01.prod" "web02.prod")
+      for s in "${SERVERS[@]}"; do
+          ssh "$s" "systemctl restart app"
+      done
+    scripts/provision.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      for server in "${WEB_SERVERS[@]}"; do
+          echo "Provisioning web: $server"
+          ssh "$server" "apt-get update && apt-get install -y nginx"
+      done
+      for server in "${DB_SERVERS[@]}"; do
+          echo "Provisioning db: $server"
+          ssh "$server" "apt-get update && apt-get install -y postgresql"
+      done
+    scripts/metrics.sh: |
+      #!/bin/bash
+      source ./inventory.sh
+
+      for server in "${WEB_SERVERS[@]}"; do
+          cpu=$(ssh "$server" "uptime | awk '{print \$NF}'")
+          echo "$server CPU load: $cpu"
+      done
+    config/staging_inventory.sh: |
+      #!/bin/bash
+      WEB_SERVERS=("web01.staging" "web02.staging")
+      DB_SERVERS=("db01.staging")
+      ALL_ENVS=("staging")
+  commit_message: Update files
+fragments:
+- id: inventory
+  selector:
+    path: inventory.sh
+    anchor: WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+- id: inventory_1
+  selector:
+    path: inventory.sh
+    anchor: DB_SERVERS=("db01.prod" "db02.prod")
+- id: deploy
+  selector:
+    path: deploy.sh
+    anchor: server_roles["$s"]="web"
+- id: deploy_1
+  selector:
+    path: deploy.sh
+    anchor: deploy --role=$role
+- id: no_health
+  selector:
+    path: scripts/health.sh
+- id: no_rollback
+  selector:
+    path: scripts/rollback.sh
+- id: no_provision
+  selector:
+    path: scripts/provision.sh
+- id: no_metrics
+  selector:
+    path: scripts/metrics.sh
+- id: no_staging_inventory
+  selector:
+    path: config/staging_inventory.sh
+- id: no_global_0
+  selector:
+    anchor: ping -c1 -W2
+- id: no_global_1
+  selector:
+    anchor: UP
+- id: no_global_2
+  selector:
+    anchor: DOWN
+- id: no_global_3
+  selector:
+    anchor: systemctl restart app
+- id: no_global_4
+  selector:
+    anchor: Provisioning web
+- id: no_global_5
+  selector:
+    anchor: install -y nginx
+- id: no_global_6
+  selector:
+    anchor: install -y postgresql
+- id: no_global_7
+  selector:
+    anchor: CPU load
+- id: no_global_8
+  selector:
+    anchor: uptime
+- id: no_global_9
+  selector:
+    anchor: web01.staging
+- id: no_global_10
+  selector:
+    anchor: db01.staging
+oracle:
+  required:
+  - inventory
+  - inventory_1
+  - deploy
+  - deploy_1
+  allowed: []
+  forbidden:
+  - no_health
+  - no_rollback
+  - no_provision
+  - no_metrics
+  - no_staging_inventory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

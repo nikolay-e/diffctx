@@ -1,0 +1,422 @@
+name: jvm_and_compiled_019_csharp_linq
+repo:
+  initial_files:
+    User.cs: |
+      public class User
+      {
+          public int Id { get; set; }
+          public string Name { get; set; }
+          public int Age { get; set; }
+          public bool IsActive { get; set; }
+      }
+    UserService.cs: |
+      class UserService { }
+    Services/ProductService.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class ProductService
+      {
+          private readonly List<Product> _products;
+
+          public ProductService(List<Product> products)
+          {
+              _products = products;
+          }
+
+          public IEnumerable<Product> GetExpensive()
+          {
+              return _products.Where(p => p.Price >= 100.0m);
+          }
+
+          public IEnumerable<string> GetAvailableProductNames()
+          {
+              return _products
+                  .Where(p => p.InStock)
+                  .OrderBy(p => p.Name)
+                  .Select(p => p.Name);
+          }
+
+          public decimal AveragePrice()
+          {
+              return _products.Average(p => p.Price);
+          }
+      }
+    Repositories/UserRepository.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class UserRepository
+      {
+          private readonly Dictionary<int, User> _store = new();
+
+          public void Save(User user)
+          {
+              _store[user.Id] = user;
+          }
+
+          public User FindById(int id)
+          {
+              return _store.TryGetValue(id, out var user) ? user : null;
+          }
+
+          public List<User> FindAll()
+          {
+              return _store.Values.ToList();
+          }
+
+          public void Delete(int id)
+          {
+              _store.Remove(id);
+          }
+      }
+    Validators/UserValidator.cs: |
+      using System.Collections.Generic;
+
+      class UserValidator
+      {
+          public List<string> Validate(User user)
+          {
+              var errors = new List<string>();
+              if (string.IsNullOrWhiteSpace(user.Name))
+                  errors.Add("Name is required");
+              if (user.Age < 0 || user.Age > 150)
+                  errors.Add("Age must be between 0 and 150");
+              if (!user.IsActive)
+                  errors.Add("User must be active");
+              return errors;
+          }
+
+          public bool IsValid(User user)
+          {
+              return Validate(user).Count == 0;
+          }
+      }
+    Extensions/UserExtensions.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      static class UserExtensions
+      {
+          public static IEnumerable<User> ActiveOnly(this IEnumerable<User> users)
+          {
+              return users.Where(u => u.IsActive);
+          }
+
+          public static IEnumerable<User> SortedByName(this IEnumerable<User> users)
+          {
+              return users.OrderBy(u => u.Name);
+          }
+
+          public static IEnumerable<User> OlderThan(this IEnumerable<User> users, int age)
+          {
+              return users.Where(u => u.Age > age);
+          }
+      }
+    Reports/ReportGenerator.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class ReportGenerator
+      {
+          public Dictionary<bool, int> CountByActiveStatus(List<User> users)
+          {
+              return users
+                  .GroupBy(u => u.IsActive)
+                  .ToDictionary(g => g.Key, g => g.Count());
+          }
+
+          public Dictionary<string, double> AverageAgeByStatus(List<User> users)
+          {
+              return users
+                  .GroupBy(u => u.IsActive ? "Active" : "Inactive")
+                  .ToDictionary(g => g.Key, g => g.Average(u => u.Age));
+          }
+      }
+  changed_files:
+    User.cs: |
+      public class User
+      {
+          public int Id { get; set; }
+          public string Name { get; set; }
+          public int Age { get; set; }
+          public bool IsActive { get; set; }
+      }
+    UserService.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class UserService
+      {
+          private readonly List<User> _users;
+
+          public UserService(List<User> users)
+          {
+              _users = users;
+          }
+
+          public IEnumerable<User> GetAdults()
+          {
+              return _users.Where(u => u.Age >= 18);
+          }
+
+          public IEnumerable<string> GetActiveUserNames()
+          {
+              return _users
+                  .Where(u => u.IsActive)
+                  .OrderBy(u => u.Name)
+                  .Select(u => u.Name);
+          }
+
+          public double AverageAge()
+          {
+              return _users.Average(u => u.Age);
+          }
+      }
+    Services/ProductService.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class ProductService
+      {
+          private readonly List<Product> _products;
+
+          public ProductService(List<Product> products)
+          {
+              _products = products;
+          }
+
+          public IEnumerable<Product> GetExpensive()
+          {
+              return _products.Where(p => p.Price >= 100.0m);
+          }
+
+          public IEnumerable<string> GetAvailableProductNames()
+          {
+              return _products
+                  .Where(p => p.InStock)
+                  .OrderBy(p => p.Name)
+                  .Select(p => p.Name);
+          }
+
+          public decimal AveragePrice()
+          {
+              return _products.Average(p => p.Price);
+          }
+      }
+    Repositories/UserRepository.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class UserRepository
+      {
+          private readonly Dictionary<int, User> _store = new();
+
+          public void Save(User user)
+          {
+              _store[user.Id] = user;
+          }
+
+          public User FindById(int id)
+          {
+              return _store.TryGetValue(id, out var user) ? user : null;
+          }
+
+          public List<User> FindAll()
+          {
+              return _store.Values.ToList();
+          }
+
+          public void Delete(int id)
+          {
+              _store.Remove(id);
+          }
+      }
+    Validators/UserValidator.cs: |
+      using System.Collections.Generic;
+
+      class UserValidator
+      {
+          public List<string> Validate(User user)
+          {
+              var errors = new List<string>();
+              if (string.IsNullOrWhiteSpace(user.Name))
+                  errors.Add("Name is required");
+              if (user.Age < 0 || user.Age > 150)
+                  errors.Add("Age must be between 0 and 150");
+              if (!user.IsActive)
+                  errors.Add("User must be active");
+              return errors;
+          }
+
+          public bool IsValid(User user)
+          {
+              return Validate(user).Count == 0;
+          }
+      }
+    Extensions/UserExtensions.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      static class UserExtensions
+      {
+          public static IEnumerable<User> ActiveOnly(this IEnumerable<User> users)
+          {
+              return users.Where(u => u.IsActive);
+          }
+
+          public static IEnumerable<User> SortedByName(this IEnumerable<User> users)
+          {
+              return users.OrderBy(u => u.Name);
+          }
+
+          public static IEnumerable<User> OlderThan(this IEnumerable<User> users, int age)
+          {
+              return users.Where(u => u.Age > age);
+          }
+      }
+    Reports/ReportGenerator.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      class ReportGenerator
+      {
+          public Dictionary<bool, int> CountByActiveStatus(List<User> users)
+          {
+              return users
+                  .GroupBy(u => u.IsActive)
+                  .ToDictionary(g => g.Key, g => g.Count());
+          }
+
+          public Dictionary<string, double> AverageAgeByStatus(List<User> users)
+          {
+              return users
+                  .GroupBy(u => u.IsActive ? "Active" : "Inactive")
+                  .ToDictionary(g => g.Key, g => g.Average(u => u.Age));
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: UserService.cs
+    anchor: return _users.Where(u => u.Age >= 18)
+- id: userservice_1
+  selector:
+    path: UserService.cs
+    anchor: .Where(u => u.IsActive)
+- id: userservice_2
+  selector:
+    path: UserService.cs
+    anchor: .Select(u => u.Name)
+- id: userservice_3
+  selector:
+    path: UserService.cs
+    anchor: return _users.Average(u => u.Age)
+- id: user
+  selector:
+    path: User.cs
+    anchor: public int Age { get; set; }
+- id: user_1
+  selector:
+    path: User.cs
+    anchor: public bool IsActive { get; set; }
+- id: user_2
+  selector:
+    path: User.cs
+    anchor: public string Name { get; set; }
+- id: no_productservice
+  selector:
+    path: Services/ProductService.cs
+- id: no_userrepository
+  selector:
+    path: Repositories/UserRepository.cs
+- id: no_uservalidator
+  selector:
+    path: Validators/UserValidator.cs
+- id: no_userextensions
+  selector:
+    path: Extensions/UserExtensions.cs
+- id: no_reportgenerator
+  selector:
+    path: Reports/ReportGenerator.cs
+- id: no_global_0
+  selector:
+    anchor: ProductService
+- id: no_global_1
+  selector:
+    anchor: GetExpensive
+- id: no_global_2
+  selector:
+    anchor: GetAvailableProductNames
+- id: no_global_3
+  selector:
+    anchor: AveragePrice
+- id: no_global_4
+  selector:
+    anchor: UserRepository
+- id: no_global_5
+  selector:
+    anchor: FindById
+- id: no_global_6
+  selector:
+    anchor: FindAll
+- id: no_global_7
+  selector:
+    anchor: UserValidator
+- id: no_global_8
+  selector:
+    anchor: Name is required
+- id: no_global_9
+  selector:
+    anchor: UserExtensions
+- id: no_global_10
+  selector:
+    anchor: ActiveOnly
+- id: no_global_11
+  selector:
+    anchor: SortedByName
+- id: no_global_12
+  selector:
+    anchor: OlderThan
+- id: no_global_13
+  selector:
+    anchor: ReportGenerator
+- id: no_global_14
+  selector:
+    anchor: CountByActiveStatus
+- id: no_global_15
+  selector:
+    anchor: AverageAgeByStatus
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - userservice_3
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_productservice
+  - no_userrepository
+  - no_uservalidator
+  - no_userextensions
+  - no_reportgenerator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

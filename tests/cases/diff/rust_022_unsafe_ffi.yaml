@@ -1,0 +1,201 @@
+name: rust_022_unsafe_ffi
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod ffi;
+      pub mod bindings;
+      pub mod wasm_bridge;
+    src/ffi.rs: |
+      use std::ffi::CStr;
+      use std::os::raw::{c_char, c_int};
+
+      extern "C" {
+          fn external_function(x: c_int) -> c_int;
+      }
+
+      pub fn safe_wrapper(x: i32) -> i32 {
+          unsafe { external_function(x as c_int) as i32 }
+      }
+
+      pub fn validate_input(x: i32) -> bool {
+          x >= 0 && x <= 1000
+      }
+
+      pub fn process_external(x: i32) -> Result<i32, String> {
+          if !validate_input(x) {
+              return Err("Input out of range".to_string());
+          }
+          Ok(safe_wrapper(x))
+      }
+    src/bindings.rs: |
+      use std::os::raw::{c_int, c_void, c_double};
+
+      extern "C" {
+          fn lib_init() -> c_int;
+          fn lib_shutdown();
+          fn lib_process(data: *const c_void, len: usize) -> c_double;
+      }
+
+      pub fn initialize() -> Result<(), String> {
+          let result = unsafe { lib_init() };
+          if result == 0 { Ok(()) } else { Err("Init failed".to_string()) }
+      }
+
+      pub fn shutdown() {
+          unsafe { lib_shutdown(); }
+      }
+
+      pub fn process_data(data: &[u8]) -> f64 {
+          unsafe { lib_process(data.as_ptr() as *const c_void, data.len()) }
+      }
+    src/wasm_bridge.rs: |
+      pub struct WasmModule {
+          name: String,
+          memory_pages: u32,
+      }
+
+      impl WasmModule {
+          pub fn new(name: &str, pages: u32) -> Self {
+              Self {
+                  name: name.to_string(),
+                  memory_pages: pages,
+              }
+          }
+
+          pub fn call_export(&self, func_name: &str, args: &[i32]) -> Result<i32, String> {
+              Err(format!("WASM function {} not found in {}", func_name, self.name))
+          }
+
+          pub fn memory_size(&self) -> usize {
+              self.memory_pages as usize * 65536
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod ffi;
+      pub mod bindings;
+      pub mod wasm_bridge;
+    src/ffi.rs: |
+      use std::ffi::CStr;
+      use std::os::raw::{c_char, c_int};
+
+      extern "C" {
+          fn external_function(x: c_int) -> c_int;
+          fn another_external(s: *const c_char, len: usize) -> c_int;
+      }
+
+      pub fn safe_wrapper(x: i32) -> i32 {
+          unsafe { external_function(x as c_int) as i32 }
+      }
+
+      pub fn safe_string_wrapper(s: &str) -> i32 {
+          let c_str = std::ffi::CString::new(s).expect("CString creation failed");
+          unsafe { another_external(c_str.as_ptr(), s.len()) as i32 }
+      }
+
+      pub fn validate_input(x: i32) -> bool {
+          x >= 0 && x <= 1000
+      }
+
+      pub fn process_external(x: i32) -> Result<i32, String> {
+          if !validate_input(x) {
+              return Err("Input out of range".to_string());
+          }
+          Ok(safe_wrapper(x))
+      }
+
+      pub fn process_string_external(s: &str) -> Result<i32, String> {
+          if s.is_empty() {
+              return Err("Empty string".to_string());
+          }
+          Ok(safe_string_wrapper(s))
+      }
+    src/bindings.rs: |
+      use std::os::raw::{c_int, c_void, c_double};
+
+      extern "C" {
+          fn lib_init() -> c_int;
+          fn lib_shutdown();
+          fn lib_process(data: *const c_void, len: usize) -> c_double;
+      }
+
+      pub fn initialize() -> Result<(), String> {
+          let result = unsafe { lib_init() };
+          if result == 0 { Ok(()) } else { Err("Init failed".to_string()) }
+      }
+
+      pub fn shutdown() {
+          unsafe { lib_shutdown(); }
+      }
+
+      pub fn process_data(data: &[u8]) -> f64 {
+          unsafe { lib_process(data.as_ptr() as *const c_void, data.len()) }
+      }
+    src/wasm_bridge.rs: |
+      pub struct WasmModule {
+          name: String,
+          memory_pages: u32,
+      }
+
+      impl WasmModule {
+          pub fn new(name: &str, pages: u32) -> Self {
+              Self {
+                  name: name.to_string(),
+                  memory_pages: pages,
+              }
+          }
+
+          pub fn call_export(&self, func_name: &str, args: &[i32]) -> Result<i32, String> {
+              Err(format!("WASM function {} not found in {}", func_name, self.name))
+          }
+
+          pub fn memory_size(&self) -> usize {
+              self.memory_pages as usize * 65536
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: ffi_file
+  selector:
+    path: src/ffi.rs
+- id: req_global_0
+  selector:
+    anchor: 'fn another_external(s: *const c_char, len: usize) -> c_int;'
+- id: req_global_1
+  selector:
+    anchor: 'pub fn safe_string_wrapper(s: &str) -> i32 {'
+- id: no_bindings
+  selector:
+    path: src/bindings.rs
+- id: no_wasm_bridge
+  selector:
+    path: src/wasm_bridge.rs
+- id: no_global_0
+  selector:
+    anchor: lib_init
+- id: no_global_1
+  selector:
+    anchor: WasmModule
+- id: no_global_2
+  selector:
+    anchor: process_data
+- id: no_global_3
+  selector:
+    anchor: bindings.rs
+- id: no_global_4
+  selector:
+    anchor: wasm_bridge.rs
+oracle:
+  required:
+  - ffi_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_bindings
+  - no_wasm_bridge
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

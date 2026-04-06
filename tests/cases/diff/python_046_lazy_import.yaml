@@ -1,0 +1,209 @@
+name: python_046_lazy_import
+repo:
+  initial_files:
+    heavy.py: |
+      import time
+      from typing import Any
+
+      _CACHE: dict[str, Any] = {}
+
+      def expensive_init() -> dict:
+          time.sleep(0.1)
+          return {"initialized": True, "version": "2.0"}
+
+      _data = expensive_init()
+
+      def get_data() -> dict:
+          return _data
+
+      def get_cached_value(key: str) -> Any:
+          return _CACHE.get(key)
+
+      def set_cached_value(key: str, value: Any) -> None:
+          _CACHE[key] = value
+    service.py: |
+      def process():
+          pass
+
+      def get_status() -> str:
+          return "idle"
+    search/search_index.py: |
+      from typing import Optional
+
+      class SearchIndex:
+          def __init__(self, index_name: str = "default"):
+              self._index: dict[str, list[str]] = {}
+
+          def index_document(self, doc_id: str, content: str) -> None:
+              tokens = content.lower().split()
+              for token in tokens:
+                  if token not in self._index:
+                      self._index[token] = []
+                  self._index[token].append(doc_id)
+
+          def search(self, query: str) -> list[str]:
+              tokens = query.lower().split()
+              if not tokens:
+                  return []
+              results = set(self._index.get(tokens[0], []))
+              for token in tokens[1:]:
+                  results &= set(self._index.get(token, []))
+              return list(results)
+    exports/data_exporter.py: |
+      import json
+      import csv
+      import io
+
+      class DataExporter:
+          def __init__(self, output_format: str = "json"):
+              self.output_format = output_format
+
+          def export(self, data: list[dict]) -> str:
+              if self.output_format == "json":
+                  return json.dumps(data, indent=2)
+              elif self.output_format == "csv":
+                  output = io.StringIO()
+                  if data:
+                      writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                      writer.writeheader()
+                      writer.writerows(data)
+                  return output.getvalue()
+              return str(data)
+  changed_files:
+    heavy.py: |
+      import time
+      from typing import Any
+
+      _CACHE: dict[str, Any] = {}
+
+      def expensive_init() -> dict:
+          time.sleep(0.1)
+          return {"initialized": True, "version": "2.0"}
+
+      _data = expensive_init()
+
+      def get_data() -> dict:
+          return _data
+
+      def get_cached_value(key: str) -> Any:
+          return _CACHE.get(key)
+
+      def set_cached_value(key: str, value: Any) -> None:
+          _CACHE[key] = value
+    service.py: |
+      def get_heavy_data() -> dict:
+          import heavy
+          return heavy.get_data()
+
+      def process() -> dict:
+          data = get_heavy_data()
+          return {"status": "processed", "source": data}
+
+      def get_status() -> str:
+          return "idle"
+    search/search_index.py: |
+      from typing import Optional
+
+      class SearchIndex:
+          def __init__(self, index_name: str = "default"):
+              self._index: dict[str, list[str]] = {}
+
+          def index_document(self, doc_id: str, content: str) -> None:
+              tokens = content.lower().split()
+              for token in tokens:
+                  if token not in self._index:
+                      self._index[token] = []
+                  self._index[token].append(doc_id)
+
+          def search(self, query: str) -> list[str]:
+              tokens = query.lower().split()
+              if not tokens:
+                  return []
+              results = set(self._index.get(tokens[0], []))
+              for token in tokens[1:]:
+                  results &= set(self._index.get(token, []))
+              return list(results)
+    exports/data_exporter.py: |
+      import json
+      import csv
+      import io
+
+      class DataExporter:
+          def __init__(self, output_format: str = "json"):
+              self.output_format = output_format
+
+          def export(self, data: list[dict]) -> str:
+              if self.output_format == "json":
+                  return json.dumps(data, indent=2)
+              elif self.output_format == "csv":
+                  output = io.StringIO()
+                  if data:
+                      writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                      writer.writeheader()
+                      writer.writerows(data)
+                  return output.getvalue()
+              return str(data)
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: 'def get_heavy_data() -> dict:'
+- id: service_1
+  selector:
+    path: service.py
+    anchor: import heavy
+- id: service_2
+  selector:
+    path: service.py
+    anchor: heavy.get_data()
+- id: service_3
+  selector:
+    path: service.py
+    anchor: 'def process() -> dict:'
+- id: heavy
+  selector:
+    path: heavy.py
+    anchor: 'def get_data() -> dict:'
+- id: heavy_1
+  selector:
+    path: heavy.py
+    anchor: _data = expensive_init()
+- id: no_search_index
+  selector:
+    path: search/search_index.py
+- id: no_data_exporter
+  selector:
+    path: exports/data_exporter.py
+- id: no_global_0
+  selector:
+    anchor: SearchIndex
+- id: no_global_1
+  selector:
+    anchor: index_document
+- id: no_global_2
+  selector:
+    anchor: DataExporter
+- id: no_global_3
+  selector:
+    anchor: DictWriter
+- id: no_global_4
+  selector:
+    anchor: output_format
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - service_3
+  - heavy
+  - heavy_1
+  allowed: []
+  forbidden:
+  - no_search_index
+  - no_data_exporter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

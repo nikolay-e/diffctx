@@ -1,0 +1,82 @@
+name: fragments_002_multiple_decorators_all_included
+repo:
+  initial_files:
+    multi_dec.py: |
+      import functools
+      from contextlib import contextmanager
+
+      def unrelated_before_function():
+
+      class UnrelatedBeforeClass:
+
+      @decorator1
+      @decorator2
+      @decorator3
+      def decorated_func():
+          pass
+
+      def unrelated_after_function():
+
+      class UnrelatedAfterClass:
+
+          def method_with_marker(self):
+    garbage_utils_002.py: |
+      GARBAGE_CONSTANT_002 = "GARBAGE_FRAG_constant002"
+
+      def garbage_util_function():
+          return "GARBAGE_FRAG_util002"
+
+      class GarbageHelper:
+          def __init__(self):
+              self.value = "GARBAGE_FRAG_helper002"
+  changed_files:
+    multi_dec.py: |
+      import functools
+      from contextlib import contextmanager
+
+      def unrelated_before_function():
+
+      class UnrelatedBeforeClass:
+
+      @decorator1
+      @decorator2
+      @decorator3
+      def decorated_func():
+          return 1
+
+      def unrelated_after_function():
+
+      class UnrelatedAfterClass:
+
+          def method_with_marker(self):
+    garbage_utils_002.py: |
+      GARBAGE_CONSTANT_002 = "GARBAGE_FRAG_constant002"
+
+      def garbage_util_function():
+          return "GARBAGE_FRAG_util002"
+
+      class GarbageHelper:
+          def __init__(self):
+              self.value = "GARBAGE_FRAG_helper002"
+  commit_message: Update files
+fragments:
+- id: multi_dec_file
+  selector:
+    path: multi_dec.py
+- id: req_global_0
+  selector:
+    anchor: return 1
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CONSTANT_002
+- id: no_global_1
+  selector:
+    anchor: garbage_utils_002.py
+oracle:
+  required:
+  - multi_dec_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

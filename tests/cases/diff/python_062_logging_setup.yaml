@@ -1,0 +1,405 @@
+name: python_062_logging_setup
+repo:
+  initial_files:
+    logging_config.py: |
+      import logging
+      import logging.handlers
+      from typing import Optional, Dict, Any, List
+      from pathlib import Path
+      from datetime import datetime
+      import json
+      import sys
+
+      DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      JSON_FORMAT_KEYS = ["timestamp", "name", "level", "message", "extra"]
+
+      class JsonFormatter(logging.Formatter):
+          def __init__(self, include_extra: bool = True):
+              super().__init__()
+              self.include_extra = include_extra
+
+          def format(self, record: logging.LogRecord) -> str:
+              log_data = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "name": record.name,
+                  "level": record.levelname,
+                  "message": record.getMessage(),
+              }
+              if self.include_extra and hasattr(record, "extra"):
+                  log_data["extra"] = record.extra
+              if record.exc_info:
+                  log_data["exception"] = self.formatException(record.exc_info)
+              return json.dumps(log_data)
+
+      class ContextFilter(logging.Filter):
+          def __init__(self, context: Dict[str, Any] = None):
+              super().__init__()
+              self.context = context or {}
+
+          def filter(self, record: logging.LogRecord) -> bool:
+              for key, value in self.context.items():
+                  setattr(record, key, value)
+              return True
+
+      class LoggerFactory:
+          _loggers: Dict[str, logging.Logger] = {}
+
+          @classmethod
+          def get_logger(cls, name: str, level: str = "INFO") -> logging.Logger:
+              if name in cls._loggers:
+                  return cls._loggers[name]
+              logger = logging.getLogger(name)
+              logger.setLevel(getattr(logging, level.upper()))
+              cls._loggers[name] = logger
+              return logger
+
+      def setup_logging(level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
+          root_logger = logging.getLogger()
+          root_logger.setLevel(getattr(logging, level.upper()))
+          for handler in root_logger.handlers[:]:
+              root_logger.removeHandler(handler)
+          formatter = logging.Formatter(DEFAULT_FORMAT)
+          console_handler = logging.StreamHandler(sys.stdout)
+          console_handler.setFormatter(formatter)
+          root_logger.addHandler(console_handler)
+          return root_logger
+    app.py: |
+      from logging_config import setup_logging
+
+      def main():
+          logger = setup_logging()
+          logger.info("Application started")
+    monitoring/metrics_collector.py: |
+      from typing import Dict, Optional
+      from collections import defaultdict
+
+      class MetricsCollector:
+          def __init__(self, namespace: str = "app"):
+              self.namespace = namespace
+              self._counters: Dict[str, int] = defaultdict(int)
+              self._histograms: Dict[str, list] = defaultdict(list)
+
+          def increment_counter(self, name: str, value: int = 1) -> None:
+              self._counters[f"{self.namespace}_{name}"] += value
+
+          def observe_histogram(self, name: str, value: float) -> None:
+              self._histograms[f"{self.namespace}_{name}"].append(value)
+
+          def get_counter(self, name: str) -> int:
+              return self._counters.get(f"{self.namespace}_{name}", 0)
+
+          def get_histogram_avg(self, name: str) -> float:
+              key = f"{self.namespace}_{name}"
+              values = self._histograms.get(key, [])
+              return sum(values) / len(values) if values else 0.0
+
+          def reset_all(self) -> None:
+              self._counters.clear()
+              self._histograms.clear()
+    monitoring/health_checker.py: |
+      from typing import Dict, Any
+
+      class HealthChecker:
+          def __init__(self):
+              self._checks: Dict[str, callable] = {}
+
+          def register_check(self, name: str, check_fn: callable) -> None:
+              self._checks[name] = check_fn
+
+          def run_all(self) -> Dict[str, Any]:
+              results = {}
+              for name, check_fn in self._checks.items():
+                  try:
+                      check_fn()
+                      results[name] = {"status": "healthy", "level": "ok"}
+                  except Exception as e:
+                      results[name] = {"status": "unhealthy", "level": "critical", "error": str(e)}
+              return results
+
+          def is_healthy(self) -> bool:
+              results = self.run_all()
+              return all(r["status"] == "healthy" for r in results.values())
+    monitoring/config_watcher.py: |
+      from pathlib import Path
+      from typing import Optional, Callable
+
+      class ConfigWatcher:
+          def __init__(self, config_path: str):
+              self.config_path = Path(config_path)
+              self._last_modified: Optional[float] = None
+              self._callback: Optional[Callable] = None
+
+          def set_callback(self, callback: Callable) -> None:
+              self._callback = callback
+
+          def check_for_changes(self) -> bool:
+              if not self.config_path.exists():
+                  return False
+              mtime = self.config_path.stat().st_mtime
+              if self._last_modified is None or mtime > self._last_modified:
+                  self._last_modified = mtime
+                  if self._callback:
+                      self._callback()
+                  return True
+              return False
+
+          def get_config_age_seconds(self) -> float:
+              if self._last_modified is None:
+                  return -1.0
+              import time
+              return time.time() - self._last_modified
+  changed_files:
+    logging_config.py: |
+      import logging
+      import logging.handlers
+      from typing import Optional, Dict, Any, List
+      from pathlib import Path
+      from datetime import datetime
+      import json
+      import sys
+
+      DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      JSON_FORMAT_KEYS = ["timestamp", "name", "level", "message", "extra"]
+
+      class JsonFormatter(logging.Formatter):
+          def __init__(self, include_extra: bool = True):
+              super().__init__()
+              self.include_extra = include_extra
+
+          def format(self, record: logging.LogRecord) -> str:
+              log_data = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "name": record.name,
+                  "level": record.levelname,
+                  "message": record.getMessage(),
+              }
+              if self.include_extra and hasattr(record, "extra"):
+                  log_data["extra"] = record.extra
+              if record.exc_info:
+                  log_data["exception"] = self.formatException(record.exc_info)
+              return json.dumps(log_data)
+
+      class ContextFilter(logging.Filter):
+          def __init__(self, context: Dict[str, Any] = None):
+              super().__init__()
+              self.context = context or {}
+
+          def filter(self, record: logging.LogRecord) -> bool:
+              for key, value in self.context.items():
+                  setattr(record, key, value)
+              return True
+
+          def update_context(self, **kwargs) -> None:
+              self.context.update(kwargs)
+
+      class LoggerFactory:
+          _loggers: Dict[str, logging.Logger] = {}
+
+          @classmethod
+          def get_logger(cls, name: str, level: str = "INFO") -> logging.Logger:
+              if name in cls._loggers:
+                  return cls._loggers[name]
+              logger = logging.getLogger(name)
+              logger.setLevel(getattr(logging, level.upper()))
+              cls._loggers[name] = logger
+              return logger
+
+          @classmethod
+          def configure_all(cls, level: str = "INFO") -> None:
+              for logger in cls._loggers.values():
+                  logger.setLevel(getattr(logging, level.upper()))
+
+      def setup_logging(
+          level: str = "INFO",
+          log_file: Optional[str] = None,
+          json_format: bool = False,
+          max_bytes: int = 10_000_000,
+          backup_count: int = 5
+      ) -> logging.Logger:
+          root_logger = logging.getLogger()
+          root_logger.setLevel(getattr(logging, level.upper()))
+
+          for handler in root_logger.handlers[:]:
+              root_logger.removeHandler(handler)
+
+          if json_format:
+              formatter = JsonFormatter()
+          else:
+              formatter = logging.Formatter(DEFAULT_FORMAT)
+
+          console_handler = logging.StreamHandler(sys.stdout)
+          console_handler.setFormatter(formatter)
+          root_logger.addHandler(console_handler)
+
+          if log_file:
+              file_handler = logging.handlers.RotatingFileHandler(
+                  log_file,
+                  maxBytes=max_bytes,
+                  backupCount=backup_count
+              )
+              file_handler.setFormatter(formatter)
+              root_logger.addHandler(file_handler)
+
+          return root_logger
+
+      def add_file_handler(
+          logger: logging.Logger,
+          filepath: str,
+          level: str = "DEBUG"
+      ) -> logging.FileHandler:
+          handler = logging.FileHandler(filepath)
+          handler.setLevel(getattr(logging, level.upper()))
+          handler.setFormatter(logging.Formatter(DEFAULT_FORMAT))
+          logger.addHandler(handler)
+          return handler
+    app.py: |
+      from logging_config import setup_logging
+
+      def main():
+          logger = setup_logging()
+          logger.info("Application started")
+    monitoring/metrics_collector.py: |
+      from typing import Dict, Optional
+      from collections import defaultdict
+
+      class MetricsCollector:
+          def __init__(self, namespace: str = "app"):
+              self.namespace = namespace
+              self._counters: Dict[str, int] = defaultdict(int)
+              self._histograms: Dict[str, list] = defaultdict(list)
+
+          def increment_counter(self, name: str, value: int = 1) -> None:
+              self._counters[f"{self.namespace}_{name}"] += value
+
+          def observe_histogram(self, name: str, value: float) -> None:
+              self._histograms[f"{self.namespace}_{name}"].append(value)
+
+          def get_counter(self, name: str) -> int:
+              return self._counters.get(f"{self.namespace}_{name}", 0)
+
+          def get_histogram_avg(self, name: str) -> float:
+              key = f"{self.namespace}_{name}"
+              values = self._histograms.get(key, [])
+              return sum(values) / len(values) if values else 0.0
+
+          def reset_all(self) -> None:
+              self._counters.clear()
+              self._histograms.clear()
+    monitoring/health_checker.py: |
+      from typing import Dict, Any
+
+      class HealthChecker:
+          def __init__(self):
+              self._checks: Dict[str, callable] = {}
+
+          def register_check(self, name: str, check_fn: callable) -> None:
+              self._checks[name] = check_fn
+
+          def run_all(self) -> Dict[str, Any]:
+              results = {}
+              for name, check_fn in self._checks.items():
+                  try:
+                      check_fn()
+                      results[name] = {"status": "healthy", "level": "ok"}
+                  except Exception as e:
+                      results[name] = {"status": "unhealthy", "level": "critical", "error": str(e)}
+              return results
+
+          def is_healthy(self) -> bool:
+              results = self.run_all()
+              return all(r["status"] == "healthy" for r in results.values())
+    monitoring/config_watcher.py: |
+      from pathlib import Path
+      from typing import Optional, Callable
+
+      class ConfigWatcher:
+          def __init__(self, config_path: str):
+              self.config_path = Path(config_path)
+              self._last_modified: Optional[float] = None
+              self._callback: Optional[Callable] = None
+
+          def set_callback(self, callback: Callable) -> None:
+              self._callback = callback
+
+          def check_for_changes(self) -> bool:
+              if not self.config_path.exists():
+                  return False
+              mtime = self.config_path.stat().st_mtime
+              if self._last_modified is None or mtime > self._last_modified:
+                  self._last_modified = mtime
+                  if self._callback:
+                      self._callback()
+                  return True
+              return False
+
+          def get_config_age_seconds(self) -> float:
+              if self._last_modified is None:
+                  return -1.0
+              import time
+              return time.time() - self._last_modified
+  commit_message: Update files
+fragments:
+- id: logging_config_file
+  selector:
+    path: logging_config.py
+- id: req_global_0
+  selector:
+    anchor: 'def update_context(self, **kwargs) -> None:'
+- id: req_global_1
+  selector:
+    anchor: 'def configure_all(cls, level: str = "INFO") -> None:'
+- id: no_metrics_collector
+  selector:
+    path: monitoring/metrics_collector.py
+- id: no_health_checker
+  selector:
+    path: monitoring/health_checker.py
+- id: no_config_watcher
+  selector:
+    path: monitoring/config_watcher.py
+- id: no_global_0
+  selector:
+    anchor: MetricsCollector
+- id: no_global_1
+  selector:
+    anchor: increment_counter
+- id: no_global_2
+  selector:
+    anchor: observe_histogram
+- id: no_global_3
+  selector:
+    anchor: HealthChecker
+- id: no_global_4
+  selector:
+    anchor: register_check
+- id: no_global_5
+  selector:
+    anchor: is_healthy
+- id: no_global_6
+  selector:
+    anchor: ConfigWatcher
+- id: no_global_7
+  selector:
+    anchor: check_for_changes
+- id: no_global_8
+  selector:
+    anchor: get_config_age_seconds
+oracle:
+  required:
+  - logging_config_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_metrics_collector
+  - no_health_checker
+  - no_config_watcher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

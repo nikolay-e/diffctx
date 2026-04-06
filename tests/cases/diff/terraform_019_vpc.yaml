@@ -1,0 +1,296 @@
+name: terraform_019_vpc
+repo:
+  initial_files:
+    network.tf: |
+      # Network resources placeholder
+    outputs.tf: |
+      # Outputs placeholder
+    security_groups.tf: |
+      resource "aws_security_group" "web" {
+        name        = "${var.environment}-web-sg"
+        description = "Security group for web servers"
+        vpc_id      = aws_vpc.main.id
+
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+
+      resource "aws_security_group" "database" {
+        name        = "${var.environment}-db-sg"
+        description = "Security group for database"
+        vpc_id      = aws_vpc.main.id
+
+        ingress {
+          from_port       = 5432
+          to_port         = 5432
+          protocol        = "tcp"
+          security_groups = [aws_security_group.web.id]
+        }
+      }
+    peering.tf: |
+      resource "aws_vpc_peering_connection" "shared_services" {
+        vpc_id      = aws_vpc.main.id
+        peer_vpc_id = var.shared_services_vpc_id
+        auto_accept = true
+
+        tags = {
+          Name = "${var.environment}-shared-services-peering"
+        }
+      }
+    deprecated/legacy_network.tf: |
+      resource "aws_vpc" "legacy" {
+        cidr_block = "172.16.0.0/16"
+        tags = {
+          Name = "legacy-vpc"
+        }
+      }
+
+      resource "aws_subnet" "legacy_public" {
+        vpc_id     = aws_vpc.legacy.id
+        cidr_block = "172.16.1.0/24"
+      }
+
+      resource "aws_subnet" "legacy_private" {
+        vpc_id     = aws_vpc.legacy.id
+        cidr_block = "172.16.2.0/24"
+      }
+    modules/eks/network.tf: |
+      resource "aws_eks_cluster" "main" {
+        name     = "app-cluster"
+        role_arn = aws_iam_role.eks.arn
+
+        vpc_config {
+          subnet_ids              = var.subnet_ids
+          endpoint_private_access = true
+          endpoint_public_access  = false
+        }
+      }
+    flow_logs/config.tf: |
+      resource "aws_flow_log" "main" {
+        vpc_id               = aws_vpc.main.id
+        traffic_type         = "ALL"
+        log_destination      = aws_cloudwatch_log_group.flow_logs.arn
+        log_destination_type = "cloud-watch-logs"
+        iam_role_arn         = aws_iam_role.flow_logs.arn
+      }
+
+      resource "aws_cloudwatch_log_group" "flow_logs" {
+        name              = "/aws/vpc/flow-logs"
+        retention_in_days = 30
+      }
+    transit_gateway/main.tf: |
+      resource "aws_ec2_transit_gateway_vpc_attachment" "main" {
+        transit_gateway_id = var.transit_gateway_id
+        vpc_id             = aws_vpc.main.id
+        subnet_ids         = var.private_subnet_ids
+
+        tags = {
+          Name = "${var.environment}-tgw-attachment"
+        }
+      }
+  changed_files:
+    network.tf: |
+      data "aws_availability_zones" "available" {
+        state = "available"
+      }
+
+      locals {
+        azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
+      }
+
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_hostnames = true
+        enable_dns_support   = true
+
+        tags = merge(var.common_tags, {
+          Name = "${var.environment}-vpc"
+        })
+      }
+
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+      }
+
+      resource "aws_subnet" "public" {
+        count                   = length(local.azs)
+        vpc_id                  = aws_vpc.main.id
+        cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
+        availability_zone       = local.azs[count.index]
+        map_public_ip_on_launch = true
+      }
+
+      resource "aws_subnet" "private" {
+        count             = length(local.azs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 100)
+        availability_zone = local.azs[count.index]
+      }
+
+      resource "aws_nat_gateway" "main" {
+        count         = var.single_nat_gateway ? 1 : length(local.azs)
+        allocation_id = aws_eip.nat[count.index].id
+        subnet_id     = aws_subnet.public[count.index].id
+      }
+
+      resource "aws_eip" "nat" {
+        count  = var.single_nat_gateway ? 1 : length(local.azs)
+        domain = "vpc"
+      }
+
+      resource "aws_vpc_endpoint" "s3" {
+        vpc_id            = aws_vpc.main.id
+        service_name      = "com.amazonaws.${var.aws_region}.s3"
+        vpc_endpoint_type = "Gateway"
+      }
+    outputs.tf: |
+      output "vpc_id" {
+        value = aws_vpc.main.id
+      }
+
+      output "public_subnet_ids" {
+        value = aws_subnet.public[*].id
+      }
+
+      output "private_subnet_ids" {
+        value = aws_subnet.private[*].id
+      }
+
+      output "nat_gateway_ids" {
+        value = aws_nat_gateway.main[*].id
+      }
+    security_groups.tf: |
+      resource "aws_security_group" "web" {
+        name        = "${var.environment}-web-sg"
+        description = "Security group for web servers"
+        vpc_id      = aws_vpc.main.id
+
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+
+      resource "aws_security_group" "database" {
+        name        = "${var.environment}-db-sg"
+        description = "Security group for database"
+        vpc_id      = aws_vpc.main.id
+
+        ingress {
+          from_port       = 5432
+          to_port         = 5432
+          protocol        = "tcp"
+          security_groups = [aws_security_group.web.id]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: security_groups
+  selector:
+    path: security_groups.tf
+    anchor: vpc_id      = aws_vpc.main.id
+- id: security_groups_1
+  selector:
+    path: security_groups.tf
+    anchor: resource "aws_security_group" "web" {
+- id: security_groups_2
+  selector:
+    path: security_groups.tf
+    anchor: resource "aws_security_group" "database" {
+- id: peering
+  selector:
+    path: peering.tf
+    anchor: aws_vpc_peering_connection
+- id: peering_1
+  selector:
+    path: peering.tf
+    anchor: vpc_id      = aws_vpc.main.id
+- id: no_legacy_network
+  selector:
+    path: deprecated/legacy_network.tf
+- id: no_network
+  selector:
+    path: modules/eks/network.tf
+- id: no_config
+  selector:
+    path: flow_logs/config.tf
+- id: no_main
+  selector:
+    path: transit_gateway/main.tf
+- id: no_global_0
+  selector:
+    anchor: legacy-vpc
+- id: no_global_1
+  selector:
+    anchor: 172.16.0.0/16
+- id: no_global_2
+  selector:
+    anchor: aws_vpc.legacy.id
+- id: no_global_3
+  selector:
+    anchor: app-cluster
+- id: no_global_4
+  selector:
+    anchor: endpoint_private_access
+- id: no_global_5
+  selector:
+    anchor: aws_eks_cluster
+- id: no_global_6
+  selector:
+    anchor: aws_flow_log
+- id: no_global_7
+  selector:
+    anchor: flow-logs
+- id: no_global_8
+  selector:
+    anchor: retention_in_days
+- id: no_global_9
+  selector:
+    anchor: transit_gateway_id
+- id: no_global_10
+  selector:
+    anchor: tgw-attachment
+oracle:
+  required:
+  - security_groups
+  - security_groups_1
+  - security_groups_2
+  - peering
+  - peering_1
+  allowed: []
+  forbidden:
+  - no_legacy_network
+  - no_network
+  - no_config
+  - no_main
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

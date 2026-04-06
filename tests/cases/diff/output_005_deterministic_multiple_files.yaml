@@ -1,0 +1,130 @@
+name: output_005_deterministic_multiple_files
+repo:
+  initial_files:
+    a.py: |
+      def a():
+          pass
+    b.py: |
+      def b():
+          pass
+    c.py: |
+      def c():
+          pass
+    utils/log_router.py: |
+      LOG_SINKS = ["console", "file", "syslog"]
+      DEFAULT_SINK = "console"
+
+      class LogRouter:
+          def __init__(self):
+              self._routes: dict[str, str] = {}
+
+          def route(self, message: str, level: int) -> None:
+              sink = self._routes.get(str(level), DEFAULT_SINK)
+              pass
+
+          def add_route(self, level: str, sink: str) -> None:
+              self._routes[level] = sink
+    utils/health_monitor.py: |
+      POLL_INTERVAL_SECONDS = 30
+      ALERT_THRESHOLD = 3
+
+      class HealthMonitor:
+          def __init__(self):
+              self._status: dict[str, bool] = {}
+
+          def check(self, service: str) -> bool:
+              return self._status.get(service, True)
+
+          def record_failure(self, service: str) -> None:
+              self._status[service] = False
+  changed_files:
+    a.py: |
+      def a():
+          return 1
+    b.py: |
+      def b():
+          return 2
+    c.py: |
+      def c():
+          return 3
+    utils/log_router.py: |
+      LOG_SINKS = ["console", "file", "syslog"]
+      DEFAULT_SINK = "console"
+
+      class LogRouter:
+          def __init__(self):
+              self._routes: dict[str, str] = {}
+
+          def route(self, message: str, level: int) -> None:
+              sink = self._routes.get(str(level), DEFAULT_SINK)
+              pass
+
+          def add_route(self, level: str, sink: str) -> None:
+              self._routes[level] = sink
+    utils/health_monitor.py: |
+      POLL_INTERVAL_SECONDS = 30
+      ALERT_THRESHOLD = 3
+
+      class HealthMonitor:
+          def __init__(self):
+              self._status: dict[str, bool] = {}
+
+          def check(self, service: str) -> bool:
+              return self._status.get(service, True)
+
+          def record_failure(self, service: str) -> None:
+              self._status[service] = False
+  commit_message: Update files
+fragments:
+- id: a_file
+  selector:
+    path: a.py
+- id: b_file
+  selector:
+    path: b.py
+- id: c_file
+  selector:
+    path: c.py
+- id: req_global_0
+  selector:
+    anchor: '    return 1'
+- id: no_log_router
+  selector:
+    path: utils/log_router.py
+- id: no_health_monitor
+  selector:
+    path: utils/health_monitor.py
+- id: no_global_0
+  selector:
+    anchor: LogRouter
+- id: no_global_1
+  selector:
+    anchor: LOG_SINKS
+- id: no_global_2
+  selector:
+    anchor: DEFAULT_SINK
+- id: no_global_3
+  selector:
+    anchor: HealthMonitor
+- id: no_global_4
+  selector:
+    anchor: POLL_INTERVAL_SECONDS
+- id: no_global_5
+  selector:
+    anchor: ALERT_THRESHOLD
+oracle:
+  required:
+  - a_file
+  - b_file
+  - c_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_log_router
+  - no_health_monitor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

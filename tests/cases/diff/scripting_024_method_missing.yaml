@@ -1,0 +1,260 @@
+name: scripting_024_method_missing
+repo:
+  initial_files:
+    dynamic_struct.rb: |
+      class DynamicStruct
+        def initialize(hash = {})
+          @data = hash
+        end
+
+        def method_missing(name, *args)
+          if name.to_s.end_with?('=')
+            @data[name.to_s.chop.to_sym] = args.first
+          else
+            @data[name]
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          true
+        end
+
+        def to_hash
+          @data.dup
+        end
+      end
+    app.rb: |
+      puts 'Application starting'
+    validated_struct.rb: |
+      class ValidatedStruct
+        def initialize(allowed_keys)
+          @allowed_keys = allowed_keys
+          @store = {}
+        end
+
+        def set(key, value)
+          raise ArgumentError, "Unknown key: #{key}" unless @allowed_keys.include?(key)
+          @store[key] = value
+        end
+
+        def get(key)
+          @store[key]
+        end
+
+        def to_hash
+          @store.dup
+        end
+
+        def valid_keys
+          @allowed_keys.dup
+        end
+      end
+    config_store.rb: |
+      class ConfigStore
+        def initialize(defaults = {})
+          @entries = defaults.dup
+        end
+
+        def fetch(key, fallback = nil)
+          @entries.fetch(key, fallback)
+        end
+
+        def update(key, value)
+          @entries[key] = value
+        end
+
+        def keys
+          @entries.keys
+        end
+
+        def merge(other)
+          @entries.merge!(other)
+        end
+      end
+    profile_builder.rb: |
+      require_relative 'dynamic_struct'
+
+      class ProfileBuilder
+        def build(params)
+          profile = DynamicStruct.new
+          profile.name = params[:name]
+          profile.email = params[:email]
+          profile.role = params[:role] || 'user'
+          profile
+        end
+
+        def build_admin(params)
+          profile = build(params)
+          profile.role = 'admin'
+          profile.permissions = [:read, :write, :delete]
+          profile
+        end
+      end
+    open_struct_wrapper.rb: |
+      require 'ostruct'
+
+      class OpenStructWrapper
+        def initialize(hash = {})
+          @struct = OpenStruct.new(hash)
+        end
+
+        def method_missing(name, *args, &block)
+          @struct.send(name, *args, &block)
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          @struct.respond_to?(name, include_private) || super
+        end
+
+        def freeze_fields
+          @struct.freeze
+        end
+      end
+    lib/hash_proxy.rb: |
+      class HashProxy
+        def initialize(hash)
+          @hash = hash
+        end
+
+        def method_missing(name, *args)
+          key = name.to_s
+          if key.end_with?('=')
+            @hash[key.chop] = args.first
+          elsif @hash.key?(key)
+            @hash[key]
+          else
+            super
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          @hash.key?(name.to_s) || name.to_s.end_with?('=') || super
+        end
+
+        def inspect
+          "#<HashProxy #{@hash.inspect}>"
+        end
+      end
+  changed_files:
+    dynamic_struct.rb: |
+      class DynamicStruct
+        def initialize(hash = {})
+          @data = hash
+        end
+
+        def method_missing(name, *args)
+          if name.to_s.end_with?('=')
+            @data[name.to_s.chop.to_sym] = args.first
+          else
+            @data[name]
+          end
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          true
+        end
+
+        def to_hash
+          @data.dup
+        end
+      end
+    app.rb: |
+      require_relative 'dynamic_struct'
+
+      obj = DynamicStruct.new(name: 'John')
+      puts obj.name
+      obj.email = 'john@example.com'
+  commit_message: Update files
+fragments:
+- id: dynamic_struct
+  selector:
+    path: dynamic_struct.rb
+    anchor: def method_missing(name, *args)
+- id: dynamic_struct_1
+  selector:
+    path: dynamic_struct.rb
+    anchor: respond_to_missing?
+- id: app
+  selector:
+    path: app.rb
+    anchor: DynamicStruct.new
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: obj.name
+- id: no_validated_struct
+  selector:
+    path: validated_struct.rb
+- id: no_config_store
+  selector:
+    path: config_store.rb
+- id: no_profile_builder
+  selector:
+    path: profile_builder.rb
+- id: no_open_struct_wrapper
+  selector:
+    path: open_struct_wrapper.rb
+- id: no_hash_proxy
+  selector:
+    path: lib/hash_proxy.rb
+- id: no_global_0
+  selector:
+    anchor: ValidatedStruct
+- id: no_global_1
+  selector:
+    anchor: allowed_keys
+- id: no_global_2
+  selector:
+    anchor: valid_keys
+- id: no_global_3
+  selector:
+    anchor: ConfigStore
+- id: no_global_4
+  selector:
+    anchor: '@entries'
+- id: no_global_5
+  selector:
+    anchor: ProfileBuilder
+- id: no_global_6
+  selector:
+    anchor: build_admin
+- id: no_global_7
+  selector:
+    anchor: permissions
+- id: no_global_8
+  selector:
+    anchor: OpenStructWrapper
+- id: no_global_9
+  selector:
+    anchor: freeze_fields
+- id: no_global_10
+  selector:
+    anchor: HashProxy
+- id: no_global_11
+  selector:
+    anchor: '@hash'
+oracle:
+  required:
+  - dynamic_struct
+  - dynamic_struct_1
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_validated_struct
+  - no_config_store
+  - no_profile_builder
+  - no_open_struct_wrapper
+  - no_hash_proxy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

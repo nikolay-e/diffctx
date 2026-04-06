@@ -1,0 +1,63 @@
+name: internals_042_no_shared_identifiers
+repo:
+  initial_files:
+    file0.py: |
+      pass
+    file1.py: |
+      pass
+    file2.py: |
+      pass
+    file3.py: |
+      pass
+    file4.py: |
+      pass
+  changed_files:
+    file0.py: |
+      def unique_func0():
+          pass
+    file1.py: |
+      def unique_func1():
+          pass
+    file2.py: |
+      def unique_func2():
+          pass
+    file3.py: |
+      def unique_func3():
+          pass
+    file4.py: |
+      def unique_func4():
+          pass
+  commit_message: Update files
+fragments:
+- id: file0_file
+  selector:
+    path: file0.py
+- id: file1_file
+  selector:
+    path: file1.py
+- id: file2_file
+  selector:
+    path: file2.py
+- id: file3_file
+  selector:
+    path: file3.py
+- id: file4_file
+  selector:
+    path: file4.py
+- id: req_global_0
+  selector:
+    anchor: 'def unique_func0():'
+- id: req_global_1
+  selector:
+    anchor: 'def unique_func1():'
+oracle:
+  required:
+  - file0_file
+  - file1_file
+  - file2_file
+  - file3_file
+  - file4_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

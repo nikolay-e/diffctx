@@ -1,0 +1,187 @@
+name: javascript_extended_011_react_props_change
+repo:
+  initial_files:
+    types.ts: |
+      export interface ButtonProps {
+          label: string;
+          onClick: () => void;
+      }
+    Button.tsx: |
+      import { ButtonProps } from './types';
+
+      export function Button({ label, onClick }: ButtonProps) {
+          return <button onClick={onClick}>{label}</button>;
+      }
+    src/components/IconButton.tsx: |
+      interface IconButtonProps {
+          icon: string;
+          onClick: () => void;
+          size?: number;
+          ariaLabel: string;
+      }
+
+      export function IconButton({ icon, onClick, size = 24, ariaLabel }: IconButtonProps) {
+          return (
+              <button onClick={onClick} aria-label={ariaLabel}>
+                  <span style={{ fontSize: size }}>{icon}</span>
+              </button>
+          );
+      }
+    src/stories/Button.stories.tsx: |
+      import type { Meta, StoryObj } from '@storybook/react';
+      import { Button } from '../Button';
+      import { ButtonProps } from '../types';
+
+      const meta: Meta<typeof Button> = {
+          title: 'Components/Button',
+          component: Button,
+      };
+
+      export default meta;
+      type Story = StoryObj<typeof Button>;
+
+      export const Default: Story = {
+          args: { label: 'Click me', onClick: () => console.log('clicked') },
+      };
+
+      export const LongLabel: Story = {
+          args: { label: 'This is a button with a very long label', onClick: () => {} },
+      };
+    src/theme/variants.ts: |
+      export const VARIANT_STYLES = {
+          primary: { background: '#3b82f6', color: '#fff' },
+          secondary: { background: '#64748b', color: '#fff' },
+          danger: { background: '#ef4444', color: '#fff' },
+      } as const;
+
+      export type Variant = keyof typeof VARIANT_STYLES;
+
+      export function getVariantStyle(variant: Variant) {
+          return VARIANT_STYLES[variant];
+      }
+  changed_files:
+    types.ts: |
+      export interface ButtonProps {
+          label: string;
+          onClick: () => void;
+          disabled?: boolean;
+          variant?: 'primary' | 'secondary';
+      }
+    Button.tsx: |
+      import { ButtonProps } from './types';
+
+      export function Button({ label, onClick }: ButtonProps) {
+          return <button onClick={onClick}>{label}</button>;
+      }
+    src/components/IconButton.tsx: |
+      interface IconButtonProps {
+          icon: string;
+          onClick: () => void;
+          size?: number;
+          ariaLabel: string;
+      }
+
+      export function IconButton({ icon, onClick, size = 24, ariaLabel }: IconButtonProps) {
+          return (
+              <button onClick={onClick} aria-label={ariaLabel}>
+                  <span style={{ fontSize: size }}>{icon}</span>
+              </button>
+          );
+      }
+    src/stories/Button.stories.tsx: |
+      import type { Meta, StoryObj } from '@storybook/react';
+      import { Button } from '../Button';
+      import { ButtonProps } from '../types';
+
+      const meta: Meta<typeof Button> = {
+          title: 'Components/Button',
+          component: Button,
+      };
+
+      export default meta;
+      type Story = StoryObj<typeof Button>;
+
+      export const Default: Story = {
+          args: { label: 'Click me', onClick: () => console.log('clicked') },
+      };
+
+      export const LongLabel: Story = {
+          args: { label: 'This is a button with a very long label', onClick: () => {} },
+      };
+    src/theme/variants.ts: |
+      export const VARIANT_STYLES = {
+          primary: { background: '#3b82f6', color: '#fff' },
+          secondary: { background: '#64748b', color: '#fff' },
+          danger: { background: '#ef4444', color: '#fff' },
+      } as const;
+
+      export type Variant = keyof typeof VARIANT_STYLES;
+
+      export function getVariantStyle(variant: Variant) {
+          return VARIANT_STYLES[variant];
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.ts
+    anchor: interface ButtonProps {
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'disabled?: boolean'
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: 'variant?: ''primary'' | ''secondary'''
+- id: no_iconbutton
+  selector:
+    path: src/components/IconButton.tsx
+- id: no_button_stories
+  selector:
+    path: src/stories/Button.stories.tsx
+- id: no_variants
+  selector:
+    path: src/theme/variants.ts
+- id: no_global_0
+  selector:
+    anchor: IconButtonProps
+- id: no_global_1
+  selector:
+    anchor: IconButton
+- id: no_global_2
+  selector:
+    anchor: ariaLabel
+- id: no_global_3
+  selector:
+    anchor: Meta<typeof Button>
+- id: no_global_4
+  selector:
+    anchor: StoryObj
+- id: no_global_5
+  selector:
+    anchor: LongLabel
+- id: no_global_6
+  selector:
+    anchor: VARIANT_STYLES
+- id: no_global_7
+  selector:
+    anchor: getVariantStyle
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  allowed: []
+  forbidden:
+  - no_iconbutton
+  - no_button_stories
+  - no_variants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,145 @@
+name: jvm_and_compiled_040_java_scheduled
+repo:
+  initial_files:
+    src/main/java/com/example/ScheduledTasks.java: |
+      package com.example;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class ScheduledTasks {
+          @Scheduled(fixedRate = 60000)
+          public void cleanupTask() {
+              System.out.println("Running cleanup");
+          }
+      }
+    src/main/java/com/example/BatchProcessor.java: |
+      package com.example;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class BatchProcessor {
+          @Scheduled(fixedDelay = 300000)
+          public void processBatch() {
+              System.out.println("Processing batch");
+          }
+
+          @Scheduled(cron = "0 0 * * * ?")
+          public void hourlyAggregation() {
+              System.out.println("Hourly aggregation");
+          }
+      }
+    src/main/resources/application.yml: |
+      spring:
+        task:
+          scheduling:
+            pool:
+              size: 5
+        application:
+          name: scheduled-app
+
+      logging:
+        level:
+          root: INFO
+          com.example: DEBUG
+  changed_files:
+    src/main/java/com/example/ScheduledTasks.java: |
+      package com.example;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+      import org.springframework.stereotype.Component;
+      import org.slf4j.Logger;
+      import org.slf4j.LoggerFactory;
+
+      @Component
+      public class ScheduledTasks {
+          private static final Logger logger = LoggerFactory.getLogger(ScheduledTasks.class);
+
+          @Scheduled(fixedRate = 60000)
+          public void cleanupTask() {
+              logger.info("Running cleanup");
+          }
+
+          @Scheduled(cron = "0 0 2 * * ?")
+          public void dailyReport() {
+              logger.info("Generating daily report");
+          }
+      }
+    src/main/java/com/example/BatchProcessor.java: |
+      package com.example;
+
+      import org.springframework.scheduling.annotation.Scheduled;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class BatchProcessor {
+          @Scheduled(fixedDelay = 300000)
+          public void processBatch() {
+              System.out.println("Processing batch");
+          }
+
+          @Scheduled(cron = "0 0 * * * ?")
+          public void hourlyAggregation() {
+              System.out.println("Hourly aggregation");
+          }
+      }
+    src/main/resources/application.yml: |
+      spring:
+        task:
+          scheduling:
+            pool:
+              size: 5
+        application:
+          name: scheduled-app
+
+      logging:
+        level:
+          root: INFO
+          com.example: DEBUG
+  commit_message: Update files
+fragments:
+- id: scheduledtasks
+  selector:
+    path: src/main/java/com/example/ScheduledTasks.java
+    anchor: import org.slf4j.Logger;
+- id: scheduledtasks_1
+  selector:
+    path: src/main/java/com/example/ScheduledTasks.java
+    anchor: logger.info("Running cleanup");
+- id: no_batchprocessor
+  selector:
+    path: src/main/java/com/example/BatchProcessor.java
+- id: no_application
+  selector:
+    path: src/main/resources/application.yml
+- id: no_global_0
+  selector:
+    anchor: BatchProcessor
+- id: no_global_1
+  selector:
+    anchor: processBatch
+- id: no_global_2
+  selector:
+    anchor: hourlyAggregation
+- id: no_global_3
+  selector:
+    anchor: scheduling-app
+- id: no_global_4
+  selector:
+    anchor: pool
+oracle:
+  required:
+  - scheduledtasks
+  - scheduledtasks_1
+  allowed: []
+  forbidden:
+  - no_batchprocessor
+  - no_application
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

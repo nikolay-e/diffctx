@@ -1,0 +1,303 @@
+name: dart_005_mixin_application
+repo:
+  initial_files:
+    lib/mixins/retry_mixin.dart: |
+      mixin RetryMixin {
+        int maxRetries = 3;
+        Duration retryDelay = const Duration(seconds: 1);
+
+        Future<T> retryWithBackoff<T>(Future<T> Function() operation) async {
+          int attempt = 0;
+          while (true) {
+            try {
+              return await operation();
+            } catch (e) {
+              attempt++;
+              if (attempt >= maxRetries) rethrow;
+              await Future.delayed(retryDelay * attempt);
+            }
+          }
+        }
+      }
+    lib/mixins/loggable_mixin.dart: |
+      mixin LoggableMixin {
+        String get logTag => runtimeType.toString();
+
+        void logInfo(String message) {
+          print('[$logTag] INFO: $message');
+        }
+
+        void logError(String message, [Object? error]) {
+          print('[$logTag] ERROR: $message ${error ?? ""}');
+        }
+      }
+    lib/services/api_client.dart: |
+      import 'dart:convert';
+      import 'package:myapp/mixins/loggable_mixin.dart';
+
+      class ApiClient with LoggableMixin {
+        final String baseUrl;
+
+        ApiClient({required this.baseUrl});
+
+        Future<Map<String, dynamic>> get(String path) async {
+          logInfo('GET $path');
+          return {'status': 'ok'};
+        }
+
+        Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+          logInfo('POST $path');
+          return {'status': 'created', 'data': jsonEncode(body)};
+        }
+      }
+    lib/mixins/cacheable_mixin.dart: |
+      mixin CacheableMixin {
+        final Map<String, dynamic> _cache = {};
+
+        T? fromCache<T>(String key) {
+          return _cache[key] as T?;
+        }
+
+        void toCache(String key, dynamic value) {
+          _cache[key] = value;
+        }
+
+        void invalidateCache() {
+          _cache.clear();
+        }
+
+        String get GARBAGE_DART_005_A_CACHE_STRATEGY => 'lru';
+        int get GARBAGE_DART_005_B_CACHE_SIZE => 100;
+      }
+    lib/services/database_service.dart: |
+      import 'package:myapp/mixins/retry_mixin.dart';
+
+      class DatabaseService with RetryMixin {
+        final String connectionString;
+
+        DatabaseService({required this.connectionString}) {
+          maxRetries = 5;
+          retryDelay = const Duration(seconds: 2);
+        }
+
+        Future<List<Map<String, dynamic>>> query(String sql) async {
+          return retryWithBackoff(() async {
+            return [{'id': 1, 'name': 'result'}];
+          });
+        }
+
+        String get GARBAGE_DART_005_C_DB_DRIVER => 'postgres';
+        int get GARBAGE_DART_005_D_POOL_SIZE => 10;
+      }
+    lib/config/http_config.dart: |
+      class HttpConfig {
+        final int timeoutSeconds;
+        final int maxRetries;
+        final bool followRedirects;
+
+        const HttpConfig({
+          this.timeoutSeconds = 30,
+          this.maxRetries = 3,
+          this.followRedirects = true,
+        });
+
+        String get GARBAGE_DART_005_E_CONFIG_VERSION => '2.0';
+      }
+  changed_files:
+    lib/mixins/retry_mixin.dart: |
+      mixin RetryMixin {
+        int maxRetries = 3;
+        Duration retryDelay = const Duration(seconds: 1);
+
+        Future<T> retryWithBackoff<T>(Future<T> Function() operation) async {
+          int attempt = 0;
+          while (true) {
+            try {
+              return await operation();
+            } catch (e) {
+              attempt++;
+              if (attempt >= maxRetries) rethrow;
+              await Future.delayed(retryDelay * attempt);
+            }
+          }
+        }
+      }
+    lib/mixins/loggable_mixin.dart: |
+      mixin LoggableMixin {
+        String get logTag => runtimeType.toString();
+
+        void logInfo(String message) {
+          print('[$logTag] INFO: $message');
+        }
+
+        void logError(String message, [Object? error]) {
+          print('[$logTag] ERROR: $message ${error ?? ""}');
+        }
+      }
+    lib/services/api_client.dart: |
+      import 'dart:convert';
+      import 'package:myapp/mixins/loggable_mixin.dart';
+      import 'package:myapp/mixins/retry_mixin.dart';
+
+      class ApiClient with LoggableMixin, RetryMixin {
+        final String baseUrl;
+
+        ApiClient({required this.baseUrl}) {
+          maxRetries = 3;
+          retryDelay = const Duration(milliseconds: 500);
+        }
+
+        Future<Map<String, dynamic>> get(String path) async {
+          logInfo('GET $path');
+          return retryWithBackoff(() async {
+            return {'status': 'ok'};
+          });
+        }
+
+        Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+          logInfo('POST $path');
+          return retryWithBackoff(() async {
+            return {'status': 'created', 'data': jsonEncode(body)};
+          });
+        }
+      }
+    lib/mixins/cacheable_mixin.dart: |
+      mixin CacheableMixin {
+        final Map<String, dynamic> _cache = {};
+
+        T? fromCache<T>(String key) {
+          return _cache[key] as T?;
+        }
+
+        void toCache(String key, dynamic value) {
+          _cache[key] = value;
+        }
+
+        void invalidateCache() {
+          _cache.clear();
+        }
+
+        String get GARBAGE_DART_005_A_CACHE_STRATEGY => 'lru';
+        int get GARBAGE_DART_005_B_CACHE_SIZE => 100;
+      }
+    lib/services/database_service.dart: |
+      import 'package:myapp/mixins/retry_mixin.dart';
+
+      class DatabaseService with RetryMixin {
+        final String connectionString;
+
+        DatabaseService({required this.connectionString}) {
+          maxRetries = 5;
+          retryDelay = const Duration(seconds: 2);
+        }
+
+        Future<List<Map<String, dynamic>>> query(String sql) async {
+          return retryWithBackoff(() async {
+            return [{'id': 1, 'name': 'result'}];
+          });
+        }
+
+        String get GARBAGE_DART_005_C_DB_DRIVER => 'postgres';
+        int get GARBAGE_DART_005_D_POOL_SIZE => 10;
+      }
+    lib/config/http_config.dart: |
+      class HttpConfig {
+        final int timeoutSeconds;
+        final int maxRetries;
+        final bool followRedirects;
+
+        const HttpConfig({
+          this.timeoutSeconds = 30,
+          this.maxRetries = 3,
+          this.followRedirects = true,
+        });
+
+        String get GARBAGE_DART_005_E_CONFIG_VERSION => '2.0';
+      }
+  commit_message: Update files
+fragments:
+- id: api_client
+  selector:
+    path: lib/services/api_client.dart
+    anchor: with LoggableMixin, RetryMixin
+- id: api_client_1
+  selector:
+    path: lib/services/api_client.dart
+    anchor: retryWithBackoff
+- id: retry_mixin
+  selector:
+    path: lib/mixins/retry_mixin.dart
+    anchor: mixin RetryMixin
+- id: retry_mixin_1
+  selector:
+    path: lib/mixins/retry_mixin.dart
+    anchor: Future<T> retryWithBackoff<T>
+- id: retry_mixin_2
+  selector:
+    path: lib/mixins/retry_mixin.dart
+    anchor: await Future.delayed(retryDelay * attempt)
+- id: no_cacheable_mixin
+  selector:
+    path: lib/mixins/cacheable_mixin.dart
+- id: no_database_service
+  selector:
+    path: lib/services/database_service.dart
+- id: no_http_config
+  selector:
+    path: lib/config/http_config.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DART_005_A_CACHE_STRATEGY
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DART_005_B_CACHE_SIZE
+- id: no_global_2
+  selector:
+    anchor: CacheableMixin
+- id: no_global_3
+  selector:
+    anchor: invalidateCache
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DART_005_C_DB_DRIVER
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DART_005_D_POOL_SIZE
+- id: no_global_6
+  selector:
+    anchor: DatabaseService
+- id: no_global_7
+  selector:
+    anchor: connectionString
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DART_005_E_CONFIG_VERSION
+- id: no_global_9
+  selector:
+    anchor: HttpConfig
+- id: no_global_10
+  selector:
+    anchor: followRedirects
+oracle:
+  required:
+  - api_client
+  - api_client_1
+  - retry_mixin
+  - retry_mixin_1
+  - retry_mixin_2
+  allowed: []
+  forbidden:
+  - no_cacheable_mixin
+  - no_database_service
+  - no_http_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

@@ -1,0 +1,280 @@
+name: rust_021_cfg_feature
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod config;
+      pub mod toml_loader;
+      pub mod schema;
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      #[cfg(feature = "json")]
+      use serde_json;
+
+      pub struct Config {
+          pub name: String,
+          pub settings: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  settings: HashMap::new(),
+              }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.settings.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.settings.get(key)
+          }
+      }
+
+      #[cfg(feature = "json")]
+      impl Config {
+          pub fn from_json(s: &str) -> Self {
+              serde_json::from_str(s).unwrap()
+          }
+
+          pub fn to_json(&self) -> String {
+              serde_json::to_string(self).unwrap()
+          }
+      }
+    src/toml_loader.rs: |
+      use std::collections::HashMap;
+
+      pub struct TomlConfig {
+          sections: HashMap<String, HashMap<String, String>>,
+      }
+
+      impl TomlConfig {
+          pub fn new() -> Self {
+              Self { sections: HashMap::new() }
+          }
+
+          pub fn get_section(&self, name: &str) -> Option<&HashMap<String, String>> {
+              self.sections.get(name)
+          }
+
+          pub fn set_value(&mut self, section: &str, key: &str, value: &str) {
+              self.sections
+                  .entry(section.to_string())
+                  .or_insert_with(HashMap::new)
+                  .insert(key.to_string(), value.to_string());
+          }
+
+          pub fn sections(&self) -> Vec<&String> {
+              self.sections.keys().collect()
+          }
+      }
+    src/schema.rs: |
+      #[derive(Debug)]
+      pub enum SchemaType {
+          String,
+          Integer,
+          Boolean,
+          Array(Box<SchemaType>),
+      }
+
+      pub struct SchemaField {
+          name: String,
+          field_type: SchemaType,
+          required: bool,
+      }
+
+      impl SchemaField {
+          pub fn new(name: &str, field_type: SchemaType, required: bool) -> Self {
+              Self {
+                  name: name.to_string(),
+                  field_type,
+                  required,
+              }
+          }
+
+          pub fn is_required(&self) -> bool {
+              self.required
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod config;
+      pub mod toml_loader;
+      pub mod schema;
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      #[cfg(feature = "json")]
+      use serde_json;
+
+      #[cfg(feature = "yaml")]
+      use serde_yaml;
+
+      pub struct Config {
+          pub name: String,
+          pub version: String,
+          pub settings: HashMap<String, String>,
+      }
+
+      impl Config {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  version: "1.0.0".to_string(),
+                  settings: HashMap::new(),
+              }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.settings.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.settings.get(key)
+          }
+      }
+
+      #[cfg(feature = "json")]
+      impl Config {
+          pub fn from_json(s: &str) -> Self {
+              serde_json::from_str(s).unwrap()
+          }
+
+          pub fn to_json(&self) -> String {
+              serde_json::to_string(self).unwrap()
+          }
+      }
+
+      #[cfg(feature = "yaml")]
+      impl Config {
+          pub fn from_yaml(s: &str) -> Self {
+              serde_yaml::from_str(s).unwrap()
+          }
+
+          pub fn to_yaml(&self) -> String {
+              serde_yaml::to_string(self).unwrap()
+          }
+      }
+    src/toml_loader.rs: |
+      use std::collections::HashMap;
+
+      pub struct TomlConfig {
+          sections: HashMap<String, HashMap<String, String>>,
+      }
+
+      impl TomlConfig {
+          pub fn new() -> Self {
+              Self { sections: HashMap::new() }
+          }
+
+          pub fn get_section(&self, name: &str) -> Option<&HashMap<String, String>> {
+              self.sections.get(name)
+          }
+
+          pub fn set_value(&mut self, section: &str, key: &str, value: &str) {
+              self.sections
+                  .entry(section.to_string())
+                  .or_insert_with(HashMap::new)
+                  .insert(key.to_string(), value.to_string());
+          }
+
+          pub fn sections(&self) -> Vec<&String> {
+              self.sections.keys().collect()
+          }
+      }
+    src/schema.rs: |
+      #[derive(Debug)]
+      pub enum SchemaType {
+          String,
+          Integer,
+          Boolean,
+          Array(Box<SchemaType>),
+      }
+
+      pub struct SchemaField {
+          name: String,
+          field_type: SchemaType,
+          required: bool,
+      }
+
+      impl SchemaField {
+          pub fn new(name: &str, field_type: SchemaType, required: bool) -> Self {
+              Self {
+                  name: name.to_string(),
+                  field_type,
+                  required,
+              }
+          }
+
+          pub fn is_required(&self) -> bool {
+              self.required
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/config.rs
+    anchor: use serde_yaml;
+- id: config_1
+  selector:
+    path: src/config.rs
+    anchor: '#[cfg(feature = "yaml")]'
+- id: config_2
+  selector:
+    path: src/config.rs
+    anchor: 'pub fn from_yaml(s: &str) -> Self {'
+- id: config_3
+  selector:
+    path: src/config.rs
+    anchor: 'pub version: String'
+- id: no_toml_loader
+  selector:
+    path: src/toml_loader.rs
+- id: no_schema
+  selector:
+    path: src/schema.rs
+- id: no_global_0
+  selector:
+    anchor: TomlConfig
+- id: no_global_1
+  selector:
+    anchor: get_section
+- id: no_global_2
+  selector:
+    anchor: set_value
+- id: no_global_3
+  selector:
+    anchor: SchemaType
+- id: no_global_4
+  selector:
+    anchor: SchemaField
+- id: no_global_5
+  selector:
+    anchor: is_required
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - config_3
+  allowed: []
+  forbidden:
+  - no_toml_loader
+  - no_schema
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

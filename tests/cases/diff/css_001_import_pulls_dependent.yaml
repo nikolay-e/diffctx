@@ -1,0 +1,99 @@
+name: css_001_import_pulls_dependent
+repo:
+  initial_files:
+    base.css: |
+      :root {
+          --color-primary: #3498db;
+          --color-background: #ffffff;
+          --font-size-base: 16px;
+      }
+
+      body {
+          margin: 0;
+          padding: 0;
+          font-size: var(--font-size-base);
+          background: var(--color-background);
+      }
+
+    theme.css: |
+      @import "base.css";
+
+      .button {
+          background: var(--color-primary);
+          color: white;
+          padding: 8px 16px;
+          border-radius: 4px;
+      }
+
+    reset.css: |
+      * {
+          box-sizing: border-box;
+          CSS_NOISE_001_reset_marker: none;
+      }
+
+      ul, ol {
+          list-style: none;
+          CSS_NOISE_001_list_reset: true;
+      }
+
+    print.css: |
+      @media print {
+          .CSS_NOISE_001_no_print {
+              display: none;
+          }
+          .CSS_NOISE_001_print_only {
+              display: block;
+          }
+      }
+
+  changed_files:
+    theme.css: |
+      @import "base.css";
+
+      .button {
+          background: var(--color-primary);
+          color: white;
+          padding: 8px 16px;
+          border-radius: 4px;
+          border: none;
+          cursor: pointer;
+      }
+
+  commit_message: Update files
+
+fragments:
+- id: theme_cursor
+  selector:
+    path: theme.css
+    anchor: cursor
+- id: base_css
+  selector:
+    path: base.css
+    anchor: color-primary
+- id: no_reset
+  selector:
+    path: reset.css
+- id: no_print
+  selector:
+    path: print.css
+- id: no_global_0
+  selector:
+    anchor: CSS_NOISE_001_reset_marker
+- id: no_global_1
+  selector:
+    anchor: CSS_NOISE_001_list_reset
+- id: no_global_2
+  selector:
+    anchor: CSS_NOISE_001_no_print
+
+oracle:
+  required:
+  - theme_cursor
+  - base_css
+  allowed: []
+  forbidden:
+  - no_reset
+  - no_print
+  - no_global_0
+  - no_global_1
+  - no_global_2

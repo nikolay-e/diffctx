@@ -1,0 +1,137 @@
+name: javascript_extended_029_usecontext
+repo:
+  initial_files:
+    src/theme/ThemeContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface Theme {
+          primary: string;
+          secondary: string;
+      }
+
+      export const defaultTheme: Theme = { primary: '#000', secondary: '#fff' };
+
+      export const ThemeContext = createContext<Theme>(defaultTheme);
+    src/components/Button.tsx: |
+      console.log('initial');
+    src/theme/dark-palette.ts: |
+      export const darkPalette = {
+          background: '#1a1a2e',
+          surface: '#16213e',
+          primary: '#0f3460',
+          accent: '#e94560',
+          text: '#eee',
+      };
+
+      export function getPaletteColor(name: keyof typeof darkPalette): string {
+          return darkPalette[name];
+      }
+    src/components/icon.tsx: |
+      interface IconProps {
+          name: string;
+          size?: number;
+          color?: string;
+      }
+
+      export function Icon({ name, size = 24, color = 'currentColor' }: IconProps) {
+          return (
+              <svg width={size} height={size} fill={color}>
+                  <use href={`#icon-${name}`} />
+              </svg>
+          );
+      }
+
+      export const iconNames = ['home', 'settings', 'user', 'search', 'menu'] as const;
+  changed_files:
+    src/theme/ThemeContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface Theme {
+          primary: string;
+          secondary: string;
+      }
+
+      export const defaultTheme: Theme = { primary: '#000', secondary: '#fff' };
+
+      export const ThemeContext = createContext<Theme>(defaultTheme);
+    src/components/Button.tsx: |
+      import { useContext } from 'react';
+      import { ThemeContext } from '../theme/ThemeContext';
+
+      export function Button({ children }: { children: React.ReactNode }) {
+          const theme = useContext(ThemeContext);
+          return <button style={{ backgroundColor: theme.primary }}>{children}</button>;
+      }
+    src/theme/dark-palette.ts: |
+      export const darkPalette = {
+          background: '#1a1a2e',
+          surface: '#16213e',
+          primary: '#0f3460',
+          accent: '#e94560',
+          text: '#eee',
+      };
+
+      export function getPaletteColor(name: keyof typeof darkPalette): string {
+          return darkPalette[name];
+      }
+    src/components/icon.tsx: |
+      interface IconProps {
+          name: string;
+          size?: number;
+          color?: string;
+      }
+
+      export function Icon({ name, size = 24, color = 'currentColor' }: IconProps) {
+          return (
+              <svg width={size} height={size} fill={color}>
+                  <use href={`#icon-${name}`} />
+              </svg>
+          );
+      }
+
+      export const iconNames = ['home', 'settings', 'user', 'search', 'menu'] as const;
+  commit_message: Update files
+fragments:
+- id: themecontext
+  selector:
+    path: src/theme/ThemeContext.tsx
+    anchor: interface Theme
+- id: themecontext_1
+  selector:
+    path: src/theme/ThemeContext.tsx
+    anchor: primary
+- id: themecontext_2
+  selector:
+    path: src/theme/ThemeContext.tsx
+    anchor: ThemeContext
+- id: no_dark_palette
+  selector:
+    path: src/theme/dark-palette.ts
+- id: no_icon
+  selector:
+    path: src/components/icon.tsx
+- id: no_global_0
+  selector:
+    anchor: darkPalette
+- id: no_global_1
+  selector:
+    anchor: getPaletteColor
+- id: no_global_2
+  selector:
+    anchor: IconProps
+- id: no_global_3
+  selector:
+    anchor: iconNames
+oracle:
+  required:
+  - themecontext
+  - themecontext_1
+  - themecontext_2
+  allowed: []
+  forbidden:
+  - no_dark_palette
+  - no_icon
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,265 @@
+name: ppr_027_normalization_non_negative
+repo:
+  initial_files:
+    mod0.py: |
+      from mod1 import transform
+
+      def encode(data):
+          return transform(data.upper())
+    mod1.py: |
+      from mod2 import checksum
+
+      def validate(text):
+          return text.strip()
+
+      def transform(data):
+          return checksum(data)
+    mod2.py: |
+      from mod0 import encode
+
+      def checksum(value):
+          return encode(value[::-1])
+    mod3.py: |
+      from mod1 import transform
+
+      def step3(x):
+          return transform(x)
+    mod4.py: |
+      from mod2 import checksum
+
+      def step4(x):
+          return checksum(x)
+    mod5.py: |
+      from mod3 import step3
+
+      def step5(x):
+          return step3(x)
+    mod6.py: |
+      from mod4 import step4
+
+      def step6(x):
+          return step4(x)
+    mod7.py: |
+      from mod5 import step5
+
+      def step7(x):
+          return step5(x)
+    mod8.py: |
+      from mod6 import step6
+
+      def step8(x):
+          return step6(x)
+    mod9.py: |
+      from mod7 import step7
+
+      def step9(x):
+          return step7(x)
+    garbage_func0_clone.py: |
+      GARBAGE_PPR027_CLONE_A = "clone"
+      GARBAGE_PPR027_CLONE_B = True
+
+      def encode(data):
+          return data.lower()
+
+      def transform(data):
+          GARBAGE_PPR027_INNER_C = 42
+          return data
+    garbage_modifier.py: |
+      GARBAGE_PPR027_MODIFIER_D = "modifier"
+      GARBAGE_PPR027_MODIFIER_E = False
+
+      def modify_value():
+          validated = "already_checked"
+          return validated
+
+      class Modifier:
+          GARBAGE_PPR027_MODCLASS_F = 99
+
+          def apply_validated(self):
+              return "validated"
+    garbage_chain.py: |
+      GARBAGE_PPR027_CHAIN_G = "chain"
+      GARBAGE_PPR027_CHAIN_H = 0
+
+      def transform(x):
+          return x
+
+      def checksum(x):
+          return hash(x)
+  changed_files:
+    mod0.py: |
+      from mod1 import transform, validate
+
+      def encode(data):
+          validated = validate(data)
+          return transform(validated.upper())
+    mod1.py: |
+      from mod2 import checksum
+
+      def validate(text):
+          return text.strip()
+
+      def transform(data):
+          return checksum(data)
+    mod2.py: |
+      from mod0 import encode
+
+      def checksum(value):
+          return encode(value[::-1])
+    mod3.py: |
+      from mod1 import transform
+
+      def step3(x):
+          return transform(x)
+    mod4.py: |
+      from mod2 import checksum
+
+      def step4(x):
+          return checksum(x)
+    mod5.py: |
+      from mod3 import step3
+
+      def step5(x):
+          return step3(x)
+    mod6.py: |
+      from mod4 import step4
+
+      def step6(x):
+          return step4(x)
+    mod7.py: |
+      from mod5 import step5
+
+      def step7(x):
+          return step5(x)
+    mod8.py: |
+      from mod6 import step6
+
+      def step8(x):
+          return step6(x)
+    mod9.py: |
+      from mod7 import step7
+
+      def step9(x):
+          return step7(x)
+    garbage_func0_clone.py: |
+      GARBAGE_PPR027_CLONE_A = "clone"
+      GARBAGE_PPR027_CLONE_B = True
+
+      def encode(data):
+          return data.lower()
+
+      def transform(data):
+          GARBAGE_PPR027_INNER_C = 42
+          return data
+    garbage_modifier.py: |
+      GARBAGE_PPR027_MODIFIER_D = "modifier"
+      GARBAGE_PPR027_MODIFIER_E = False
+
+      def modify_value():
+          validated = "already_checked"
+          return validated
+
+      class Modifier:
+          GARBAGE_PPR027_MODCLASS_F = 99
+
+          def apply_validated(self):
+              return "validated"
+    garbage_chain.py: |
+      GARBAGE_PPR027_CHAIN_G = "chain"
+      GARBAGE_PPR027_CHAIN_H = 0
+
+      def transform(x):
+          return x
+
+      def checksum(x):
+          return hash(x)
+  commit_message: Update files
+fragments:
+- id: mod0
+  selector:
+    path: mod0.py
+    anchor: from mod1 import transform, validate
+- id: mod0_1
+  selector:
+    path: mod0.py
+    anchor: 'def encode(data):'
+- id: mod0_2
+  selector:
+    path: mod0.py
+    anchor: validated = validate(data)
+- id: mod0_3
+  selector:
+    path: mod0.py
+    anchor: return transform(validated.upper())
+- id: mod1
+  selector:
+    path: mod1.py
+    anchor: 'def validate(text):'
+- id: mod1_1
+  selector:
+    path: mod1.py
+    anchor: return text.strip()
+- id: mod1_2
+  selector:
+    path: mod1.py
+    anchor: 'def transform(data):'
+- id: mod1_3
+  selector:
+    path: mod1.py
+    anchor: return checksum(data)
+- id: no_garbage_func0_clone
+  selector:
+    path: garbage_func0_clone.py
+- id: no_garbage_modifier
+  selector:
+    path: garbage_modifier.py
+- id: no_garbage_chain
+  selector:
+    path: garbage_chain.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR027_CLONE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR027_CLONE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR027_INNER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR027_MODIFIER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR027_MODIFIER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR027_MODCLASS_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR027_CHAIN_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR027_CHAIN_H
+oracle:
+  required:
+  - mod0
+  - mod0_1
+  - mod0_2
+  - mod0_3
+  - mod1
+  - mod1_1
+  - mod1_2
+  - mod1_3
+  allowed: []
+  forbidden:
+  - no_garbage_func0_clone
+  - no_garbage_modifier
+  - no_garbage_chain
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

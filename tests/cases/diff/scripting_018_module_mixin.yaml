@@ -1,0 +1,183 @@
+name: scripting_018_module_mixin
+repo:
+  initial_files:
+    lib/logging.rb: |
+      module Logging
+        def log(message)
+          puts "[LOG] #{message}"
+        end
+
+        def log_error(message)
+          puts "[ERROR] #{message}"
+        end
+
+        def log_warning(message)
+          puts "[WARNING] #{message}"
+        end
+      end
+    lib/worker.rb: |
+      class Worker
+      end
+    lib/metrics.rb: |
+      class Metrics
+        def initialize
+          @counters = {}
+          @timings = {}
+        end
+
+        def increment(name, amount = 1)
+          @counters[name] = (@counters[name] || 0) + amount
+        end
+
+        def time(name)
+          start = Time.now
+          result = yield
+          @timings[name] = Time.now - start
+          result
+        end
+
+        def report
+          { counters: @counters, timings: @timings }
+        end
+      end
+    lib/notifier.rb: |
+      class Notifier
+        def initialize(channel)
+          @channel = channel
+        end
+
+        def send_alert(subject, body)
+          dispatch(@channel, subject, body)
+        end
+
+        def send_info(subject, body)
+          dispatch(@channel, subject, body)
+        end
+
+        private
+
+        def dispatch(channel, subject, body)
+          puts "Sending to #{channel}: [#{subject}] #{body}"
+        end
+      end
+  changed_files:
+    lib/logging.rb: |
+      module Logging
+        def log(message)
+          puts "[LOG] #{message}"
+        end
+
+        def log_error(message)
+          puts "[ERROR] #{message}"
+        end
+
+        def log_warning(message)
+          puts "[WARNING] #{message}"
+        end
+      end
+    lib/worker.rb: |
+      require_relative 'logging'
+
+      class Worker
+        include Logging
+
+        def perform
+          log("Starting work")
+          log("Work completed")
+        end
+      end
+    lib/metrics.rb: |
+      class Metrics
+        def initialize
+          @counters = {}
+          @timings = {}
+        end
+
+        def increment(name, amount = 1)
+          @counters[name] = (@counters[name] || 0) + amount
+        end
+
+        def time(name)
+          start = Time.now
+          result = yield
+          @timings[name] = Time.now - start
+          result
+        end
+
+        def report
+          { counters: @counters, timings: @timings }
+        end
+      end
+    lib/notifier.rb: |
+      class Notifier
+        def initialize(channel)
+          @channel = channel
+        end
+
+        def send_alert(subject, body)
+          dispatch(@channel, subject, body)
+        end
+
+        def send_info(subject, body)
+          dispatch(@channel, subject, body)
+        end
+
+        private
+
+        def dispatch(channel, subject, body)
+          puts "Sending to #{channel}: [#{subject}] #{body}"
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: logging
+  selector:
+    path: lib/logging.rb
+    anchor: module Logging
+- id: logging_1
+  selector:
+    path: lib/logging.rb
+    anchor: def log(message)
+- id: logging_2
+  selector:
+    path: lib/logging.rb
+    anchor: 'puts "[LOG] #{message}"'
+- id: no_metrics
+  selector:
+    path: lib/metrics.rb
+- id: no_notifier
+  selector:
+    path: lib/notifier.rb
+- id: no_global_0
+  selector:
+    anchor: Metrics
+- id: no_global_1
+  selector:
+    anchor: increment
+- id: no_global_2
+  selector:
+    anchor: '@counters'
+- id: no_global_3
+  selector:
+    anchor: Notifier
+- id: no_global_4
+  selector:
+    anchor: send_alert
+- id: no_global_5
+  selector:
+    anchor: dispatch
+oracle:
+  required:
+  - logging
+  - logging_1
+  - logging_2
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_notifier
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

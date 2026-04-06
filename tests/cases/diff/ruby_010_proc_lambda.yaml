@@ -1,0 +1,239 @@
+name: ruby_010_proc_lambda
+repo:
+  initial_files:
+    lib/validators.rb: |
+      module Validators
+        POSITIVE = ->(x) { x.is_a?(Numeric) && x > 0 }
+        NON_EMPTY = ->(s) { !s.nil? && !s.to_s.empty? }
+        EMAIL_FORMAT = ->(e) { e.to_s =~ /\A[^@\s]+@[^@\s]+\z/ }
+        IN_RANGE = ->(min, max) { ->(v) { v >= min && v <= max } }
+
+        def self.validate(value, *validators)
+          validators.all? { |v| v.call(value) }
+        end
+
+        def self.validate_all(data, rules)
+          rules.all? do |field, validators|
+            validators.all? { |v| v.call(data[field]) }
+          end
+        end
+      end
+    lib/form.rb: |
+      class Form
+        def submit
+          true
+        end
+      end
+    lib/schema_validator.rb: |
+      class SchemaValidator
+        def initialize(schema)
+          @schema = schema
+        end
+
+        def validate(data)
+          errors = []
+          @schema.each do |field, rules|
+            value = data[field]
+            if rules[:required] && value.nil?
+              errors << "#{field} is required"
+            end
+            if rules[:type] && !value.nil? && !value.is_a?(rules[:type])
+              errors << "#{field} must be #{rules[:type]}"
+            end
+            if rules[:max_length] && value.is_a?(String) && value.length > rules[:max_length]
+              errors << "#{field} exceeds max length #{rules[:max_length]}"
+            end
+          end
+          errors
+        end
+
+        def valid?(data)
+          validate(data).empty?
+        end
+      end
+    lib/form_builder.rb: |
+      class FormBuilder
+        def initialize(action, method: :post)
+          @action = action
+          @method = method
+          @fields = []
+        end
+
+        def text_field(name, label: nil, placeholder: nil)
+          @fields << { type: :text, name: name, label: label, placeholder: placeholder }
+          self
+        end
+
+        def submit_button(text = 'Submit')
+          @fields << { type: :submit, text: text }
+          self
+        end
+
+        def to_html
+          fields_html = @fields.map { |f| render_field(f) }.join("\n")
+          "<form action=\"#{@action}\" method=\"#{@method}\">\n#{fields_html}\n</form>"
+        end
+
+        private
+
+        def render_field(field)
+          case field[:type]
+          when :text
+            "<input type=\"text\" name=\"#{field[:name]}\" />"
+          when :submit
+            "<button type=\"submit\">#{field[:text]}</button>"
+          end
+        end
+      end
+  changed_files:
+    lib/validators.rb: |
+      module Validators
+        POSITIVE = ->(x) { x.is_a?(Numeric) && x > 0 }
+        NON_EMPTY = ->(s) { !s.nil? && !s.to_s.empty? }
+        EMAIL_FORMAT = ->(e) { e.to_s =~ /\A[^@\s]+@[^@\s]+\z/ }
+        IN_RANGE = ->(min, max) { ->(v) { v >= min && v <= max } }
+
+        def self.validate(value, *validators)
+          validators.all? { |v| v.call(value) }
+        end
+
+        def self.validate_all(data, rules)
+          rules.all? do |field, validators|
+            validators.all? { |v| v.call(data[field]) }
+          end
+        end
+      end
+    lib/form.rb: |
+      require_relative 'validators'
+
+      class Form
+        def validate(data)
+          age_range = Validators::IN_RANGE.call(1, 150)
+          rules = {
+            age: [Validators::POSITIVE, age_range],
+            name: [Validators::NON_EMPTY],
+            email: [Validators::NON_EMPTY, Validators::EMAIL_FORMAT]
+          }
+          Validators.validate_all(data, rules)
+        end
+
+        def submit(data)
+          return false unless validate(data)
+          true
+        end
+      end
+    lib/schema_validator.rb: |
+      class SchemaValidator
+        def initialize(schema)
+          @schema = schema
+        end
+
+        def validate(data)
+          errors = []
+          @schema.each do |field, rules|
+            value = data[field]
+            if rules[:required] && value.nil?
+              errors << "#{field} is required"
+            end
+            if rules[:type] && !value.nil? && !value.is_a?(rules[:type])
+              errors << "#{field} must be #{rules[:type]}"
+            end
+            if rules[:max_length] && value.is_a?(String) && value.length > rules[:max_length]
+              errors << "#{field} exceeds max length #{rules[:max_length]}"
+            end
+          end
+          errors
+        end
+
+        def valid?(data)
+          validate(data).empty?
+        end
+      end
+    lib/form_builder.rb: |
+      class FormBuilder
+        def initialize(action, method: :post)
+          @action = action
+          @method = method
+          @fields = []
+        end
+
+        def text_field(name, label: nil, placeholder: nil)
+          @fields << { type: :text, name: name, label: label, placeholder: placeholder }
+          self
+        end
+
+        def submit_button(text = 'Submit')
+          @fields << { type: :submit, text: text }
+          self
+        end
+
+        def to_html
+          fields_html = @fields.map { |f| render_field(f) }.join("\n")
+          "<form action=\"#{@action}\" method=\"#{@method}\">\n#{fields_html}\n</form>"
+        end
+
+        private
+
+        def render_field(field)
+          case field[:type]
+          when :text
+            "<input type=\"text\" name=\"#{field[:name]}\" />"
+          when :submit
+            "<button type=\"submit\">#{field[:text]}</button>"
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: form
+  selector:
+    path: lib/form.rb
+    anchor: Validators::POSITIVE
+- id: form_1
+  selector:
+    path: lib/form.rb
+    anchor: Validators.validate_all(data, rules)
+- id: validators
+  selector:
+    path: lib/validators.rb
+    anchor: IN_RANGE = ->(min, max)
+- id: validators_1
+  selector:
+    path: lib/validators.rb
+    anchor: def self.validate_all(data, rules)
+- id: no_schema_validator
+  selector:
+    path: lib/schema_validator.rb
+- id: no_form_builder
+  selector:
+    path: lib/form_builder.rb
+- id: no_global_0
+  selector:
+    anchor: SchemaValidator
+- id: no_global_1
+  selector:
+    anchor: max_length
+- id: no_global_2
+  selector:
+    anchor: FormBuilder
+- id: no_global_3
+  selector:
+    anchor: to_html
+- id: no_global_4
+  selector:
+    anchor: text_field
+oracle:
+  required:
+  - form
+  - form_1
+  - validators
+  - validators_1
+  allowed: []
+  forbidden:
+  - no_schema_validator
+  - no_form_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

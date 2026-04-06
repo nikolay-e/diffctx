@@ -1,0 +1,290 @@
+name: rust_002_function_signature_change
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod math;
+      pub mod statistics;
+      pub mod conversion;
+      pub mod calculator_cli;
+      pub mod bignum;
+    src/math.rs: |
+      use std::ops::{Add, Sub};
+
+      pub fn add(a: i32, b: i32) -> i32 {
+          a + b
+      }
+
+      pub fn multiply(a: i32, b: i32) -> i32 {
+          a * b
+      }
+
+      pub struct Calculator {
+          precision: u8,
+      }
+
+      impl Calculator {
+          pub fn new(precision: u8) -> Self {
+              Self { precision }
+          }
+
+          pub fn add(&self, a: f64, b: f64) -> f64 {
+              let result = a + b;
+              self.round(result)
+          }
+
+          fn round(&self, value: f64) -> f64 {
+              let factor = 10_f64.powi(self.precision as i32);
+              (value * factor).round() / factor
+          }
+      }
+
+      impl Default for Calculator {
+          fn default() -> Self {
+              Self::new(2)
+          }
+      }
+    src/main.rs: |
+      mod math;
+
+      fn main() {
+          let sum = math::add(2, 3);
+          let product = math::multiply(4, 5);
+          println!("Sum: {}, Product: {}", sum, product);
+
+          let calc = math::Calculator::new(3);
+          let precise = calc.add(1.1, 2.2);
+          println!("Precise: {}", precise);
+      }
+    src/statistics.rs: |
+      pub fn mean(values: &[f64]) -> f64 {
+          if values.is_empty() {
+              return 0.0;
+          }
+          values.iter().sum::<f64>() / values.len() as f64
+      }
+
+      pub fn variance(values: &[f64]) -> f64 {
+          let m = mean(values);
+          values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / values.len() as f64
+      }
+
+      pub fn standard_deviation(values: &[f64]) -> f64 {
+          variance(values).sqrt()
+      }
+
+      pub struct StatisticalSummary {
+          pub count: usize,
+          pub mean: f64,
+          pub std_dev: f64,
+      }
+    src/conversion.rs: |
+      pub const METERS_PER_MILE: f64 = 1609.344;
+      pub const KG_PER_POUND: f64 = 0.453592;
+
+      pub fn miles_to_km(miles: f64) -> f64 {
+          miles * METERS_PER_MILE / 1000.0
+      }
+
+      pub fn pounds_to_kg(pounds: f64) -> f64 {
+          pounds * KG_PER_POUND
+      }
+
+      pub fn celsius_to_fahrenheit(celsius: f64) -> f64 {
+          celsius * 9.0 / 5.0 + 32.0
+      }
+    src/calculator_cli.rs: |
+      use crate::math;
+
+      pub fn run_interactive() {
+          let a = 10;
+          let b = 20;
+          let sum = math::add(a, b);
+          let product = math::multiply(a, b);
+          println!("CLI Calculator: {} + {} = {}", a, b, sum);
+          println!("CLI Calculator: {} * {} = {}", a, b, product);
+      }
+
+      pub fn run_batch(pairs: &[(i32, i32)]) {
+          for (a, b) in pairs {
+              println!("{} + {} = {}", a, b, math::add(*a, *b));
+          }
+      }
+    src/bignum.rs: |
+      pub struct BigNum {
+          digits: Vec<u8>,
+          negative: bool,
+      }
+
+      impl BigNum {
+          pub fn from_i64(value: i64) -> Self {
+              Self {
+                  digits: value.abs().to_string().bytes().map(|b| b - b'0').collect(),
+                  negative: value < 0,
+              }
+          }
+
+          pub fn add(&self, other: &BigNum) -> BigNum {
+              BigNum::from_i64(0)
+          }
+
+          pub fn multiply(&self, other: &BigNum) -> BigNum {
+              BigNum::from_i64(0)
+          }
+      }
+    src/math_test.rs: |
+      #[cfg(test)]
+      mod tests {
+          use crate::math;
+
+          #[test]
+          fn test_add() {
+              assert_eq!(math::add(2, 3), 5);
+          }
+
+          #[test]
+          fn test_multiply() {
+              assert_eq!(math::multiply(4, 5), 20);
+          }
+      }
+  changed_files:
+    src/math.rs: |
+      use std::ops::{Add, Sub};
+
+      pub fn add(a: i64, b: i64) -> i64 {
+          a + b
+      }
+
+      pub fn subtract(a: i64, b: i64) -> i64 {
+          a - b
+      }
+
+      pub fn multiply(a: i64, b: i64) -> i64 {
+          a * b
+      }
+
+      pub fn divide(a: i64, b: i64) -> Option<i64> {
+          if b == 0 {
+              None
+          } else {
+              Some(a / b)
+          }
+      }
+
+      pub struct Calculator {
+          precision: u8,
+      }
+
+      impl Calculator {
+          pub fn new(precision: u8) -> Self {
+              Self { precision }
+          }
+
+          pub fn add(&self, a: f64, b: f64) -> f64 {
+              let result = a + b;
+              self.round(result)
+          }
+
+          pub fn subtract(&self, a: f64, b: f64) -> f64 {
+              let result = a - b;
+              self.round(result)
+          }
+
+          fn round(&self, value: f64) -> f64 {
+              let factor = 10_f64.powi(self.precision as i32);
+              (value * factor).round() / factor
+          }
+      }
+
+      impl Default for Calculator {
+          fn default() -> Self {
+              Self::new(2)
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main.rs
+    anchor: math::add(2, 3)
+- id: main_1
+  selector:
+    path: src/main.rs
+    anchor: math::multiply(4, 5)
+- id: no_statistics
+  selector:
+    path: src/statistics.rs
+- id: no_conversion
+  selector:
+    path: src/conversion.rs
+- id: no_calculator_cli
+  selector:
+    path: src/calculator_cli.rs
+- id: no_bignum
+  selector:
+    path: src/bignum.rs
+- id: no_math_test
+  selector:
+    path: src/math_test.rs
+- id: no_global_0
+  selector:
+    anchor: StatisticalSummary
+- id: no_global_1
+  selector:
+    anchor: standard_deviation
+- id: no_global_2
+  selector:
+    anchor: fn variance
+- id: no_global_3
+  selector:
+    anchor: METERS_PER_MILE
+- id: no_global_4
+  selector:
+    anchor: KG_PER_POUND
+- id: no_global_5
+  selector:
+    anchor: celsius_to_fahrenheit
+- id: no_global_6
+  selector:
+    anchor: run_interactive
+- id: no_global_7
+  selector:
+    anchor: run_batch
+- id: no_global_8
+  selector:
+    anchor: CLI Calculator
+- id: no_global_9
+  selector:
+    anchor: struct BigNum
+- id: no_global_10
+  selector:
+    anchor: from_i64
+- id: no_global_11
+  selector:
+    anchor: test_add
+- id: no_global_12
+  selector:
+    anchor: test_multiply
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_statistics
+  - no_conversion
+  - no_calculator_cli
+  - no_bignum
+  - no_math_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

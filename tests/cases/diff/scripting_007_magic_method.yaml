@@ -1,0 +1,317 @@
+name: scripting_007_magic_method
+repo:
+  initial_files:
+    src/app.php: |
+      <?php
+      echo "Hello World";
+    src/Models/DynamicObject.php: |
+      <?php
+      namespace App\Models;
+
+      class DynamicObject {
+          private array $data = [];
+
+          public function __get(string $name): mixed {
+              return $this->data[$name] ?? null;
+          }
+
+          public function __set(string $name, mixed $value): void {
+              $this->data[$name] = $value;
+          }
+
+          public function __isset(string $name): bool {
+              return isset($this->data[$name]);
+          }
+
+          public function __unset(string $name): void {
+              unset($this->data[$name]);
+          }
+
+          public function toArray(): array {
+              return $this->data;
+          }
+
+          public function keys(): array {
+              return array_keys($this->data);
+          }
+      }
+    src/Models/StrictObject.php: |
+      <?php
+      namespace App\Models;
+
+      class StrictObject {
+          private array $allowed;
+          private array $data = [];
+
+          public function __construct(array $allowed) {
+              $this->allowed = $allowed;
+          }
+
+          public function __set(string $name, mixed $value): void {
+              if (!in_array($name, $this->allowed, true)) {
+                  throw new \InvalidArgumentException("Property '$name' not allowed");
+              }
+              $this->data[$name] = $value;
+          }
+
+          public function __get(string $name): mixed {
+              if (!in_array($name, $this->allowed, true)) {
+                  throw new \InvalidArgumentException("Property '$name' not allowed");
+              }
+              return $this->data[$name] ?? null;
+          }
+
+          public function allowedKeys(): array {
+              return $this->allowed;
+          }
+      }
+    src/Serializers/ArraySerializer.php: |
+      <?php
+      namespace App\Serializers;
+
+      class ArraySerializer {
+          public static function serialize(object $obj): array {
+              return get_object_vars($obj);
+          }
+
+          public static function deserialize(string $class, array $data): object {
+              $obj = new $class();
+              foreach ($data as $key => $value) {
+                  $obj->$key = $value;
+              }
+              return $obj;
+          }
+
+          public static function toJson(object $obj): string {
+              return json_encode(self::serialize($obj));
+          }
+      }
+    src/Models/FormData.php: |
+      <?php
+      namespace App\Models;
+
+      require_once __DIR__ . '/DynamicObject.php';
+
+      class FormData {
+          private DynamicObject $fields;
+
+          public function __construct() {
+              $this->fields = new DynamicObject();
+          }
+
+          public function setField(string $name, mixed $value): void {
+              $this->fields->$name = $value;
+          }
+
+          public function getField(string $name): mixed {
+              return $this->fields->$name;
+          }
+
+          public function hasField(string $name): bool {
+              return isset($this->fields->$name);
+          }
+
+          public function allFields(): array {
+              return $this->fields->toArray();
+          }
+      }
+    src/Models/ImmutableObject.php: |
+      <?php
+      namespace App\Models;
+
+      class ImmutableObject {
+          private array $data;
+
+          public function __construct(array $data) {
+              $this->data = $data;
+          }
+
+          public function __get(string $name): mixed {
+              return $this->data[$name] ?? null;
+          }
+
+          public function __set(string $name, mixed $value): void {
+              throw new \RuntimeException("Cannot set property '$name': object is immutable");
+          }
+
+          public function __isset(string $name): bool {
+              return isset($this->data[$name]);
+          }
+      }
+    src/Hydrators/ObjectHydrator.php: |
+      <?php
+      namespace App\Hydrators;
+
+      class ObjectHydrator {
+          public function hydrate(object $target, array $data): object {
+              foreach ($data as $key => $value) {
+                  $target->$key = $value;
+              }
+              return $target;
+          }
+
+          public function extract(object $source, array $keys): array {
+              $result = [];
+              foreach ($keys as $key) {
+                  $result[$key] = $source->$key ?? null;
+              }
+              return $result;
+          }
+      }
+  changed_files:
+    src/app.php: |
+      <?php
+      require_once __DIR__ . '/Models/DynamicObject.php';
+
+      use App\Models\DynamicObject;
+
+      $obj = new DynamicObject();
+      $obj->name = 'John';
+      $obj->email = 'john@example.com';
+
+      echo $obj->name . "\n";
+      if (isset($obj->email)) {
+          echo $obj->email . "\n";
+      }
+    src/Models/DynamicObject.php: |
+      <?php
+      namespace App\Models;
+
+      class DynamicObject {
+          private array $data = [];
+
+          public function __get(string $name): mixed {
+              return $this->data[$name] ?? null;
+          }
+
+          public function __set(string $name, mixed $value): void {
+              $this->data[$name] = $value;
+          }
+
+          public function __isset(string $name): bool {
+              return isset($this->data[$name]);
+          }
+
+          public function __unset(string $name): void {
+              unset($this->data[$name]);
+          }
+
+          public function toArray(): array {
+              return $this->data;
+          }
+
+          public function keys(): array {
+              return array_keys($this->data);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: dynamicobject
+  selector:
+    path: src/Models/DynamicObject.php
+    anchor: 'public function __get(string $name): mixed'
+- id: dynamicobject_1
+  selector:
+    path: src/Models/DynamicObject.php
+    anchor: 'public function __set(string $name, mixed $value): void'
+- id: dynamicobject_2
+  selector:
+    path: src/Models/DynamicObject.php
+    anchor: 'public function __isset(string $name): bool'
+- id: app
+  selector:
+    path: src/app.php
+    anchor: new DynamicObject()
+- id: app_1
+  selector:
+    path: src/app.php
+    anchor: $obj->name
+- id: no_strictobject
+  selector:
+    path: src/Models/StrictObject.php
+- id: no_arrayserializer
+  selector:
+    path: src/Serializers/ArraySerializer.php
+- id: no_formdata
+  selector:
+    path: src/Models/FormData.php
+- id: no_immutableobject
+  selector:
+    path: src/Models/ImmutableObject.php
+- id: no_objecthydrator
+  selector:
+    path: src/Hydrators/ObjectHydrator.php
+- id: no_global_0
+  selector:
+    anchor: class StrictObject
+- id: no_global_1
+  selector:
+    anchor: Property '$name' not allowed
+- id: no_global_2
+  selector:
+    anchor: allowedKeys
+- id: no_global_3
+  selector:
+    anchor: class ArraySerializer
+- id: no_global_4
+  selector:
+    anchor: get_object_vars
+- id: no_global_5
+  selector:
+    anchor: toJson
+- id: no_global_6
+  selector:
+    anchor: FormData
+- id: no_global_7
+  selector:
+    anchor: setField
+- id: no_global_8
+  selector:
+    anchor: getField
+- id: no_global_9
+  selector:
+    anchor: allFields
+- id: no_global_10
+  selector:
+    anchor: ImmutableObject
+- id: no_global_11
+  selector:
+    anchor: object is immutable
+- id: no_global_12
+  selector:
+    anchor: ObjectHydrator
+- id: no_global_13
+  selector:
+    anchor: hydrate
+- id: no_global_14
+  selector:
+    anchor: extract
+oracle:
+  required:
+  - dynamicobject
+  - dynamicobject_1
+  - dynamicobject_2
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_strictobject
+  - no_arrayserializer
+  - no_formdata
+  - no_immutableobject
+  - no_objecthydrator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

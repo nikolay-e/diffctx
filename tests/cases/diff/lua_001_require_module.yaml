@@ -1,0 +1,249 @@
+name: lua_001_require_module
+repo:
+  initial_files:
+    lib/utils.lua: |
+      local M = {}
+
+      function M.clamp(value, min_val, max_val)
+          if value < min_val then return min_val end
+          if value > max_val then return max_val end
+          return value
+      end
+
+      function M.lerp(a, b, t)
+          return a + (b - a) * t
+      end
+
+      function M.distance(x1, y1, x2, y2)
+          local dx = x2 - x1
+          local dy = y2 - y1
+          return math.sqrt(dx * dx + dy * dy)
+      end
+
+      function M.normalize(x, y)
+          local len = math.sqrt(x * x + y * y)
+          if len == 0 then return 0, 0 end
+          return x / len, y / len
+      end
+
+      return M
+    game.lua: |
+      local game = {}
+
+      function game.init()
+          game.x = 0
+          game.y = 0
+      end
+
+      function game.update(dt)
+          game.x = game.x + dt
+      end
+
+      return game
+    lib/strings.lua: |
+      local GARBAGE_LUA_001_A = "noise_marker_strings"
+
+      local M = {}
+
+      function M.trim(s)
+          return s:match("^%s*(.-)%s*$")
+      end
+
+      function M.split(s, sep)
+          local parts = {}
+          for part in s:gmatch("[^" .. sep .. "]+") do
+              parts[#parts + 1] = part
+          end
+          return parts
+      end
+
+      function M.starts_with(s, prefix)
+          return s:sub(1, #prefix) == prefix
+      end
+
+      return M
+    lib/logging.lua: |
+      local GARBAGE_LUA_001_B = "noise_marker_logging"
+
+      local M = {}
+      M.level = "info"
+
+      function M.set_level(level)
+          M.level = level
+      end
+
+      function M.debug(msg)
+          if M.level == "debug" then
+              print("[DEBUG] " .. msg)
+          end
+      end
+
+      function M.info(msg)
+          print("[INFO] " .. msg)
+      end
+
+      function M.error(msg)
+          print("[ERROR] " .. msg)
+      end
+
+      return M
+  changed_files:
+    lib/utils.lua: |
+      local M = {}
+
+      function M.clamp(value, min_val, max_val)
+          if value < min_val then return min_val end
+          if value > max_val then return max_val end
+          return value
+      end
+
+      function M.lerp(a, b, t)
+          return a + (b - a) * t
+      end
+
+      function M.distance(x1, y1, x2, y2)
+          local dx = x2 - x1
+          local dy = y2 - y1
+          return math.sqrt(dx * dx + dy * dy)
+      end
+
+      function M.normalize(x, y)
+          local len = math.sqrt(x * x + y * y)
+          if len == 0 then return 0, 0 end
+          return x / len, y / len
+      end
+
+      return M
+    game.lua: |
+      local utils = require("lib.utils")
+
+      local game = {}
+
+      function game.init()
+          game.x = 0
+          game.y = 0
+          game.target_x = 100
+          game.target_y = 100
+      end
+
+      function game.update(dt)
+          local smooth_factor = utils.clamp(dt * 5, 0, 1)
+          game.x = utils.lerp(game.x, game.target_x, smooth_factor)
+          game.y = utils.lerp(game.y, game.target_y, smooth_factor)
+      end
+
+      return game
+    lib/strings.lua: |
+      local GARBAGE_LUA_001_A = "noise_marker_strings"
+
+      local M = {}
+
+      function M.trim(s)
+          return s:match("^%s*(.-)%s*$")
+      end
+
+      function M.split(s, sep)
+          local parts = {}
+          for part in s:gmatch("[^" .. sep .. "]+") do
+              parts[#parts + 1] = part
+          end
+          return parts
+      end
+
+      function M.starts_with(s, prefix)
+          return s:sub(1, #prefix) == prefix
+      end
+
+      return M
+    lib/logging.lua: |
+      local GARBAGE_LUA_001_B = "noise_marker_logging"
+
+      local M = {}
+      M.level = "info"
+
+      function M.set_level(level)
+          M.level = level
+      end
+
+      function M.debug(msg)
+          if M.level == "debug" then
+              print("[DEBUG] " .. msg)
+          end
+      end
+
+      function M.info(msg)
+          print("[INFO] " .. msg)
+      end
+
+      function M.error(msg)
+          print("[ERROR] " .. msg)
+      end
+
+      return M
+  commit_message: Update files
+fragments:
+- id: game
+  selector:
+    path: game.lua
+    anchor: require("lib.utils")
+- id: game_1
+  selector:
+    path: game.lua
+    anchor: utils.clamp
+- id: game_2
+  selector:
+    path: game.lua
+    anchor: utils.lerp
+- id: utils
+  selector:
+    path: lib/utils.lua
+    anchor: function M.clamp(value, min_val, max_val)
+- id: utils_1
+  selector:
+    path: lib/utils.lua
+    anchor: function M.lerp(a, b, t)
+- id: no_strings
+  selector:
+    path: lib/strings.lua
+- id: no_logging
+  selector:
+    path: lib/logging.lua
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_LUA_001_A
+- id: no_global_1
+  selector:
+    anchor: M.trim
+- id: no_global_2
+  selector:
+    anchor: M.split
+- id: no_global_3
+  selector:
+    anchor: M.starts_with
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_LUA_001_B
+- id: no_global_5
+  selector:
+    anchor: M.set_level
+- id: no_global_6
+  selector:
+    anchor: M.level = "info"
+oracle:
+  required:
+  - game
+  - game_1
+  - game_2
+  - utils
+  - utils_1
+  allowed: []
+  forbidden:
+  - no_strings
+  - no_logging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

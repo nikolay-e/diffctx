@@ -1,0 +1,178 @@
+name: ppr_030_disconnected_separate_components
+repo:
+  initial_files:
+    comp1_a.py: |
+      SHARED1 = "shared1"
+
+      def comp1_a():
+          return SHARED1
+    comp1_b.py: |
+      SHARED1 = "shared1"
+
+      def comp1_b():
+          return SHARED1
+    comp2_a.py: |
+      SHARED2 = "shared2"
+
+      def comp2_a():
+          return SHARED2
+    comp2_b.py: |
+      SHARED2 = "shared2"
+
+      def comp2_b():
+          return SHARED2
+    garbage_shared1_consumer.py: |
+      GARBAGE_PPR030_CONSUMER_A = "shared1_consumer"
+      GARBAGE_PPR030_CONSUMER_B = True
+
+      SHARED1 = "shared1"
+
+      def consume_shared1():
+          return SHARED1
+
+      class Shared1Processor:
+          GARBAGE_PPR030_PROCESSOR_C = 99
+
+          def process(self):
+              return SHARED1
+    garbage_comp1_helper.py: |
+      GARBAGE_PPR030_HELPER_D = "comp1_helper"
+      GARBAGE_PPR030_HELPER_E = False
+
+      def comp1_helper():
+          return "helper_for_comp1"
+
+      def comp1_validate():
+          GARBAGE_PPR030_VALIDATE_F = 42
+          return True
+    garbage_modifier.py: |
+      GARBAGE_PPR030_MOD_G = "modifier"
+      GARBAGE_PPR030_MOD_H = 0
+
+      def apply_modified():
+          return "_modified"
+
+      def get_comp_modified():
+          return "comp" + "_modified"
+  changed_files:
+    comp1_a.py: |
+      SHARED1 = "shared1"
+
+      def comp1_a():
+          return SHARED1 + "_modified"
+    comp1_b.py: |
+      SHARED1 = "shared1"
+
+      def comp1_b():
+          return SHARED1
+    comp2_a.py: |
+      SHARED2 = "shared2"
+
+      def comp2_a():
+          return SHARED2
+    comp2_b.py: |
+      SHARED2 = "shared2"
+
+      def comp2_b():
+          return SHARED2
+    garbage_shared1_consumer.py: |
+      GARBAGE_PPR030_CONSUMER_A = "shared1_consumer"
+      GARBAGE_PPR030_CONSUMER_B = True
+
+      SHARED1 = "shared1"
+
+      def consume_shared1():
+          return SHARED1
+
+      class Shared1Processor:
+          GARBAGE_PPR030_PROCESSOR_C = 99
+
+          def process(self):
+              return SHARED1
+    garbage_comp1_helper.py: |
+      GARBAGE_PPR030_HELPER_D = "comp1_helper"
+      GARBAGE_PPR030_HELPER_E = False
+
+      def comp1_helper():
+          return "helper_for_comp1"
+
+      def comp1_validate():
+          GARBAGE_PPR030_VALIDATE_F = 42
+          return True
+    garbage_modifier.py: |
+      GARBAGE_PPR030_MOD_G = "modifier"
+      GARBAGE_PPR030_MOD_H = 0
+
+      def apply_modified():
+          return "_modified"
+
+      def get_comp_modified():
+          return "comp" + "_modified"
+  commit_message: Update files
+fragments:
+- id: comp1_a
+  selector:
+    path: comp1_a.py
+    anchor: 'def comp1_a():'
+- id: comp1_a_1
+  selector:
+    path: comp1_a.py
+    anchor: return SHARED1 + "_modified"
+- id: no_garbage_shared1_consumer
+  selector:
+    path: garbage_shared1_consumer.py
+- id: no_garbage_comp1_helper
+  selector:
+    path: garbage_comp1_helper.py
+- id: no_garbage_modifier
+  selector:
+    path: garbage_modifier.py
+- id: no_global_0
+  selector:
+    anchor: comp2_a
+- id: no_global_1
+  selector:
+    anchor: comp2_b
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR030_CONSUMER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR030_CONSUMER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR030_PROCESSOR_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR030_HELPER_D
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR030_HELPER_E
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR030_VALIDATE_F
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_PPR030_MOD_G
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_PPR030_MOD_H
+oracle:
+  required:
+  - comp1_a
+  - comp1_a_1
+  allowed: []
+  forbidden:
+  - no_garbage_shared1_consumer
+  - no_garbage_comp1_helper
+  - no_garbage_modifier
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

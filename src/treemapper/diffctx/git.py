@@ -37,6 +37,8 @@ def run_git(repo_root: Path, args: list[str]) -> str:
         return result.stdout
     except subprocess.CalledProcessError as e:
         raise GitError(f"git {' '.join(args)} failed: {e.stderr.strip()}") from e
+    except subprocess.TimeoutExpired as e:
+        raise GitError(f"git {' '.join(args)} timed out after 60s") from e
     except FileNotFoundError as e:
         raise GitError("git is not installed or not in PATH") from e
 
@@ -71,15 +73,50 @@ def _parse_hunk_header(match: re.Match[str], path: Path) -> DiffHunk:
     )
 
 
+_C_ESCAPE_MAP = {"t": "\t", "n": "\n", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "a": "\a", "\\": "\\", '"': '"'}
+
+
+def _unquote_c_style(quoted: str) -> str:
+    if not (quoted.startswith('"') and quoted.endswith('"')):
+        return quoted
+    raw = quoted[1:-1]
+    chars: list[str] = []
+    i = 0
+    while i < len(raw):
+        if raw[i] == "\\" and i + 1 < len(raw):
+            nxt = raw[i + 1]
+            if nxt in _C_ESCAPE_MAP:
+                chars.append(_C_ESCAPE_MAP[nxt])
+                i += 2
+            elif nxt in "01234567" and i + 3 < len(raw) and all(c in "01234567" for c in raw[i + 1 : i + 4]):
+                chars.append(chr(int(raw[i + 1 : i + 4], 8)))
+                i += 4
+            else:
+                chars.append("\\")
+                i += 1
+        else:
+            chars.append(raw[i])
+            i += 1
+    result = "".join(chars)
+    try:
+        return result.encode("latin-1").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return result
+
+
 def _parse_path_line(line: str, repo_root: Path) -> tuple[str, Path | None]:
-    if line.startswith("--- a/"):
-        return "old", repo_root / line.removeprefix("--- a/").strip()
     if line.startswith("--- /dev/null"):
         return "old", None
-    if line.startswith("+++ b/"):
-        return "new", repo_root / line.removeprefix("+++ b/").strip()
     if line.startswith("+++ /dev/null"):
         return "new", None
+    if line.startswith("--- a/"):
+        return "old", repo_root / line.removeprefix("--- a/").strip()
+    if line.startswith("+++ b/"):
+        return "new", repo_root / line.removeprefix("+++ b/").strip()
+    if line.startswith('--- "a/'):
+        return "old", repo_root / _unquote_c_style(line.removeprefix("--- ").strip()).removeprefix("a/")
+    if line.startswith('+++ "b/'):
+        return "new", repo_root / _unquote_c_style(line.removeprefix("+++ ").strip()).removeprefix("b/")
     return "", None
 
 

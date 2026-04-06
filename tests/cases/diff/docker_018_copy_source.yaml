@@ -1,0 +1,185 @@
+name: docker_018_copy_source
+repo:
+  initial_files:
+    requirements.txt: |
+      flask==2.3.0
+      flask-cors==4.0.0
+      requests==2.31.0
+      pydantic==2.5.0
+      sqlalchemy==2.0.23
+    src/app.py: |
+      from flask import Flask
+      from flask_cors import CORS
+      app = Flask(__name__)
+      CORS(app)
+
+      @app.route('/health')
+      def health():
+          return {'status': 'ok'}
+    src/models.py: |
+      from sqlalchemy import Column, Integer, String
+      from sqlalchemy.ext.declarative import declarative_base
+      Base = declarative_base()
+      class User(Base):
+          __tablename__ = 'users'
+          id = Column(Integer, primary_key=True)
+          name = Column(String(100))
+    Dockerfile: |
+      FROM python:3.11-slim
+      RUN pip install flask flask-cors
+      COPY src/app.py /app/
+      WORKDIR /app
+      CMD ["python", "app.py"]
+    config/logging.yaml: |
+      version: 1
+      handlers:
+        console:
+          class: logging.StreamHandler
+          level: INFO
+    scripts/seed_data.sh: |
+      #!/bin/bash
+      python manage.py seed --count 100
+    tests/test_models.py: |
+      from src.models import User, Base
+      def test_user_model():
+          user = User(name="test")
+          assert user.name == "test"
+    docs/api.md: |
+      # API Documentation
+      ## Endpoints
+      - GET /health - Health check
+      - GET /users - List users
+  changed_files:
+    requirements.txt: |
+      flask==2.3.0
+      flask-cors==4.0.0
+      requests==2.31.0
+      pydantic==2.5.0
+      sqlalchemy==2.0.23
+    src/app.py: |
+      from flask import Flask
+      from flask_cors import CORS
+      app = Flask(__name__)
+      CORS(app)
+
+      @app.route('/health')
+      def health():
+          return {'status': 'ok'}
+    src/models.py: |
+      from sqlalchemy import Column, Integer, String
+      from sqlalchemy.ext.declarative import declarative_base
+      Base = declarative_base()
+      class User(Base):
+          __tablename__ = 'users'
+          id = Column(Integer, primary_key=True)
+          name = Column(String(100))
+    Dockerfile: |
+      FROM python:3.12-slim-bookworm AS base
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV PYTHONUNBUFFERED=1
+      WORKDIR /app
+
+      FROM base AS dependencies
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      FROM base AS production
+      COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+      COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+      # Copy source files with proper structure
+      COPY src/ ./src/
+      COPY config/ ./config/
+
+      # Create non-root user
+      RUN useradd --create-home --shell /bin/bash appuser
+      USER appuser
+
+      EXPOSE 5000
+      CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "src.app:app"]
+    config/logging.yaml: |
+      version: 1
+      handlers:
+        console:
+          class: logging.StreamHandler
+          level: INFO
+    scripts/seed_data.sh: |
+      #!/bin/bash
+      python manage.py seed --count 100
+    tests/test_models.py: |
+      from src.models import User, Base
+      def test_user_model():
+          user = User(name="test")
+          assert user.name == "test"
+    docs/api.md: |
+      # API Documentation
+      ## Endpoints
+      - GET /health - Health check
+      - GET /users - List users
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: FROM python:3.12-slim-bookworm AS base
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: COPY src/ ./src/
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: COPY config/ ./config/
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "src.app:app"]
+- id: requirements
+  selector:
+    path: requirements.txt
+    anchor: flask==2.3.0
+- id: no_seed_data
+  selector:
+    path: scripts/seed_data.sh
+- id: no_test_models
+  selector:
+    path: tests/test_models.py
+- id: no_api
+  selector:
+    path: docs/api.md
+- id: no_global_0
+  selector:
+    anchor: manage.py seed
+- id: no_global_1
+  selector:
+    anchor: --count 100
+- id: no_global_2
+  selector:
+    anchor: test_user_model
+- id: no_global_3
+  selector:
+    anchor: assert user.name
+- id: no_global_4
+  selector:
+    anchor: API Documentation
+- id: no_global_5
+  selector:
+    anchor: GET /users - List users
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - requirements
+  allowed: []
+  forbidden:
+  - no_seed_data
+  - no_test_models
+  - no_api
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

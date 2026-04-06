@@ -1,0 +1,156 @@
+name: ppr_016_convergence_chain
+repo:
+  initial_files:
+    a.py: |
+      def func_a():
+          return 1
+    b.py: |
+      from a import func_a
+
+      def func_b():
+          func_a()
+          return 2
+    c.py: |
+      from b import func_b
+
+      def func_c():
+          func_b()
+          return 3
+    alt_a.py: |
+      def func_a():
+          return "different_implementation"
+
+      class AWrapper:
+          def call_a(self):
+              return func_a()
+    chain_utils.py: |
+      def func_x():
+          return 10
+
+      def func_y():
+          return func_x() + 1
+
+      def func_z():
+          return func_y() + 1
+
+      class ChainProcessor:
+          def run(self):
+              return func_z()
+    task_runner.py: |
+      INTERVAL = 60
+      IS_ACTIVE = True
+
+      class TaskRunner:
+          def schedule(self, task):
+              pass
+  changed_files:
+    a.py: |
+      def func_a():
+          return 42
+    b.py: |
+      from a import func_a
+
+      def func_b():
+          func_a()
+          return 2
+    c.py: |
+      from b import func_b
+
+      def func_c():
+          func_b()
+          return 3
+    alt_a.py: |
+      def func_a():
+          return "different_implementation"
+
+      class AWrapper:
+          def call_a(self):
+              return func_a()
+    chain_utils.py: |
+      def func_x():
+          return 10
+
+      def func_y():
+          return func_x() + 1
+
+      def func_z():
+          return func_y() + 1
+
+      class ChainProcessor:
+          def run(self):
+              return func_z()
+    task_runner.py: |
+      INTERVAL = 60
+      IS_ACTIVE = True
+
+      class TaskRunner:
+          def schedule(self, task):
+              pass
+  commit_message: Update files
+fragments:
+- id: a
+  selector:
+    path: a.py
+    anchor: 'def func_a():'
+- id: a_1
+  selector:
+    path: a.py
+    anchor: return 42
+- id: req_pattern_0
+  selector:
+    anchor: func_a
+- id: req_pattern_1
+  selector:
+    anchor: return 42
+- id: no_alt_a
+  selector:
+    path: alt_a.py
+- id: no_chain_utils
+  selector:
+    path: chain_utils.py
+- id: no_task_runner
+  selector:
+    path: task_runner.py
+- id: no_global_0
+  selector:
+    anchor: AWrapper
+- id: no_global_1
+  selector:
+    anchor: different_implementation
+- id: no_global_2
+  selector:
+    anchor: ChainProcessor
+- id: no_global_3
+  selector:
+    anchor: func_x
+- id: no_global_4
+  selector:
+    anchor: func_y
+- id: no_global_5
+  selector:
+    anchor: func_z
+- id: no_global_6
+  selector:
+    anchor: TaskRunner
+- id: no_global_7
+  selector:
+    anchor: INTERVAL
+oracle:
+  required:
+  - a
+  - a_1
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_alt_a
+  - no_chain_utils
+  - no_task_runner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

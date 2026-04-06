@@ -1,0 +1,190 @@
+name: javascript_023_decorator_function
+repo:
+  initial_files:
+    decorators.ts: |
+      export function Logger(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              console.log(`Calling ${key} with args:`, args);
+              return original.apply(this, args);
+          };
+          return descriptor;
+      }
+
+      export function Readonly(target: any, key: string) {
+          Object.defineProperty(target, key, { writable: false });
+      }
+    service.ts: |
+      console.log('initial');
+    memoize-decorator.ts: |
+      const cache = new WeakMap<object, Map<string, any>>();
+
+      export function Memoize(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              if (!cache.has(this)) cache.set(this, new Map());
+              const instanceCache = cache.get(this)!;
+              const cacheKey = `${key}:${JSON.stringify(args)}`;
+              if (instanceCache.has(cacheKey)) return instanceCache.get(cacheKey);
+              const result = original.apply(this, args);
+              instanceCache.set(cacheKey, result);
+              return result;
+          };
+          return descriptor;
+      }
+
+      export function ClearCache(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              cache.delete(this);
+              return original.apply(this, args);
+          };
+          return descriptor;
+      }
+    api-client.ts: |
+      export class ApiClient {
+          constructor(private baseUrl: string) {}
+
+          async getData<T>(endpoint: string): Promise<T> {
+              const response = await fetch(`${this.baseUrl}${endpoint}`);
+              return response.json();
+          }
+
+          async postData<T>(endpoint: string, body: unknown): Promise<T> {
+              const response = await fetch(`${this.baseUrl}${endpoint}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+              });
+              return response.json();
+          }
+      }
+  changed_files:
+    decorators.ts: |
+      export function Logger(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              console.log(`Calling ${key} with args:`, args);
+              return original.apply(this, args);
+          };
+          return descriptor;
+      }
+
+      export function Readonly(target: any, key: string) {
+          Object.defineProperty(target, key, { writable: false });
+      }
+    service.ts: |
+      import { Logger } from './decorators';
+
+      export class ApiService {
+          @Logger
+          fetchData(url: string): Promise<any> {
+              return fetch(url).then(res => res.json());
+          }
+      }
+    memoize-decorator.ts: |
+      const cache = new WeakMap<object, Map<string, any>>();
+
+      export function Memoize(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              if (!cache.has(this)) cache.set(this, new Map());
+              const instanceCache = cache.get(this)!;
+              const cacheKey = `${key}:${JSON.stringify(args)}`;
+              if (instanceCache.has(cacheKey)) return instanceCache.get(cacheKey);
+              const result = original.apply(this, args);
+              instanceCache.set(cacheKey, result);
+              return result;
+          };
+          return descriptor;
+      }
+
+      export function ClearCache(target: any, key: string, descriptor: PropertyDescriptor) {
+          const original = descriptor.value;
+          descriptor.value = function(...args: any[]) {
+              cache.delete(this);
+              return original.apply(this, args);
+          };
+          return descriptor;
+      }
+    api-client.ts: |
+      export class ApiClient {
+          constructor(private baseUrl: string) {}
+
+          async getData<T>(endpoint: string): Promise<T> {
+              const response = await fetch(`${this.baseUrl}${endpoint}`);
+              return response.json();
+          }
+
+          async postData<T>(endpoint: string, body: unknown): Promise<T> {
+              const response = await fetch(`${this.baseUrl}${endpoint}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+              });
+              return response.json();
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.ts
+    anchor: import { Logger } from './decorators'
+- id: service_1
+  selector:
+    path: service.ts
+    anchor: '@Logger'
+- id: service_2
+  selector:
+    path: service.ts
+    anchor: 'fetchData(url: string)'
+- id: decorators
+  selector:
+    path: decorators.ts
+    anchor: 'export function Logger(target: any, key: string, descriptor: PropertyDescriptor)'
+- id: decorators_1
+  selector:
+    path: decorators.ts
+    anchor: original.apply(this, args)
+- id: no_memoize_decorator
+  selector:
+    path: memoize-decorator.ts
+- id: no_api_client
+  selector:
+    path: api-client.ts
+- id: no_global_0
+  selector:
+    anchor: Memoize
+- id: no_global_1
+  selector:
+    anchor: ClearCache
+- id: no_global_2
+  selector:
+    anchor: WeakMap
+- id: no_global_3
+  selector:
+    anchor: ApiClient
+- id: no_global_4
+  selector:
+    anchor: getData
+- id: no_global_5
+  selector:
+    anchor: postData
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - decorators
+  - decorators_1
+  allowed: []
+  forbidden:
+  - no_memoize_decorator
+  - no_api_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

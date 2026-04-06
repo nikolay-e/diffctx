@@ -1,0 +1,413 @@
+name: swift_017_codable
+repo:
+  initial_files:
+    Networking/UserAPIClient.swift: |
+      import Foundation
+
+      class UserAPIClient {}
+    Models/UserModels.swift: |
+      import Foundation
+
+      struct UserDTO: Codable {
+          let id: String
+          let firstName: String
+          let lastName: String
+          let emailAddress: String
+          let joinedAt: Date
+
+          enum CodingKeys: String, CodingKey {
+              case id
+              case firstName = "first_name"
+              case lastName = "last_name"
+              case emailAddress = "email_address"
+              case joinedAt = "joined_at"
+          }
+      }
+
+      struct UserResponse: Decodable {
+          let users: [UserDTO]
+          let totalCount: Int
+          let page: Int
+      }
+
+      struct User {
+          let id: String
+          let fullName: String
+          let email: String
+          let memberSince: Date
+      }
+    Networking/ProductAPIClient.swift: |
+      import Foundation
+
+      class ProductAPIClient {
+          private let session: URLSession
+          private let baseURL: URL
+
+          init(baseURL: URL, session: URLSession = .shared) {
+              self.baseURL = baseURL
+              self.session = session
+          }
+
+          func fetchProducts(page: Int, category: String? = nil) async throws -> [Product] {
+              let url = baseURL.appendingPathComponent("/products")
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+              var queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+              if let category = category {
+                  queryItems.append(URLQueryItem(name: "category", value: category))
+              }
+              components.queryItems = queryItems
+
+              let (data, _) = try await session.data(from: components.url!)
+              let decoder = JSONDecoder()
+              decoder.dateDecodingStrategy = .iso8601
+              let response = try decoder.decode(ProductResponse.self, from: data)
+              return response.products.map(mapToProduct)
+          }
+
+          private func mapToProduct(_ dto: ProductDTO) -> Product {
+              Product(
+                  id: dto.id,
+                  name: dto.name,
+                  price: Double(dto.priceInCents) / 100.0,
+                  category: dto.category
+              )
+          }
+      }
+    Networking/APIClientProtocol.swift: |
+      import Foundation
+
+      protocol APIClient {
+          var baseURL: URL { get }
+          var session: URLSession { get }
+      }
+
+      protocol UserFetching {
+          func fetchUsers(page: Int) async throws -> [User]
+      }
+
+      protocol ProductFetching {
+          func fetchProducts(page: Int, category: String?) async throws -> [Product]
+      }
+    ViewModels/UserListViewModel.swift: |
+      import Foundation
+
+      @MainActor
+      class UserListViewModel: ObservableObject {
+          @Published var users: [User] = []
+          @Published var isLoading = false
+          @Published var errorMessage: String?
+
+          private let apiClient: UserAPIClient
+          private var currentPage = 1
+
+          init(apiClient: UserAPIClient) {
+              self.apiClient = apiClient
+          }
+
+          func loadUsers() async {
+              isLoading = true
+              defer { isLoading = false }
+              do {
+                  let fetched = try await apiClient.fetchUsers(page: currentPage)
+                  users.append(contentsOf: fetched)
+                  currentPage += 1
+              } catch {
+                  errorMessage = error.localizedDescription
+              }
+          }
+
+          func refresh() async {
+              users = []
+              currentPage = 1
+              await loadUsers()
+          }
+      }
+    Tests/UserAPIClientTests.swift: |
+      import XCTest
+      @testable import MyApp
+
+      final class UserAPIClientTests: XCTestCase {
+          var sut: UserAPIClient!
+          var mockSession: URLSession!
+
+          override func setUp() {
+              let config = URLSessionConfiguration.ephemeral
+              config.protocolClasses = [MockURLProtocol.self]
+              mockSession = URLSession(configuration: config)
+              sut = UserAPIClient(baseURL: URL(string: "https://api.test.com")!, session: mockSession)
+          }
+
+          func testFetchUsersDecodesResponse() async throws {
+              let json = """
+              {"users": [{"id": "1", "first_name": "Alice", "last_name": "Smith", "email_address": "alice@test.com", "joined_at": "2024-01-01T00:00:00Z"}], "totalCount": 1, "page": 1}
+              """
+              MockURLProtocol.stubResponseData = json.data(using: .utf8)
+
+              let users = try await sut.fetchUsers(page: 1)
+              XCTAssertEqual(users.count, 1)
+              XCTAssertEqual(users[0].fullName, "Alice Smith")
+              XCTAssertEqual(users[0].email, "alice@test.com")
+          }
+
+          func testFetchUsersEmptyResponse() async throws {
+              let json = """
+              {"users": [], "totalCount": 0, "page": 1}
+              """
+              MockURLProtocol.stubResponseData = json.data(using: .utf8)
+
+              let users = try await sut.fetchUsers(page: 1)
+              XCTAssertTrue(users.isEmpty)
+          }
+      }
+    Models/ProductModels.swift: |
+      import Foundation
+
+      struct ProductDTO: Codable {
+          let id: String
+          let name: String
+          let priceInCents: Int
+          let category: String
+          let createdAt: Date
+
+          enum CodingKeys: String, CodingKey {
+              case id
+              case name
+              case priceInCents = "price_in_cents"
+              case category
+              case createdAt = "created_at"
+          }
+      }
+
+      struct ProductResponse: Decodable {
+          let products: [ProductDTO]
+          let totalCount: Int
+          let page: Int
+      }
+
+      struct Product {
+          let id: String
+          let name: String
+          let price: Double
+          let category: String
+      }
+    Networking/NetworkError.swift: |
+      import Foundation
+
+      enum NetworkError: LocalizedError {
+          case invalidURL
+          case decodingFailed(Error)
+          case serverError(statusCode: Int)
+          case noData
+
+          var errorDescription: String? {
+              switch self {
+              case .invalidURL: return "Invalid URL"
+              case .decodingFailed(let error): return "Decoding failed: \(error.localizedDescription)"
+              case .serverError(let code): return "Server error: \(code)"
+              case .noData: return "No data received"
+              }
+          }
+      }
+  changed_files:
+    Networking/UserAPIClient.swift: |
+      import Foundation
+
+      class UserAPIClient {
+          private let session: URLSession
+          private let baseURL: URL
+
+          init(baseURL: URL, session: URLSession = .shared) {
+              self.baseURL = baseURL
+              self.session = session
+          }
+
+          func fetchUsers(page: Int) async throws -> [User] {
+              let url = baseURL.appendingPathComponent("/users")
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+              components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+
+              let (data, _) = try await session.data(from: components.url!)
+              let decoder = JSONDecoder()
+              decoder.dateDecodingStrategy = .iso8601
+              let response = try decoder.decode(UserResponse.self, from: data)
+              return response.users.map(mapToUser)
+          }
+
+          private func mapToUser(_ dto: UserDTO) -> User {
+              User(
+                  id: dto.id,
+                  fullName: "\(dto.firstName) \(dto.lastName)",
+                  email: dto.emailAddress,
+                  memberSince: dto.joinedAt
+              )
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userapiclient
+  selector:
+    path: Networking/UserAPIClient.swift
+    anchor: 'decoder.decode(UserResponse.self, from: data)'
+- id: userapiclient_1
+  selector:
+    path: Networking/UserAPIClient.swift
+    anchor: response.users.map(mapToUser)
+- id: userapiclient_2
+  selector:
+    path: Networking/UserAPIClient.swift
+    anchor: 'fullName: "\(dto.firstName) \(dto.lastName)"'
+- id: userapiclient_3
+  selector:
+    path: Networking/UserAPIClient.swift
+    anchor: 'email: dto.emailAddress'
+- id: usermodels
+  selector:
+    path: Models/UserModels.swift
+    anchor: 'struct UserDTO: Codable'
+- id: usermodels_1
+  selector:
+    path: Models/UserModels.swift
+    anchor: 'let firstName: String'
+- id: usermodels_2
+  selector:
+    path: Models/UserModels.swift
+    anchor: 'let emailAddress: String'
+- id: usermodels_3
+  selector:
+    path: Models/UserModels.swift
+    anchor: case emailAddress = "email_address"
+- id: usermodels_4
+  selector:
+    path: Models/UserModels.swift
+    anchor: 'struct UserResponse: Decodable'
+- id: usermodels_5
+  selector:
+    path: Models/UserModels.swift
+    anchor: 'let users: [UserDTO]'
+- id: usermodels_6
+  selector:
+    path: Models/UserModels.swift
+    anchor: struct User
+- id: no_productapiclient
+  selector:
+    path: Networking/ProductAPIClient.swift
+- id: no_apiclientprotocol
+  selector:
+    path: Networking/APIClientProtocol.swift
+- id: no_userlistviewmodel
+  selector:
+    path: ViewModels/UserListViewModel.swift
+- id: no_userapiclienttests
+  selector:
+    path: Tests/UserAPIClientTests.swift
+- id: no_productmodels
+  selector:
+    path: Models/ProductModels.swift
+- id: no_networkerror
+  selector:
+    path: Networking/NetworkError.swift
+- id: no_global_0
+  selector:
+    anchor: ProductAPIClient
+- id: no_global_1
+  selector:
+    anchor: fetchProducts
+- id: no_global_2
+  selector:
+    anchor: mapToProduct
+- id: no_global_3
+  selector:
+    anchor: ProductResponse.self
+- id: no_global_4
+  selector:
+    anchor: APIClient
+- id: no_global_5
+  selector:
+    anchor: UserFetching
+- id: no_global_6
+  selector:
+    anchor: ProductFetching
+- id: no_global_7
+  selector:
+    anchor: UserListViewModel
+- id: no_global_8
+  selector:
+    anchor: ObservableObject
+- id: no_global_9
+  selector:
+    anchor: loadUsers
+- id: no_global_10
+  selector:
+    anchor: apiClient.fetchUsers
+- id: no_global_11
+  selector:
+    anchor: UserAPIClientTests
+- id: no_global_12
+  selector:
+    anchor: MockURLProtocol
+- id: no_global_13
+  selector:
+    anchor: stubResponseData
+- id: no_global_14
+  selector:
+    anchor: testFetchUsersDecodesResponse
+- id: no_global_15
+  selector:
+    anchor: ProductDTO
+- id: no_global_16
+  selector:
+    anchor: ProductResponse
+- id: no_global_17
+  selector:
+    anchor: priceInCents
+- id: no_global_18
+  selector:
+    anchor: NetworkError
+- id: no_global_19
+  selector:
+    anchor: decodingFailed
+- id: no_global_20
+  selector:
+    anchor: serverError
+oracle:
+  required:
+  - userapiclient
+  - userapiclient_1
+  - userapiclient_2
+  - userapiclient_3
+  - usermodels
+  - usermodels_1
+  - usermodels_2
+  - usermodels_3
+  - usermodels_4
+  - usermodels_5
+  - usermodels_6
+  allowed: []
+  forbidden:
+  - no_productapiclient
+  - no_apiclientprotocol
+  - no_userlistviewmodel
+  - no_userapiclienttests
+  - no_productmodels
+  - no_networkerror
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

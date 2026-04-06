@@ -1,0 +1,176 @@
+name: javascript_078_return_type
+repo:
+  initial_files:
+    factory.ts: |
+      export function createUser(name: string, age: number) {
+          return { id: Date.now().toString(), name, age, createdAt: new Date() };
+      }
+
+      export function createAdmin(name: string) {
+          return { ...createUser(name, 0), role: 'admin' as const, permissions: ['read', 'write', 'delete'] };
+      }
+    types.ts: |
+      console.log('initial');
+    user-service.ts: |
+      import { createUser } from './factory';
+
+      export class UserService {
+          private users: ReturnType<typeof createUser>[] = [];
+
+          add(name: string, age: number) {
+              this.users.push(createUser(name, age));
+          }
+
+          findByName(name: string) {
+              return this.users.find(u => u.name === name) ?? null;
+          }
+      }
+    user-factory.test.ts: |
+      import { describe, it, expect } from 'vitest';
+      import { createUser } from './factory';
+
+      describe('createUser', () => {
+          it('returns user with all fields', () => {
+              const user = createUser('Alice', 30);
+              expect(user.id).toBeDefined();
+              expect(user.name).toBe('Alice');
+              expect(user.age).toBe(30);
+              expect(user.createdAt).toBeInstanceOf(Date);
+          });
+      });
+    product-factory.ts: |
+      export function createProduct(name: string, price: number, category: string) {
+          return { id: Date.now().toString(), name, price, category, createdAt: new Date() };
+      }
+
+      export function createDiscountedProduct(name: string, price: number, discount: number) {
+          return { ...createProduct(name, price, 'sale'), discountPercent: discount };
+      }
+  changed_files:
+    factory.ts: |
+      export function createUser(name: string, age: number) {
+          return { id: Date.now().toString(), name, age, createdAt: new Date() };
+      }
+
+      export function createAdmin(name: string) {
+          return { ...createUser(name, 0), role: 'admin' as const, permissions: ['read', 'write', 'delete'] };
+      }
+    types.ts: |
+      import { createUser } from './factory';
+
+      type User = ReturnType<typeof createUser>;
+
+      function processUser(user: User) {
+          console.log(`User ${user.name} created at ${user.createdAt}`);
+      }
+    user-service.ts: |
+      import { createUser } from './factory';
+
+      export class UserService {
+          private users: ReturnType<typeof createUser>[] = [];
+
+          add(name: string, age: number) {
+              this.users.push(createUser(name, age));
+          }
+
+          findByName(name: string) {
+              return this.users.find(u => u.name === name) ?? null;
+          }
+      }
+    user-factory.test.ts: |
+      import { describe, it, expect } from 'vitest';
+      import { createUser } from './factory';
+
+      describe('createUser', () => {
+          it('returns user with all fields', () => {
+              const user = createUser('Alice', 30);
+              expect(user.id).toBeDefined();
+              expect(user.name).toBe('Alice');
+              expect(user.age).toBe(30);
+              expect(user.createdAt).toBeInstanceOf(Date);
+          });
+      });
+    product-factory.ts: |
+      export function createProduct(name: string, price: number, category: string) {
+          return { id: Date.now().toString(), name, price, category, createdAt: new Date() };
+      }
+
+      export function createDiscountedProduct(name: string, price: number, discount: number) {
+          return { ...createProduct(name, price, 'sale'), discountPercent: discount };
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.ts
+    anchor: import { createUser } from './factory'
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: type User = ReturnType<typeof createUser>
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: user.name
+- id: types_3
+  selector:
+    path: types.ts
+    anchor: user.createdAt
+- id: factory
+  selector:
+    path: factory.ts
+    anchor: 'function createUser(name: string, age: number)'
+- id: factory_1
+  selector:
+    path: factory.ts
+    anchor: 'return { id: Date.now().toString(), name, age, createdAt: new Date() }'
+- id: no_user_service
+  selector:
+    path: user-service.ts
+- id: no_user_factory_test
+  selector:
+    path: user-factory.test.ts
+- id: no_product_factory
+  selector:
+    path: product-factory.ts
+- id: no_global_0
+  selector:
+    anchor: UserService
+- id: no_global_1
+  selector:
+    anchor: findByName
+- id: no_global_2
+  selector:
+    anchor: toBeInstanceOf
+- id: no_global_3
+  selector:
+    anchor: toBeDefined
+- id: no_global_4
+  selector:
+    anchor: createProduct
+- id: no_global_5
+  selector:
+    anchor: createDiscountedProduct
+- id: no_global_6
+  selector:
+    anchor: discountPercent
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - types_3
+  - factory
+  - factory_1
+  allowed: []
+  forbidden:
+  - no_user_service
+  - no_user_factory_test
+  - no_product_factory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

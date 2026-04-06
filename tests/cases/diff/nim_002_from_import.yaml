@@ -1,0 +1,292 @@
+name: nim_002_from_import
+repo:
+  initial_files:
+    src/pathhelper.nim: |
+      import os, strutils
+
+      proc matchesPattern*(path: string, pattern: string): bool =
+        let filename = extractFilename(path)
+        if pattern.startsWith("*"):
+          filename.endsWith(pattern[1..^1])
+        elif pattern.endsWith("*"):
+          filename.startsWith(pattern[0..^2])
+        else:
+          filename == pattern
+
+      proc normalizePath*(path: string): string =
+        path.replace("\\", "/").strip(chars = {'/'})
+
+      proc isHidden*(path: string): bool =
+        extractFilename(path).startsWith(".")
+    src/scanner.nim: |
+      from os import walkDir, joinPath, pcFile, pcDir
+      import pathhelper
+
+      proc scanDirectory*(root: string): seq[string] =
+        var results: seq[string] = @[]
+        for kind, path in walkDir(root):
+          if kind == pcFile:
+            results.add(path)
+        results
+    src/fileops.nim: |
+      import os, streams
+
+      let GARBAGE_NIM_002_A = "fileops_marker"
+      let GARBAGE_NIM_002_B = "stream_marker"
+
+      proc readFileContent*(path: string): string =
+        let stream = newFileStream(path, fmRead)
+        if stream != nil:
+          result = stream.readAll()
+          stream.close()
+
+      proc writeFileContent*(path: string, content: string) =
+        let stream = newFileStream(path, fmWrite)
+        if stream != nil:
+          stream.write(content)
+          stream.close()
+
+      proc fileExists*(path: string): bool =
+        os.fileExists(path)
+    src/formathelper.nim: |
+      import strutils, strformat
+
+      let GARBAGE_NIM_002_C = "format_marker"
+      let GARBAGE_NIM_002_D = "template_marker"
+
+      proc formatSize*(bytes: int64): string =
+        if bytes < 1024:
+          $bytes & " B"
+        elif bytes < 1024 * 1024:
+          fmt"{bytes div 1024} KB"
+        else:
+          fmt"{bytes div (1024 * 1024)} MB"
+
+      proc formatPath*(path: string, maxLen: int): string =
+        if path.len <= maxLen: path
+        else: "..." & path[^(maxLen - 3)..^1]
+    src/cachehelper.nim: |
+      import tables, times
+
+      let GARBAGE_NIM_002_E = "cache_marker"
+      let GARBAGE_NIM_002_F = "ttl_marker"
+
+      type
+        CacheEntry = object
+          value: string
+          expiry: Time
+
+      var cache = initTable[string, CacheEntry]()
+
+      proc cacheGet*(key: string): string =
+        if cache.hasKey(key) and cache[key].expiry > getTime():
+          cache[key].value
+        else:
+          ""
+
+      proc cacheSet*(key: string, value: string, ttlSeconds: int) =
+        cache[key] = CacheEntry(
+          value: value,
+          expiry: getTime() + initDuration(seconds = ttlSeconds)
+        )
+  changed_files:
+    src/pathhelper.nim: |
+      import os, strutils
+
+      proc matchesPattern*(path: string, pattern: string): bool =
+        let filename = extractFilename(path)
+        if pattern.startsWith("*"):
+          filename.endsWith(pattern[1..^1])
+        elif pattern.endsWith("*"):
+          filename.startsWith(pattern[0..^2])
+        else:
+          filename == pattern
+
+      proc normalizePath*(path: string): string =
+        path.replace("\\", "/").strip(chars = {'/'})
+
+      proc isHidden*(path: string): bool =
+        extractFilename(path).startsWith(".")
+    src/scanner.nim: |
+      from os import walkDir, joinPath, pcFile, pcDir
+      import pathhelper
+
+      proc scanDirectory*(root: string): seq[string] =
+        var results: seq[string] = @[]
+        for kind, path in walkDir(root):
+          if kind == pcFile:
+            results.add(path)
+        results
+
+      proc scanWithFilter*(root: string, pattern: string): seq[string] =
+        var results: seq[string] = @[]
+        for kind, path in walkDir(root):
+          if kind == pcFile and matchesPattern(path, pattern):
+            results.add(normalizePath(path))
+        results
+
+      proc scanRecursive*(root: string, pattern: string): seq[string] =
+        var results: seq[string] = @[]
+        for kind, path in walkDir(root):
+          case kind
+          of pcFile:
+            if matchesPattern(path, pattern) and not isHidden(path):
+              results.add(path)
+          of pcDir:
+            if not isHidden(path):
+              results.add(scanRecursive(path, pattern))
+          else:
+            discard
+        results
+    src/fileops.nim: |
+      import os, streams
+
+      let GARBAGE_NIM_002_A = "fileops_marker"
+      let GARBAGE_NIM_002_B = "stream_marker"
+
+      proc readFileContent*(path: string): string =
+        let stream = newFileStream(path, fmRead)
+        if stream != nil:
+          result = stream.readAll()
+          stream.close()
+
+      proc writeFileContent*(path: string, content: string) =
+        let stream = newFileStream(path, fmWrite)
+        if stream != nil:
+          stream.write(content)
+          stream.close()
+
+      proc fileExists*(path: string): bool =
+        os.fileExists(path)
+    src/formathelper.nim: |
+      import strutils, strformat
+
+      let GARBAGE_NIM_002_C = "format_marker"
+      let GARBAGE_NIM_002_D = "template_marker"
+
+      proc formatSize*(bytes: int64): string =
+        if bytes < 1024:
+          $bytes & " B"
+        elif bytes < 1024 * 1024:
+          fmt"{bytes div 1024} KB"
+        else:
+          fmt"{bytes div (1024 * 1024)} MB"
+
+      proc formatPath*(path: string, maxLen: int): string =
+        if path.len <= maxLen: path
+        else: "..." & path[^(maxLen - 3)..^1]
+    src/cachehelper.nim: |
+      import tables, times
+
+      let GARBAGE_NIM_002_E = "cache_marker"
+      let GARBAGE_NIM_002_F = "ttl_marker"
+
+      type
+        CacheEntry = object
+          value: string
+          expiry: Time
+
+      var cache = initTable[string, CacheEntry]()
+
+      proc cacheGet*(key: string): string =
+        if cache.hasKey(key) and cache[key].expiry > getTime():
+          cache[key].value
+        else:
+          ""
+
+      proc cacheSet*(key: string, value: string, ttlSeconds: int) =
+        cache[key] = CacheEntry(
+          value: value,
+          expiry: getTime() + initDuration(seconds = ttlSeconds)
+        )
+  commit_message: Update files
+fragments:
+- id: scanner
+  selector:
+    path: src/scanner.nim
+    anchor: 'proc scanWithFilter*(root: string, pattern: string): seq[string]'
+- id: scanner_1
+  selector:
+    path: src/scanner.nim
+    anchor: matchesPattern(path, pattern)
+- id: scanner_2
+  selector:
+    path: src/scanner.nim
+    anchor: normalizePath(path)
+- id: pathhelper
+  selector:
+    path: src/pathhelper.nim
+    anchor: 'proc matchesPattern*(path: string, pattern: string): bool'
+- id: pathhelper_1
+  selector:
+    path: src/pathhelper.nim
+    anchor: 'proc normalizePath*(path: string): string'
+- id: no_fileops
+  selector:
+    path: src/fileops.nim
+- id: no_formathelper
+  selector:
+    path: src/formathelper.nim
+- id: no_cachehelper
+  selector:
+    path: src/cachehelper.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIM_002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIM_002_B
+- id: no_global_2
+  selector:
+    anchor: readFileContent
+- id: no_global_3
+  selector:
+    anchor: writeFileContent
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_NIM_002_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_NIM_002_D
+- id: no_global_6
+  selector:
+    anchor: formatSize
+- id: no_global_7
+  selector:
+    anchor: formatPath
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_NIM_002_E
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_NIM_002_F
+- id: no_global_10
+  selector:
+    anchor: cacheGet
+- id: no_global_11
+  selector:
+    anchor: cacheSet
+oracle:
+  required:
+  - scanner
+  - scanner_1
+  - scanner_2
+  - pathhelper
+  - pathhelper_1
+  allowed: []
+  forbidden:
+  - no_fileops
+  - no_formathelper
+  - no_cachehelper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

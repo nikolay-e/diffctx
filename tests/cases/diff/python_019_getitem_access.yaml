@@ -1,0 +1,316 @@
+name: python_019_getitem_access
+repo:
+  initial_files:
+    cache.py: |
+      from typing import Generic, TypeVar, Optional, Callable
+      from dataclasses import dataclass, field
+      from datetime import datetime, timedelta
+      from collections import OrderedDict
+
+      T = TypeVar("T")
+
+      @dataclass
+      class CacheEntry(Generic[T]):
+          value: T
+          created_at: datetime
+          expires_at: Optional[datetime]
+          access_count: int = 0
+
+          @property
+          def is_expired(self) -> bool:
+              if self.expires_at is None:
+                  return False
+              return datetime.now() > self.expires_at
+
+      class CacheStatistics:
+          def __init__(self):
+              self.hits = 0
+              self.misses = 0
+
+          @property
+          def hit_rate(self) -> float:
+              total = self.hits + self.misses
+              return self.hits / total if total > 0 else 0.0
+
+      class Cache(Generic[T]):
+          def __init__(self, max_size: int = 1000, default_ttl: int = None):
+              self._data: OrderedDict[str, CacheEntry[T]] = OrderedDict()
+              self._max_size = max_size
+              self._default_ttl = default_ttl
+              self.stats = CacheStatistics()
+
+          def __getitem__(self, key: str) -> Optional[T]:
+              entry = self._data.get(key)
+              if entry is None:
+                  self.stats.misses += 1
+                  return None
+              if entry.is_expired:
+                  del self._data[key]
+                  self.stats.misses += 1
+                  return None
+              entry.access_count += 1
+              self.stats.hits += 1
+              return entry.value
+
+          def __setitem__(self, key: str, value: T) -> None:
+              expires_at = None
+              if self._default_ttl:
+                  expires_at = datetime.now() + timedelta(seconds=self._default_ttl)
+              self._data[key] = CacheEntry(
+                  value=value,
+                  created_at=datetime.now(),
+                  expires_at=expires_at
+              )
+
+          def __contains__(self, key: str) -> bool:
+              entry = self._data.get(key)
+              return entry is not None and not entry.is_expired
+    service.py: |
+      def get_value():
+          pass
+    session_store.py: |
+      from typing import Dict, Any, Optional
+      from dataclasses import dataclass
+      from datetime import datetime, timedelta
+
+      @dataclass
+      class SessionData:
+          user_id: int
+          data: Dict[str, Any]
+          created_at: datetime
+          expires_at: datetime
+
+      class SessionStore:
+          def __init__(self, ttl_seconds: int = 3600):
+              self._store: Dict[str, SessionData] = {}
+              self._ttl = ttl_seconds
+
+          def get(self, session_id: str) -> Optional[SessionData]:
+              session = self._store.get(session_id)
+              if session and datetime.now() < session.expires_at:
+                  return session
+              return None
+
+          def set(self, session_id: str, user_id: int, data: Dict[str, Any]) -> None:
+              self._store[session_id] = SessionData(
+                  user_id=user_id, data=data,
+                  created_at=datetime.now(),
+                  expires_at=datetime.now() + timedelta(seconds=self._ttl),
+              )
+    feature_flags.py: |
+      from typing import Dict, Set
+      from dataclasses import dataclass
+
+      @dataclass
+      class FeatureFlag:
+          name: str
+          enabled: bool
+          rollout_percentage: float = 100.0
+
+      class FeatureFlagStore:
+          def __init__(self):
+              self._flags: Dict[str, FeatureFlag] = {}
+
+          def is_enabled(self, flag_name: str) -> bool:
+              flag = self._flags.get(flag_name)
+              return flag.enabled if flag else False
+
+          def set_flag(self, name: str, enabled: bool) -> None:
+              self._flags[name] = FeatureFlag(name=name, enabled=enabled)
+
+          def list_enabled(self) -> Set[str]:
+              return {n for n, f in self._flags.items() if f.enabled}
+  changed_files:
+    cache.py: |
+      from typing import Generic, TypeVar, Optional, Callable
+      from dataclasses import dataclass, field
+      from datetime import datetime, timedelta
+      from collections import OrderedDict
+
+      T = TypeVar("T")
+
+      @dataclass
+      class CacheEntry(Generic[T]):
+          value: T
+          created_at: datetime
+          expires_at: Optional[datetime]
+          access_count: int = 0
+
+          @property
+          def is_expired(self) -> bool:
+              if self.expires_at is None:
+                  return False
+              return datetime.now() > self.expires_at
+
+      class CacheStatistics:
+          def __init__(self):
+              self.hits = 0
+              self.misses = 0
+
+          @property
+          def hit_rate(self) -> float:
+              total = self.hits + self.misses
+              return self.hits / total if total > 0 else 0.0
+
+      class Cache(Generic[T]):
+          def __init__(self, max_size: int = 1000, default_ttl: int = None):
+              self._data: OrderedDict[str, CacheEntry[T]] = OrderedDict()
+              self._max_size = max_size
+              self._default_ttl = default_ttl
+              self.stats = CacheStatistics()
+
+          def __getitem__(self, key: str) -> Optional[T]:
+              entry = self._data.get(key)
+              if entry is None:
+                  self.stats.misses += 1
+                  return None
+              if entry.is_expired:
+                  del self._data[key]
+                  self.stats.misses += 1
+                  return None
+              entry.access_count += 1
+              self.stats.hits += 1
+              return entry.value
+
+          def __setitem__(self, key: str, value: T) -> None:
+              expires_at = None
+              if self._default_ttl:
+                  expires_at = datetime.now() + timedelta(seconds=self._default_ttl)
+              self._data[key] = CacheEntry(
+                  value=value,
+                  created_at=datetime.now(),
+                  expires_at=expires_at
+              )
+
+          def __contains__(self, key: str) -> bool:
+              entry = self._data.get(key)
+              return entry is not None and not entry.is_expired
+    service.py: |
+      from cache import Cache, CacheEntry, CacheStatistics
+      from typing import Any, Optional
+
+      cache: Cache[Any] = Cache(max_size=500, default_ttl=3600)
+
+      class DataService:
+          def __init__(self):
+              self.request_cache = Cache[dict](max_size=100, default_ttl=60)
+
+          def get_data(self, resource_id: str) -> Optional[dict]:
+              return self.request_cache[resource_id]
+
+          def set_data(self, resource_id: str, data: dict) -> None:
+              self.request_cache[resource_id] = data
+
+          def get_stats(self) -> dict:
+              return {
+                  "hits": self.request_cache.stats.hits,
+                  "misses": self.request_cache.stats.misses,
+                  "hit_rate": self.request_cache.stats.hit_rate
+              }
+
+      def get_value(key: str) -> Any:
+          return cache[key]
+    session_store.py: |
+      from typing import Dict, Any, Optional
+      from dataclasses import dataclass
+      from datetime import datetime, timedelta
+
+      @dataclass
+      class SessionData:
+          user_id: int
+          data: Dict[str, Any]
+          created_at: datetime
+          expires_at: datetime
+
+      class SessionStore:
+          def __init__(self, ttl_seconds: int = 3600):
+              self._store: Dict[str, SessionData] = {}
+              self._ttl = ttl_seconds
+
+          def get(self, session_id: str) -> Optional[SessionData]:
+              session = self._store.get(session_id)
+              if session and datetime.now() < session.expires_at:
+                  return session
+              return None
+
+          def set(self, session_id: str, user_id: int, data: Dict[str, Any]) -> None:
+              self._store[session_id] = SessionData(
+                  user_id=user_id, data=data,
+                  created_at=datetime.now(),
+                  expires_at=datetime.now() + timedelta(seconds=self._ttl),
+              )
+    feature_flags.py: |
+      from typing import Dict, Set
+      from dataclasses import dataclass
+
+      @dataclass
+      class FeatureFlag:
+          name: str
+          enabled: bool
+          rollout_percentage: float = 100.0
+
+      class FeatureFlagStore:
+          def __init__(self):
+              self._flags: Dict[str, FeatureFlag] = {}
+
+          def is_enabled(self, flag_name: str) -> bool:
+              flag = self._flags.get(flag_name)
+              return flag.enabled if flag else False
+
+          def set_flag(self, name: str, enabled: bool) -> None:
+              self._flags[name] = FeatureFlag(name=name, enabled=enabled)
+
+          def list_enabled(self) -> Set[str]:
+              return {n for n, f in self._flags.items() if f.enabled}
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: from cache import Cache, CacheEntry, CacheStatistics
+- id: service_1
+  selector:
+    path: service.py
+    anchor: 'def __init__(self):'
+- id: cache_file
+  selector:
+    path: cache.py
+- id: no_session_store
+  selector:
+    path: session_store.py
+- id: no_feature_flags
+  selector:
+    path: feature_flags.py
+- id: no_global_0
+  selector:
+    anchor: SessionStore
+- id: no_global_1
+  selector:
+    anchor: SessionData
+- id: no_global_2
+  selector:
+    anchor: FeatureFlagStore
+- id: no_global_3
+  selector:
+    anchor: FeatureFlag
+- id: no_global_4
+  selector:
+    anchor: is_enabled
+- id: no_global_5
+  selector:
+    anchor: list_enabled
+oracle:
+  required:
+  - service
+  - service_1
+  - cache_file
+  allowed: []
+  forbidden:
+  - no_session_store
+  - no_feature_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

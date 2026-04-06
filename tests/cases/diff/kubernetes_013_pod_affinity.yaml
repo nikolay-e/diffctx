@@ -1,0 +1,235 @@
+name: kubernetes_013_pod_affinity
+repo:
+  initial_files:
+    k8s/apps/web/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-app
+        namespace: production
+        labels:
+          app: web-app
+          tier: frontend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: web-app
+        template:
+          metadata:
+            labels:
+              app: web-app
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: web-app:v1.0.0
+              ports:
+              - containerPort: 3000
+              env:
+              - name: CACHE_URL
+                value: "redis://cache.production.svc.cluster.local:6379"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/apps/cache/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cache
+        namespace: production
+        labels:
+          app: cache
+          tier: caching
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: cache
+        template:
+          metadata:
+            labels:
+              app: cache
+              tier: caching
+          spec:
+            containers:
+            - name: redis
+              image: redis:7-alpine
+              ports:
+              - containerPort: 6379
+    k8s/apps/cache/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: cache
+        namespace: production
+      spec:
+        selector:
+          app: cache
+        ports:
+        - port: 6379
+          targetPort: 6379
+    k8s/infra/node-labels.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: label-gpu-nodes
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            serviceAccountName: node-labeler
+            containers:
+            - name: labeler
+              image: bitnami/kubectl:1.28
+              command:
+              - /bin/sh
+              - -c
+              - kubectl label nodes --selector=node.kubernetes.io/instance-type=p3.2xlarge accelerator=nvidia-v100 --overwrite
+            restartPolicy: Never
+  changed_files:
+    k8s/apps/web/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-app
+        namespace: production
+        labels:
+          app: web-app
+          tier: frontend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: web-app
+        template:
+          metadata:
+            labels:
+              app: web-app
+              tier: frontend
+          spec:
+            affinity:
+              podAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: cache
+                  topologyKey: kubernetes.io/hostname
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app: web-app
+                    topologyKey: topology.kubernetes.io/zone
+            containers:
+            - name: web
+              image: web-app:v1.0.0
+              ports:
+              - containerPort: 3000
+              env:
+              - name: CACHE_URL
+                value: "redis://cache.production.svc.cluster.local:6379"
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/apps/cache/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cache
+        namespace: production
+        labels:
+          app: cache
+          tier: caching
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: cache
+        template:
+          metadata:
+            labels:
+              app: cache
+              tier: caching
+          spec:
+            containers:
+            - name: redis
+              image: redis:7-alpine
+              ports:
+              - containerPort: 6379
+    k8s/apps/cache/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: cache
+        namespace: production
+      spec:
+        selector:
+          app: cache
+        ports:
+        - port: 6379
+          targetPort: 6379
+    k8s/infra/node-labels.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: label-gpu-nodes
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            serviceAccountName: node-labeler
+            containers:
+            - name: labeler
+              image: bitnami/kubectl:1.28
+              command:
+              - /bin/sh
+              - -c
+              - kubectl label nodes --selector=node.kubernetes.io/instance-type=p3.2xlarge accelerator=nvidia-v100 --overwrite
+            restartPolicy: Never
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/web/deployment.yaml
+    anchor: 'requiredDuringSchedulingIgnoredDuringExecution:'
+- id: deployment_1
+  selector:
+    path: k8s/apps/web/deployment.yaml
+    anchor: 'topologyKey: kubernetes.io/hostname'
+- id: no_service
+  selector:
+    path: k8s/apps/cache/service.yaml
+- id: no_node_labels
+  selector:
+    path: k8s/infra/node-labels.yaml
+- id: no_global_0
+  selector:
+    anchor: label-gpu-nodes
+- id: no_global_1
+  selector:
+    anchor: node-labeler
+- id: no_global_2
+  selector:
+    anchor: nvidia-v100
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  allowed: []
+  forbidden:
+  - no_service
+  - no_node_labels
+  - no_global_0
+  - no_global_1
+  - no_global_2

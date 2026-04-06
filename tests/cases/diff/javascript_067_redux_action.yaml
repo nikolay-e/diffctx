@@ -1,0 +1,173 @@
+name: javascript_067_redux_action
+repo:
+  initial_files:
+    src/store/userSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      interface UserState {
+          users: User[];
+          loading: boolean;
+      }
+
+      const initialState: UserState = { users: [], loading: false };
+
+      export const userSlice = createSlice({
+          name: 'users',
+          initialState,
+          reducers: {
+              addUser: (state, action: PayloadAction<User>) => {
+                  state.users.push(action.payload);
+              },
+              removeUser: (state, action: PayloadAction<string>) => {
+                  state.users = state.users.filter(u => u.id !== action.payload);
+              },
+          },
+      });
+
+      export const { addUser, removeUser } = userSlice.actions;
+    src/components/UserForm.tsx: |
+      export function UserForm() {
+          return <div>Placeholder</div>;
+      }
+    src/store/productSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface Product {
+          id: string;
+          name: string;
+          price: number;
+      }
+
+      const initialState = { products: [] as Product[] };
+
+      export const productSlice = createSlice({
+          name: 'products',
+          initialState,
+          reducers: {
+              addProduct: (state, action: PayloadAction<Product>) => {
+                  state.products.push(action.payload);
+              },
+          },
+      });
+
+      export const { addProduct } = productSlice.actions;
+    src/components/UserForm.test.tsx: |
+      import { render, screen, fireEvent } from '@testing-library/react';
+      import { Provider } from 'react-redux';
+
+      describe('UserForm', () => {
+          it('placeholder test', () => {
+              expect(true).toBe(true);
+          });
+      });
+  changed_files:
+    src/store/userSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      interface UserState {
+          users: User[];
+          loading: boolean;
+      }
+
+      const initialState: UserState = { users: [], loading: false };
+
+      export const userSlice = createSlice({
+          name: 'users',
+          initialState,
+          reducers: {
+              addUser: (state, action: PayloadAction<User>) => {
+                  state.users.push(action.payload);
+              },
+              removeUser: (state, action: PayloadAction<string>) => {
+                  state.users = state.users.filter(u => u.id !== action.payload);
+              },
+          },
+      });
+
+      export const { addUser, removeUser } = userSlice.actions;
+    src/components/UserForm.tsx: |
+      import { useDispatch } from 'react-redux';
+      import { addUser } from '../store/userSlice';
+
+      export function UserForm() {
+          const dispatch = useDispatch();
+
+          const handleAdd = () => {
+              dispatch(addUser({ id: Date.now().toString(), name: 'New User' }));
+          };
+
+          return <button onClick={handleAdd}>Add User</button>;
+      }
+    src/store/productSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface Product {
+          id: string;
+          name: string;
+          price: number;
+      }
+
+      const initialState = { products: [] as Product[] };
+
+      export const productSlice = createSlice({
+          name: 'products',
+          initialState,
+          reducers: {
+              addProduct: (state, action: PayloadAction<Product>) => {
+                  state.products.push(action.payload);
+              },
+          },
+      });
+
+      export const { addProduct } = productSlice.actions;
+    src/components/UserForm.test.tsx: |
+      import { render, screen, fireEvent } from '@testing-library/react';
+      import { Provider } from 'react-redux';
+
+      describe('UserForm', () => {
+          it('placeholder test', () => {
+              expect(true).toBe(true);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: userslice
+  selector:
+    path: src/store/userSlice.ts
+    anchor: PayloadAction<User>
+- id: userslice_1
+  selector:
+    path: src/store/userSlice.ts
+    anchor: state.users.push
+- id: no_global_0
+  selector:
+    anchor: productSlice
+- id: no_global_1
+  selector:
+    anchor: addProduct
+- id: no_global_2
+  selector:
+    anchor: placeholder test
+- id: no_global_3
+  selector:
+    anchor: fireEvent
+oracle:
+  required:
+  - userslice
+  - userslice_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

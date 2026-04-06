@@ -1,0 +1,195 @@
+name: operations_004_ignore_pycache
+repo:
+  initial_files:
+    calculator.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      def add(a: Number, b: Number) -> Number:
+          return a + b
+
+      def subtract(a: Number, b: Number) -> Number:
+          return a - b
+
+      def multiply(a: Number, b: Number) -> Number:
+          return a * b
+
+      def divide(a: Number, b: Number) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+
+      def power(base: Number, exponent: int) -> Number:
+          return base ** exponent
+    __pycache__/calculator.cpython-311.pyc: binary_content_placeholder
+    __pycache__/utils.cpython-311.pyc: binary_content_placeholder
+    utils/converter.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      UNIT_CONVERSIONS = {
+          "km_to_miles": 0.621371,
+          "kg_to_lbs": 2.20462,
+          "celsius_to_fahrenheit_offset": 32,
+      }
+
+      def km_to_miles(km: Number) -> float:
+          return km * UNIT_CONVERSIONS["km_to_miles"]
+
+      def celsius_to_fahrenheit(celsius: Number) -> float:
+          return celsius * 9 / 5 + UNIT_CONVERSIONS["celsius_to_fahrenheit_offset"]
+
+      class UnitConverter:
+          def __init__(self, precision: int = 2):
+              self.precision = precision
+
+          def convert(self, value: Number, factor: float) -> float:
+              return round(value * factor, self.precision)
+    utils/formatter.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      DECIMAL_SEPARATOR = "."
+      THOUSANDS_SEPARATOR = ","
+
+      class NumberFormatter:
+          def __init__(self, decimal_places: int = 2):
+              self.decimal_places = decimal_places
+
+          def format_currency(self, amount: Number, symbol: str = "$") -> str:
+              formatted = f"{amount:,.{self.decimal_places}f}"
+              return f"{symbol}{formatted}"
+
+          def format_percentage(self, value: Number) -> str:
+              return f"{value:.{self.decimal_places}f}%"
+  changed_files:
+    calculator.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      def add(a: Number, b: Number) -> Number:
+          return a + b
+
+      def subtract(a: Number, b: Number) -> Number:
+          return a - b
+
+      def multiply(a: Number, b: Number) -> Number:
+          return a * b
+
+      def divide(a: Number, b: Number) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+
+      def power(base: Number, exponent: int) -> Number:
+          return base ** exponent
+
+      def modulo(a: Number, b: Number) -> Number:
+          if b == 0:
+              raise ValueError("Cannot modulo by zero")
+          return a % b
+    __pycache__/calculator.cpython-311.pyc: binary_content_updated
+    __pycache__/utils.cpython-311.pyc: binary_content_placeholder
+    utils/converter.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      UNIT_CONVERSIONS = {
+          "km_to_miles": 0.621371,
+          "kg_to_lbs": 2.20462,
+          "celsius_to_fahrenheit_offset": 32,
+      }
+
+      def km_to_miles(km: Number) -> float:
+          return km * UNIT_CONVERSIONS["km_to_miles"]
+
+      def celsius_to_fahrenheit(celsius: Number) -> float:
+          return celsius * 9 / 5 + UNIT_CONVERSIONS["celsius_to_fahrenheit_offset"]
+
+      class UnitConverter:
+          def __init__(self, precision: int = 2):
+              self.precision = precision
+
+          def convert(self, value: Number, factor: float) -> float:
+              return round(value * factor, self.precision)
+    utils/formatter.py: |
+      from typing import Union
+
+      Number = Union[int, float]
+
+      DECIMAL_SEPARATOR = "."
+      THOUSANDS_SEPARATOR = ","
+
+      class NumberFormatter:
+          def __init__(self, decimal_places: int = 2):
+              self.decimal_places = decimal_places
+
+          def format_currency(self, amount: Number, symbol: str = "$") -> str:
+              formatted = f"{amount:,.{self.decimal_places}f}"
+              return f"{symbol}{formatted}"
+
+          def format_percentage(self, value: Number) -> str:
+              return f"{value:.{self.decimal_places}f}%"
+  commit_message: Update files
+fragments:
+- id: calculator_file
+  selector:
+    path: calculator.py
+- id: no_calculator_cpython_311
+  selector:
+    path: __pycache__/calculator.cpython-311.pyc
+- id: no_utils_cpython_311
+  selector:
+    path: __pycache__/utils.cpython-311.pyc
+- id: no_converter
+  selector:
+    path: utils/converter.py
+- id: no_formatter
+  selector:
+    path: utils/formatter.py
+- id: no_global_0
+  selector:
+    anchor: cpython-311.pyc
+- id: no_global_1
+  selector:
+    anchor: __pycache__
+- id: no_global_2
+  selector:
+    anchor: UnitConverter
+- id: no_global_3
+  selector:
+    anchor: NumberFormatter
+- id: no_global_4
+  selector:
+    anchor: UNIT_CONVERSIONS
+- id: no_global_5
+  selector:
+    anchor: DECIMAL_SEPARATOR
+- id: no_global_6
+  selector:
+    anchor: converter.py
+- id: no_global_7
+  selector:
+    anchor: formatter.py
+oracle:
+  required:
+  - calculator_file
+  allowed: []
+  forbidden:
+  - no_calculator_cpython_311
+  - no_utils_cpython_311
+  - no_converter
+  - no_formatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

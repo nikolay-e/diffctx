@@ -1,0 +1,72 @@
+name: ppr_008_single_node_graph
+repo:
+  initial_files:
+    single.py: |
+      def only():
+          pass
+    utils.py: |
+      def standalone_helper():
+          return "standalone_result"
+
+      def format_output(value):
+          return str(value)
+    constants.py: |
+      ONLY_VALUE = None
+
+      def get_only_default():
+          return ONLY_VALUE
+  changed_files:
+    single.py: |
+      def only():
+          return 1
+    utils.py: |
+      def standalone_helper():
+          return "standalone_result"
+
+      def format_output(value):
+          return str(value)
+    constants.py: |
+      ONLY_VALUE = None
+
+      def get_only_default():
+          return ONLY_VALUE
+  commit_message: Update files
+fragments:
+- id: single
+  selector:
+    path: single.py
+    anchor: 'def only():'
+- id: single_1
+  selector:
+    path: single.py
+    anchor: return 1
+- id: no_utils
+  selector:
+    path: utils.py
+- id: no_constants
+  selector:
+    path: constants.py
+- id: no_global_0
+  selector:
+    anchor: standalone_helper
+- id: no_global_1
+  selector:
+    anchor: format_output
+- id: no_global_2
+  selector:
+    anchor: ONLY_VALUE
+- id: no_global_3
+  selector:
+    anchor: get_only_default
+oracle:
+  required:
+  - single
+  - single_1
+  allowed: []
+  forbidden:
+  - no_utils
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

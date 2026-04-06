@@ -1,0 +1,148 @@
+name: terraform_037_provisioner
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami                    = var.ami_id
+        instance_type          = "t3.micro"
+        key_name               = var.ssh_key_name
+        vpc_security_group_ids = [aws_security_group.web.id]
+      }
+    variables.tf: |
+      variable "ami_id" {
+        type = string
+      }
+
+      variable "ssh_key_name" {
+        type    = string
+        default = "deploy-key"
+      }
+
+      variable "private_key_path" {
+        type    = string
+        default = "~/.ssh/deploy-key.pem"
+      }
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-sg"
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          from_port   = 22
+          to_port     = 22
+          protocol    = "tcp"
+          cidr_blocks = [var.admin_cidr]
+        }
+
+        ingress {
+          from_port   = 80
+          to_port     = 80
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    bastion/setup.tf: |
+      resource "aws_instance" "bastion" {
+        ami           = var.bastion_ami
+        instance_type = "t3.nano"
+
+        provisioner "remote-exec" {
+          inline = [
+            "sudo yum install -y fail2ban",
+            "sudo systemctl enable fail2ban"
+          ]
+
+          connection {
+            type        = "ssh"
+            user        = "ec2-user"
+            private_key = file(var.bastion_key_path)
+            host        = self.public_ip
+          }
+        }
+      }
+    networking/nacl.tf: |
+      resource "aws_network_acl" "private" {
+        vpc_id = aws_vpc.main.id
+
+        ingress {
+          protocol   = "tcp"
+          rule_no    = 100
+          action     = "allow"
+          cidr_block = "10.0.0.0/8"
+          from_port  = 443
+          to_port    = 443
+        }
+
+        tags = {
+          Name = "private-nacl"
+        }
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami                    = var.ami_id
+        instance_type          = "t3.micro"
+        key_name               = var.ssh_key_name
+        vpc_security_group_ids = [aws_security_group.web.id]
+
+        provisioner "remote-exec" {
+          inline = [
+            "sudo yum update -y",
+            "sudo yum install -y docker",
+            "sudo systemctl start docker"
+          ]
+
+          connection {
+            type        = "ssh"
+            user        = "ec2-user"
+            private_key = file(var.private_key_path)
+            host        = self.public_ip
+          }
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "private_key_path" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: deploy-key.pem
+- id: security
+  selector:
+    path: security.tf
+    anchor: from_port   = 22
+- id: security_1
+  selector:
+    path: security.tf
+    anchor: resource "aws_security_group" "web" {
+- id: no_setup
+  selector:
+    path: bastion/setup.tf
+- id: no_nacl
+  selector:
+    path: networking/nacl.tf
+- id: no_global_0
+  selector:
+    anchor: bastion_key_path
+- id: no_global_1
+  selector:
+    anchor: fail2ban
+- id: no_global_2
+  selector:
+    anchor: private-nacl
+oracle:
+  required:
+  - variables
+  - variables_1
+  - security
+  - security_1
+  allowed: []
+  forbidden:
+  - no_setup
+  - no_nacl
+  - no_global_0
+  - no_global_1
+  - no_global_2

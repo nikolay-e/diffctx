@@ -1,0 +1,285 @@
+name: jvm_and_compiled_018_csharp_fluent_validation
+repo:
+  initial_files:
+    Models/UserDto.cs: |
+      namespace MyApp.Models
+      {
+          public class UserDto
+          {
+              public string Name { get; set; }
+              public string Email { get; set; }
+              public int Age { get; set; }
+              public string Role { get; set; }
+          }
+      }
+    Validators/UserValidator.cs: |
+      namespace MyApp.Validators
+      {
+          class UserValidator { }
+      }
+    Services/UserService.cs: |
+      using MyApp.Models;
+      using MyApp.Validators;
+      using FluentValidation;
+
+      namespace MyApp.Services
+      {
+          public class UserService
+          {
+              private readonly UserValidator _validator;
+              private readonly List<UserDto> _users = new();
+
+              public UserService(UserValidator validator)
+              {
+                  _validator = validator;
+              }
+
+              public UserDto CreateUser(UserDto dto)
+              {
+                  var result = _validator.Validate(dto);
+                  if (!result.IsValid)
+                      throw new ValidationException(result.Errors);
+                  _users.Add(dto);
+                  return dto;
+              }
+
+              public List<UserDto> GetAllUsers() => _users;
+          }
+      }
+    Validators/ProductValidator.cs: |
+      using FluentValidation;
+      using MyApp.Models;
+
+      namespace MyApp.Validators
+      {
+          public class ProductValidator : AbstractValidator<ProductDto>
+          {
+              public ProductValidator()
+              {
+                  RuleFor(x => x.Name)
+                      .NotEmpty()
+                      .MaximumLength(200);
+
+                  RuleFor(x => x.Price)
+                      .GreaterThan(0)
+                      .LessThan(1000000);
+
+                  RuleFor(x => x.Category)
+                      .NotEmpty();
+              }
+          }
+      }
+    Models/ProductDto.cs: |
+      namespace MyApp.Models
+      {
+          public class ProductDto
+          {
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+              public string Category { get; set; }
+              public string Sku { get; set; }
+          }
+      }
+    Controllers/UserController.cs: |
+      using Microsoft.AspNetCore.Mvc;
+      using MyApp.Models;
+      using MyApp.Services;
+
+      namespace MyApp.Controllers
+      {
+          [ApiController]
+          [Route("api/[controller]")]
+          public class UserController : ControllerBase
+          {
+              private readonly UserService _service;
+
+              public UserController(UserService service)
+              {
+                  _service = service;
+              }
+
+              [HttpPost]
+              public ActionResult<UserDto> Create([FromBody] UserDto dto)
+              {
+                  var user = _service.CreateUser(dto);
+                  return CreatedAtAction(nameof(GetById), new { id = 1 }, user);
+              }
+
+              [HttpGet("{id}")]
+              public ActionResult<UserDto> GetById(int id)
+              {
+                  return Ok(new UserDto { Name = "Test" });
+              }
+          }
+      }
+    Tests/UserValidatorTests.cs: |
+      using FluentValidation.TestHelper;
+      using MyApp.Models;
+      using MyApp.Validators;
+      using Xunit;
+
+      namespace MyApp.Tests
+      {
+          public class UserValidatorTests
+          {
+              private readonly UserValidator _validator = new();
+
+              [Fact]
+              public void ValidUser_ShouldPass()
+              {
+                  var dto = new UserDto { Name = "Alice", Email = "alice@test.com", Age = 25 };
+                  var result = _validator.TestValidate(dto);
+                  result.ShouldNotHaveAnyValidationErrors();
+              }
+
+              [Fact]
+              public void EmptyName_ShouldFail()
+              {
+                  var dto = new UserDto { Name = "", Email = "a@b.com", Age = 20 };
+                  var result = _validator.TestValidate(dto);
+                  result.ShouldHaveValidationErrorFor(x => x.Name);
+              }
+          }
+      }
+  changed_files:
+    Validators/UserValidator.cs: |
+      using FluentValidation;
+      using MyApp.Models;
+
+      namespace MyApp.Validators
+      {
+          public class UserValidator : AbstractValidator<UserDto>
+          {
+              public UserValidator()
+              {
+                  RuleFor(x => x.Name)
+                      .NotEmpty()
+                      .MaximumLength(100);
+
+                  RuleFor(x => x.Email)
+                      .NotEmpty()
+                      .EmailAddress();
+
+                  RuleFor(x => x.Age)
+                      .GreaterThan(0)
+                      .LessThan(150);
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: uservalidator
+  selector:
+    path: Validators/UserValidator.cs
+    anchor: AbstractValidator<UserDto>
+- id: uservalidator_1
+  selector:
+    path: Validators/UserValidator.cs
+    anchor: RuleFor(x => x.Name)
+- id: uservalidator_2
+  selector:
+    path: Validators/UserValidator.cs
+    anchor: RuleFor(x => x.Email)
+- id: uservalidator_3
+  selector:
+    path: Validators/UserValidator.cs
+    anchor: .EmailAddress()
+- id: userdto
+  selector:
+    path: Models/UserDto.cs
+    anchor: public string Name { get; set; }
+- id: userdto_1
+  selector:
+    path: Models/UserDto.cs
+    anchor: public string Email { get; set; }
+- id: userdto_2
+  selector:
+    path: Models/UserDto.cs
+    anchor: public int Age { get; set; }
+- id: no_userservice
+  selector:
+    path: Services/UserService.cs
+- id: no_productvalidator
+  selector:
+    path: Validators/ProductValidator.cs
+- id: no_productdto
+  selector:
+    path: Models/ProductDto.cs
+- id: no_usercontroller
+  selector:
+    path: Controllers/UserController.cs
+- id: no_uservalidatortests
+  selector:
+    path: Tests/UserValidatorTests.cs
+- id: no_global_0
+  selector:
+    anchor: ProductValidator
+- id: no_global_1
+  selector:
+    anchor: AbstractValidator<ProductDto>
+- id: no_global_2
+  selector:
+    anchor: RuleFor(x => x.Price)
+- id: no_global_3
+  selector:
+    anchor: UserService
+- id: no_global_4
+  selector:
+    anchor: _validator.Validate(dto)
+- id: no_global_5
+  selector:
+    anchor: CreateUser
+- id: no_global_6
+  selector:
+    anchor: ProductDto
+- id: no_global_7
+  selector:
+    anchor: decimal Price
+- id: no_global_8
+  selector:
+    anchor: UserController
+- id: no_global_9
+  selector:
+    anchor: '[ApiController]'
+- id: no_global_10
+  selector:
+    anchor: CreatedAtAction
+- id: no_global_11
+  selector:
+    anchor: UserValidatorTests
+- id: no_global_12
+  selector:
+    anchor: TestValidate
+- id: no_global_13
+  selector:
+    anchor: ShouldNotHaveAnyValidationErrors
+oracle:
+  required:
+  - uservalidator
+  - uservalidator_1
+  - uservalidator_2
+  - uservalidator_3
+  - userdto
+  - userdto_1
+  - userdto_2
+  allowed: []
+  forbidden:
+  - no_userservice
+  - no_productvalidator
+  - no_productdto
+  - no_usercontroller
+  - no_uservalidatortests
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

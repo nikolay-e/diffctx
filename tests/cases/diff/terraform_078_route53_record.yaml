@@ -1,0 +1,107 @@
+name: terraform_078_route53_record
+repo:
+  initial_files:
+    dns.tf: |
+      resource "aws_route53_record" "www" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "www.example.com"
+        type    = "A"
+        ttl     = 300
+        records = ["1.2.3.4"]
+      }
+    alb.tf: |
+      resource "aws_lb" "main" {
+        name               = "app-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+      }
+    src/health.py: |
+      import requests
+
+      def check_domain(domain: str) -> bool:
+          try:
+              r = requests.get(f"https://{domain}/health")
+              return r.status_code == 200
+          except Exception:
+              return False
+    mail/dns.tf: |
+      resource "aws_route53_record" "mx" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "example.com"
+        type    = "MX"
+        ttl     = 3600
+        records = ["10 mail.example.com"]
+      }
+
+      resource "aws_route53_record" "spf" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "example.com"
+        type    = "TXT"
+        ttl     = 3600
+        records = ["v=spf1 include:_spf.google.com ~all"]
+      }
+  changed_files:
+    dns.tf: |
+      resource "aws_route53_record" "www" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "www.example.com"
+        type    = "A"
+
+        alias {
+          name                   = aws_lb.main.dns_name
+          zone_id                = aws_lb.main.zone_id
+          evaluate_target_health = true
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: dns
+  selector:
+    path: dns.tf
+    anchor: name                   = aws_lb.main.dns_name
+- id: dns_1
+  selector:
+    path: dns.tf
+    anchor: zone_id                = aws_lb.main.zone_id
+- id: dns_2
+  selector:
+    path: dns.tf
+    anchor: evaluate_target_health = true
+- id: alb
+  selector:
+    path: alb.tf
+    anchor: resource "aws_lb" "main" {
+- id: alb_1
+  selector:
+    path: alb.tf
+    anchor: name               = "app-alb"
+- id: no_dns
+  selector:
+    path: mail/dns.tf
+- id: no_health
+  selector:
+    path: src/health.py
+- id: no_global_0
+  selector:
+    anchor: type    = "MX"
+- id: no_global_1
+  selector:
+    anchor: _spf.google.com
+- id: no_global_2
+  selector:
+    anchor: check_domain
+oracle:
+  required:
+  - dns
+  - dns_1
+  - dns_2
+  - alb
+  - alb_1
+  allowed: []
+  forbidden:
+  - no_dns
+  - no_health
+  - no_global_0
+  - no_global_1
+  - no_global_2

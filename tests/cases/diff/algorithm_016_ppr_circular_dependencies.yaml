@@ -1,0 +1,347 @@
+name: algorithm_016_ppr_circular_dependencies
+repo:
+  initial_files:
+    src/services/order_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class Order:
+          id: int
+          customer_id: int
+          total: float
+
+      class OrderService:
+          def __init__(self, payment_service):
+              self.payment_service = payment_service
+              self.orders: List[Order] = []
+
+          def create_order(self, customer_id: int, items: List[dict]) -> Order:
+              total = sum(item["price"] * item["quantity"] for item in items)
+              order = Order(id=len(self.orders) + 1, customer_id=customer_id, total=total)
+              self.orders.append(order)
+              return order
+
+          def process_order(self, order_id: int) -> bool:
+              order = self.get_order(order_id)
+              if not order:
+                  return False
+              return self.payment_service.charge(order.customer_id, order.total)
+
+          def get_order(self, order_id: int) -> Optional[Order]:
+              for order in self.orders:
+                  if order.id == order_id:
+                      return order
+              return None
+    src/services/payment_service.py: |
+      from typing import List
+
+      class PaymentService:
+          def __init__(self, order_service):
+              self.order_service = order_service
+              self.transactions: List[dict] = []
+
+          def charge(self, customer_id: int, amount: float) -> bool:
+              transaction = {"customer_id": customer_id, "amount": amount, "status": "completed"}
+              self.transactions.append(transaction)
+              return True
+
+          def refund(self, order_id: int) -> bool:
+              order = self.order_service.get_order(order_id)
+              if not order:
+                  return False
+              transaction = {"customer_id": order.customer_id, "amount": -order.total, "status": "refunded"}
+              self.transactions.append(transaction)
+              return True
+    src/services/fulfillment_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+      GARBAGE_ALGO_016_FULFILLMENT_G = "fulfillment"
+      GARBAGE_ALGO_016_FULFILL_VER_H = "2.0"
+
+      @dataclass
+      class FulfillmentOrder:
+          id: int
+          customer_id: int
+          total: float
+          status: str = "pending"
+
+      class FulfillmentService:
+          def __init__(self, payment_service):
+              self.payment_service = payment_service
+              self.orders: List[FulfillmentOrder] = []
+
+          def process_order(self, order_id: int) -> bool:
+              GARBAGE_ALGO_016_FULFILL_PROC_I = True
+              return False
+
+          def get_order(self, order_id: int) -> Optional[FulfillmentOrder]:
+              return None
+
+          def create_order(self, customer_id: int, items: List[dict]) -> FulfillmentOrder:
+              return FulfillmentOrder(id=0, customer_id=customer_id, total=0.0)
+    src/services/invoice_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+      from datetime import datetime
+      GARBAGE_ALGO_016_INVOICE_J = "invoice"
+      GARBAGE_ALGO_016_INVOICE_VER_K = "1.5"
+
+      @dataclass
+      class Invoice:
+          id: int
+          customer_id: int
+          total: float
+          status: str = "pending"
+          created_at: datetime = None
+
+      class InvoiceService:
+          GARBAGE_ALGO_016_INVOICE_STORE_L = []
+
+          def charge(self, customer_id: int, amount: float) -> bool:
+              return True
+
+          def refund(self, invoice_id: int) -> bool:
+              return False
+    garbage_analytics.py: |
+      GARBAGE_ALGO_016_ANALYTICS_MARKER_A = "analytics"
+      GARBAGE_ALGO_016_TRACKING_MARKER_B = True
+
+      class AnalyticsTracker:
+          GARBAGE_ALGO_016_EVENTS_MARKER_C = []
+
+          def track(self, event: str) -> None:
+              pass
+    garbage_reporting.py: |
+      GARBAGE_ALGO_016_REPORT_MARKER_D = "report"
+      GARBAGE_ALGO_016_EXPORT_MARKER_E = "csv"
+
+      class ReportGenerator:
+          GARBAGE_ALGO_016_FORMAT_MARKER_F = True
+
+          def generate(self) -> str:
+              return ""
+  changed_files:
+    src/services/order_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Order:
+          id: int
+          customer_id: int
+          total: float
+          status: str = "pending"
+          created_at: datetime = None
+
+      class OrderService:
+          def __init__(self, payment_service):
+              self.payment_service = payment_service
+              self.orders: List[Order] = []
+
+          def create_order(self, customer_id: int, items: List[dict]) -> Order:
+              total = sum(item["price"] * item["quantity"] for item in items)
+              order = Order(
+                  id=len(self.orders) + 1,
+                  customer_id=customer_id,
+                  total=total,
+                  created_at=datetime.now()
+              )
+              self.orders.append(order)
+              return order
+
+          def process_order(self, order_id: int) -> bool:
+              order = self.get_order(order_id)
+              if not order:
+                  return False
+              if order.status != "pending":
+                  return False
+              success = self.payment_service.charge(order.customer_id, order.total)
+              if success:
+                  order.status = "completed"
+              return success
+
+          def get_order(self, order_id: int) -> Optional[Order]:
+              for order in self.orders:
+                  if order.id == order_id:
+                      return order
+              return None
+    src/services/payment_service.py: |
+      from typing import List
+
+      class PaymentService:
+          def __init__(self, order_service):
+              self.order_service = order_service
+              self.transactions: List[dict] = []
+
+          def charge(self, customer_id: int, amount: float) -> bool:
+              transaction = {"customer_id": customer_id, "amount": amount, "status": "completed"}
+              self.transactions.append(transaction)
+              return True
+
+          def refund(self, order_id: int) -> bool:
+              order = self.order_service.get_order(order_id)
+              if not order:
+                  return False
+              transaction = {"customer_id": order.customer_id, "amount": -order.total, "status": "refunded"}
+              self.transactions.append(transaction)
+              return True
+    src/services/fulfillment_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+      GARBAGE_ALGO_016_FULFILLMENT_G = "fulfillment"
+      GARBAGE_ALGO_016_FULFILL_VER_H = "2.0"
+
+      @dataclass
+      class FulfillmentOrder:
+          id: int
+          customer_id: int
+          total: float
+          status: str = "pending"
+
+      class FulfillmentService:
+          def __init__(self, payment_service):
+              self.payment_service = payment_service
+              self.orders: List[FulfillmentOrder] = []
+
+          def process_order(self, order_id: int) -> bool:
+              GARBAGE_ALGO_016_FULFILL_PROC_I = True
+              return False
+
+          def get_order(self, order_id: int) -> Optional[FulfillmentOrder]:
+              return None
+
+          def create_order(self, customer_id: int, items: List[dict]) -> FulfillmentOrder:
+              return FulfillmentOrder(id=0, customer_id=customer_id, total=0.0)
+    src/services/invoice_service.py: |
+      from typing import Optional, List
+      from dataclasses import dataclass
+      from datetime import datetime
+      GARBAGE_ALGO_016_INVOICE_J = "invoice"
+      GARBAGE_ALGO_016_INVOICE_VER_K = "1.5"
+
+      @dataclass
+      class Invoice:
+          id: int
+          customer_id: int
+          total: float
+          status: str = "pending"
+          created_at: datetime = None
+
+      class InvoiceService:
+          GARBAGE_ALGO_016_INVOICE_STORE_L = []
+
+          def charge(self, customer_id: int, amount: float) -> bool:
+              return True
+
+          def refund(self, invoice_id: int) -> bool:
+              return False
+    garbage_analytics.py: |
+      GARBAGE_ALGO_016_ANALYTICS_MARKER_A = "analytics"
+      GARBAGE_ALGO_016_TRACKING_MARKER_B = True
+
+      class AnalyticsTracker:
+          GARBAGE_ALGO_016_EVENTS_MARKER_C = []
+
+          def track(self, event: str) -> None:
+              pass
+    garbage_reporting.py: |
+      GARBAGE_ALGO_016_REPORT_MARKER_D = "report"
+      GARBAGE_ALGO_016_EXPORT_MARKER_E = "csv"
+
+      class ReportGenerator:
+          GARBAGE_ALGO_016_FORMAT_MARKER_F = True
+
+          def generate(self) -> str:
+              return ""
+  commit_message: Update files
+fragments:
+- id: order_service
+  selector:
+    path: src/services/order_service.py
+    anchor: order = Order(
+- id: order_service_1
+  selector:
+    path: src/services/order_service.py
+    anchor: 'status: str = "pending"'
+- id: order_service_2
+  selector:
+    path: src/services/order_service.py
+    anchor: 'if order.status != "pending":'
+- id: order_service_3
+  selector:
+    path: src/services/order_service.py
+    anchor: order.status = "completed"
+- id: no_garbage_analytics
+  selector:
+    path: garbage_analytics.py
+- id: no_garbage_reporting
+  selector:
+    path: garbage_reporting.py
+- id: no_fulfillment_service
+  selector:
+    path: src/services/fulfillment_service.py
+- id: no_invoice_service
+  selector:
+    path: src/services/invoice_service.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_016_ANALYTICS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_016_TRACKING_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_016_EVENTS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_016_REPORT_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_016_EXPORT_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_016_FORMAT_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_016_FULFILLMENT_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_016_FULFILL_VER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_016_FULFILL_PROC_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_016_INVOICE_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_016_INVOICE_VER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_016_INVOICE_STORE_L
+oracle:
+  required:
+  - order_service
+  - order_service_1
+  - order_service_2
+  - order_service_3
+  allowed: []
+  forbidden:
+  - no_garbage_analytics
+  - no_garbage_reporting
+  - no_fulfillment_service
+  - no_invoice_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

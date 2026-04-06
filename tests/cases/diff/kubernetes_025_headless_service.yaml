@@ -1,0 +1,269 @@
+name: kubernetes_025_headless_service
+repo:
+  initial_files:
+    k8s/database/statefulset.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: postgres
+        namespace: database
+        labels:
+          app: postgres
+      spec:
+        serviceName: postgres
+        replicas: 3
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          metadata:
+            labels:
+              app: postgres
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15-alpine
+              ports:
+              - containerPort: 5432
+                name: postgres
+              env:
+              - name: POSTGRES_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: postgres-secret
+                    key: password
+              volumeMounts:
+              - name: data
+                mountPath: /var/lib/postgresql/data
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 10Gi
+    k8s/database/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: postgres
+        namespace: database
+      spec:
+        selector:
+          app: postgres
+        ports:
+        - port: 5432
+          targetPort: 5432
+    k8s/database/backup-cronjob.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: postgres-backup
+        namespace: database
+      spec:
+        schedule: "0 2 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: backup
+                  image: postgres:15-alpine
+                  command:
+                  - /bin/sh
+                  - -c
+                  - pg_dump -h postgres -U postgres > /backups/dump-$(date +%Y%m%d).sql
+                restartPolicy: Never
+    k8s/database/pgbouncer.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pgbouncer
+        namespace: database
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: pgbouncer
+        template:
+          spec:
+            containers:
+            - name: pgbouncer
+              image: edoburu/pgbouncer:1.21.0
+              ports:
+              - containerPort: 5432
+              env:
+              - name: DATABASE_URL
+                value: "postgres://postgres:5432/production"
+              - name: POOL_MODE
+                value: "transaction"
+              - name: MAX_CLIENT_CONN
+                value: "200"
+  changed_files:
+    k8s/database/statefulset.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: postgres
+        namespace: database
+        labels:
+          app: postgres
+      spec:
+        serviceName: postgres
+        replicas: 3
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          metadata:
+            labels:
+              app: postgres
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15-alpine
+              ports:
+              - containerPort: 5432
+                name: postgres
+              env:
+              - name: POSTGRES_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: postgres-secret
+                    key: password
+              volumeMounts:
+              - name: data
+                mountPath: /var/lib/postgresql/data
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 10Gi
+    k8s/database/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: postgres
+        namespace: database
+        labels:
+          app: postgres
+      spec:
+        clusterIP: None
+        selector:
+          app: postgres
+        ports:
+        - name: postgres
+          port: 5432
+          targetPort: 5432
+        publishNotReadyAddresses: true
+    k8s/database/backup-cronjob.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: postgres-backup
+        namespace: database
+      spec:
+        schedule: "0 2 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: backup
+                  image: postgres:15-alpine
+                  command:
+                  - /bin/sh
+                  - -c
+                  - pg_dump -h postgres -U postgres > /backups/dump-$(date +%Y%m%d).sql
+                restartPolicy: Never
+    k8s/database/pgbouncer.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pgbouncer
+        namespace: database
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: pgbouncer
+        template:
+          spec:
+            containers:
+            - name: pgbouncer
+              image: edoburu/pgbouncer:1.21.0
+              ports:
+              - containerPort: 5432
+              env:
+              - name: DATABASE_URL
+                value: "postgres://postgres:5432/production"
+              - name: POOL_MODE
+                value: "transaction"
+              - name: MAX_CLIENT_CONN
+                value: "200"
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: k8s/database/service.yaml
+    anchor: 'clusterIP: None'
+- id: service_1
+  selector:
+    path: k8s/database/service.yaml
+    anchor: 'publishNotReadyAddresses: true'
+- id: service_2
+  selector:
+    path: k8s/database/service.yaml
+    anchor: 'name: postgres'
+- id: statefulset
+  selector:
+    path: k8s/database/statefulset.yaml
+    anchor: 'serviceName: postgres'
+- id: no_backup_cronjob
+  selector:
+    path: k8s/database/backup-cronjob.yaml
+- id: no_pgbouncer
+  selector:
+    path: k8s/database/pgbouncer.yaml
+- id: no_global_0
+  selector:
+    anchor: postgres-backup
+- id: no_global_1
+  selector:
+    anchor: pg_dump
+- id: no_global_2
+  selector:
+    anchor: 0 2 * * *
+- id: no_global_3
+  selector:
+    anchor: pgbouncer
+- id: no_global_4
+  selector:
+    anchor: edoburu/pgbouncer
+- id: no_global_5
+  selector:
+    anchor: POOL_MODE
+- id: no_global_6
+  selector:
+    anchor: MAX_CLIENT_CONN
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - statefulset
+  allowed: []
+  forbidden:
+  - no_backup_cronjob
+  - no_pgbouncer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

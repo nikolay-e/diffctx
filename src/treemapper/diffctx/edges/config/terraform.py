@@ -202,7 +202,7 @@ class TerraformEdgeBuilder(EdgeBuilder):
                     self.add_edge(edges, f.id, def_id, self.weight)
 
     def _add_resource_edges(self, f: Fragment, resource_defs: dict[str, list[FragmentId]], edges: EdgeDict) -> None:
-        skip_types = {"var", "local", "data", "module", "path", "terraform"}
+        skip_types = {"var", "local", "data", "module", "path", "terraform", "each", "self", "count"}
         for match in _TF_RESOURCE_REF_RE.finditer(f.content):
             res_type, res_name, _ = match.groups()
             if res_type in skip_types:

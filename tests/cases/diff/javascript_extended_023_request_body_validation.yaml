@@ -1,0 +1,172 @@
+name: javascript_extended_023_request_body_validation
+repo:
+  initial_files:
+    src/controllers/user-controller.ts: |
+      import { Request, Response } from 'express';
+
+      export function createUser(req: Request, res: Response): void {
+          res.status(501).json({ error: 'Not implemented' });
+      }
+    src/schemas/user-schema.ts: |
+      export interface CreateUserBody {
+          name: string;
+          email: string;
+          password: string;
+      }
+
+      export interface UpdateUserBody {
+          name?: string;
+          email?: string;
+      }
+
+      export function validateCreateUser(body: unknown): body is CreateUserBody {
+          const b = body as CreateUserBody;
+          return typeof b.name === 'string'
+              && typeof b.email === 'string'
+              && typeof b.password === 'string'
+              && b.password.length >= 8;
+      }
+    src/schemas/product-schema.ts: |
+      export interface CreateProductBody {
+          name: string;
+          price: number;
+          category: string;
+          description?: string;
+      }
+
+      export function validateCreateProduct(body: unknown): body is CreateProductBody {
+          const b = body as CreateProductBody;
+          return typeof b.name === 'string'
+              && typeof b.price === 'number'
+              && b.price > 0
+              && typeof b.category === 'string';
+      }
+
+      export function sanitizeProductName(name: string): string {
+          return name.trim().slice(0, 200);
+      }
+    src/utils/response-builder.ts: |
+      export interface ApiResponse<T> {
+          success: boolean;
+          data?: T;
+          error?: string;
+          timestamp: number;
+      }
+
+      export function successResponse<T>(data: T): ApiResponse<T> {
+          return { success: true, data, timestamp: Date.now() };
+      }
+
+      export function errorResponse(message: string): ApiResponse<never> {
+          return { success: false, error: message, timestamp: Date.now() };
+      }
+  changed_files:
+    src/controllers/user-controller.ts: |
+      import { Request, Response } from 'express';
+      import { CreateUserBody, validateCreateUser } from '../schemas/user-schema';
+
+      export function createUser(req: Request, res: Response): void {
+          if (!validateCreateUser(req.body)) {
+              res.status(400).json({ error: 'Invalid request body' });
+              return;
+          }
+          const body: CreateUserBody = req.body;
+          res.status(201).json({ id: '1', name: body.name, email: body.email });
+      }
+    src/schemas/user-schema.ts: |
+      export interface CreateUserBody {
+          name: string;
+          email: string;
+          password: string;
+      }
+
+      export interface UpdateUserBody {
+          name?: string;
+          email?: string;
+      }
+
+      export function validateCreateUser(body: unknown): body is CreateUserBody {
+          const b = body as CreateUserBody;
+          return typeof b.name === 'string'
+              && typeof b.email === 'string'
+              && typeof b.password === 'string'
+              && b.password.length >= 8;
+      }
+    src/schemas/product-schema.ts: |
+      export interface CreateProductBody {
+          name: string;
+          price: number;
+          category: string;
+          description?: string;
+      }
+
+      export function validateCreateProduct(body: unknown): body is CreateProductBody {
+          const b = body as CreateProductBody;
+          return typeof b.name === 'string'
+              && typeof b.price === 'number'
+              && b.price > 0
+              && typeof b.category === 'string';
+      }
+
+      export function sanitizeProductName(name: string): string {
+          return name.trim().slice(0, 200);
+      }
+    src/utils/response-builder.ts: |
+      export interface ApiResponse<T> {
+          success: boolean;
+          data?: T;
+          error?: string;
+          timestamp: number;
+      }
+
+      export function successResponse<T>(data: T): ApiResponse<T> {
+          return { success: true, data, timestamp: Date.now() };
+      }
+
+      export function errorResponse(message: string): ApiResponse<never> {
+          return { success: false, error: message, timestamp: Date.now() };
+      }
+  commit_message: Update files
+fragments:
+- id: user_schema
+  selector:
+    path: src/schemas/user-schema.ts
+    anchor: validateCreateUser
+- id: user_schema_1
+  selector:
+    path: src/schemas/user-schema.ts
+    anchor: CreateUserBody
+- id: no_product_schema
+  selector:
+    path: src/schemas/product-schema.ts
+- id: no_response_builder
+  selector:
+    path: src/utils/response-builder.ts
+- id: no_global_0
+  selector:
+    anchor: CreateProductBody
+- id: no_global_1
+  selector:
+    anchor: validateCreateProduct
+- id: no_global_2
+  selector:
+    anchor: sanitizeProductName
+- id: no_global_3
+  selector:
+    anchor: successResponse
+- id: no_global_4
+  selector:
+    anchor: errorResponse
+oracle:
+  required:
+  - user_schema
+  - user_schema_1
+  allowed: []
+  forbidden:
+  - no_product_schema
+  - no_response_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

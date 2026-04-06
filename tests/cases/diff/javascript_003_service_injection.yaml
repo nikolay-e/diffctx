@@ -1,0 +1,240 @@
+name: javascript_003_service_injection
+repo:
+  initial_files:
+    user.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      @Injectable({ providedIn: 'root' })
+      export class UserService {
+          constructor(private http: HttpClient) {}
+
+          getUsers(): Observable<User[]> {
+              return this.http.get<User[]>('/api/users');
+          }
+      }
+    user-list.component.ts: |
+      console.log('initial');
+    user-detail.component.ts: |
+      import { Component, Input } from '@angular/core';
+      import { UserService } from './user.service';
+
+      @Component({
+          selector: 'app-user-detail',
+          template: `
+              <div class="detail" *ngIf="user">
+                  <h2>{{ user.name }}</h2>
+                  <p>ID: {{ user.id }}</p>
+              </div>
+          `
+      })
+      export class UserDetailComponent {
+          @Input() userId!: string;
+          user: any;
+
+          constructor(private userService: UserService) {}
+
+          ngOnChanges() {
+              if (this.userId) {
+                  this.userService.getUsers().subscribe(users => {
+                      this.user = users.find(u => u.id === this.userId);
+                  });
+              }
+          }
+      }
+    user.service.spec.ts: |
+      import { TestBed } from '@angular/core/testing';
+      import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+      import { UserService } from './user.service';
+
+      describe('UserService', () => {
+          let service: UserService;
+          let httpMock: HttpTestingController;
+
+          beforeEach(() => {
+              TestBed.configureTestingModule({
+                  imports: [HttpClientTestingModule],
+              });
+              service = TestBed.inject(UserService);
+              httpMock = TestBed.inject(HttpTestingController);
+          });
+
+          it('should fetch users', () => {
+              service.getUsers().subscribe(users => {
+                  expect(users.length).toBe(2);
+              });
+              const req = httpMock.expectOne('/api/users');
+              req.flush([{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }]);
+          });
+      });
+  changed_files:
+    user.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      @Injectable({ providedIn: 'root' })
+      export class UserService {
+          constructor(private http: HttpClient) {}
+
+          getUsers(): Observable<User[]> {
+              return this.http.get<User[]>('/api/users');
+          }
+      }
+    user-list.component.ts: |
+      import { Component, OnInit } from '@angular/core';
+      import { UserService } from './user.service';
+
+      @Component({
+          selector: 'app-user-list',
+          template: `
+              <ul>
+                  <li *ngFor="let user of users">{{ user.name }}</li>
+              </ul>
+          `
+      })
+      export class UserListComponent implements OnInit {
+          users: any[] = [];
+
+          constructor(private userService: UserService) {}
+
+          ngOnInit() {
+              this.userService.getUsers().subscribe(users => this.users = users);
+          }
+      }
+    user-detail.component.ts: |
+      import { Component, Input } from '@angular/core';
+      import { UserService } from './user.service';
+
+      @Component({
+          selector: 'app-user-detail',
+          template: `
+              <div class="detail" *ngIf="user">
+                  <h2>{{ user.name }}</h2>
+                  <p>ID: {{ user.id }}</p>
+              </div>
+          `
+      })
+      export class UserDetailComponent {
+          @Input() userId!: string;
+          user: any;
+
+          constructor(private userService: UserService) {}
+
+          ngOnChanges() {
+              if (this.userId) {
+                  this.userService.getUsers().subscribe(users => {
+                      this.user = users.find(u => u.id === this.userId);
+                  });
+              }
+          }
+      }
+    user.service.spec.ts: |
+      import { TestBed } from '@angular/core/testing';
+      import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+      import { UserService } from './user.service';
+
+      describe('UserService', () => {
+          let service: UserService;
+          let httpMock: HttpTestingController;
+
+          beforeEach(() => {
+              TestBed.configureTestingModule({
+                  imports: [HttpClientTestingModule],
+              });
+              service = TestBed.inject(UserService);
+              httpMock = TestBed.inject(HttpTestingController);
+          });
+
+          it('should fetch users', () => {
+              service.getUsers().subscribe(users => {
+                  expect(users.length).toBe(2);
+              });
+              const req = httpMock.expectOne('/api/users');
+              req.flush([{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }]);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: user_list_component
+  selector:
+    path: user-list.component.ts
+    anchor: import { UserService } from './user.service'
+- id: user_list_component_1
+  selector:
+    path: user-list.component.ts
+    anchor: class UserListComponent implements OnInit
+- id: user_list_component_2
+  selector:
+    path: user-list.component.ts
+    anchor: this.userService.getUsers().subscribe
+- id: user_service
+  selector:
+    path: user.service.ts
+    anchor: class UserService
+- id: user_service_1
+  selector:
+    path: user.service.ts
+    anchor: 'getUsers(): Observable<User[]>'
+- id: user_service_2
+  selector:
+    path: user.service.ts
+    anchor: interface User
+- id: user_service_3
+  selector:
+    path: user.service.ts
+    anchor: 'name: string'
+- id: no_user_detail_component
+  selector:
+    path: user-detail.component.ts
+- id: no_user_service_spec
+  selector:
+    path: user.service.spec.ts
+- id: no_global_0
+  selector:
+    anchor: UserDetailComponent
+- id: no_global_1
+  selector:
+    anchor: app-user-detail
+- id: no_global_2
+  selector:
+    anchor: ngOnChanges
+- id: no_global_3
+  selector:
+    anchor: HttpClientTestingModule
+- id: no_global_4
+  selector:
+    anchor: HttpTestingController
+- id: no_global_5
+  selector:
+    anchor: expectOne('/api/users')
+oracle:
+  required:
+  - user_list_component
+  - user_list_component_1
+  - user_list_component_2
+  - user_service
+  - user_service_1
+  - user_service_2
+  - user_service_3
+  allowed: []
+  forbidden:
+  - no_user_detail_component
+  - no_user_service_spec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

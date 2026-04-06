@@ -1,0 +1,100 @@
+name: ppr_009_graph_builds_import_edges
+repo:
+  initial_files:
+    main.py: |
+      from helper import do_work
+
+      def main():
+          do_work()
+    helper.py: |
+      def do_work():
+          pass
+    scheduler.py: |
+      from helper import do_work
+
+      class TaskScheduler:
+          def run_scheduled(self):
+              return do_work()
+
+          def schedule(self, task_name):
+              return f"scheduled: {task_name}"
+    cli.py: |
+      def main():
+          return "cli_entry_point"
+
+      def parse_args(argv):
+          return {"verbose": False}
+  changed_files:
+    main.py: |
+      from helper import do_work
+
+      def main():
+          do_work()
+          return 1
+    helper.py: |
+      def do_work():
+          pass
+    scheduler.py: |
+      from helper import do_work
+
+      class TaskScheduler:
+          def run_scheduled(self):
+              return do_work()
+
+          def schedule(self, task_name):
+              return f"scheduled: {task_name}"
+    cli.py: |
+      def main():
+          return "cli_entry_point"
+
+      def parse_args(argv):
+          return {"verbose": False}
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.py
+    anchor: 'def main():'
+- id: main_1
+  selector:
+    path: main.py
+    anchor: do_work()
+- id: main_2
+  selector:
+    path: main.py
+    anchor: return 1
+- id: no_scheduler
+  selector:
+    path: scheduler.py
+- id: no_cli
+  selector:
+    path: cli.py
+- id: no_global_0
+  selector:
+    anchor: TaskScheduler
+- id: no_global_1
+  selector:
+    anchor: run_scheduled
+- id: no_global_2
+  selector:
+    anchor: schedule
+- id: no_global_3
+  selector:
+    anchor: cli_entry_point
+- id: no_global_4
+  selector:
+    anchor: parse_args
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  allowed: []
+  forbidden:
+  - no_scheduler
+  - no_cli
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

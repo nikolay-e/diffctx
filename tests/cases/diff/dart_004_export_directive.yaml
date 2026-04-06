@@ -1,0 +1,241 @@
+name: dart_004_export_directive
+repo:
+  initial_files:
+    lib/myapp.dart: |
+      export 'src/auth.dart';
+      export 'src/user.dart';
+    lib/src/auth.dart: |
+      class AuthManager {
+        String? _token;
+
+        Future<bool> login(String username, String password) async {
+          if (username.isNotEmpty && password.length >= 6) {
+            _token = 'token_$username';
+            return true;
+          }
+          return false;
+        }
+
+        void logout() {
+          _token = null;
+        }
+
+        bool get isAuthenticated => _token != null;
+      }
+    lib/src/user.dart: |
+      class User {
+        final String id;
+        final String name;
+        final String email;
+
+        const User({required this.id, required this.name, required this.email});
+
+        Map<String, dynamic> toJson() => {
+          'id': id,
+          'name': name,
+          'email': email,
+        };
+      }
+    lib/src/cache.dart: |
+      class CacheManager {
+        final Map<String, dynamic> _store = {};
+        final Duration defaultTtl;
+
+        CacheManager({this.defaultTtl = const Duration(minutes: 5)});
+
+        void set(String key, dynamic value) {
+          _store[key] = value;
+        }
+
+        T? get<T>(String key) {
+          final value = _store[key];
+          return value is T ? value : null;
+        }
+
+        void clear() {
+          _store.clear();
+        }
+
+        bool containsKey(String key) => _store.containsKey(key);
+
+        int get size => _store.length;
+      }
+    lib/src/logger.dart: |
+      class Logger {
+        final String tag;
+
+        Logger(this.tag);
+
+        void info(String message) {
+          print('[$tag INFO] $message');
+        }
+
+        void error(String message) {
+          print('[$tag ERROR] $message');
+        }
+
+        String get GARBAGE_DART_004_A_LOG_FORMAT => 'structured';
+        int get GARBAGE_DART_004_B_MAX_BUFFER => 1024;
+      }
+    lib/src/internal_helpers.dart: |
+      String sanitizeInput(String input) {
+        return input.trim().replaceAll(RegExp(r'[<>]'), '');
+      }
+
+      bool isValidEmail(String email) {
+        return email.contains('@') && email.contains('.');
+      }
+
+      String get GARBAGE_DART_004_C_HELPER_VERSION => '1.0.0';
+      int get GARBAGE_DART_004_D_MAX_INPUT => 4096;
+  changed_files:
+    lib/myapp.dart: |
+      export 'src/auth.dart';
+      export 'src/user.dart';
+      export 'src/cache.dart';
+    lib/src/auth.dart: |
+      class AuthManager {
+        String? _token;
+
+        Future<bool> login(String username, String password) async {
+          if (username.isNotEmpty && password.length >= 6) {
+            _token = 'token_$username';
+            return true;
+          }
+          return false;
+        }
+
+        void logout() {
+          _token = null;
+        }
+
+        bool get isAuthenticated => _token != null;
+      }
+    lib/src/user.dart: |
+      class User {
+        final String id;
+        final String name;
+        final String email;
+
+        const User({required this.id, required this.name, required this.email});
+
+        Map<String, dynamic> toJson() => {
+          'id': id,
+          'name': name,
+          'email': email,
+        };
+      }
+    lib/src/cache.dart: |
+      class CacheManager {
+        final Map<String, dynamic> _store = {};
+        final Duration defaultTtl;
+
+        CacheManager({this.defaultTtl = const Duration(minutes: 5)});
+
+        void set(String key, dynamic value) {
+          _store[key] = value;
+        }
+
+        T? get<T>(String key) {
+          final value = _store[key];
+          return value is T ? value : null;
+        }
+
+        void clear() {
+          _store.clear();
+        }
+
+        bool containsKey(String key) => _store.containsKey(key);
+
+        int get size => _store.length;
+      }
+    lib/src/logger.dart: |
+      class Logger {
+        final String tag;
+
+        Logger(this.tag);
+
+        void info(String message) {
+          print('[$tag INFO] $message');
+        }
+
+        void error(String message) {
+          print('[$tag ERROR] $message');
+        }
+
+        String get GARBAGE_DART_004_A_LOG_FORMAT => 'structured';
+        int get GARBAGE_DART_004_B_MAX_BUFFER => 1024;
+      }
+    lib/src/internal_helpers.dart: |
+      String sanitizeInput(String input) {
+        return input.trim().replaceAll(RegExp(r'[<>]'), '');
+      }
+
+      bool isValidEmail(String email) {
+        return email.contains('@') && email.contains('.');
+      }
+
+      String get GARBAGE_DART_004_C_HELPER_VERSION => '1.0.0';
+      int get GARBAGE_DART_004_D_MAX_INPUT => 4096;
+  commit_message: Update files
+fragments:
+- id: myapp
+  selector:
+    path: lib/myapp.dart
+    anchor: export 'src/cache.dart'
+- id: cache
+  selector:
+    path: lib/src/cache.dart
+    anchor: class CacheManager
+- id: cache_1
+  selector:
+    path: lib/src/cache.dart
+    anchor: void set(String key, dynamic value)
+- id: cache_2
+  selector:
+    path: lib/src/cache.dart
+    anchor: T? get<T>(String key)
+- id: no_logger
+  selector:
+    path: lib/src/logger.dart
+- id: no_internal_helpers
+  selector:
+    path: lib/src/internal_helpers.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DART_004_A_LOG_FORMAT
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DART_004_B_MAX_BUFFER
+- id: no_global_2
+  selector:
+    anchor: class Logger
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DART_004_C_HELPER_VERSION
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DART_004_D_MAX_INPUT
+- id: no_global_5
+  selector:
+    anchor: sanitizeInput
+- id: no_global_6
+  selector:
+    anchor: isValidEmail
+oracle:
+  required:
+  - myapp
+  - cache
+  - cache_1
+  - cache_2
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_internal_helpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

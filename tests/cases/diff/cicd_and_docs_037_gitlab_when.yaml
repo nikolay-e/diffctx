@@ -1,0 +1,142 @@
+name: cicd_and_docs_037_gitlab_when
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      stages:
+        - build
+        - deploy
+
+      build:
+        stage: build
+        script:
+          - npm ci
+          - npm run build
+
+      deploy_prod:
+        stage: deploy
+        script:
+          - ./deploy.sh production
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      ENV="${1:-staging}"
+      echo "Deploying to $ENV..."
+      kubectl apply -f k8s/$ENV/
+    package.json: |
+      {
+        "name": "gitlab-when-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "parcel build src/index.html"
+        }
+      }
+    garbage_job_trigger.ts: |
+      const GARBAGE_CICD_DOCS_037_TRIGGER_MARKER_A = "webhook";
+      const GARBAGE_CICD_DOCS_037_EVENT_MARKER_B = "push";
+
+      class GarbageJobTrigger {
+        static GARBAGE_CICD_DOCS_037_DELAY_MARKER_C = 0;
+        trigger(): void {}
+      }
+    garbage_job_condition.ts: |
+      const GARBAGE_CICD_DOCS_037_CONDITION_MARKER_D = "success";
+      const GARBAGE_CICD_DOCS_037_FALLBACK_MARKER_E = "always";
+
+      class GarbageJobCondition {
+        static GARBAGE_CICD_DOCS_037_RETRY_MARKER_F = 2;
+        evaluate(): boolean { return true; }
+      }
+  changed_files:
+    .gitlab-ci.yml: |
+      stages:
+        - build
+        - deploy
+
+      build:
+        stage: build
+        script:
+          - npm ci
+          - npm run build
+
+      deploy_prod:
+        stage: deploy
+        script:
+          - ./deploy.sh production
+        when: manual
+        allow_failure: false
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      ENV="${1:-staging}"
+      echo "Deploying to $ENV..."
+      kubectl apply -f k8s/$ENV/
+    package.json: |
+      {
+        "name": "gitlab-when-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "parcel build src/index.html"
+        }
+      }
+    garbage_job_trigger.ts: |
+      const GARBAGE_CICD_DOCS_037_TRIGGER_MARKER_A = "webhook";
+      const GARBAGE_CICD_DOCS_037_EVENT_MARKER_B = "push";
+
+      class GarbageJobTrigger {
+        static GARBAGE_CICD_DOCS_037_DELAY_MARKER_C = 0;
+        trigger(): void {}
+      }
+    garbage_job_condition.ts: |
+      const GARBAGE_CICD_DOCS_037_CONDITION_MARKER_D = "success";
+      const GARBAGE_CICD_DOCS_037_FALLBACK_MARKER_E = "always";
+
+      class GarbageJobCondition {
+        static GARBAGE_CICD_DOCS_037_RETRY_MARKER_F = 2;
+        evaluate(): boolean { return true; }
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'allow_failure: false'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_CONDITION_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_DELAY_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_EVENT_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_FALLBACK_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_RETRY_MARKER_F
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_037_TRIGGER_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: garbage_job_condition.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_job_trigger.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,190 @@
+name: python_042_dynamic_import
+repo:
+  initial_files:
+    plugins/plugin_csv.py: |
+      def execute(data: list[dict]) -> str:
+          headers = list(data[0].keys()) if data else []
+          lines = [",".join(headers)]
+          for row in data:
+              lines.append(",".join(str(row.get(h, "")) for h in headers))
+          return "\n".join(lines)
+
+      def get_extension() -> str:
+          return ".csv"
+    plugins/plugin_json.py: |
+      import json
+
+      def execute(data: list[dict]) -> str:
+          return json.dumps(data, indent=2)
+
+      def get_extension() -> str:
+          return ".json"
+    loader.py: |
+      def load():
+          pass
+
+      def list_available_plugins() -> list[str]:
+          return ["csv", "json"]
+    extensions/notification_dispatcher.py: |
+      from typing import Callable
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._handlers: dict[str, Callable] = {}
+
+          def register(self, channel: str, handler: Callable) -> None:
+              self._handlers[channel] = handler
+
+          def dispatch(self, channel: str, message: str) -> bool:
+              handler = self._handlers.get(channel)
+              if handler:
+                  handler(message)
+                  return True
+              return False
+
+          def list_channels(self) -> list[str]:
+              return list(self._handlers.keys())
+    telemetry/metrics_collector.py: |
+      from typing import Optional
+
+      class MetricsCollector:
+          def __init__(self, prefix: str = "app"):
+              self.prefix = prefix
+              self._counters: dict[str, int] = {}
+
+          def increment(self, metric_name: str, value: int = 1) -> None:
+              key = f"{self.prefix}.{metric_name}"
+              self._counters[key] = self._counters.get(key, 0) + value
+
+          def get_value(self, metric_name: str) -> int:
+              key = f"{self.prefix}.{metric_name}"
+              return self._counters.get(key, 0)
+  changed_files:
+    plugins/plugin_csv.py: |
+      def execute(data: list[dict]) -> str:
+          headers = list(data[0].keys()) if data else []
+          lines = [",".join(headers)]
+          for row in data:
+              lines.append(",".join(str(row.get(h, "")) for h in headers))
+          return "\n".join(lines)
+
+      def get_extension() -> str:
+          return ".csv"
+    plugins/plugin_json.py: |
+      import json
+
+      def execute(data: list[dict]) -> str:
+          return json.dumps(data, indent=2)
+
+      def get_extension() -> str:
+          return ".json"
+    loader.py: |
+      import importlib
+
+      def load(plugin_name: str):
+          module = importlib.import_module(f"plugins.plugin_{plugin_name}")
+          return module
+
+      def execute_plugin(plugin_name: str, data: list[dict]) -> str:
+          module = load(plugin_name)
+          return module.execute(data)
+
+      def list_available_plugins() -> list[str]:
+          return ["csv", "json"]
+    extensions/notification_dispatcher.py: |
+      from typing import Callable
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._handlers: dict[str, Callable] = {}
+
+          def register(self, channel: str, handler: Callable) -> None:
+              self._handlers[channel] = handler
+
+          def dispatch(self, channel: str, message: str) -> bool:
+              handler = self._handlers.get(channel)
+              if handler:
+                  handler(message)
+                  return True
+              return False
+
+          def list_channels(self) -> list[str]:
+              return list(self._handlers.keys())
+    telemetry/metrics_collector.py: |
+      from typing import Optional
+
+      class MetricsCollector:
+          def __init__(self, prefix: str = "app"):
+              self.prefix = prefix
+              self._counters: dict[str, int] = {}
+
+          def increment(self, metric_name: str, value: int = 1) -> None:
+              key = f"{self.prefix}.{metric_name}"
+              self._counters[key] = self._counters.get(key, 0) + value
+
+          def get_value(self, metric_name: str) -> int:
+              key = f"{self.prefix}.{metric_name}"
+              return self._counters.get(key, 0)
+  commit_message: Update files
+fragments:
+- id: loader
+  selector:
+    path: loader.py
+    anchor: import importlib
+- id: loader_1
+  selector:
+    path: loader.py
+    anchor: 'def load(plugin_name: str):'
+- id: loader_2
+  selector:
+    path: loader.py
+    anchor: importlib.import_module(f"plugins.plugin_{plugin_name}")
+- id: loader_3
+  selector:
+    path: loader.py
+    anchor: module.execute(data)
+- id: plugin_csv
+  selector:
+    path: plugins/plugin_csv.py
+    anchor: 'def execute(data: list[dict]) -> str:'
+- id: no_notification_dispatcher
+  selector:
+    path: extensions/notification_dispatcher.py
+- id: no_metrics_collector
+  selector:
+    path: telemetry/metrics_collector.py
+- id: no_global_0
+  selector:
+    anchor: NotificationDispatcher
+- id: no_global_1
+  selector:
+    anchor: list_channels
+- id: no_global_2
+  selector:
+    anchor: dispatch
+- id: no_global_3
+  selector:
+    anchor: MetricsCollector
+- id: no_global_4
+  selector:
+    anchor: increment
+- id: no_global_5
+  selector:
+    anchor: get_value
+oracle:
+  required:
+  - loader
+  - loader_1
+  - loader_2
+  - loader_3
+  - plugin_csv
+  allowed: []
+  forbidden:
+  - no_notification_dispatcher
+  - no_metrics_collector
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

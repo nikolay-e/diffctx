@@ -1,0 +1,293 @@
+name: rust_013_result_error_handling
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod parser;
+      pub mod validator;
+      pub mod decoder;
+    src/parser.rs: |
+      use std::str::FromStr;
+
+      pub fn parse(s: &str) -> i32 {
+          s.parse().unwrap()
+      }
+
+      pub fn parse_multiple(inputs: &[&str]) -> Vec<i32> {
+          inputs.iter().map(|s| parse(s)).collect()
+      }
+
+      pub struct NumberParser {
+          radix: u32,
+      }
+
+      impl NumberParser {
+          pub fn new(radix: u32) -> Self {
+              Self { radix }
+          }
+
+          pub fn parse(&self, s: &str) -> i32 {
+              i32::from_str_radix(s, self.radix).unwrap()
+          }
+      }
+
+      impl Default for NumberParser {
+          fn default() -> Self {
+              Self::new(10)
+          }
+      }
+    src/validator.rs: |
+      #[derive(Debug)]
+      pub enum ValidationError {
+          TooShort(usize),
+          TooLong(usize),
+          InvalidFormat(String),
+      }
+
+      pub struct InputValidator {
+          min_length: usize,
+          max_length: usize,
+      }
+
+      impl InputValidator {
+          pub fn new(min: usize, max: usize) -> Self {
+              Self { min_length: min, max_length: max }
+          }
+
+          pub fn validate(&self, input: &str) -> Result<(), ValidationError> {
+              if input.len() < self.min_length {
+                  return Err(ValidationError::TooShort(self.min_length));
+              }
+              if input.len() > self.max_length {
+                  return Err(ValidationError::TooLong(self.max_length));
+              }
+              Ok(())
+          }
+      }
+    src/decoder.rs: |
+      #[derive(Debug)]
+      pub enum DecodeError {
+          InvalidHeader,
+          UnexpectedEof,
+          ChecksumMismatch,
+      }
+
+      pub struct BinaryDecoder {
+          data: Vec<u8>,
+          position: usize,
+      }
+
+      impl BinaryDecoder {
+          pub fn new(data: Vec<u8>) -> Self {
+              Self { data, position: 0 }
+          }
+
+          pub fn read_u32(&mut self) -> Result<u32, DecodeError> {
+              if self.position + 4 > self.data.len() {
+                  return Err(DecodeError::UnexpectedEof);
+              }
+              let bytes = &self.data[self.position..self.position + 4];
+              self.position += 4;
+              Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+          }
+
+          pub fn remaining(&self) -> usize {
+              self.data.len() - self.position
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod parser;
+      pub mod validator;
+      pub mod decoder;
+    src/parser.rs: |
+      use std::num::ParseIntError;
+      use std::str::FromStr;
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub enum ParseError {
+          InvalidNumber(ParseIntError),
+          EmptyInput,
+          InvalidRadix(u32),
+      }
+
+      impl fmt::Display for ParseError {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              match self {
+                  ParseError::InvalidNumber(e) => write!(f, "Invalid number: {}", e),
+                  ParseError::EmptyInput => write!(f, "Empty input"),
+                  ParseError::InvalidRadix(r) => write!(f, "Invalid radix: {}", r),
+              }
+          }
+      }
+
+      impl std::error::Error for ParseError {}
+
+      impl From<ParseIntError> for ParseError {
+          fn from(err: ParseIntError) -> Self {
+              ParseError::InvalidNumber(err)
+          }
+      }
+
+      pub fn parse(s: &str) -> Result<i32, ParseIntError> {
+          s.parse()
+      }
+
+      pub fn parse_or_default(s: &str, default: i32) -> i32 {
+          parse(s).unwrap_or(default)
+      }
+
+      pub fn parse_multiple(inputs: &[&str]) -> Result<Vec<i32>, ParseError> {
+          if inputs.is_empty() {
+              return Err(ParseError::EmptyInput);
+          }
+          inputs.iter()
+              .map(|s| parse(s).map_err(ParseError::from))
+              .collect()
+      }
+
+      pub fn try_parse_all(inputs: &[&str]) -> (Vec<i32>, Vec<ParseError>) {
+          let mut successes = Vec::new();
+          let mut failures = Vec::new();
+
+          for s in inputs {
+              match parse(s) {
+                  Ok(n) => successes.push(n),
+                  Err(e) => failures.push(ParseError::from(e)),
+              }
+          }
+
+          (successes, failures)
+      }
+
+      pub struct NumberParser {
+          radix: u32,
+      }
+
+      impl NumberParser {
+          pub fn new(radix: u32) -> Result<Self, ParseError> {
+              if radix < 2 || radix > 36 {
+                  return Err(ParseError::InvalidRadix(radix));
+              }
+              Ok(Self { radix })
+          }
+
+          pub fn parse(&self, s: &str) -> Result<i32, ParseError> {
+              i32::from_str_radix(s, self.radix).map_err(ParseError::from)
+          }
+
+          pub fn parse_or(&self, s: &str, default: i32) -> i32 {
+              self.parse(s).unwrap_or(default)
+          }
+      }
+
+      impl Default for NumberParser {
+          fn default() -> Self {
+              Self { radix: 10 }
+          }
+      }
+    src/validator.rs: |
+      #[derive(Debug)]
+      pub enum ValidationError {
+          TooShort(usize),
+          TooLong(usize),
+          InvalidFormat(String),
+      }
+
+      pub struct InputValidator {
+          min_length: usize,
+          max_length: usize,
+      }
+
+      impl InputValidator {
+          pub fn new(min: usize, max: usize) -> Self {
+              Self { min_length: min, max_length: max }
+          }
+
+          pub fn validate(&self, input: &str) -> Result<(), ValidationError> {
+              if input.len() < self.min_length {
+                  return Err(ValidationError::TooShort(self.min_length));
+              }
+              if input.len() > self.max_length {
+                  return Err(ValidationError::TooLong(self.max_length));
+              }
+              Ok(())
+          }
+      }
+    src/decoder.rs: |
+      #[derive(Debug)]
+      pub enum DecodeError {
+          InvalidHeader,
+          UnexpectedEof,
+          ChecksumMismatch,
+      }
+
+      pub struct BinaryDecoder {
+          data: Vec<u8>,
+          position: usize,
+      }
+
+      impl BinaryDecoder {
+          pub fn new(data: Vec<u8>) -> Self {
+              Self { data, position: 0 }
+          }
+
+          pub fn read_u32(&mut self) -> Result<u32, DecodeError> {
+              if self.position + 4 > self.data.len() {
+                  return Err(DecodeError::UnexpectedEof);
+              }
+              let bytes = &self.data[self.position..self.position + 4];
+              self.position += 4;
+              Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+          }
+
+          pub fn remaining(&self) -> usize {
+              self.data.len() - self.position
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: parser_file
+  selector:
+    path: src/parser.rs
+- id: req_global_0
+  selector:
+    anchor: use std::num::ParseIntError;
+- id: req_global_1
+  selector:
+    anchor: pub enum ParseError {
+- id: no_validator
+  selector:
+    path: src/validator.rs
+- id: no_decoder
+  selector:
+    path: src/decoder.rs
+- id: no_global_0
+  selector:
+    anchor: ValidationError
+- id: no_global_1
+  selector:
+    anchor: DecodeError
+- id: no_global_2
+  selector:
+    anchor: BinaryDecoder
+- id: no_global_3
+  selector:
+    anchor: validator.rs
+- id: no_global_4
+  selector:
+    anchor: decoder.rs
+oracle:
+  required:
+  - parser_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_validator
+  - no_decoder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

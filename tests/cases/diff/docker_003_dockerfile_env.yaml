@@ -1,0 +1,247 @@
+name: docker_003_dockerfile_env
+repo:
+  initial_files:
+    app.py: |
+      import os
+      import logging
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Config:
+          app_env: str
+          debug: bool
+          log_level: str
+          database_url: Optional[str]
+          redis_url: Optional[str]
+          secret_key: str
+
+      def load_config() -> Config:
+          return Config(
+              app_env=os.getenv("APP_ENV", "development"),
+              debug=os.getenv("DEBUG", "false").lower() == "true",
+              log_level=os.getenv("LOG_LEVEL", "INFO"),
+              database_url=os.getenv("DATABASE_URL"),
+              redis_url=os.getenv("REDIS_URL"),
+              secret_key=os.getenv("SECRET_KEY", "insecure-default")
+          )
+
+      def run_application(config: Config):
+          logging.basicConfig(level=config.log_level)
+          logger = logging.getLogger(__name__)
+
+          if config.debug:
+              logger.info(f"Running in {config.app_env} mode with DEBUG enabled")
+          else:
+              logger.info(f"Running in {config.app_env} mode")
+
+      if __name__ == "__main__":
+          config = load_config()
+          run_application(config)
+    src/database.py: |
+      import os
+      from sqlalchemy import create_engine
+
+      DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+
+      def get_engine():
+          return create_engine(DATABASE_URL)
+    requirements.txt: |
+      sqlalchemy==2.0.0
+      psycopg2-binary==2.9.9
+      redis==5.0.0
+    Dockerfile: |
+      FROM python:3.11
+      ENV APP_ENV=development
+      ENV DEBUG=true
+      COPY . .
+      CMD ["python", "app.py"]
+    scripts/env_setup.sh: |
+      #!/bin/bash
+      export APP_ENV=development
+      export DEBUG=true
+      export LOG_LEVEL=DEBUG
+      python app.py
+    ansible/vars.yml: |
+      app_env: production
+      debug: false
+      log_level: warning
+      database_url: "postgresql://prod-db:5432/app"
+    helm/values.yaml: |
+      env:
+        APP_ENV: production
+        DEBUG: "false"
+        LOG_LEVEL: warning
+  changed_files:
+    app.py: |
+      import os
+      import logging
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class Config:
+          app_env: str
+          debug: bool
+          log_level: str
+          database_url: Optional[str]
+          redis_url: Optional[str]
+          secret_key: str
+
+      def load_config() -> Config:
+          return Config(
+              app_env=os.getenv("APP_ENV", "development"),
+              debug=os.getenv("DEBUG", "false").lower() == "true",
+              log_level=os.getenv("LOG_LEVEL", "INFO"),
+              database_url=os.getenv("DATABASE_URL"),
+              redis_url=os.getenv("REDIS_URL"),
+              secret_key=os.getenv("SECRET_KEY", "insecure-default")
+          )
+
+      def run_application(config: Config):
+          logging.basicConfig(level=config.log_level)
+          logger = logging.getLogger(__name__)
+
+          if config.debug:
+              logger.info(f"Running in {config.app_env} mode with DEBUG enabled")
+          else:
+              logger.info(f"Running in {config.app_env} mode")
+
+      if __name__ == "__main__":
+          config = load_config()
+          run_application(config)
+    src/database.py: |
+      import os
+      from sqlalchemy import create_engine
+
+      DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+
+      def get_engine():
+          return create_engine(DATABASE_URL)
+    requirements.txt: |
+      sqlalchemy==2.0.0
+      psycopg2-binary==2.9.9
+      redis==5.0.0
+    Dockerfile: |
+      # Build stage
+      FROM python:3.12-slim AS builder
+      WORKDIR /build
+
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+      # Production stage
+      FROM python:3.12-slim AS production
+      WORKDIR /app
+
+      # Security hardening
+      RUN useradd --create-home --shell /bin/bash appuser && \
+          apt-get update && apt-get install -y --no-install-recommends curl && \
+          rm -rf /var/lib/apt/lists/*
+
+      COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+      COPY app.py .
+      COPY src/ ./src/
+
+      # Production environment variables
+      ENV APP_ENV=production
+      ENV DEBUG=false
+      ENV LOG_LEVEL=warning
+      ENV PYTHONUNBUFFERED=1
+      ENV PYTHONDONTWRITEBYTECODE=1
+
+      # Sensitive vars should come from secrets, not ENV
+      # ENV DATABASE_URL - set at runtime
+      # ENV SECRET_KEY - set at runtime
+
+      USER appuser
+      EXPOSE 8080
+
+      HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+          CMD curl -f http://localhost:8080/health || exit 1
+
+      CMD ["python", "app.py"]
+    scripts/env_setup.sh: |
+      #!/bin/bash
+      export APP_ENV=development
+      export DEBUG=true
+      export LOG_LEVEL=DEBUG
+      python app.py
+    ansible/vars.yml: |
+      app_env: production
+      debug: false
+      log_level: warning
+      database_url: "postgresql://prod-db:5432/app"
+    helm/values.yaml: |
+      env:
+        APP_ENV: production
+        DEBUG: "false"
+        LOG_LEVEL: warning
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: ENV APP_ENV=production
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: ENV DEBUG=false
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: ENV LOG_LEVEL=warning
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: COPY requirements.txt .
+- id: app
+  selector:
+    path: app.py
+    anchor: app_env=os.getenv("APP_ENV", "development")
+- id: app_1
+  selector:
+    path: app.py
+    anchor: debug=os.getenv("DEBUG", "false")
+- id: requirements_file
+  selector:
+    path: requirements.txt
+- id: no_env_setup
+  selector:
+    path: scripts/env_setup.sh
+- id: no_vars
+  selector:
+    path: ansible/vars.yml
+- id: no_values
+  selector:
+    path: helm/values.yaml
+- id: no_global_0
+  selector:
+    anchor: export APP_ENV=development
+- id: no_global_1
+  selector:
+    anchor: export DEBUG=true
+- id: no_global_2
+  selector:
+    anchor: postgresql://prod-db:5432/app
+- id: no_global_3
+  selector:
+    anchor: 'LOG_LEVEL: warning'
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - app
+  - app_1
+  - requirements_file
+  allowed: []
+  forbidden:
+  - no_env_setup
+  - no_vars
+  - no_values
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

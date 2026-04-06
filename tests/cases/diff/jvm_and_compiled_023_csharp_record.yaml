@@ -1,0 +1,396 @@
+name: jvm_and_compiled_023_csharp_record
+repo:
+  initial_files:
+    Models/Person.cs: |
+      namespace App.Models
+      {
+          public record Person(string Name, int Age)
+          {
+              public bool IsAdult => Age >= 18;
+          }
+
+          public record Employee(string Name, int Age, string Department) : Person(Name, Age);
+      }
+    Program.cs: |
+      namespace App
+      {
+          class Program { }
+      }
+    Models/Address.cs: |
+      namespace App.Models
+      {
+          public record Address(string Street, string City, string ZipCode)
+          {
+              public string FullAddress => $"{Street}, {City} {ZipCode}";
+          }
+
+          public record BusinessAddress(string Street, string City, string ZipCode, string Suite)
+              : Address(Street, City, ZipCode);
+      }
+    Services/PersonService.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Services
+      {
+          class PersonService
+          {
+              private readonly List<Person> _people = new();
+
+              public void Add(Person person)
+              {
+                  _people.Add(person);
+              }
+
+              public Person FindByName(string name)
+              {
+                  return _people.FirstOrDefault(p => p.Name == name);
+              }
+
+              public List<Person> GetAdults()
+              {
+                  return _people.Where(p => p.IsAdult).ToList();
+              }
+
+              public Person UpdateAge(Person person, int newAge)
+              {
+                  return person with { Age = newAge };
+              }
+          }
+      }
+    Serializers/PersonSerializer.cs: |
+      using System.Text.Json;
+
+      namespace App.Serializers
+      {
+          class PersonSerializer
+          {
+              public string Serialize(Person person)
+              {
+                  return JsonSerializer.Serialize(new
+                  {
+                      name = person.Name,
+                      age = person.Age,
+                      isAdult = person.IsAdult
+                  });
+              }
+
+              public string SerializeEmployee(Employee employee)
+              {
+                  return JsonSerializer.Serialize(new
+                  {
+                      name = employee.Name,
+                      age = employee.Age,
+                      department = employee.Department
+                  });
+              }
+          }
+      }
+    Repositories/EmployeeRepository.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          class EmployeeRepository
+          {
+              private readonly List<Employee> _employees = new();
+
+              public void Add(Employee employee)
+              {
+                  _employees.Add(employee);
+              }
+
+              public List<Employee> GetByDepartment(string department)
+              {
+                  return _employees.Where(e => e.Department == department).ToList();
+              }
+
+              public Employee FindByName(string name)
+              {
+                  return _employees.FirstOrDefault(e => e.Name == name);
+              }
+          }
+      }
+    Utils/RecordComparer.cs: |
+      namespace App.Utils
+      {
+          class RecordComparer
+          {
+              public bool AreEqual<T>(T a, T b) where T : IEquatable<T>
+              {
+                  return a.Equals(b);
+              }
+
+              public int GetHashCodeOf<T>(T record)
+              {
+                  return record.GetHashCode();
+              }
+
+              public string Describe<T>(T record)
+              {
+                  return record.ToString();
+              }
+          }
+      }
+  changed_files:
+    Models/Person.cs: |
+      namespace App.Models
+      {
+          public record Person(string Name, int Age)
+          {
+              public bool IsAdult => Age >= 18;
+          }
+
+          public record Employee(string Name, int Age, string Department) : Person(Name, Age);
+      }
+    Program.cs: |
+      namespace App
+      {
+          class Program
+          {
+              static void Main()
+              {
+                  var person = new Person("John", 30);
+                  var updated = person with { Age = 31 };
+
+                  var employee = new Employee("Jane", 25, "IT");
+
+                  Console.WriteLine(person == new Person("John", 30));
+                  Console.WriteLine(employee.Department);
+              }
+          }
+      }
+    Models/Address.cs: |
+      namespace App.Models
+      {
+          public record Address(string Street, string City, string ZipCode)
+          {
+              public string FullAddress => $"{Street}, {City} {ZipCode}";
+          }
+
+          public record BusinessAddress(string Street, string City, string ZipCode, string Suite)
+              : Address(Street, City, ZipCode);
+      }
+    Services/PersonService.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Services
+      {
+          class PersonService
+          {
+              private readonly List<Person> _people = new();
+
+              public void Add(Person person)
+              {
+                  _people.Add(person);
+              }
+
+              public Person FindByName(string name)
+              {
+                  return _people.FirstOrDefault(p => p.Name == name);
+              }
+
+              public List<Person> GetAdults()
+              {
+                  return _people.Where(p => p.IsAdult).ToList();
+              }
+
+              public Person UpdateAge(Person person, int newAge)
+              {
+                  return person with { Age = newAge };
+              }
+          }
+      }
+    Serializers/PersonSerializer.cs: |
+      using System.Text.Json;
+
+      namespace App.Serializers
+      {
+          class PersonSerializer
+          {
+              public string Serialize(Person person)
+              {
+                  return JsonSerializer.Serialize(new
+                  {
+                      name = person.Name,
+                      age = person.Age,
+                      isAdult = person.IsAdult
+                  });
+              }
+
+              public string SerializeEmployee(Employee employee)
+              {
+                  return JsonSerializer.Serialize(new
+                  {
+                      name = employee.Name,
+                      age = employee.Age,
+                      department = employee.Department
+                  });
+              }
+          }
+      }
+    Repositories/EmployeeRepository.cs: |
+      using System.Collections.Generic;
+      using System.Linq;
+
+      namespace App.Repositories
+      {
+          class EmployeeRepository
+          {
+              private readonly List<Employee> _employees = new();
+
+              public void Add(Employee employee)
+              {
+                  _employees.Add(employee);
+              }
+
+              public List<Employee> GetByDepartment(string department)
+              {
+                  return _employees.Where(e => e.Department == department).ToList();
+              }
+
+              public Employee FindByName(string name)
+              {
+                  return _employees.FirstOrDefault(e => e.Name == name);
+              }
+          }
+      }
+    Utils/RecordComparer.cs: |
+      namespace App.Utils
+      {
+          class RecordComparer
+          {
+              public bool AreEqual<T>(T a, T b) where T : IEquatable<T>
+              {
+                  return a.Equals(b);
+              }
+
+              public int GetHashCodeOf<T>(T record)
+              {
+                  return record.GetHashCode();
+              }
+
+              public string Describe<T>(T record)
+              {
+                  return record.ToString();
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: program
+  selector:
+    path: Program.cs
+    anchor: person with { Age = 31 }
+- id: program_1
+  selector:
+    path: Program.cs
+    anchor: new Employee("Jane", 25, "IT")
+- id: program_2
+  selector:
+    path: Program.cs
+    anchor: employee.Department
+- id: person
+  selector:
+    path: Models/Person.cs
+    anchor: public record Person(string Name, int Age)
+- id: person_1
+  selector:
+    path: Models/Person.cs
+    anchor: 'public record Employee(string Name, int Age, string Department) : Person(Name, Age)'
+- id: person_2
+  selector:
+    path: Models/Person.cs
+    anchor: public bool IsAdult => Age >= 18
+- id: no_address
+  selector:
+    path: Models/Address.cs
+- id: no_personservice
+  selector:
+    path: Services/PersonService.cs
+- id: no_personserializer
+  selector:
+    path: Serializers/PersonSerializer.cs
+- id: no_employeerepository
+  selector:
+    path: Repositories/EmployeeRepository.cs
+- id: no_recordcomparer
+  selector:
+    path: Utils/RecordComparer.cs
+- id: no_global_0
+  selector:
+    anchor: Address
+- id: no_global_1
+  selector:
+    anchor: BusinessAddress
+- id: no_global_2
+  selector:
+    anchor: FullAddress
+- id: no_global_3
+  selector:
+    anchor: ZipCode
+- id: no_global_4
+  selector:
+    anchor: PersonService
+- id: no_global_5
+  selector:
+    anchor: GetAdults
+- id: no_global_6
+  selector:
+    anchor: UpdateAge
+- id: no_global_7
+  selector:
+    anchor: PersonSerializer
+- id: no_global_8
+  selector:
+    anchor: JsonSerializer
+- id: no_global_9
+  selector:
+    anchor: SerializeEmployee
+- id: no_global_10
+  selector:
+    anchor: EmployeeRepository
+- id: no_global_11
+  selector:
+    anchor: GetByDepartment
+- id: no_global_12
+  selector:
+    anchor: RecordComparer
+- id: no_global_13
+  selector:
+    anchor: AreEqual
+- id: no_global_14
+  selector:
+    anchor: GetHashCodeOf
+oracle:
+  required:
+  - program
+  - program_1
+  - program_2
+  - person
+  - person_1
+  - person_2
+  allowed: []
+  forbidden:
+  - no_address
+  - no_personservice
+  - no_personserializer
+  - no_employeerepository
+  - no_recordcomparer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

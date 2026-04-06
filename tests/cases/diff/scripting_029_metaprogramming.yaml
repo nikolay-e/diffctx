@@ -1,0 +1,280 @@
+name: scripting_029_metaprogramming
+repo:
+  initial_files:
+    config.py: |
+      class Config:
+          pass
+    dsl.py: |
+      def define_accessors(cls, *names):
+          for name in names:
+              def make_getter(n):
+                  def getter(self):
+                      return getattr(self, f"_{n}", None)
+                  return getter
+              def make_setter(n):
+                  def setter(self, value):
+                      setattr(self, f"_{n}", value)
+                  return setter
+              setattr(cls, name, property(make_getter(name), make_setter(name)))
+
+      def define_readonly(cls, *names):
+          for name in names:
+              def make_getter(n):
+                  def getter(self):
+                      return getattr(self, f"_{n}", None)
+                  return getter
+              setattr(cls, name, property(make_getter(name)))
+    models/database.py: |
+      from dsl import define_accessors
+
+      class DatabaseConfig:
+          def __init__(self, host="localhost", port=5432, name="app", pool_size=5):
+              self._host = host
+              self._port = port
+              self._name = name
+              self._pool_size = pool_size
+
+          def connection_string(self):
+              return f"postgresql://{self.host}:{self.port}/{self.name}"
+
+      define_accessors(DatabaseConfig, "host", "port", "name", "pool_size")
+    app.py: |
+      from config import Config, config
+
+      def create_app():
+          host = config.host
+          port = config.port
+          debug = config.debug
+
+          print(f"Starting app on {host}:{port} (debug={debug})")
+          return {"host": host, "port": port, "debug": debug}
+
+      def get_config_summary() -> dict:
+          return {
+              "host": config.host,
+              "port": config.port,
+              "debug": config.debug,
+          }
+    tests/test_config.py: |
+      from config import Config
+
+      def test_default_values():
+          c = Config()
+          assert c.host == "localhost"
+          assert c.port == 3000
+          assert c.debug is False
+
+      def test_custom_values():
+          c = Config(host="0.0.0.0", port=8080, debug=True)
+          assert c.host == "0.0.0.0"
+          assert c.port == 8080
+          assert c.debug is True
+
+      def test_setter():
+          c = Config()
+          c.host = "production.example.com"
+          assert c.host == "production.example.com"
+
+      def test_port_setter():
+          c = Config()
+          c.port = 9090
+          assert c.port == 9090
+    middleware/config_reload.py: |
+      from config import Config
+      import json
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      class ConfigReloader:
+          def __init__(self, config: Config, config_path: str):
+              self.config = config
+              self.config_path = config_path
+
+          def reload(self):
+              with open(self.config_path) as f:
+                  data = json.load(f)
+              for key, value in data.items():
+                  if hasattr(self.config, key):
+                      setattr(self.config, key, value)
+                      logger.info(f"Reloaded config.{key} = {value}")
+
+          def watch(self, interval: float = 5.0):
+              import time
+              while True:
+                  self.reload()
+                  time.sleep(interval)
+    serializer.py: |
+      import json
+
+      class Serializer:
+          def __init__(self, fmt="json"):
+              self.fmt = fmt
+
+          def serialize(self, obj):
+              if self.fmt == "json":
+                  return json.dumps(obj.__dict__)
+              return str(obj.__dict__)
+
+          def deserialize(self, raw_string):
+              return json.loads(raw_string)
+    validator.py: |
+      class Validator:
+          def __init__(self, rules):
+              self.rules = rules
+
+          def check(self, attributes):
+              errors = []
+              for field, constraint in self.rules.items():
+                  value = attributes.get(field)
+                  if value is None and constraint.get("required"):
+                      errors.append(f"{field} is required")
+                  if constraint.get("max") and value and int(value) > constraint["max"]:
+                      errors.append(f"{field} exceeds maximum {constraint['max']}")
+              return errors
+  changed_files:
+    config.py: |
+      from dsl import define_accessors
+
+      class Config:
+          def __init__(self, host="localhost", port=3000, debug=False):
+              self._host = host
+              self._port = port
+              self._debug = debug
+
+      define_accessors(Config, "host", "port", "debug")
+
+      config = Config()
+      print(config.host)
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: config.py
+    anchor: from dsl import define_accessors
+- id: config_1
+  selector:
+    path: config.py
+    anchor: define_accessors(Config, "host", "port", "debug")
+- id: config_2
+  selector:
+    path: config.py
+    anchor: self._host = host
+- id: dsl
+  selector:
+    path: dsl.py
+    anchor: def define_accessors(cls, *names)
+- id: dsl_1
+  selector:
+    path: dsl.py
+    anchor: getattr(self, f"_{n}", None)
+- id: dsl_2
+  selector:
+    path: dsl.py
+    anchor: setattr(cls, name, property(make_getter(name), make_setter(name)))
+- id: no_database
+  selector:
+    path: models/database.py
+- id: no_app
+  selector:
+    path: app.py
+- id: no_test_config
+  selector:
+    path: tests/test_config.py
+- id: no_config_reload
+  selector:
+    path: middleware/config_reload.py
+- id: no_serializer
+  selector:
+    path: serializer.py
+- id: no_validator
+  selector:
+    path: validator.py
+- id: no_global_0
+  selector:
+    anchor: DatabaseConfig
+- id: no_global_1
+  selector:
+    anchor: connection_string
+- id: no_global_2
+  selector:
+    anchor: pool_size
+- id: no_global_3
+  selector:
+    anchor: postgresql://
+- id: no_global_4
+  selector:
+    anchor: create_app
+- id: no_global_5
+  selector:
+    anchor: get_config_summary
+- id: no_global_6
+  selector:
+    anchor: Starting app on
+- id: no_global_7
+  selector:
+    anchor: test_default_values
+- id: no_global_8
+  selector:
+    anchor: test_custom_values
+- id: no_global_9
+  selector:
+    anchor: test_setter
+- id: no_global_10
+  selector:
+    anchor: test_port_setter
+- id: no_global_11
+  selector:
+    anchor: ConfigReloader
+- id: no_global_12
+  selector:
+    anchor: config_path
+- id: no_global_13
+  selector:
+    anchor: Reloaded config
+- id: no_global_14
+  selector:
+    anchor: Serializer
+- id: no_global_15
+  selector:
+    anchor: deserialize
+- id: no_global_16
+  selector:
+    anchor: Validator
+- id: no_global_17
+  selector:
+    anchor: is required
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - dsl
+  - dsl_1
+  - dsl_2
+  allowed: []
+  forbidden:
+  - no_database
+  - no_app
+  - no_test_config
+  - no_config_reload
+  - no_serializer
+  - no_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

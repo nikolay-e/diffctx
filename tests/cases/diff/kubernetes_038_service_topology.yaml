@@ -1,0 +1,273 @@
+name: kubernetes_038_service_topology
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cache-service
+        namespace: production
+        labels:
+          app: cache-service
+          tier: cache
+      spec:
+        replicas: 6
+        selector:
+          matchLabels:
+            app: cache-service
+        template:
+          metadata:
+            labels:
+              app: cache-service
+              tier: cache
+          spec:
+            topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app: cache-service
+            containers:
+            - name: cache
+              image: registry.example.com/cache-service:v1.5.0
+              ports:
+              - containerPort: 6379
+                name: redis
+              - containerPort: 9121
+                name: metrics
+              resources:
+                requests:
+                  memory: "1Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: cache-service
+        namespace: production
+        labels:
+          app: cache-service
+      spec:
+        selector:
+          app: cache-service
+        ports:
+        - name: redis
+          port: 6379
+          targetPort: 6379
+        - name: metrics
+          port: 9121
+          targetPort: 9121
+    k8s/base/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: cache-service-pdb
+        namespace: production
+      spec:
+        minAvailable: 4
+        selector:
+          matchLabels:
+            app: cache-service
+    k8s/base/servicemonitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: cache-service
+        namespace: production
+      spec:
+        selector:
+          matchLabels:
+            app: cache-service
+        endpoints:
+        - port: metrics
+          interval: 15s
+    k8s/scheduling/pod-topology-spread.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: default-topology-constraints
+        namespace: kube-system
+      data:
+        constraints: |
+          defaultConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
+          - maxSkew: 2
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+    k8s/scheduling/node-affinity.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: node-affinity-defaults
+        namespace: kube-system
+      data:
+        preferred-zones: us-east-1a,us-east-1b,us-east-1c
+        required-instance-types: m5.xlarge,m5.2xlarge,r5.xlarge
+        anti-affinity-label: topology.kubernetes.io/zone
+    cdk8s/main.ts: |
+      import { App } from 'cdk8s';
+      const app = new App();
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cache-service
+        namespace: production
+        labels:
+          app: cache-service
+          tier: cache
+      spec:
+        replicas: 6
+        selector:
+          matchLabels:
+            app: cache-service
+        template:
+          metadata:
+            labels:
+              app: cache-service
+              tier: cache
+          spec:
+            topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app: cache-service
+            containers:
+            - name: cache
+              image: registry.example.com/cache-service:v1.5.0
+              ports:
+              - containerPort: 6379
+                name: redis
+              - containerPort: 9121
+                name: metrics
+              resources:
+                requests:
+                  memory: "1Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: cache-service
+        namespace: production
+        labels:
+          app: cache-service
+        annotations:
+          service.kubernetes.io/topology-aware-hints: "auto"
+      spec:
+        selector:
+          app: cache-service
+        ports:
+        - name: redis
+          port: 6379
+          targetPort: 6379
+        - name: metrics
+          port: 9121
+          targetPort: 9121
+        topologyKeys:
+        - "kubernetes.io/hostname"
+        - "topology.kubernetes.io/zone"
+        - "topology.kubernetes.io/region"
+        - "*"
+    k8s/base/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: cache-service-pdb
+        namespace: production
+      spec:
+        minAvailable: 4
+        selector:
+          matchLabels:
+            app: cache-service
+    k8s/base/servicemonitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: cache-service
+        namespace: production
+      spec:
+        selector:
+          matchLabels:
+            app: cache-service
+        endpoints:
+        - port: metrics
+          interval: 15s
+    k8s/scheduling/pod-topology-spread.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: default-topology-constraints
+        namespace: kube-system
+      data:
+        constraints: |
+          defaultConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
+          - maxSkew: 2
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+    k8s/scheduling/node-affinity.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: node-affinity-defaults
+        namespace: kube-system
+      data:
+        preferred-zones: us-east-1a,us-east-1b,us-east-1c
+        required-instance-types: m5.xlarge,m5.2xlarge,r5.xlarge
+        anti-affinity-label: topology.kubernetes.io/zone
+    cdk8s/main.ts: |
+      import { App } from 'cdk8s';
+      const app = new App();
+  commit_message: Update files
+fragments:
+- id: service_file
+  selector:
+    path: k8s/base/service.yaml
+- id: req_global_0
+  selector:
+    anchor: 'service.kubernetes.io/topology-aware-hints: "auto"'
+- id: no_pod_topology_spread
+  selector:
+    path: k8s/scheduling/pod-topology-spread.yaml
+- id: no_node_affinity
+  selector:
+    path: k8s/scheduling/node-affinity.yaml
+- id: no_global_0
+  selector:
+    anchor: default-topology-constraints
+- id: no_global_1
+  selector:
+    anchor: node-affinity-defaults
+- id: no_global_2
+  selector:
+    anchor: pod-topology-spread.yaml
+- id: no_global_3
+  selector:
+    anchor: node-affinity.yaml
+oracle:
+  required:
+  - service_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_pod_topology_spread
+  - no_node_affinity
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

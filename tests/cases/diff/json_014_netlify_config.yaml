@@ -1,0 +1,170 @@
+name: json_014_netlify_config
+repo:
+  initial_files:
+    netlify.json: |
+      {
+        "build": {
+          "command": "npm run build",
+          "publish": "dist",
+          "environment": {
+            "NODE_VERSION": "18"
+          }
+        },
+        "functions": {
+          "directory": "functions"
+        },
+        "headers": [
+          {
+            "for": "/api/*",
+            "values": {"Access-Control-Allow-Origin": "*"}
+          }
+        ]
+      }
+    functions/hello.js: |
+      exports.handler = async (event) => {
+          const name = event.queryStringParameters?.name || 'World';
+          return {
+              statusCode: 200,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: `Hello, ${name}!` }),
+          };
+      };
+    functions/users.js: |
+      const { getAllUsers, addUser } = require('./utils/database');
+
+      exports.handler = async (event) => {
+          if (event.httpMethod === 'GET') {
+              const users = await getAllUsers();
+              return {
+                  statusCode: 200,
+                  body: JSON.stringify({ users }),
+              };
+          }
+
+          if (event.httpMethod === 'POST') {
+              const data = JSON.parse(event.body);
+              const user = await addUser(data);
+              return {
+                  statusCode: 201,
+                  body: JSON.stringify({ user }),
+              };
+          }
+
+          return { statusCode: 405, body: 'Method Not Allowed' };
+      };
+    functions/utils/database.js: |
+      const store = [];
+
+      async function getAllUsers() {
+          return [...store];
+      }
+
+      async function addUser(data) {
+          const user = { id: store.length + 1, ...data, createdAt: Date.now() };
+          store.push(user);
+          return user;
+      }
+
+      module.exports = { getAllUsers, addUser };
+    package.json: |
+      {
+        "name": "netlify-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "vite build",
+          "dev": "vite dev",
+          "preview": "vite preview"
+        },
+        "dependencies": {
+          "react": "^18.2.0",
+          "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+          "vite": "^4.4.0"
+        }
+      }
+    src/index.js: |
+      import React from 'react';
+      import ReactDOM from 'react-dom/client';
+
+      function App() {
+          return React.createElement('div', null,
+              React.createElement('h1', null, 'Hello Netlify'),
+              React.createElement('p', null, 'Deployed with Netlify Functions')
+          );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(App));
+  changed_files:
+    netlify.json: |
+      {
+        "build": {
+          "command": "npm run build",
+          "publish": "build",
+          "environment": {
+            "NODE_VERSION": "18"
+          }
+        },
+        "functions": {
+          "directory": "netlify/functions"
+        },
+        "redirects": [
+          {"from": "/api/*", "to": "/.netlify/functions/:splat", "status": 200}
+        ],
+        "headers": [
+          {
+            "for": "/api/*",
+            "values": {"Access-Control-Allow-Origin": "*"}
+          }
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: netlify
+  selector:
+    path: netlify.json
+    anchor: '"publish": "build"'
+- id: netlify_1
+  selector:
+    path: netlify.json
+    anchor: '"directory": "netlify/functions"'
+- id: netlify_2
+  selector:
+    path: netlify.json
+    anchor: '"from": "/api/*"'
+- id: no_package
+  selector:
+    path: package.json
+- id: no_index
+  selector:
+    path: src/index.js
+- id: no_global_0
+  selector:
+    anchor: vite build
+- id: no_global_1
+  selector:
+    anchor: react-dom
+- id: no_global_2
+  selector:
+    anchor: ReactDOM
+- id: no_global_3
+  selector:
+    anchor: createRoot
+- id: no_global_4
+  selector:
+    anchor: Hello Netlify
+oracle:
+  required:
+  - netlify
+  - netlify_1
+  - netlify_2
+  allowed: []
+  forbidden:
+  - no_package
+  - no_index
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

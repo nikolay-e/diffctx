@@ -58,7 +58,10 @@ def test_text_file_not_detected_as_binary(data):
         f = Path(tmp_dir) / "test.txt"
         f.write_bytes(data)
         result = _read_file_content(f, max_file_bytes=None)
-        assert "<binary file:" not in result or "<unreadable content" in result
+        from hypothesis import assume
+
+        assume("<unreadable content" not in result)
+        assert "<binary file:" not in result
 
 
 @given(st.lists(pattern_text, min_size=0, max_size=20))

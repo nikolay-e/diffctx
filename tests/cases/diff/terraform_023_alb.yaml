@@ -1,0 +1,253 @@
+name: terraform_023_alb
+repo:
+  initial_files:
+    lb.tf: |
+      # Load balancer resources placeholder
+    security.tf: |
+      resource "aws_security_group" "alb" {
+        name        = "${var.environment}-alb-sg"
+        description = "Security group for Application Load Balancer"
+        vpc_id      = var.vpc_id
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_security_group_rule" "alb_https_ingress" {
+        type              = "ingress"
+        from_port         = 443
+        to_port           = 443
+        protocol          = "tcp"
+        cidr_blocks       = ["0.0.0.0/0"]
+        security_group_id = aws_security_group.alb.id
+      }
+    nlb.tf: |
+      resource "aws_lb" "network" {
+        name               = "${var.environment}-nlb"
+        internal           = true
+        load_balancer_type = "network"
+        subnets            = var.private_subnet_ids
+      }
+
+      resource "aws_lb_target_group" "tcp" {
+        name     = "${var.environment}-tcp-tg"
+        port     = 9000
+        protocol = "TCP"
+        vpc_id   = var.vpc_id
+      }
+    cdn.tf: |
+      resource "aws_cloudfront_distribution" "main" {
+        enabled = true
+
+        origin {
+          domain_name = aws_lb.main.dns_name
+          origin_id   = "ALB"
+
+          custom_origin_config {
+            http_port              = 80
+            https_port             = 443
+            origin_protocol_policy = "https-only"
+            origin_ssl_protocols   = ["TLSv1.2"]
+          }
+        }
+
+        default_cache_behavior {
+          target_origin_id       = "ALB"
+          viewer_protocol_policy = "redirect-to-https"
+          allowed_methods        = ["GET", "HEAD"]
+          cached_methods         = ["GET", "HEAD"]
+
+          forwarded_values {
+            query_string = false
+            cookies {
+              forward = "none"
+            }
+          }
+        }
+
+        restrictions {
+          geo_restriction {
+            restriction_type = "none"
+          }
+        }
+
+        viewer_certificate {
+          acm_certificate_arn = var.certificate_arn
+          ssl_support_method  = "sni-only"
+        }
+      }
+  changed_files:
+    lb.tf: |
+      resource "aws_lb" "main" {
+        name               = "${var.environment}-alb"
+        internal           = false
+        load_balancer_type = "application"
+        security_groups    = [aws_security_group.alb.id]
+        subnets            = var.public_subnet_ids
+        enable_http2       = true
+      }
+
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = var.certificate_arn
+
+        default_action {
+          type = "fixed-response"
+          fixed_response {
+            content_type = "text/plain"
+            message_body = "Not Found"
+            status_code  = "404"
+          }
+        }
+      }
+
+      resource "aws_lb_target_group" "app" {
+        name     = "${var.environment}-app-tg"
+        port     = var.app_port
+        protocol = "HTTP"
+        vpc_id   = var.vpc_id
+
+        health_check {
+          path     = var.health_check_path
+          matcher  = "200-299"
+          interval = 30
+        }
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_lb_listener_rule" "app" {
+        listener_arn = aws_lb_listener.https.arn
+        priority     = 100
+
+        action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+
+        condition {
+          host_header {
+            values = var.app_host_headers
+          }
+        }
+      }
+    security.tf: |
+      resource "aws_security_group" "alb" {
+        name        = "${var.environment}-alb-sg"
+        description = "Security group for Application Load Balancer"
+        vpc_id      = var.vpc_id
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_security_group_rule" "alb_https_ingress" {
+        type              = "ingress"
+        from_port         = 443
+        to_port           = 443
+        protocol          = "tcp"
+        cidr_blocks       = ["0.0.0.0/0"]
+        security_group_id = aws_security_group.alb.id
+      }
+    nlb.tf: |
+      resource "aws_lb" "network" {
+        name               = "${var.environment}-nlb"
+        internal           = true
+        load_balancer_type = "network"
+        subnets            = var.private_subnet_ids
+      }
+
+      resource "aws_lb_target_group" "tcp" {
+        name     = "${var.environment}-tcp-tg"
+        port     = 9000
+        protocol = "TCP"
+        vpc_id   = var.vpc_id
+      }
+    cdn.tf: |
+      resource "aws_cloudfront_distribution" "main" {
+        enabled = true
+
+        origin {
+          domain_name = aws_lb.main.dns_name
+          origin_id   = "ALB"
+
+          custom_origin_config {
+            http_port              = 80
+            https_port             = 443
+            origin_protocol_policy = "https-only"
+            origin_ssl_protocols   = ["TLSv1.2"]
+          }
+        }
+
+        default_cache_behavior {
+          target_origin_id       = "ALB"
+          viewer_protocol_policy = "redirect-to-https"
+          allowed_methods        = ["GET", "HEAD"]
+          cached_methods         = ["GET", "HEAD"]
+
+          forwarded_values {
+            query_string = false
+            cookies {
+              forward = "none"
+            }
+          }
+        }
+
+        restrictions {
+          geo_restriction {
+            restriction_type = "none"
+          }
+        }
+
+        viewer_certificate {
+          acm_certificate_arn = var.certificate_arn
+          ssl_support_method  = "sni-only"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: security
+  selector:
+    path: security.tf
+    anchor: resource "aws_security_group" "alb" {
+- id: security_1
+  selector:
+    path: security.tf
+    anchor: from_port         = 443
+- id: no_nlb
+  selector:
+    path: nlb.tf
+- id: no_cdn
+  selector:
+    path: cdn.tf
+- id: no_global_0
+  selector:
+    anchor: load_balancer_type = "network"
+- id: no_global_1
+  selector:
+    anchor: protocol = "TCP"
+- id: no_global_2
+  selector:
+    anchor: aws_cloudfront_distribution
+- id: no_global_3
+  selector:
+    anchor: origin_protocol_policy
+oracle:
+  required:
+  - security
+  - security_1
+  allowed: []
+  forbidden:
+  - no_nlb
+  - no_cdn
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

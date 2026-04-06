@@ -9,6 +9,7 @@ from ..base import EdgeBuilder, EdgeDict
 
 _K8S_API_VERSION_RE = re.compile(r"^apiVersion:\s?([^\s#]{1,100})", re.MULTILINE)
 _K8S_KIND_RE = re.compile(r"^kind:\s?(\w{1,100})", re.MULTILINE)
+_K8S_METADATA_NAME_RE = re.compile(r"^metadata:\s*\n\s{2,4}name:\s?['\"]?([^'\"#\n]{1,200})", re.MULTILINE)
 _K8S_NAME_RE = re.compile(r"^\s{1,20}name:\s?['\"]?([^'\"#\n]{1,200})", re.MULTILINE)
 _K8S_NAMESPACE_RE = re.compile(r"^\s{1,20}namespace:\s?['\"]?([^'\"#\n]{1,200})", re.MULTILINE)
 
@@ -82,7 +83,7 @@ def _is_kubernetes_manifest(path: Path, content: str | None = None) -> bool:
 
 def _extract_resource_info(content: str) -> tuple[str | None, str | None, str | None]:
     kind_match = _K8S_KIND_RE.search(content)
-    name_match = _K8S_NAME_RE.search(content)
+    name_match = _K8S_METADATA_NAME_RE.search(content) or _K8S_NAME_RE.search(content)
     namespace_match = _K8S_NAMESPACE_RE.search(content)
 
     kind = kind_match.group(1).strip() if kind_match else None

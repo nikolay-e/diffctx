@@ -1,0 +1,135 @@
+name: csharp_019_extension_method
+repo:
+  initial_files:
+    Extensions/StringExtensions.cs: |
+      namespace MyApp.Extensions;
+
+      public static class StringExtensions
+      {
+          public static bool IsNullOrWhiteSpace(this string? value)
+          {
+              return string.IsNullOrWhiteSpace(value);
+          }
+
+          public static string Truncate(this string value, int maxLength)
+          {
+              return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+          }
+
+          public static string ToSlug(this string value)
+          {
+              return value.ToLower().Replace(" ", "-");
+          }
+      }
+    Program.cs: |
+      using System;
+
+      class Program
+      {
+          static void Main() { }
+      }
+    Unrelated/ApiGateway.cs: |
+      namespace MyApp.Unrelated;
+
+      public class ApiGateway
+      {
+          private const string GARBAGE_CS_019_API_GATEWAY_A = "api_gateway_marker";
+
+          public string Route(string path) => GARBAGE_CS_019_API_GATEWAY_A + path;
+      }
+    Unrelated/LoadBalancer.cs: |
+      namespace MyApp.Unrelated;
+
+      public class LoadBalancer
+      {
+          public const string GARBAGE_CS_019_LOAD_BALANCER_B = "load_balancer_marker";
+
+          public string GetNextServer() => GARBAGE_CS_019_LOAD_BALANCER_B;
+      }
+  changed_files:
+    Extensions/StringExtensions.cs: |
+      namespace MyApp.Extensions;
+
+      public static class StringExtensions
+      {
+          public static bool IsNullOrWhiteSpace(this string? value)
+          {
+              return string.IsNullOrWhiteSpace(value);
+          }
+
+          public static string Truncate(this string value, int maxLength)
+          {
+              return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+          }
+
+          public static string ToSlug(this string value)
+          {
+              return value.ToLower().Replace(" ", "-");
+          }
+      }
+    Program.cs: |
+      using System;
+      using MyApp.Extensions;
+
+      class Program
+      {
+          static void Main()
+          {
+              string title = "Hello World From CSharp";
+              var slug = title.ToSlug();
+              var truncated = title.Truncate(10);
+              Console.WriteLine($"{slug} - {truncated}");
+          }
+      }
+    Unrelated/ApiGateway.cs: |
+      namespace MyApp.Unrelated;
+
+      public class ApiGateway
+      {
+          private const string GARBAGE_CS_019_API_GATEWAY_A = "api_gateway_marker";
+
+          public string Route(string path) => GARBAGE_CS_019_API_GATEWAY_A + path;
+      }
+    Unrelated/LoadBalancer.cs: |
+      namespace MyApp.Unrelated;
+
+      public class LoadBalancer
+      {
+          public const string GARBAGE_CS_019_LOAD_BALANCER_B = "load_balancer_marker";
+
+          public string GetNextServer() => GARBAGE_CS_019_LOAD_BALANCER_B;
+      }
+  commit_message: Update files
+fragments:
+- id: program_file
+  selector:
+    path: Program.cs
+- id: req_global_0
+  selector:
+    anchor: using MyApp.Extensions;
+- id: req_global_1
+  selector:
+    anchor: static void Main()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_019_API_GATEWAY_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_019_LOAD_BALANCER_B
+- id: no_global_2
+  selector:
+    anchor: ApiGateway.cs
+- id: no_global_3
+  selector:
+    anchor: LoadBalancer.cs
+oracle:
+  required:
+  - program_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

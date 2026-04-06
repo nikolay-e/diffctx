@@ -1,0 +1,302 @@
+name: swift_003_protocol_extension
+repo:
+  initial_files:
+    Sources/Extensions/NumericExtensions.swift: |
+      extension Collection where Element: Numeric {
+          var sum: Element {
+              reduce(0, +)
+          }
+      }
+
+      extension Collection where Element: BinaryInteger {
+          var average: Double {
+              guard !isEmpty else { return 0 }
+              return Double(sum) / Double(count)
+          }
+      }
+    Sources/Services/Calculator.swift: |
+      struct Calculator {
+          func calculate(_ values: [Int]) -> Int {
+              return values.count
+          }
+      }
+    Sources/Extensions/ArrayExtensions.swift: |
+      extension Array where Element: Hashable {
+          func unique() -> [Element] {
+              var seen = Set<Element>()
+              return filter { seen.insert($0).inserted }
+          }
+
+          func chunked(into size: Int) -> [[Element]] {
+              stride(from: 0, to: count, by: size).map {
+                  Array(self[$0..<Swift.min($0 + size, count)])
+              }
+          }
+      }
+    Sources/Utils/MathUtils.swift: |
+      struct MathUtils {
+          static func clamp(_ value: Double, min: Double, max: Double) -> Double {
+              return Swift.min(Swift.max(value, min), max)
+          }
+
+          static func lerp(from start: Double, to end: Double, t: Double) -> Double {
+              return start + (end - start) * t
+          }
+
+          static func normalize(_ value: Double, min: Double, max: Double) -> Double {
+              guard max > min else { return 0 }
+              return (value - min) / (max - min)
+          }
+      }
+    Sources/Extensions/StringExtensions.swift: |
+      extension String {
+          var trimmed: String {
+              trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          var isBlank: Bool {
+              trimmed.isEmpty
+          }
+
+          func truncated(to maxLength: Int) -> String {
+              if count <= maxLength { return self }
+              return String(prefix(maxLength)) + "..."
+          }
+      }
+    Sources/Services/StatisticsService.swift: |
+      struct StatisticsService {
+          func computeStats(values: [Int]) -> (total: Int, avg: Double) {
+              let total = values.sum
+              let avg = values.average
+              return (total, avg)
+          }
+
+          func percentile(_ values: [Int], at p: Double) -> Int {
+              let sorted = values.sorted()
+              let index = Int(Double(sorted.count - 1) * p)
+              return sorted[index]
+          }
+      }
+    Sources/Extensions/ComparableExtensions.swift: |
+      extension Collection where Element: Comparable {
+          var minMax: (min: Element, max: Element)? {
+              guard let first = first else { return nil }
+              return reduce((first, first)) { result, element in
+                  (Swift.min(result.0, element), Swift.max(result.1, element))
+              }
+          }
+
+          func isSorted() -> Bool {
+              zip(self, self.dropFirst()).allSatisfy { $0 <= $1 }
+          }
+      }
+  changed_files:
+    Sources/Extensions/NumericExtensions.swift: |
+      extension Collection where Element: Numeric {
+          var sum: Element {
+              reduce(0, +)
+          }
+      }
+
+      extension Collection where Element: BinaryInteger {
+          var average: Double {
+              guard !isEmpty else { return 0 }
+              return Double(sum) / Double(count)
+          }
+      }
+    Sources/Services/Calculator.swift: |
+      struct Calculator {
+          func totalScore(scores: [Int]) -> Int {
+              return scores.sum
+          }
+
+          func averageScore(scores: [Int]) -> Double {
+              return scores.average
+          }
+
+          func sumDoubles(values: [Double]) -> Double {
+              return values.sum
+          }
+      }
+    Sources/Extensions/ArrayExtensions.swift: |
+      extension Array where Element: Hashable {
+          func unique() -> [Element] {
+              var seen = Set<Element>()
+              return filter { seen.insert($0).inserted }
+          }
+
+          func chunked(into size: Int) -> [[Element]] {
+              stride(from: 0, to: count, by: size).map {
+                  Array(self[$0..<Swift.min($0 + size, count)])
+              }
+          }
+      }
+    Sources/Utils/MathUtils.swift: |
+      struct MathUtils {
+          static func clamp(_ value: Double, min: Double, max: Double) -> Double {
+              return Swift.min(Swift.max(value, min), max)
+          }
+
+          static func lerp(from start: Double, to end: Double, t: Double) -> Double {
+              return start + (end - start) * t
+          }
+
+          static func normalize(_ value: Double, min: Double, max: Double) -> Double {
+              guard max > min else { return 0 }
+              return (value - min) / (max - min)
+          }
+      }
+    Sources/Extensions/StringExtensions.swift: |
+      extension String {
+          var trimmed: String {
+              trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          var isBlank: Bool {
+              trimmed.isEmpty
+          }
+
+          func truncated(to maxLength: Int) -> String {
+              if count <= maxLength { return self }
+              return String(prefix(maxLength)) + "..."
+          }
+      }
+    Sources/Services/StatisticsService.swift: |
+      struct StatisticsService {
+          func computeStats(values: [Int]) -> (total: Int, avg: Double) {
+              let total = values.sum
+              let avg = values.average
+              return (total, avg)
+          }
+
+          func percentile(_ values: [Int], at p: Double) -> Int {
+              let sorted = values.sorted()
+              let index = Int(Double(sorted.count - 1) * p)
+              return sorted[index]
+          }
+      }
+    Sources/Extensions/ComparableExtensions.swift: |
+      extension Collection where Element: Comparable {
+          var minMax: (min: Element, max: Element)? {
+              guard let first = first else { return nil }
+              return reduce((first, first)) { result, element in
+                  (Swift.min(result.0, element), Swift.max(result.1, element))
+              }
+          }
+
+          func isSorted() -> Bool {
+              zip(self, self.dropFirst()).allSatisfy { $0 <= $1 }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: Sources/Services/Calculator.swift
+    anchor: scores.sum
+- id: calculator_1
+  selector:
+    path: Sources/Services/Calculator.swift
+    anchor: scores.average
+- id: calculator_2
+  selector:
+    path: Sources/Services/Calculator.swift
+    anchor: values.sum
+- id: numericextensions
+  selector:
+    path: Sources/Extensions/NumericExtensions.swift
+    anchor: 'var sum: Element'
+- id: numericextensions_1
+  selector:
+    path: Sources/Extensions/NumericExtensions.swift
+    anchor: reduce(0, +)
+- id: numericextensions_2
+  selector:
+    path: Sources/Extensions/NumericExtensions.swift
+    anchor: 'var average: Double'
+- id: no_arrayextensions
+  selector:
+    path: Sources/Extensions/ArrayExtensions.swift
+- id: no_mathutils
+  selector:
+    path: Sources/Utils/MathUtils.swift
+- id: no_stringextensions
+  selector:
+    path: Sources/Extensions/StringExtensions.swift
+- id: no_statisticsservice
+  selector:
+    path: Sources/Services/StatisticsService.swift
+- id: no_comparableextensions
+  selector:
+    path: Sources/Extensions/ComparableExtensions.swift
+- id: no_global_0
+  selector:
+    anchor: unique()
+- id: no_global_1
+  selector:
+    anchor: chunked
+- id: no_global_2
+  selector:
+    anchor: MathUtils
+- id: no_global_3
+  selector:
+    anchor: clamp
+- id: no_global_4
+  selector:
+    anchor: lerp
+- id: no_global_5
+  selector:
+    anchor: normalize
+- id: no_global_6
+  selector:
+    anchor: trimmed
+- id: no_global_7
+  selector:
+    anchor: isBlank
+- id: no_global_8
+  selector:
+    anchor: truncated
+- id: no_global_9
+  selector:
+    anchor: StatisticsService
+- id: no_global_10
+  selector:
+    anchor: computeStats
+- id: no_global_11
+  selector:
+    anchor: percentile
+- id: no_global_12
+  selector:
+    anchor: minMax
+- id: no_global_13
+  selector:
+    anchor: isSorted
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  - calculator_2
+  - numericextensions
+  - numericextensions_1
+  - numericextensions_2
+  allowed: []
+  forbidden:
+  - no_arrayextensions
+  - no_mathutils
+  - no_stringextensions
+  - no_statisticsservice
+  - no_comparableextensions
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

@@ -5,175 +5,157 @@ from typing import Any
 
 import yaml
 
-from tests.framework.types import YamlTestCase
+from tests.framework.types import (
+    Accept,
+    DeclaredFragment,
+    Fixtures,
+    Oracle,
+    Selector,
+    XFailInfo,
+    YamlTestCase,
+)
 
 _VALID_TOP_LEVEL_KEYS = frozenset(
     {
         "name",
-        "initial",
-        "initial_files",
-        "changed",
-        "changed_files",
-        "assertions",
-        "options",
-        "must_include",
-        "must_include_files",
-        "must_include_content",
-        "must_not_include",
-        "must_include_content_from",
-        "must_not_include_files",
-        "must_not_include_content_from",
-        "max_fragments",
-        "max_files",
-        "max_fragments_per_file",
-        "max_enrichment",
-        "min_recall",
-        "max_noise_rate",
-        "max_context_tokens",
-        "commit_message",
-        "min_budget",
-        "add_garbage_files",
-        "skip_garbage_check",
+        "tags",
+        "repo",
+        "fixtures",
+        "fragments",
+        "oracle",
+        "accept",
         "xfail",
-        "min_score",
-        "strict",
         "tests",
     }
 )
 
-_VALID_ASSERTION_KEYS = frozenset(
-    {
-        "must_include",
-        "must_include_files",
-        "must_include_content",
-        "must_not_include",
-        "must_include_content_from",
-        "must_not_include_files",
-        "must_not_include_content_from",
-    }
-)
-
-_VALID_OPTION_KEYS = frozenset(
-    {
-        "max_fragments",
-        "max_files",
-        "max_fragments_per_file",
-        "max_enrichment",
-        "min_recall",
-        "max_noise_rate",
-        "max_context_tokens",
-        "commit_message",
-        "min_budget",
-        "add_garbage",
-        "skip_garbage_check",
-        "min_score",
-    }
-)
+_VALID_REPO_KEYS = frozenset({"initial_files", "changed_files", "commit_message"})
+_VALID_FIXTURES_KEYS = frozenset({"auto_garbage", "distractors"})
+_VALID_SELECTOR_KEYS = frozenset({"path", "symbol", "kind", "anchor", "any_of"})
+_VALID_ORACLE_KEYS = frozenset({"required", "allowed", "forbidden"})
+_VALID_ACCEPT_KEYS = frozenset({"symbol_match", "kind_must_match", "span_relation"})
+_VALID_XFAIL_KEYS = frozenset({"category", "reason", "issue"})
+_VALID_FRAGMENT_KEYS = frozenset({"id", "selector"})
 
 
-def _validate_keys(data: dict, source_file: Path | None) -> None:
-    unknown = set(data.keys()) - _VALID_TOP_LEVEL_KEYS
+def _validate_keys(data: dict, valid: frozenset, context: str) -> None:
+    unknown = set(data.keys()) - valid
     if unknown:
-        location = str(source_file) if source_file else "unknown"
-        raise ValueError(f"Unknown keys in test case ({location}): {sorted(unknown)}")
-
-    assertions = data.get("assertions", {})
-    if isinstance(assertions, dict):
-        unknown_a = set(assertions.keys()) - _VALID_ASSERTION_KEYS
-        if unknown_a:
-            location = str(source_file) if source_file else "unknown"
-            raise ValueError(f"Unknown assertion keys ({location}): {sorted(unknown_a)}")
-
-    options = data.get("options", {})
-    if isinstance(options, dict):
-        unknown_o = set(options.keys()) - _VALID_OPTION_KEYS
-        if unknown_o:
-            location = str(source_file) if source_file else "unknown"
-            raise ValueError(f"Unknown option keys ({location}): {sorted(unknown_o)}")
+        raise ValueError(f"Unknown keys in {context}: {sorted(unknown)}")
 
 
-def _normalize_snippet(snippet: Any) -> str:
-    if isinstance(snippet, str):
-        return snippet.rstrip("\n")
-    if isinstance(snippet, bool):
-        return ("true" if snippet else "false").rstrip("\n")
-    if snippet is None:
-        return "null"
-    if isinstance(snippet, (int, float)):
-        return str(snippet).rstrip("\n")
-    if isinstance(snippet, dict) and len(snippet) == 1:
-        key, value = next(iter(snippet.items()))
-        return f"{_normalize_snippet(key)}: {_normalize_snippet(value)}".rstrip("\n")
-    raise TypeError(f"Unsupported assertion snippet type: {type(snippet).__name__}")
+def _parse_selector(data: Any) -> Selector:
+    if data is None:
+        return Selector()
+    if not isinstance(data, dict):
+        raise TypeError(f"selector must be a dict, got {type(data).__name__}")
+    _validate_keys(data, _VALID_SELECTOR_KEYS, "selector")
+    any_of_raw = data.get("any_of")
+    any_of = [_parse_selector(s) for s in any_of_raw] if any_of_raw else None
+    return Selector(
+        path=data.get("path"),
+        symbol=data.get("symbol"),
+        kind=data.get("kind"),
+        anchor=str(data["anchor"]) if data.get("anchor") is not None else None,
+        any_of=any_of,
+    )
 
 
-def _normalize_snippet_list(values: Any) -> list[str]:
-    if values is None:
-        return []
-    if isinstance(values, list):
-        raw_items = values
-    else:
-        raw_items = [values]
-    return [_normalize_snippet(item) for item in raw_items]
+def _parse_fragment(data: Any) -> DeclaredFragment:
+    if not isinstance(data, dict):
+        raise TypeError(f"fragment must be a dict, got {type(data).__name__}")
+    _validate_keys(data, _VALID_FRAGMENT_KEYS, "fragment")
+    if "id" not in data:
+        raise ValueError("Fragment missing required 'id' field")
+    return DeclaredFragment(
+        id=str(data["id"]),
+        selector=_parse_selector(data.get("selector") or {}),
+    )
 
 
-def _normalize_content_from(value: Any) -> dict[str, list[str]]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise TypeError(f"must_include_content_from must be a mapping, got {type(value).__name__}")
-    return {str(path): _normalize_snippet_list(snippets) for path, snippets in value.items()}
+def _parse_oracle(data: Any) -> Oracle:
+    if data is None:
+        return Oracle()
+    if not isinstance(data, dict):
+        raise TypeError(f"oracle must be a dict, got {type(data).__name__}")
+    _validate_keys(data, _VALID_ORACLE_KEYS, "oracle")
+    return Oracle(
+        required=[str(x) for x in (data.get("required") or [])],
+        allowed=[str(x) for x in (data.get("allowed") or [])],
+        forbidden=[str(x) for x in (data.get("forbidden") or [])],
+    )
+
+
+def _parse_accept(data: Any) -> Accept:
+    if data is None:
+        return Accept()
+    if not isinstance(data, dict):
+        raise TypeError(f"accept must be a dict, got {type(data).__name__}")
+    _validate_keys(data, _VALID_ACCEPT_KEYS, "accept")
+    return Accept(
+        symbol_match=str(data.get("symbol_match", "exact")),
+        kind_must_match=bool(data.get("kind_must_match", False)),
+        span_relation=str(data.get("span_relation", "exact_or_enclosing")),
+    )
+
+
+def _parse_fixtures(data: Any) -> Fixtures:
+    if data is None:
+        return Fixtures()
+    if not isinstance(data, dict):
+        raise TypeError(f"fixtures must be a dict, got {type(data).__name__}")
+    _validate_keys(data, _VALID_FIXTURES_KEYS, "fixtures")
+    return Fixtures(
+        auto_garbage=bool(data.get("auto_garbage", False)),
+        distractors=dict(data.get("distractors") or {}),
+    )
+
+
+def _parse_xfail(data: Any) -> XFailInfo:
+    if data is None:
+        return XFailInfo()
+    if isinstance(data, str):
+        return XFailInfo(reason=data if data else None)
+    if not isinstance(data, dict):
+        raise TypeError(f"xfail must be a dict or string, got {type(data).__name__}")
+    _validate_keys(data, _VALID_XFAIL_KEYS, "xfail")
+    category = data.get("category")
+    reason = data.get("reason")
+    issue = data.get("issue")
+    return XFailInfo(
+        category=str(category) if category is not None else None,
+        reason=str(reason) if reason is not None else None,
+        issue=str(issue) if issue is not None else None,
+    )
 
 
 def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCase:
-    _validate_keys(data, source_file)
+    _validate_keys(data, _VALID_TOP_LEVEL_KEYS, f"test case ({source_file or 'unknown'})")
+
     name = data.get("name", source_file.stem if source_file else "unnamed")
-    initial_files = data.get("initial", data.get("initial_files", {}))
-    changed_files = data.get("changed", data.get("changed_files", {}))
+    tags = [str(t) for t in (data.get("tags") or [])]
 
-    assertions = data.get("assertions", {})
+    repo = data.get("repo") or {}
+    if repo:
+        _validate_keys(repo, _VALID_REPO_KEYS, "repo")
+    initial_files = dict(repo.get("initial_files") or {})
+    changed_files = dict(repo.get("changed_files") or {})
+    commit_message = str(repo.get("commit_message", "Update files"))
 
-    must_include = assertions.get("must_include", data.get("must_include", []))
-    must_include_files = assertions.get("must_include_files", data.get("must_include_files", []))
-    must_not_include = assertions.get("must_not_include", data.get("must_not_include", []))
-
-    raw_content = assertions.get("must_include_content", data.get("must_include_content", []))
-    must_include_content = _normalize_snippet_list(raw_content)
-
-    raw_content_from = assertions.get("must_include_content_from", data.get("must_include_content_from", {}))
-    must_include_content_from = _normalize_content_from(raw_content_from)
-
-    must_not_include_files = assertions.get("must_not_include_files", data.get("must_not_include_files", []))
-
-    raw_not_content_from = assertions.get("must_not_include_content_from", data.get("must_not_include_content_from", {}))
-    must_not_include_content_from = _normalize_content_from(raw_not_content_from)
-
-    options = data.get("options", {})
+    fragments_raw = data.get("fragments") or []
+    fragments = [_parse_fragment(f) for f in fragments_raw]
 
     return YamlTestCase(
         name=name,
         initial_files=initial_files,
         changed_files=changed_files,
-        must_include=must_include,
-        must_include_files=must_include_files,
-        must_include_content=must_include_content,
-        must_not_include=must_not_include,
-        must_include_content_from=must_include_content_from,
-        must_not_include_files=must_not_include_files,
-        must_not_include_content_from=must_not_include_content_from,
-        max_fragments=options.get("max_fragments", data.get("max_fragments")),
-        max_files=options.get("max_files", data.get("max_files")),
-        max_fragments_per_file=options.get("max_fragments_per_file", data.get("max_fragments_per_file")),
-        max_enrichment=options.get("max_enrichment", data.get("max_enrichment")),
-        min_recall=options.get("min_recall", data.get("min_recall")),
-        max_noise_rate=options.get("max_noise_rate", data.get("max_noise_rate")),
-        max_context_tokens=options.get("max_context_tokens", data.get("max_context_tokens")),
-        commit_message=options.get("commit_message", data.get("commit_message", "Update files")),
-        min_budget=options.get("min_budget", data.get("min_budget")),
-        add_garbage_files=options.get("add_garbage", data.get("add_garbage_files", True)),
-        skip_garbage_check=options.get("skip_garbage_check", data.get("skip_garbage_check", False)),
-        xfail=data.get("xfail"),
-        min_score=options.get("min_score", data.get("min_score")),
+        fragments=fragments,
+        oracle=_parse_oracle(data.get("oracle")),
+        tags=tags,
+        commit_message=commit_message,
+        fixtures=_parse_fixtures(data.get("fixtures")),
+        accept=_parse_accept(data.get("accept")),
+        xfail=_parse_xfail(data.get("xfail")),
         source_file=source_file,
     )
 
@@ -191,8 +173,7 @@ def load_test_cases(yaml_path: Path) -> list[YamlTestCase]:
     if isinstance(content, dict):
         if "tests" in content:
             return [_parse_yaml_test(item, yaml_path) for item in content["tests"]]
-        if "name" in content or "initial" in content:
-            return [_parse_yaml_test(content, yaml_path)]
+        return [_parse_yaml_test(content, yaml_path)]
 
     return []
 

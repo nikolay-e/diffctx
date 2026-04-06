@@ -1,0 +1,150 @@
+name: selection_006_rare_identifier_expansion
+repo:
+  initial_files:
+    core.py: |
+      from rare_module import unique_helper
+
+      def main():
+          return unique_helper()
+
+      def secondary_function():
+          return "secondary_result"
+
+      def tertiary_function():
+          return "tertiary_result"
+    rare_module.py: |
+      def unique_helper():
+          return 42
+
+      def rare_helper_alpha():
+          return "rare_alpha_result"
+
+      def rare_helper_beta():
+          return "rare_beta_result"
+    string_utils.py: |
+      def capitalize_words(text):
+          return " ".join(word.capitalize() for word in text.split())
+
+      def truncate(text, max_length=100):
+          if len(text) <= max_length:
+              return text
+          return text[:max_length - 3] + "..."
+
+      def slugify(text):
+          return text.lower().replace(" ", "-").replace("_", "-")
+    math_helpers.py: |
+      def clamp(value, minimum, maximum):
+          return max(minimum, min(value, maximum))
+
+      def lerp(start, end, factor):
+          return start + (end - start) * factor
+
+      def moving_average(values, window=3):
+          if len(values) < window:
+              return values
+          result = []
+          for i in range(len(values) - window + 1):
+              avg = sum(values[i:i + window]) / window
+              result.append(avg)
+          return result
+  changed_files:
+    core.py: |
+      from rare_module import unique_helper
+
+      def main():
+          result = unique_helper()
+          return result * 2
+
+      def secondary_function():
+          return "secondary_result"
+
+      def tertiary_function():
+          return "tertiary_result"
+    rare_module.py: |
+      def unique_helper():
+          return 42
+
+      def rare_helper_alpha():
+          return "rare_alpha_result"
+
+      def rare_helper_beta():
+          return "rare_beta_result"
+    string_utils.py: |
+      def capitalize_words(text):
+          return " ".join(word.capitalize() for word in text.split())
+
+      def truncate(text, max_length=100):
+          if len(text) <= max_length:
+              return text
+          return text[:max_length - 3] + "..."
+
+      def slugify(text):
+          return text.lower().replace(" ", "-").replace("_", "-")
+    math_helpers.py: |
+      def clamp(value, minimum, maximum):
+          return max(minimum, min(value, maximum))
+
+      def lerp(start, end, factor):
+          return start + (end - start) * factor
+
+      def moving_average(values, window=3):
+          if len(values) < window:
+              return values
+          result = []
+          for i in range(len(values) - window + 1):
+              avg = sum(values[i:i + window]) / window
+              result.append(avg)
+          return result
+  commit_message: Update files
+fragments:
+- id: core
+  selector:
+    path: core.py
+    anchor: from rare_module import unique_helper
+- id: core_1
+  selector:
+    path: core.py
+    anchor: result = unique_helper()
+- id: rare_module
+  selector:
+    path: rare_module.py
+    anchor: def unique_helper()
+- id: no_string_utils
+  selector:
+    path: string_utils.py
+- id: no_math_helpers
+  selector:
+    path: math_helpers.py
+- id: no_global_0
+  selector:
+    anchor: capitalize_words
+- id: no_global_1
+  selector:
+    anchor: truncate
+- id: no_global_2
+  selector:
+    anchor: slugify
+- id: no_global_3
+  selector:
+    anchor: clamp
+- id: no_global_4
+  selector:
+    anchor: lerp
+- id: no_global_5
+  selector:
+    anchor: moving_average
+oracle:
+  required:
+  - core
+  - core_1
+  - rare_module
+  allowed: []
+  forbidden:
+  - no_string_utils
+  - no_math_helpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

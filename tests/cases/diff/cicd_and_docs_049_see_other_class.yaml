@@ -1,0 +1,154 @@
+name: cicd_and_docs_049_see_other_class
+repo:
+  initial_files:
+    src/base_handler.py: |
+      class BaseHandler:
+          def handle(self, request):
+              raise NotImplementedError
+    src/user_handler.py: |
+      class UserHandler:
+          """Handle user requests.
+
+          @see BaseHandler for the base implementation
+          """
+          def handle(self, request):
+              return {"user": "data"}
+    src/order_handler.py: |
+      class OrderHandler:
+          def handle(self, request):
+              return {"order": "data"}
+    garbage_handler_registry.ts: |
+      const GARBAGE_CICD_DOCS_049_REGISTRY_MARKER_A = "map";
+      const GARBAGE_CICD_DOCS_049_LOOKUP_MARKER_B = "fast";
+
+      class GarbageHandlerRegistry {
+        static GARBAGE_CICD_DOCS_049_CACHE_MARKER_C = true;
+        register(): void {}
+      }
+    garbage_handler_factory.ts: |
+      const GARBAGE_CICD_DOCS_049_FACTORY_MARKER_D = "abstract";
+      const GARBAGE_CICD_DOCS_049_PATTERN_MARKER_E = "singleton";
+
+      class GarbageHandlerFactory {
+        static GARBAGE_CICD_DOCS_049_LAZY_MARKER_F = false;
+        create(): void {}
+      }
+  changed_files:
+    src/base_handler.py: |
+      class BaseHandler:
+          def handle(self, request):
+              raise NotImplementedError
+    src/user_handler.py: |
+      from base_handler import BaseHandler
+
+      class UserHandler(BaseHandler):
+          """Handle user requests.
+
+          This handler processes user-related API requests.
+
+          @see BaseHandler for the base implementation
+          @see OrderHandler for order processing
+          @see AuthMiddleware for authentication
+
+          Attributes:
+              cache: Redis cache instance
+              logger: Logger instance
+          """
+          def __init__(self, cache, logger):
+              self.cache = cache
+              self.logger = logger
+
+          def handle(self, request):
+              self.logger.info("Handling user request")
+              return {"user": "data"}
+    src/order_handler.py: |
+      from base_handler import BaseHandler
+
+      class OrderHandler(BaseHandler):
+          def handle(self, request):
+              return {"order": "data"}
+    src/auth_middleware.py: |
+      class AuthMiddleware:
+          def __init__(self, secret_key):
+              self.secret_key = secret_key
+
+          def authenticate(self, request):
+              token = request.headers.get('Authorization')
+              return self.verify_token(token)
+
+          def verify_token(self, token):
+              return token is not None
+    garbage_handler_registry.ts: |
+      const GARBAGE_CICD_DOCS_049_REGISTRY_MARKER_A = "map";
+      const GARBAGE_CICD_DOCS_049_LOOKUP_MARKER_B = "fast";
+
+      class GarbageHandlerRegistry {
+        static GARBAGE_CICD_DOCS_049_CACHE_MARKER_C = true;
+        register(): void {}
+      }
+    garbage_handler_factory.ts: |
+      const GARBAGE_CICD_DOCS_049_FACTORY_MARKER_D = "abstract";
+      const GARBAGE_CICD_DOCS_049_PATTERN_MARKER_E = "singleton";
+
+      class GarbageHandlerFactory {
+        static GARBAGE_CICD_DOCS_049_LAZY_MARKER_F = false;
+        create(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: auth_middleware_file
+  selector:
+    path: src/auth_middleware.py
+- id: order_handler_file
+  selector:
+    path: src/order_handler.py
+- id: user_handler_file
+  selector:
+    path: src/user_handler.py
+- id: req_global_0
+  selector:
+    anchor: 'def __init__(self, secret_key):'
+- id: req_global_1
+  selector:
+    anchor: 'def authenticate(self, request):'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_CACHE_MARKER_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_FACTORY_MARKER_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_LAZY_MARKER_F
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_LOOKUP_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_PATTERN_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_049_REGISTRY_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: garbage_handler_factory.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_handler_registry.ts
+oracle:
+  required:
+  - auth_middleware_file
+  - order_handler_file
+  - user_handler_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

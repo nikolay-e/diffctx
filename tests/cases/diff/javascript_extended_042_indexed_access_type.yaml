@@ -1,0 +1,280 @@
+name: javascript_extended_042_indexed_access_type
+repo:
+  initial_files:
+    src/schema.ts: |
+      export interface Schema {
+          users: { id: string; name: string; role: string }[];
+          posts: { id: string; title: string; content: string; authorId: string }[];
+          comments: { id: string; postId: string; body: string }[];
+      }
+
+      export const emptySchema: Schema = {
+          users: [],
+          posts: [],
+          comments: [],
+      };
+    src/accessor.ts: |
+      console.log('initial');
+    src/services/schemaValidator.ts: |
+      import { Schema } from '../schema';
+      import { z } from 'zod';
+
+      const userSchema = z.object({
+          id: z.string(),
+          name: z.string(),
+          role: z.string(),
+      });
+
+      const schemaValidator = z.object({
+          users: z.array(userSchema),
+          posts: z.array(z.object({ id: z.string(), title: z.string(), content: z.string(), authorId: z.string() })),
+          comments: z.array(z.object({ id: z.string(), postId: z.string(), body: z.string() })),
+      });
+
+      export function validateSchema(data: unknown): data is Schema {
+          return schemaValidator.safeParse(data).success;
+      }
+
+      export function getValidationErrors(data: unknown): string[] {
+          const result = schemaValidator.safeParse(data);
+          if (result.success) return [];
+          return result.error.errors.map(e => e.message);
+      }
+    src/services/schemaSerializer.ts: |
+      import { Schema } from '../schema';
+
+      export function serializeSchema(schema: Schema): string {
+          return JSON.stringify(schema, null, 2);
+      }
+
+      export function deserializeSchema(json: string): Schema {
+          return JSON.parse(json) as Schema;
+      }
+
+      export function getSchemaStats(schema: Schema): { users: number; posts: number; comments: number } {
+          return {
+              users: schema.users.length,
+              posts: schema.posts.length,
+              comments: schema.comments.length,
+          };
+      }
+    src/repositories/commentRepository.ts: |
+      interface CommentRecord {
+          id: string;
+          postId: string;
+          body: string;
+          createdAt: Date;
+      }
+
+      const store: CommentRecord[] = [];
+
+      export function addComment(postId: string, body: string): CommentRecord {
+          const record = { id: Date.now().toString(), postId, body, createdAt: new Date() };
+          store.push(record);
+          return record;
+      }
+
+      export function findCommentsByPost(postId: string): CommentRecord[] {
+          return store.filter(c => c.postId === postId);
+      }
+
+      export function deleteComment(id: string): boolean {
+          const idx = store.findIndex(c => c.id === id);
+          if (idx === -1) return false;
+          store.splice(idx, 1);
+          return true;
+      }
+  changed_files:
+    src/schema.ts: |
+      export interface Schema {
+          users: { id: string; name: string; role: string }[];
+          posts: { id: string; title: string; content: string; authorId: string }[];
+          comments: { id: string; postId: string; body: string }[];
+      }
+
+      export const emptySchema: Schema = {
+          users: [],
+          posts: [],
+          comments: [],
+      };
+    src/accessor.ts: |
+      import { Schema, emptySchema } from './schema';
+
+      type User = Schema['users'][number];
+      type Post = Schema['posts'][number];
+      type Comment = Schema['comments'][number];
+
+      function getFirstUser(schema: Schema): User | undefined {
+          return schema.users[0];
+      }
+
+      function getPostsByAuthor(schema: Schema, authorId: string): Post[] {
+          return schema.posts.filter(p => p.authorId === authorId);
+      }
+
+      function getCommentsForPost(schema: Schema, postId: string): Comment[] {
+          return schema.comments.filter(c => c.postId === postId);
+      }
+
+      export { User, Post, Comment, getFirstUser, getPostsByAuthor, getCommentsForPost };
+    src/services/schemaValidator.ts: |
+      import { Schema } from '../schema';
+      import { z } from 'zod';
+
+      const userSchema = z.object({
+          id: z.string(),
+          name: z.string(),
+          role: z.string(),
+      });
+
+      const schemaValidator = z.object({
+          users: z.array(userSchema),
+          posts: z.array(z.object({ id: z.string(), title: z.string(), content: z.string(), authorId: z.string() })),
+          comments: z.array(z.object({ id: z.string(), postId: z.string(), body: z.string() })),
+      });
+
+      export function validateSchema(data: unknown): data is Schema {
+          return schemaValidator.safeParse(data).success;
+      }
+
+      export function getValidationErrors(data: unknown): string[] {
+          const result = schemaValidator.safeParse(data);
+          if (result.success) return [];
+          return result.error.errors.map(e => e.message);
+      }
+    src/services/schemaSerializer.ts: |
+      import { Schema } from '../schema';
+
+      export function serializeSchema(schema: Schema): string {
+          return JSON.stringify(schema, null, 2);
+      }
+
+      export function deserializeSchema(json: string): Schema {
+          return JSON.parse(json) as Schema;
+      }
+
+      export function getSchemaStats(schema: Schema): { users: number; posts: number; comments: number } {
+          return {
+              users: schema.users.length,
+              posts: schema.posts.length,
+              comments: schema.comments.length,
+          };
+      }
+    src/repositories/commentRepository.ts: |
+      interface CommentRecord {
+          id: string;
+          postId: string;
+          body: string;
+          createdAt: Date;
+      }
+
+      const store: CommentRecord[] = [];
+
+      export function addComment(postId: string, body: string): CommentRecord {
+          const record = { id: Date.now().toString(), postId, body, createdAt: new Date() };
+          store.push(record);
+          return record;
+      }
+
+      export function findCommentsByPost(postId: string): CommentRecord[] {
+          return store.filter(c => c.postId === postId);
+      }
+
+      export function deleteComment(id: string): boolean {
+          const idx = store.findIndex(c => c.id === id);
+          if (idx === -1) return false;
+          store.splice(idx, 1);
+          return true;
+      }
+  commit_message: Update files
+fragments:
+- id: accessor
+  selector:
+    path: src/accessor.ts
+    anchor: type Post = Schema['posts'][number]
+- id: accessor_1
+  selector:
+    path: src/accessor.ts
+    anchor: p => p.authorId === authorId
+- id: schema
+  selector:
+    path: src/schema.ts
+    anchor: interface Schema
+- id: schema_1
+  selector:
+    path: src/schema.ts
+    anchor: 'users:'
+- id: schema_2
+  selector:
+    path: src/schema.ts
+    anchor: 'posts:'
+- id: schema_3
+  selector:
+    path: src/schema.ts
+    anchor: 'comments:'
+- id: no_schemavalidator
+  selector:
+    path: src/services/schemaValidator.ts
+- id: no_schemaserializer
+  selector:
+    path: src/services/schemaSerializer.ts
+- id: no_commentrepository
+  selector:
+    path: src/repositories/commentRepository.ts
+- id: no_global_0
+  selector:
+    anchor: validateSchema
+- id: no_global_1
+  selector:
+    anchor: getValidationErrors
+- id: no_global_2
+  selector:
+    anchor: schemaValidator
+- id: no_global_3
+  selector:
+    anchor: safeParse
+- id: no_global_4
+  selector:
+    anchor: serializeSchema
+- id: no_global_5
+  selector:
+    anchor: deserializeSchema
+- id: no_global_6
+  selector:
+    anchor: getSchemaStats
+- id: no_global_7
+  selector:
+    anchor: CommentRecord
+- id: no_global_8
+  selector:
+    anchor: addComment
+- id: no_global_9
+  selector:
+    anchor: findCommentsByPost
+- id: no_global_10
+  selector:
+    anchor: deleteComment
+oracle:
+  required:
+  - accessor
+  - accessor_1
+  - schema
+  - schema_1
+  - schema_2
+  - schema_3
+  allowed: []
+  forbidden:
+  - no_schemavalidator
+  - no_schemaserializer
+  - no_commentrepository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

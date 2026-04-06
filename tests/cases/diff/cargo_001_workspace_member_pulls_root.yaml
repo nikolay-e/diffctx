@@ -1,0 +1,89 @@
+name: cargo_001_workspace_member_pulls_root
+repo:
+  initial_files:
+    Cargo.toml: |
+      [workspace]
+      members = ["crate_a"]
+      resolver = "2"
+
+    crate_a/Cargo.toml: |
+      [package]
+      name = "crate_a"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+
+    crate_a/src/lib.rs: |
+      pub fn compute(x: i32) -> i32 {
+          x + 1
+      }
+
+    unrelated_crate/Cargo.toml: |
+      [package]
+      name = "unrelated_crate"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+
+    unrelated_crate/src/lib.rs: |
+      pub fn CARGO_NOISE_001_unrelated_func(x: i32) -> i32 {
+          x * 100
+      }
+
+  changed_files:
+    Cargo.toml: |
+      [workspace]
+      members = ["crate_a", "new_crate"]
+      resolver = "2"
+
+    new_crate/Cargo.toml: |
+      [package]
+      name = "new_crate"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      crate_a = { path = "../crate_a" }
+
+    new_crate/src/lib.rs: |
+      pub fn new_crate_entry_point() -> i32 {
+          0
+      }
+
+  commit_message: Update files
+
+fragments:
+- id: workspace_cargo
+  selector:
+    path: Cargo.toml
+    anchor: new_crate
+- id: new_crate_cargo
+  selector:
+    path: new_crate/Cargo.toml
+    anchor: name = "new_crate"
+- id: crate_a_cargo
+  selector:
+    path: crate_a/Cargo.toml
+    anchor: name = "crate_a"
+- id: no_unrelated_cargo
+  selector:
+    path: unrelated_crate/Cargo.toml
+- id: no_unrelated_lib
+  selector:
+    path: unrelated_crate/src/lib.rs
+- id: no_global_0
+  selector:
+    anchor: CARGO_NOISE_001_unrelated_func
+
+oracle:
+  required:
+  - workspace_cargo
+  - new_crate_cargo
+  allowed:
+  - crate_a_cargo
+  forbidden:
+  - no_unrelated_cargo
+  - no_unrelated_lib
+  - no_global_0

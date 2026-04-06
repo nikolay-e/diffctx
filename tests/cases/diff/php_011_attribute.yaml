@@ -1,0 +1,392 @@
+name: php_011_attribute
+repo:
+  initial_files:
+    src/Attributes/Route.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_METHOD)]
+      class Route {
+          public function __construct(
+              public string $path,
+              public string $method = 'GET',
+              public array $middleware = []
+          ) {}
+
+          public function getPath(): string {
+              return $this->path;
+          }
+
+          public function getMethod(): string {
+              return strtoupper($this->method);
+          }
+
+          public function getMiddleware(): array {
+              return $this->middleware;
+          }
+      }
+    src/Controllers/ApiController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class ApiController {
+          public function users(): array {
+              return ['users' => []];
+          }
+      }
+    src/Attributes/Validate.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_PARAMETER)]
+      class Validate {
+          public function __construct(
+              public string $rule,
+              public ?string $message = null
+          ) {}
+
+          public function getRule(): string {
+              return $this->rule;
+          }
+
+          public function getMessage(): string {
+              return $this->message ?? "Validation failed for rule: {$this->rule}";
+          }
+      }
+    src/Controllers/AdminController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class AdminController {
+          public function dashboard(): array {
+              return ['page' => 'admin_dashboard', 'stats' => []];
+          }
+
+          public function users(): array {
+              return ['admin_users' => [], 'total' => 0];
+          }
+
+          public function settings(): array {
+              return ['settings' => ['maintenance' => false, 'debug' => false]];
+          }
+      }
+    src/Attributes/Middleware.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+      class Middleware {
+          public function __construct(
+              public array $names,
+              public bool $global = false
+          ) {}
+
+          public function getNames(): array {
+              return $this->names;
+          }
+
+          public function isGlobal(): bool {
+              return $this->global;
+          }
+      }
+    src/Controllers/AuthController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class AuthController {
+          public function login(string $username, string $password): array {
+              return ['token' => 'jwt_token_here', 'expires_in' => 3600];
+          }
+
+          public function logout(string $token): array {
+              return ['revoked' => true];
+          }
+
+          public function refresh(string $token): array {
+              return ['token' => 'new_jwt_token', 'expires_in' => 3600];
+          }
+      }
+    src/Routing/Router.php: |
+      <?php
+      namespace App\Routing;
+
+      class Router {
+          private array $routes = [];
+
+          public function registerController(string $controllerClass): void {
+              $reflection = new \ReflectionClass($controllerClass);
+              foreach ($reflection->getMethods() as $method) {
+                  $attributes = $method->getAttributes(\App\Attributes\Route::class);
+                  foreach ($attributes as $attr) {
+                      $route = $attr->newInstance();
+                      $this->routes[] = [
+                          'path' => $route->getPath(),
+                          'method' => $route->getMethod(),
+                          'handler' => [$controllerClass, $method->getName()],
+                      ];
+                  }
+              }
+          }
+
+          public function match(string $path, string $method): ?array {
+              foreach ($this->routes as $route) {
+                  if ($route['path'] === $path && $route['method'] === strtoupper($method)) {
+                      return $route['handler'];
+                  }
+              }
+              return null;
+          }
+      }
+  changed_files:
+    src/Attributes/Route.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_METHOD)]
+      class Route {
+          public function __construct(
+              public string $path,
+              public string $method = 'GET',
+              public array $middleware = []
+          ) {}
+
+          public function getPath(): string {
+              return $this->path;
+          }
+
+          public function getMethod(): string {
+              return strtoupper($this->method);
+          }
+
+          public function getMiddleware(): array {
+              return $this->middleware;
+          }
+      }
+    src/Controllers/ApiController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Attributes\Route;
+
+      class ApiController {
+          #[Route('/api/users', 'GET')]
+          public function users(): array {
+              return ['users' => []];
+          }
+
+          #[Route('/api/users', 'POST', middleware: ['auth'])]
+          public function createUser(array $data): array {
+              return ['user' => $data, 'created' => true];
+          }
+
+          #[Route('/api/users/{id}', 'DELETE', middleware: ['auth', 'admin'])]
+          public function deleteUser(int $id): array {
+              return ['deleted' => $id];
+          }
+      }
+    src/Attributes/Validate.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_PARAMETER)]
+      class Validate {
+          public function __construct(
+              public string $rule,
+              public ?string $message = null
+          ) {}
+
+          public function getRule(): string {
+              return $this->rule;
+          }
+
+          public function getMessage(): string {
+              return $this->message ?? "Validation failed for rule: {$this->rule}";
+          }
+      }
+    src/Controllers/AdminController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class AdminController {
+          public function dashboard(): array {
+              return ['page' => 'admin_dashboard', 'stats' => []];
+          }
+
+          public function users(): array {
+              return ['admin_users' => [], 'total' => 0];
+          }
+
+          public function settings(): array {
+              return ['settings' => ['maintenance' => false, 'debug' => false]];
+          }
+      }
+    src/Attributes/Middleware.php: |
+      <?php
+      namespace App\Attributes;
+
+      #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+      class Middleware {
+          public function __construct(
+              public array $names,
+              public bool $global = false
+          ) {}
+
+          public function getNames(): array {
+              return $this->names;
+          }
+
+          public function isGlobal(): bool {
+              return $this->global;
+          }
+      }
+    src/Controllers/AuthController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class AuthController {
+          public function login(string $username, string $password): array {
+              return ['token' => 'jwt_token_here', 'expires_in' => 3600];
+          }
+
+          public function logout(string $token): array {
+              return ['revoked' => true];
+          }
+
+          public function refresh(string $token): array {
+              return ['token' => 'new_jwt_token', 'expires_in' => 3600];
+          }
+      }
+    src/Routing/Router.php: |
+      <?php
+      namespace App\Routing;
+
+      class Router {
+          private array $routes = [];
+
+          public function registerController(string $controllerClass): void {
+              $reflection = new \ReflectionClass($controllerClass);
+              foreach ($reflection->getMethods() as $method) {
+                  $attributes = $method->getAttributes(\App\Attributes\Route::class);
+                  foreach ($attributes as $attr) {
+                      $route = $attr->newInstance();
+                      $this->routes[] = [
+                          'path' => $route->getPath(),
+                          'method' => $route->getMethod(),
+                          'handler' => [$controllerClass, $method->getName()],
+                      ];
+                  }
+              }
+          }
+
+          public function match(string $path, string $method): ?array {
+              foreach ($this->routes as $route) {
+                  if ($route['path'] === $path && $route['method'] === strtoupper($method)) {
+                      return $route['handler'];
+                  }
+              }
+              return null;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: apicontroller
+  selector:
+    path: src/Controllers/ApiController.php
+    anchor: '#[Route(''/api/users'', ''POST'', middleware: [''auth''])]'
+- id: apicontroller_1
+  selector:
+    path: src/Controllers/ApiController.php
+    anchor: use App\Attributes\Route
+- id: route
+  selector:
+    path: src/Attributes/Route.php
+    anchor: public string $path
+- id: route_1
+  selector:
+    path: src/Attributes/Route.php
+    anchor: public string $method = 'GET'
+- id: route_2
+  selector:
+    path: src/Attributes/Route.php
+    anchor: public array $middleware = []
+- id: no_validate
+  selector:
+    path: src/Attributes/Validate.php
+- id: no_admincontroller
+  selector:
+    path: src/Controllers/AdminController.php
+- id: no_middleware
+  selector:
+    path: src/Attributes/Middleware.php
+- id: no_authcontroller
+  selector:
+    path: src/Controllers/AuthController.php
+- id: no_router
+  selector:
+    path: src/Routing/Router.php
+- id: no_global_0
+  selector:
+    anchor: class Validate
+- id: no_global_1
+  selector:
+    anchor: TARGET_PARAMETER
+- id: no_global_2
+  selector:
+    anchor: getRule
+- id: no_global_3
+  selector:
+    anchor: class AdminController
+- id: no_global_4
+  selector:
+    anchor: admin_dashboard
+- id: no_global_5
+  selector:
+    anchor: maintenance
+- id: no_global_6
+  selector:
+    anchor: class Middleware
+- id: no_global_7
+  selector:
+    anchor: isGlobal
+- id: no_global_8
+  selector:
+    anchor: class AuthController
+- id: no_global_9
+  selector:
+    anchor: jwt_token_here
+- id: no_global_10
+  selector:
+    anchor: class Router
+- id: no_global_11
+  selector:
+    anchor: registerController
+- id: no_global_12
+  selector:
+    anchor: ReflectionClass
+oracle:
+  required:
+  - apicontroller
+  - apicontroller_1
+  - route
+  - route_1
+  - route_2
+  allowed: []
+  forbidden:
+  - no_validate
+  - no_admincontroller
+  - no_middleware
+  - no_authcontroller
+  - no_router
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

@@ -1,0 +1,253 @@
+name: kubernetes_021_service_selector
+repo:
+  initial_files:
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-backend
+        namespace: production
+        labels:
+          app: api-backend
+          version: v2
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-backend
+        template:
+          metadata:
+            labels:
+              app: api-backend
+              version: v2
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: api-backend:v2.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: grpc
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-backend
+        namespace: production
+      spec:
+        selector:
+          app: old-api-backend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: grpc
+          port: 9090
+          targetPort: 9090
+    k8s/istio/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: api-backend-vs
+        namespace: production
+      spec:
+        hosts:
+        - api-backend
+        http:
+        - route:
+          - destination:
+              host: api-backend
+              subset: stable
+            weight: 90
+          - destination:
+              host: api-backend
+              subset: canary
+            weight: 10
+    k8s/apps/canary-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-backend-canary
+        namespace: production
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: api-backend
+            track: canary
+        template:
+          metadata:
+            labels:
+              app: api-backend
+              track: canary
+              version: v3
+          spec:
+            containers:
+            - name: api
+              image: api-backend:v3.0.0-rc1
+              ports:
+              - containerPort: 8080
+  changed_files:
+    k8s/apps/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-backend
+        namespace: production
+        labels:
+          app: api-backend
+          version: v2
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-backend
+        template:
+          metadata:
+            labels:
+              app: api-backend
+              version: v2
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: api-backend:v2.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: grpc
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/apps/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-backend
+        namespace: production
+        labels:
+          app: api-backend
+      spec:
+        selector:
+          app: api-backend
+          version: v2
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: grpc
+          port: 9090
+          targetPort: 9090
+    k8s/istio/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: api-backend-vs
+        namespace: production
+      spec:
+        hosts:
+        - api-backend
+        http:
+        - route:
+          - destination:
+              host: api-backend
+              subset: stable
+            weight: 90
+          - destination:
+              host: api-backend
+              subset: canary
+            weight: 10
+    k8s/apps/canary-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-backend-canary
+        namespace: production
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: api-backend
+            track: canary
+        template:
+          metadata:
+            labels:
+              app: api-backend
+              track: canary
+              version: v3
+          spec:
+            containers:
+            - name: api
+              image: api-backend:v3.0.0-rc1
+              ports:
+              - containerPort: 8080
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: k8s/apps/service.yaml
+    anchor: 'app: api-backend'
+- id: service_1
+  selector:
+    path: k8s/apps/service.yaml
+    anchor: 'version: v2'
+- id: deployment
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'app: api-backend'
+- id: deployment_1
+  selector:
+    path: k8s/apps/deployment.yaml
+    anchor: 'version: v2'
+- id: no_virtual_service
+  selector:
+    path: k8s/istio/virtual-service.yaml
+- id: no_canary_deployment
+  selector:
+    path: k8s/apps/canary-deployment.yaml
+- id: no_global_0
+  selector:
+    anchor: api-backend-vs
+- id: no_global_1
+  selector:
+    anchor: VirtualService
+- id: no_global_2
+  selector:
+    anchor: 'subset: stable'
+- id: no_global_3
+  selector:
+    anchor: 'subset: canary'
+- id: no_global_4
+  selector:
+    anchor: api-backend-canary
+- id: no_global_5
+  selector:
+    anchor: v3.0.0-rc1
+- id: no_global_6
+  selector:
+    anchor: 'track: canary'
+oracle:
+  required:
+  - service
+  - service_1
+  - deployment
+  - deployment_1
+  allowed: []
+  forbidden:
+  - no_virtual_service
+  - no_canary_deployment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

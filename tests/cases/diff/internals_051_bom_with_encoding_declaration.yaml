@@ -1,0 +1,26 @@
+name: internals_051_bom_with_encoding_declaration
+repo:
+  initial_files:
+    bom_encoding.py: |
+      pass
+  changed_files:
+    bom_encoding.py: |
+      # -*- coding: utf-8 -*-
+      import sys
+
+      def check():
+          return sys.version
+  commit_message: Update files
+fragments:
+- id: bom_encoding_file
+  selector:
+    path: bom_encoding.py
+- id: req_global_0
+  selector:
+    anchor: return sys.version
+oracle:
+  required:
+  - bom_encoding_file
+  - req_global_0
+  allowed: []
+  forbidden: []

@@ -1,0 +1,156 @@
+name: scala_022_sealed_trait_adt
+repo:
+  initial_files:
+    Expression.scala: |
+      sealed trait Expression
+      case class Number(value: Double) extends Expression
+      case class Add(left: Expression, right: Expression) extends Expression
+      case class Multiply(left: Expression, right: Expression) extends Expression
+      case class Variable(name: String) extends Expression
+    Evaluator.scala: |
+      class Evaluator {}
+    PrettyPrinter.scala: |
+      object PrettyPrinter {
+        def format(expr: Expression, indent: Int = 0): String = {
+          val prefix = "  " * indent
+          expr match {
+            case Number(v) => s"${prefix}Number($v)"
+            case Variable(n) => s"${prefix}Variable($n)"
+            case Add(l, r) =>
+              s"${prefix}Add(\n${format(l, indent + 1)},\n${format(r, indent + 1)}\n${prefix})"
+            case Multiply(l, r) =>
+              s"${prefix}Multiply(\n${format(l, indent + 1)},\n${format(r, indent + 1)}\n${prefix})"
+          }
+        }
+      }
+    Parser.scala: |
+      object Parser {
+        def parse(input: String): Expression = {
+          val trimmed = input.trim
+          if (trimmed.forall(c => c.isDigit || c == '.')) {
+            Number(trimmed.toDouble)
+          } else if (trimmed.forall(_.isLetter)) {
+            Variable(trimmed)
+          } else {
+            Number(0)
+          }
+        }
+      }
+  changed_files:
+    Expression.scala: |
+      sealed trait Expression
+      case class Number(value: Double) extends Expression
+      case class Add(left: Expression, right: Expression) extends Expression
+      case class Multiply(left: Expression, right: Expression) extends Expression
+      case class Variable(name: String) extends Expression
+    Evaluator.scala: |
+      class Evaluator {
+        def evaluate(expr: Expression, vars: Map[String, Double] = Map.empty): Double = expr match {
+          case Number(value) => value
+          case Add(left, right) => evaluate(left, vars) + evaluate(right, vars)
+          case Multiply(left, right) => evaluate(left, vars) * evaluate(right, vars)
+          case Variable(name) => vars.getOrElse(name, 0.0)
+        }
+
+        def simplify(expr: Expression): Expression = expr match {
+          case Add(Number(0), right) => simplify(right)
+          case Add(left, Number(0)) => simplify(left)
+          case Multiply(Number(1), right) => simplify(right)
+          case Multiply(left, Number(1)) => simplify(left)
+          case Multiply(Number(0), _) => Number(0)
+          case Multiply(_, Number(0)) => Number(0)
+          case Add(left, right) => Add(simplify(left), simplify(right))
+          case Multiply(left, right) => Multiply(simplify(left), simplify(right))
+          case other => other
+        }
+      }
+    PrettyPrinter.scala: |
+      object PrettyPrinter {
+        def format(expr: Expression, indent: Int = 0): String = {
+          val prefix = "  " * indent
+          expr match {
+            case Number(v) => s"${prefix}Number($v)"
+            case Variable(n) => s"${prefix}Variable($n)"
+            case Add(l, r) =>
+              s"${prefix}Add(\n${format(l, indent + 1)},\n${format(r, indent + 1)}\n${prefix})"
+            case Multiply(l, r) =>
+              s"${prefix}Multiply(\n${format(l, indent + 1)},\n${format(r, indent + 1)}\n${prefix})"
+          }
+        }
+      }
+    Parser.scala: |
+      object Parser {
+        def parse(input: String): Expression = {
+          val trimmed = input.trim
+          if (trimmed.forall(c => c.isDigit || c == '.')) {
+            Number(trimmed.toDouble)
+          } else if (trimmed.forall(_.isLetter)) {
+            Variable(trimmed)
+          } else {
+            Number(0)
+          }
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: expression
+  selector:
+    path: Expression.scala
+    anchor: sealed trait Expression
+- id: expression_1
+  selector:
+    path: Expression.scala
+    anchor: case class Number
+- id: expression_2
+  selector:
+    path: Expression.scala
+    anchor: case class Add
+- id: expression_3
+  selector:
+    path: Expression.scala
+    anchor: case class Multiply
+- id: expression_4
+  selector:
+    path: Expression.scala
+    anchor: case class Variable
+- id: no_prettyprinter
+  selector:
+    path: PrettyPrinter.scala
+- id: no_parser
+  selector:
+    path: Parser.scala
+- id: no_global_0
+  selector:
+    anchor: PrettyPrinter
+- id: no_global_1
+  selector:
+    anchor: def format
+- id: no_global_2
+  selector:
+    anchor: prefix
+- id: no_global_3
+  selector:
+    anchor: Parser
+- id: no_global_4
+  selector:
+    anchor: def parse
+- id: no_global_5
+  selector:
+    anchor: trimmed
+oracle:
+  required:
+  - expression
+  - expression_1
+  - expression_2
+  - expression_3
+  - expression_4
+  allowed: []
+  forbidden:
+  - no_prettyprinter
+  - no_parser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

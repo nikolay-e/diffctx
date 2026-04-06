@@ -1,0 +1,108 @@
+name: javascript_052_express_middleware
+repo:
+  initial_files:
+    authMiddleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) {
+              return res.status(401).json({ error: 'Unauthorized' });
+          }
+          next();
+      }
+    app.ts: |
+      console.log('initial');
+    cors-middleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function corsMiddleware(req: Request, res: Response, next: NextFunction) {
+          res.header('Access-Control-Allow-Origin', '*');
+          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          next();
+      }
+    error-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+          console.error(err.stack);
+          res.status(500).json({ error: 'Internal Server Error' });
+      }
+  changed_files:
+    authMiddleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) {
+              return res.status(401).json({ error: 'Unauthorized' });
+          }
+          next();
+      }
+    app.ts: |
+      import express from 'express';
+      import { authMiddleware } from './authMiddleware';
+
+      const app = express();
+      app.use(authMiddleware);
+
+      app.get('/protected', (req, res) => {
+          res.json({ message: 'Protected content' });
+      });
+    cors-middleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function corsMiddleware(req: Request, res: Response, next: NextFunction) {
+          res.header('Access-Control-Allow-Origin', '*');
+          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          next();
+      }
+    error-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+          console.error(err.stack);
+          res.status(500).json({ error: 'Internal Server Error' });
+      }
+  commit_message: Update files
+fragments:
+- id: authmiddleware
+  selector:
+    path: authMiddleware.ts
+    anchor: 'function authMiddleware(req: Request, res: Response, next: NextFunction)'
+- id: authmiddleware_1
+  selector:
+    path: authMiddleware.ts
+    anchor: req.headers.authorization
+- id: no_cors_middleware
+  selector:
+    path: cors-middleware.ts
+- id: no_error_handler
+  selector:
+    path: error-handler.ts
+- id: no_global_0
+  selector:
+    anchor: corsMiddleware
+- id: no_global_1
+  selector:
+    anchor: Access-Control-Allow-Origin
+- id: no_global_2
+  selector:
+    anchor: errorHandler
+- id: no_global_3
+  selector:
+    anchor: Internal Server Error
+oracle:
+  required:
+  - authmiddleware
+  - authmiddleware_1
+  allowed: []
+  forbidden:
+  - no_cors_middleware
+  - no_error_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

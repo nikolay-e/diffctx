@@ -1,0 +1,193 @@
+name: dependencies_044_reexported_type_via_init
+repo:
+  initial_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+
+          def validate(self) -> bool:
+              return len(self.name) > 0 and "@" in self.email
+    models/__init__.py: |
+      from .user import User
+    api.py: |
+      from models import User
+
+      def create_user_handler(data: dict) -> User:
+          user = User(name=data["name"], email=data["email"])
+          if not user.validate():
+              raise ValueError("invalid user")
+          return user
+    views/profile.py: |
+      from models import User
+      GARBAGE_DEP_044_PROFILE_VIEW_A = "profile_view"
+      GARBAGE_DEP_044_PROFILE_RENDER_B = True
+
+      def render_profile(user: User) -> dict:
+          GARBAGE_DEP_044_PROFILE_DATA_C = "profile_data"
+          return {"name": user.name, "email": user.email}
+    legacy/user.py: |
+      GARBAGE_DEP_044_LEGACY_MOD_D = "legacy_user"
+      GARBAGE_DEP_044_LEGACY_VER_E = "0.1"
+
+      class User:
+          GARBAGE_DEP_044_LEGACY_CLS_F = "old_user"
+
+          def __init__(self, username: str):
+              self.username = username
+
+          def validate(self) -> bool:
+              return len(self.username) > 0
+    garbage/botany_GARBAGE_DEP_044_BOTAN_G.py: |
+      GARBAGE_DEP_044_BOTAN_G = "taxonomy"
+
+      def classify_species(genus: str, species: str) -> str:
+          return f"{genus} {species}"
+
+      class Herbarium_GARBAGE_DEP_044_BOTAN_G:
+          def __init__(self, location: str, capacity: int):
+              self.location = location
+              self.capacity = capacity
+    garbage/brewing_GARBAGE_DEP_044_BREW_H.py: |
+      GARBAGE_DEP_044_BREW_H = "fermentation"
+
+      def calculate_abv(og: float, fg: float) -> float:
+          return (og - fg) * 131.25
+
+      class Recipe_GARBAGE_DEP_044_BREW_H:
+          def __init__(self, name: str, style: str):
+              self.name = name
+              self.style = style
+  changed_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+
+          def validate(self) -> bool:
+              return len(self.name) > 0 and "@" in self.email
+    models/__init__.py: |
+      from .user import User
+    api.py: |
+      import re
+      from models import User
+
+      EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+      def create_user_handler(data: dict) -> User:
+          user = User(name=data["name"], email=data["email"])
+          if not user.validate():
+              raise ValueError("invalid user")
+          if not EMAIL_PATTERN.match(user.email):
+              raise ValueError("malformed email address")
+          return user
+    views/profile.py: |
+      from models import User
+      GARBAGE_DEP_044_PROFILE_VIEW_A = "profile_view"
+      GARBAGE_DEP_044_PROFILE_RENDER_B = True
+
+      def render_profile(user: User) -> dict:
+          GARBAGE_DEP_044_PROFILE_DATA_C = "profile_data"
+          return {"name": user.name, "email": user.email}
+    legacy/user.py: |
+      GARBAGE_DEP_044_LEGACY_MOD_D = "legacy_user"
+      GARBAGE_DEP_044_LEGACY_VER_E = "0.1"
+
+      class User:
+          GARBAGE_DEP_044_LEGACY_CLS_F = "old_user"
+
+          def __init__(self, username: str):
+              self.username = username
+
+          def validate(self) -> bool:
+              return len(self.username) > 0
+    garbage/botany_GARBAGE_DEP_044_BOTAN_G.py: |
+      GARBAGE_DEP_044_BOTAN_G = "taxonomy"
+
+      def classify_species(genus: str, species: str) -> str:
+          return f"{genus} {species}"
+
+      class Herbarium_GARBAGE_DEP_044_BOTAN_G:
+          def __init__(self, location: str, capacity: int):
+              self.location = location
+              self.capacity = capacity
+    garbage/brewing_GARBAGE_DEP_044_BREW_H.py: |
+      GARBAGE_DEP_044_BREW_H = "fermentation"
+
+      def calculate_abv(og: float, fg: float) -> float:
+          return (og - fg) * 131.25
+
+      class Recipe_GARBAGE_DEP_044_BREW_H:
+          def __init__(self, name: str, style: str):
+              self.name = name
+              self.style = style
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: api.py
+    anchor: EMAIL_PATTERN.match(user.email)
+- id: api_1
+  selector:
+    path: api.py
+    anchor: def create_user_handler
+- id: req_global_0
+  selector:
+    anchor: class User
+- id: no_profile
+  selector:
+    path: views/profile.py
+- id: no_user
+  selector:
+    path: legacy/user.py
+- id: no_botany_garbage_dep_044_botan_g
+  selector:
+    path: garbage/botany_GARBAGE_DEP_044_BOTAN_G.py
+- id: no_brewing_garbage_dep_044_brew_h
+  selector:
+    path: garbage/brewing_GARBAGE_DEP_044_BREW_H.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_044_BOTAN_G
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_044_BREW_H
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_044_PROFILE_VIEW_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_044_PROFILE_RENDER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_044_PROFILE_DATA_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_044_LEGACY_MOD_D
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_044_LEGACY_VER_E
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_044_LEGACY_CLS_F
+oracle:
+  required:
+  - api
+  - api_1
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_profile
+  - no_user
+  - no_botany_garbage_dep_044_botan_g
+  - no_brewing_garbage_dep_044_brew_h
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

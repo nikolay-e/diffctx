@@ -1,0 +1,172 @@
+name: javascript_036_mixed_import_default_named
+repo:
+  initial_files:
+    module.ts: |
+      export default function defaultExport() {
+          return 'default';
+      }
+
+      export function namedExport() {
+          return 'named';
+      }
+
+      export const VALUE = 42;
+    main.ts: |
+      console.log('initial');
+    consumer.ts: |
+      import defaultFn from './module';
+
+      export function runDefault() {
+          return defaultFn();
+      }
+    helpers.ts: |
+      export default function helperDefault() {
+          return 'helper-default';
+      }
+
+      export function helperNamed() {
+          return 'helper-named';
+      }
+
+      export const HELPER_VALUE = 99;
+    module.test.ts: |
+      import defaultFn, { namedExport, VALUE } from './module';
+
+      describe('module exports', () => {
+          it('default export returns "default"', () => {
+              expect(defaultFn()).toBe('default');
+          });
+          it('namedExport returns "named"', () => {
+              expect(namedExport()).toBe('named');
+          });
+          it('VALUE is 42', () => {
+              expect(VALUE).toBe(42);
+          });
+      });
+  changed_files:
+    module.ts: |
+      export default function defaultExport() {
+          return 'default';
+      }
+
+      export function namedExport() {
+          return 'named';
+      }
+
+      export const VALUE = 42;
+    main.ts: |
+      import defaultFn, { namedExport, VALUE } from './module';
+
+      function useAll() {
+          console.log(defaultFn());
+          console.log(namedExport());
+          console.log(VALUE);
+      }
+
+      useAll();
+    consumer.ts: |
+      import defaultFn from './module';
+
+      export function runDefault() {
+          return defaultFn();
+      }
+    helpers.ts: |
+      export default function helperDefault() {
+          return 'helper-default';
+      }
+
+      export function helperNamed() {
+          return 'helper-named';
+      }
+
+      export const HELPER_VALUE = 99;
+    module.test.ts: |
+      import defaultFn, { namedExport, VALUE } from './module';
+
+      describe('module exports', () => {
+          it('default export returns "default"', () => {
+              expect(defaultFn()).toBe('default');
+          });
+          it('namedExport returns "named"', () => {
+              expect(namedExport()).toBe('named');
+          });
+          it('VALUE is 42', () => {
+              expect(VALUE).toBe(42);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import defaultFn, { namedExport, VALUE } from './module'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: function useAll()
+- id: module
+  selector:
+    path: module.ts
+    anchor: export default function defaultExport()
+- id: module_1
+  selector:
+    path: module.ts
+    anchor: return 'default'
+- id: module_2
+  selector:
+    path: module.ts
+    anchor: export function namedExport()
+- id: module_3
+  selector:
+    path: module.ts
+    anchor: export const VALUE = 42
+- id: no_consumer
+  selector:
+    path: consumer.ts
+- id: no_helpers
+  selector:
+    path: helpers.ts
+- id: no_module_test
+  selector:
+    path: module.test.ts
+- id: no_global_0
+  selector:
+    anchor: runDefault
+- id: no_global_1
+  selector:
+    anchor: helperDefault
+- id: no_global_2
+  selector:
+    anchor: helperNamed
+- id: no_global_3
+  selector:
+    anchor: HELPER_VALUE
+- id: no_global_4
+  selector:
+    anchor: default export returns
+- id: no_global_5
+  selector:
+    anchor: namedExport returns
+- id: no_global_6
+  selector:
+    anchor: VALUE is 42
+oracle:
+  required:
+  - main
+  - main_1
+  - module
+  - module_1
+  - module_2
+  - module_3
+  allowed: []
+  forbidden:
+  - no_consumer
+  - no_helpers
+  - no_module_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

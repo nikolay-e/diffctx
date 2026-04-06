@@ -1,0 +1,133 @@
+name: terraform_013_ecs_service
+repo:
+  initial_files:
+    ecs.tf: |
+      resource "aws_ecs_cluster" "main" {
+        name = "main-cluster"
+      }
+    task.tf: |
+      resource "aws_ecs_task_definition" "app" {
+        family                   = "app-task"
+        network_mode             = "awsvpc"
+        requires_compatibilities = ["FARGATE"]
+        cpu                      = "256"
+        memory                   = "512"
+
+        container_definitions = jsonencode([{
+          name  = "app"
+          image = "myapp:latest"
+          portMappings = [{
+            containerPort = 8080
+          }]
+        }])
+      }
+    ecs_workers.tf: |
+      resource "aws_ecs_service" "worker" {
+        name            = "worker-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.worker.arn
+        desired_count   = 4
+        launch_type     = "FARGATE"
+
+        network_configuration {
+          subnets         = var.private_subnet_ids
+          security_groups = [aws_security_group.worker.id]
+        }
+      }
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Deploying ECS services..."
+      aws ecs update-service --cluster main-cluster --service app-service --force-new-deployment
+  changed_files:
+    ecs.tf: |
+      resource "aws_ecs_cluster" "main" {
+        name = "main-cluster"
+      }
+
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+        launch_type     = "FARGATE"
+
+        network_configuration {
+          subnets         = var.subnet_ids
+          security_groups = [aws_security_group.app.id]
+        }
+      }
+    task.tf: |
+      resource "aws_ecs_task_definition" "app" {
+        family                   = "app-task"
+        network_mode             = "awsvpc"
+        requires_compatibilities = ["FARGATE"]
+        cpu                      = "256"
+        memory                   = "512"
+
+        container_definitions = jsonencode([{
+          name  = "app"
+          image = "myapp:latest"
+          portMappings = [{
+            containerPort = 8080
+          }]
+        }])
+      }
+    ecs_workers.tf: |
+      resource "aws_ecs_service" "worker" {
+        name            = "worker-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.worker.arn
+        desired_count   = 4
+        launch_type     = "FARGATE"
+
+        network_configuration {
+          subnets         = var.private_subnet_ids
+          security_groups = [aws_security_group.worker.id]
+        }
+      }
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Deploying ECS services..."
+      aws ecs update-service --cluster main-cluster --service app-service --force-new-deployment
+  commit_message: Update files
+fragments:
+- id: task
+  selector:
+    path: task.tf
+    anchor: resource "aws_ecs_task_definition" "app" {
+- id: task_1
+  selector:
+    path: task.tf
+    anchor: containerPort = 8080
+- id: no_ecs_workers
+  selector:
+    path: ecs_workers.tf
+- id: no_deploy
+  selector:
+    path: scripts/deploy.sh
+- id: no_global_0
+  selector:
+    anchor: worker-service
+- id: no_global_1
+  selector:
+    anchor: aws_ecs_task_definition.worker.arn
+- id: no_global_2
+  selector:
+    anchor: aws_security_group.worker.id
+- id: no_global_3
+  selector:
+    anchor: aws ecs update-service
+oracle:
+  required:
+  - task
+  - task_1
+  allowed: []
+  forbidden:
+  - no_ecs_workers
+  - no_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

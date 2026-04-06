@@ -1,0 +1,292 @@
+name: terraform_012_autoscaling_group
+repo:
+  initial_files:
+    compute.tf: |
+      resource "aws_launch_template" "web" {
+        name          = "web-template"
+        image_id      = var.ami_id
+        instance_type = "t3.micro"
+        key_name      = var.key_name
+
+        network_interfaces {
+          associate_public_ip_address = false
+          security_groups             = [aws_security_group.web.id]
+        }
+
+        user_data = base64encode(data.template_file.init.rendered)
+
+        tag_specifications {
+          resource_type = "instance"
+          tags = {
+            Name = "web-instance"
+          }
+        }
+      }
+    lb.tf: |
+      resource "aws_lb_target_group" "app" {
+        name     = "web-app-tg"
+        port     = 80
+        protocol = "HTTP"
+        vpc_id   = var.vpc_id
+
+        health_check {
+          path                = "/health"
+          matcher             = "200"
+          interval            = 30
+          timeout             = 5
+          healthy_threshold   = 2
+          unhealthy_threshold = 3
+        }
+      }
+
+      resource "aws_lb" "app" {
+        name               = "web-app-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+        security_groups    = [aws_security_group.alb.id]
+      }
+
+      resource "aws_lb_listener" "http" {
+        load_balancer_arn = aws_lb.app.arn
+        port              = 80
+        protocol          = "HTTP"
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+      }
+    scaling.tf: |
+      resource "aws_autoscaling_policy" "web_target_tracking" {
+        name                   = "web-target-tracking"
+        autoscaling_group_name = aws_autoscaling_group.web.name
+        policy_type            = "TargetTrackingScaling"
+
+        target_tracking_configuration {
+          predefined_metric_specification {
+            predefined_metric_type = "ASGAverageCPUUtilization"
+          }
+          target_value = 60.0
+        }
+      }
+
+      resource "aws_autoscaling_policy" "web_scale_in" {
+        name                   = "web-scale-in-protection"
+        autoscaling_group_name = aws_autoscaling_group.web.name
+        policy_type            = "SimpleScaling"
+        adjustment_type        = "ChangeInCapacity"
+        scaling_adjustment     = -1
+        cooldown               = 300
+      }
+    worker_asg.tf: |
+      resource "aws_launch_template" "worker" {
+        name          = "worker-template"
+        image_id      = var.ami_id
+        instance_type = "t3.small"
+      }
+
+      resource "aws_autoscaling_group" "worker" {
+        name                = "worker-asg"
+        min_size            = 0
+        max_size            = 20
+        desired_capacity    = 3
+        vpc_zone_identifier = var.worker_subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.worker.id
+          version = "$Latest"
+        }
+
+        tag {
+          key                 = "Name"
+          value               = "worker-instance"
+          propagate_at_launch = true
+        }
+      }
+    batch_asg.tf: |
+      resource "aws_launch_template" "batch" {
+        name          = "batch-template"
+        image_id      = var.ami_id
+        instance_type = "c5.xlarge"
+      }
+
+      resource "aws_autoscaling_group" "batch" {
+        name                = "batch-asg"
+        min_size            = 0
+        max_size            = 50
+        desired_capacity    = 0
+        vpc_zone_identifier = var.private_subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.batch.id
+          version = "$Latest"
+        }
+      }
+    billing.tf: |
+      resource "aws_budgets_budget" "monthly" {
+        name         = "monthly-budget"
+        budget_type  = "COST"
+        limit_amount = "1000"
+        limit_unit   = "USD"
+        time_unit    = "MONTHLY"
+
+        notification {
+          comparison_operator       = "GREATER_THAN"
+          threshold                 = 80
+          threshold_type            = "PERCENTAGE"
+          notification_type         = "ACTUAL"
+          subscriber_email_addresses = ["finance@example.com"]
+        }
+      }
+    monitoring/asg_alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "web_asg_cpu" {
+        alarm_name          = "web-asg-cpu-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        dimensions = {
+          AutoScalingGroupName = "web-asg"
+        }
+      }
+  changed_files:
+    compute.tf: |
+      resource "aws_launch_template" "web" {
+        name          = "web-template"
+        image_id      = var.ami_id
+        instance_type = "t3.micro"
+        key_name      = var.key_name
+
+        network_interfaces {
+          associate_public_ip_address = false
+          security_groups             = [aws_security_group.web.id]
+        }
+
+        user_data = base64encode(data.template_file.init.rendered)
+
+        tag_specifications {
+          resource_type = "instance"
+          tags = {
+            Name = "web-instance"
+          }
+        }
+      }
+
+      resource "aws_autoscaling_group" "web" {
+        name                = "web-asg"
+        min_size            = 1
+        max_size            = 10
+        desired_capacity    = 2
+        vpc_zone_identifier = var.subnet_ids
+        target_group_arns   = [aws_lb_target_group.app.arn]
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: lb
+  selector:
+    path: lb.tf
+    anchor: resource "aws_lb_target_group" "app" {
+- id: lb_1
+  selector:
+    path: lb.tf
+    anchor: path                = "/health"
+- id: lb_2
+  selector:
+    path: lb.tf
+    anchor: matcher             = "200"
+- id: scaling
+  selector:
+    path: scaling.tf
+    anchor: autoscaling_group_name = aws_autoscaling_group.web.name
+- id: scaling_1
+  selector:
+    path: scaling.tf
+    anchor: ASGAverageCPUUtilization
+- id: scaling_2
+  selector:
+    path: scaling.tf
+    anchor: target_value = 60.0
+- id: no_worker_asg
+  selector:
+    path: worker_asg.tf
+- id: no_batch_asg
+  selector:
+    path: batch_asg.tf
+- id: no_billing
+  selector:
+    path: billing.tf
+- id: no_asg_alarms
+  selector:
+    path: monitoring/asg_alarms.tf
+- id: no_global_0
+  selector:
+    anchor: worker-asg
+- id: no_global_1
+  selector:
+    anchor: worker_subnet_ids
+- id: no_global_2
+  selector:
+    anchor: worker-instance
+- id: no_global_3
+  selector:
+    anchor: worker-template
+- id: no_global_4
+  selector:
+    anchor: batch-asg
+- id: no_global_5
+  selector:
+    anchor: batch-template
+- id: no_global_6
+  selector:
+    anchor: c5.xlarge
+- id: no_global_7
+  selector:
+    anchor: aws_budgets_budget
+- id: no_global_8
+  selector:
+    anchor: monthly-budget
+- id: no_global_9
+  selector:
+    anchor: finance@example.com
+- id: no_global_10
+  selector:
+    anchor: web-asg-cpu-high
+- id: no_global_11
+  selector:
+    anchor: AutoScalingGroupName
+oracle:
+  required:
+  - lb
+  - lb_1
+  - lb_2
+  - scaling
+  - scaling_1
+  - scaling_2
+  allowed: []
+  forbidden:
+  - no_worker_asg
+  - no_batch_asg
+  - no_billing
+  - no_asg_alarms
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

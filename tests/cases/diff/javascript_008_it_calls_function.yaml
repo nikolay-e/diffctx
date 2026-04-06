@@ -1,0 +1,85 @@
+name: javascript_008_it_calls_function
+repo:
+  initial_files:
+    validator.ts: |
+      export function isValidEmail(email: string): boolean {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+    validator.test.ts: |
+      console.log('initial');
+    sanitizer.ts: |
+      export function sanitizeHtml(input: string): string {
+          return input.replace(/<[^>]*>/g, '');
+      }
+
+      export function escapeSpecialChars(input: string): string {
+          return input.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
+      }
+    validator.constants.ts: |
+      export const EMAIL_ERROR = 'Please enter a valid email address';
+      export const REQUIRED_ERROR = 'This field is required';
+      export const MIN_LENGTH_ERROR = 'Value is too short';
+  changed_files:
+    validator.ts: |
+      export function isValidEmail(email: string): boolean {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+    validator.test.ts: |
+      import { isValidEmail } from './validator';
+
+      describe('Validator', () => {
+          it('should validate correct email', () => {
+              expect(isValidEmail('test@example.com')).toBe(true);
+          });
+
+          it('should reject invalid email', () => {
+              expect(isValidEmail('invalid')).toBe(false);
+          });
+      });
+    sanitizer.ts: |
+      export function sanitizeHtml(input: string): string {
+          return input.replace(/<[^>]*>/g, '');
+      }
+
+      export function escapeSpecialChars(input: string): string {
+          return input.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
+      }
+    validator.constants.ts: |
+      export const EMAIL_ERROR = 'Please enter a valid email address';
+      export const REQUIRED_ERROR = 'This field is required';
+      export const MIN_LENGTH_ERROR = 'Value is too short';
+  commit_message: Update files
+fragments:
+- id: validator
+  selector:
+    path: validator.ts
+    anchor: 'function isValidEmail(email: string)'
+- id: no_sanitizer
+  selector:
+    path: sanitizer.ts
+- id: no_validator_constants
+  selector:
+    path: validator.constants.ts
+- id: no_global_0
+  selector:
+    anchor: sanitizeHtml
+- id: no_global_1
+  selector:
+    anchor: escapeSpecialChars
+- id: no_global_2
+  selector:
+    anchor: EMAIL_ERROR
+- id: no_global_3
+  selector:
+    anchor: REQUIRED_ERROR
+oracle:
+  required:
+  - validator
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_validator_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

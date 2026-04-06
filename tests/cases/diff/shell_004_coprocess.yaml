@@ -1,0 +1,325 @@
+name: shell_004_coprocess
+repo:
+  initial_files:
+    lib/worker.sh: |
+      #!/bin/bash
+
+      read_from_coproc() {
+          local -n coproc_fds=$1
+          local result
+          read -r result <&${coproc_fds[0]}
+          echo "$result"
+      }
+
+      write_to_coproc() {
+          local -n coproc_fds=$1
+          local data=$2
+          echo "$data" >&${coproc_fds[1]}
+      }
+
+      cleanup_coproc() {
+          local -n coproc_fds=$1
+          local coproc_pid=$2
+          exec {coproc_fds[1]}>&-
+          wait "$coproc_pid"
+      }
+    orchestrate.sh: |
+      #!/bin/bash
+      source ./lib/worker.sh
+
+      coproc WORKER { while read -r line; do echo "Echo: $line"; done; }
+
+      echo "Hello" >&${WORKER[1]}
+      result=$(read_from_coproc WORKER)
+      echo "Got: $result"
+
+      cleanup_coproc WORKER $WORKER_PID
+    logging.sh: |
+      #!/bin/bash
+
+      LOG_FD=3
+      exec 3>/tmp/app.log
+
+      write_log() {
+          local level=$1
+          local message=$2
+          echo "$(date +%Y-%m-%dT%H:%M:%S) [$level] $message" >&$LOG_FD
+      }
+
+      rotate_log() {
+          exec 3>&-
+          mv /tmp/app.log /tmp/app.log.1
+          exec 3>/tmp/app.log
+      }
+
+      flush_log() {
+          sync
+      }
+    monitor.sh: |
+      #!/bin/bash
+
+      declare -A TRACKED_PIDS
+
+      track_pid() {
+          local name=$1
+          local pid=$2
+          TRACKED_PIDS[$name]=$pid
+          echo "$name=$pid" >> /tmp/running_pids.txt
+      }
+
+      wait_for_all() {
+          while read -r entry; do
+              local pid="${entry#*=}"
+              wait "$pid" 2>/dev/null
+          done < /tmp/running_pids.txt
+      }
+
+      check_alive() {
+          local name=$1
+          local pid=${TRACKED_PIDS[$name]}
+          kill -0 "$pid" 2>/dev/null
+      }
+    pipeline.sh: |
+      #!/bin/bash
+      source ./lib/worker.sh
+
+      coproc STAGE1 { while read -r line; do echo "stage1:$line"; done; }
+      coproc STAGE2 { while read -r line; do echo "stage2:$line"; done; }
+      coproc STAGE3 { while read -r line; do echo "stage3:$line"; done; }
+
+      run_pipeline() {
+          local input=$1
+          write_to_coproc STAGE1 "$input"
+          local s1
+          s1=$(read_from_coproc STAGE1)
+          write_to_coproc STAGE2 "$s1"
+          local s2
+          s2=$(read_from_coproc STAGE2)
+          write_to_coproc STAGE3 "$s2"
+          read_from_coproc STAGE3
+      }
+
+      cleanup_pipeline() {
+          cleanup_coproc STAGE1 $STAGE1_PID
+          cleanup_coproc STAGE2 $STAGE2_PID
+          cleanup_coproc STAGE3 $STAGE3_PID
+      }
+    parallel.sh: |
+      #!/bin/bash
+
+      MAX_JOBS=4
+      RUNNING_JOBS=0
+
+      run_job() {
+          local cmd=$1
+          while (( RUNNING_JOBS >= MAX_JOBS )); do
+              wait -n
+              RUNNING_JOBS=$((RUNNING_JOBS - 1))
+          done
+          eval "$cmd" &
+          RUNNING_JOBS=$((RUNNING_JOBS + 1))
+      }
+
+      wait_all_jobs() {
+          wait
+          RUNNING_JOBS=0
+      }
+
+      job_count() {
+          echo "$RUNNING_JOBS"
+      }
+    lib/fd_utils.sh: |
+      #!/bin/bash
+
+      open_fd_read() {
+          local fd=$1
+          local file=$2
+          eval "exec ${fd}<${file}"
+      }
+
+      open_fd_write() {
+          local fd=$1
+          local file=$2
+          eval "exec ${fd}>${file}"
+      }
+
+      close_fd() {
+          local fd=$1
+          eval "exec ${fd}>&-"
+      }
+
+      redirect_stderr() {
+          local file=$1
+          exec 2>"$file"
+      }
+  changed_files:
+    lib/worker.sh: |
+      #!/bin/bash
+
+      read_from_coproc() {
+          local -n coproc_fds=$1
+          local result
+          read -r result <&${coproc_fds[0]}
+          echo "$result"
+      }
+
+      write_to_coproc() {
+          local -n coproc_fds=$1
+          local data=$2
+          echo "$data" >&${coproc_fds[1]}
+      }
+
+      cleanup_coproc() {
+          local -n coproc_fds=$1
+          local coproc_pid=$2
+          exec {coproc_fds[1]}>&-
+          wait "$coproc_pid"
+      }
+    orchestrate.sh: |
+      #!/bin/bash
+      source ./lib/worker.sh
+
+      coproc WORKER { while read -r line; do echo "Echo: $line"; done; }
+
+      echo "Hello" >&${WORKER[1]}
+      result=$(read_from_coproc WORKER)
+      echo "Got: $result"
+
+      coproc TRANSFORMER {
+          while read -r line; do
+              echo "${line^^}"
+          done
+      }
+
+      echo "lowercase" >&${TRANSFORMER[1]}
+      upper=$(read_from_coproc TRANSFORMER)
+      echo "Transformed: $upper"
+
+      cleanup_coproc WORKER $WORKER_PID
+      cleanup_coproc TRANSFORMER $TRANSFORMER_PID
+  commit_message: Update files
+fragments:
+- id: worker
+  selector:
+    path: lib/worker.sh
+    anchor: read_from_coproc()
+- id: worker_1
+  selector:
+    path: lib/worker.sh
+    anchor: cleanup_coproc()
+- id: orchestrate
+  selector:
+    path: orchestrate.sh
+    anchor: coproc TRANSFORMER
+- id: orchestrate_1
+  selector:
+    path: orchestrate.sh
+    anchor: read_from_coproc TRANSFORMER
+- id: no_logging
+  selector:
+    path: logging.sh
+- id: no_monitor
+  selector:
+    path: monitor.sh
+- id: no_pipeline
+  selector:
+    path: pipeline.sh
+- id: no_parallel
+  selector:
+    path: parallel.sh
+- id: no_fd_utils
+  selector:
+    path: lib/fd_utils.sh
+- id: no_global_0
+  selector:
+    anchor: write_log
+- id: no_global_1
+  selector:
+    anchor: rotate_log
+- id: no_global_2
+  selector:
+    anchor: LOG_FD
+- id: no_global_3
+  selector:
+    anchor: flush_log
+- id: no_global_4
+  selector:
+    anchor: track_pid
+- id: no_global_5
+  selector:
+    anchor: wait_for_all
+- id: no_global_6
+  selector:
+    anchor: check_alive
+- id: no_global_7
+  selector:
+    anchor: TRACKED_PIDS
+- id: no_global_8
+  selector:
+    anchor: STAGE1
+- id: no_global_9
+  selector:
+    anchor: STAGE2
+- id: no_global_10
+  selector:
+    anchor: STAGE3
+- id: no_global_11
+  selector:
+    anchor: run_pipeline
+- id: no_global_12
+  selector:
+    anchor: cleanup_pipeline
+- id: no_global_13
+  selector:
+    anchor: MAX_JOBS
+- id: no_global_14
+  selector:
+    anchor: run_job
+- id: no_global_15
+  selector:
+    anchor: wait_all_jobs
+- id: no_global_16
+  selector:
+    anchor: open_fd_read
+- id: no_global_17
+  selector:
+    anchor: open_fd_write
+- id: no_global_18
+  selector:
+    anchor: close_fd
+- id: no_global_19
+  selector:
+    anchor: redirect_stderr
+oracle:
+  required:
+  - worker
+  - worker_1
+  - orchestrate
+  - orchestrate_1
+  allowed: []
+  forbidden:
+  - no_logging
+  - no_monitor
+  - no_pipeline
+  - no_parallel
+  - no_fd_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19

@@ -1,0 +1,431 @@
+name: rust_027_arc_mutex
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod shared_state;
+      pub mod channel;
+      pub mod atomic_flag;
+    src/shared_state.rs: |
+      use std::sync::{Arc, Mutex};
+      use std::thread;
+
+      #[derive(Debug)]
+      pub struct Counter {
+          value: Arc<Mutex<i32>>,
+          name: String,
+      }
+
+      impl Counter {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  value: Arc::new(Mutex::new(0)),
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn increment(&self) {
+              let mut val = self.value.lock().unwrap();
+              *val += 1;
+          }
+
+          pub fn decrement(&self) {
+              let mut val = self.value.lock().unwrap();
+              *val -= 1;
+          }
+
+          pub fn get(&self) -> i32 {
+              *self.value.lock().unwrap()
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+
+      impl Clone for Counter {
+          fn clone(&self) -> Self {
+              Self {
+                  value: Arc::clone(&self.value),
+                  name: self.name.clone(),
+              }
+          }
+      }
+
+      pub fn increment_in_threads(counter: &Counter, num_threads: usize) {
+          let handles: Vec<_> = (0..num_threads)
+              .map(|_| {
+                  let c = counter.clone();
+                  thread::spawn(move || {
+                      c.increment();
+                  })
+              })
+              .collect();
+
+          for handle in handles {
+              handle.join().unwrap();
+          }
+      }
+    src/channel.rs: |
+      use std::sync::mpsc;
+
+      pub struct MessageChannel<T> {
+          sender: mpsc::Sender<T>,
+          receiver: mpsc::Receiver<T>,
+      }
+
+      impl<T> MessageChannel<T> {
+          pub fn new() -> Self {
+              let (sender, receiver) = mpsc::channel();
+              Self { sender, receiver }
+          }
+
+          pub fn send(&self, msg: T) -> Result<(), mpsc::SendError<T>> {
+              self.sender.send(msg)
+          }
+
+          pub fn recv(&self) -> Result<T, mpsc::RecvError> {
+              self.receiver.recv()
+          }
+
+          pub fn try_recv(&self) -> Option<T> {
+              self.receiver.try_recv().ok()
+          }
+
+          pub fn sender(&self) -> mpsc::Sender<T> {
+              self.sender.clone()
+          }
+      }
+    src/atomic_flag.rs: |
+      use std::sync::atomic::{AtomicBool, Ordering};
+
+      pub struct AtomicFlag {
+          flag: AtomicBool,
+          name: String,
+      }
+
+      impl AtomicFlag {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  flag: AtomicBool::new(false),
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn set(&self) {
+              self.flag.store(true, Ordering::SeqCst);
+          }
+
+          pub fn clear(&self) {
+              self.flag.store(false, Ordering::SeqCst);
+          }
+
+          pub fn is_set(&self) -> bool {
+              self.flag.load(Ordering::SeqCst)
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod shared_state;
+      pub mod channel;
+      pub mod atomic_flag;
+    src/shared_state.rs: |
+      use std::sync::{Arc, Mutex, RwLock, Condvar};
+      use std::thread;
+      use std::time::Duration;
+
+      #[derive(Debug)]
+      pub struct Counter {
+          value: Arc<Mutex<i32>>,
+          history: Arc<RwLock<Vec<i32>>>,
+          name: String,
+      }
+
+      impl Counter {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  value: Arc::new(Mutex::new(0)),
+                  history: Arc::new(RwLock::new(vec![])),
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn increment(&self) {
+              let mut val = self.value.lock().unwrap();
+              *val += 1;
+              let mut history = self.history.write().unwrap();
+              history.push(*val);
+          }
+
+          pub fn decrement(&self) {
+              let mut val = self.value.lock().unwrap();
+              *val -= 1;
+              let mut history = self.history.write().unwrap();
+              history.push(*val);
+          }
+
+          pub fn get(&self) -> i32 {
+              *self.value.lock().unwrap()
+          }
+
+          pub fn get_history(&self) -> Vec<i32> {
+              self.history.read().unwrap().clone()
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn reset(&self) {
+              let mut val = self.value.lock().unwrap();
+              *val = 0;
+              let mut history = self.history.write().unwrap();
+              history.clear();
+          }
+      }
+
+      impl Clone for Counter {
+          fn clone(&self) -> Self {
+              Self {
+                  value: Arc::clone(&self.value),
+                  history: Arc::clone(&self.history),
+                  name: self.name.clone(),
+              }
+          }
+      }
+
+      pub fn increment_in_threads(counter: &Counter, num_threads: usize) {
+          let handles: Vec<_> = (0..num_threads)
+              .map(|_| {
+                  let c = counter.clone();
+                  thread::spawn(move || {
+                      c.increment();
+                  })
+              })
+              .collect();
+
+          for handle in handles {
+              handle.join().unwrap();
+          }
+      }
+
+      pub struct BoundedCounter {
+          value: Arc<Mutex<i32>>,
+          min: i32,
+          max: i32,
+          not_empty: Arc<Condvar>,
+          not_full: Arc<Condvar>,
+      }
+
+      impl BoundedCounter {
+          pub fn new(min: i32, max: i32) -> Self {
+              Self {
+                  value: Arc::new(Mutex::new(min)),
+                  min,
+                  max,
+                  not_empty: Arc::new(Condvar::new()),
+                  not_full: Arc::new(Condvar::new()),
+              }
+          }
+
+          pub fn increment_blocking(&self) {
+              let mut val = self.value.lock().unwrap();
+              while *val >= self.max {
+                  val = self.not_full.wait(val).unwrap();
+              }
+              *val += 1;
+              self.not_empty.notify_one();
+          }
+
+          pub fn decrement_blocking(&self) {
+              let mut val = self.value.lock().unwrap();
+              while *val <= self.min {
+                  val = self.not_empty.wait(val).unwrap();
+              }
+              *val -= 1;
+              self.not_full.notify_one();
+          }
+
+          pub fn try_increment(&self) -> bool {
+              let mut val = self.value.lock().unwrap();
+              if *val < self.max {
+                  *val += 1;
+                  self.not_empty.notify_one();
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn try_decrement(&self) -> bool {
+              let mut val = self.value.lock().unwrap();
+              if *val > self.min {
+                  *val -= 1;
+                  self.not_full.notify_one();
+                  true
+              } else {
+                  false
+              }
+          }
+
+          pub fn get(&self) -> i32 {
+              *self.value.lock().unwrap()
+          }
+      }
+
+      impl Clone for BoundedCounter {
+          fn clone(&self) -> Self {
+              Self {
+                  value: Arc::clone(&self.value),
+                  min: self.min,
+                  max: self.max,
+                  not_empty: Arc::clone(&self.not_empty),
+                  not_full: Arc::clone(&self.not_full),
+              }
+          }
+      }
+
+      pub trait SharedCounter: Send + Sync {
+          fn inc(&self);
+          fn dec(&self);
+          fn value(&self) -> i32;
+      }
+
+      impl SharedCounter for Counter {
+          fn inc(&self) {
+              self.increment();
+          }
+
+          fn dec(&self) {
+              self.decrement();
+          }
+
+          fn value(&self) -> i32 {
+              self.get()
+          }
+      }
+
+      impl SharedCounter for BoundedCounter {
+          fn inc(&self) {
+              self.try_increment();
+          }
+
+          fn dec(&self) {
+              self.try_decrement();
+          }
+
+          fn value(&self) -> i32 {
+              self.get()
+          }
+      }
+    src/channel.rs: |
+      use std::sync::mpsc;
+
+      pub struct MessageChannel<T> {
+          sender: mpsc::Sender<T>,
+          receiver: mpsc::Receiver<T>,
+      }
+
+      impl<T> MessageChannel<T> {
+          pub fn new() -> Self {
+              let (sender, receiver) = mpsc::channel();
+              Self { sender, receiver }
+          }
+
+          pub fn send(&self, msg: T) -> Result<(), mpsc::SendError<T>> {
+              self.sender.send(msg)
+          }
+
+          pub fn recv(&self) -> Result<T, mpsc::RecvError> {
+              self.receiver.recv()
+          }
+
+          pub fn try_recv(&self) -> Option<T> {
+              self.receiver.try_recv().ok()
+          }
+
+          pub fn sender(&self) -> mpsc::Sender<T> {
+              self.sender.clone()
+          }
+      }
+    src/atomic_flag.rs: |
+      use std::sync::atomic::{AtomicBool, Ordering};
+
+      pub struct AtomicFlag {
+          flag: AtomicBool,
+          name: String,
+      }
+
+      impl AtomicFlag {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  flag: AtomicBool::new(false),
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn set(&self) {
+              self.flag.store(true, Ordering::SeqCst);
+          }
+
+          pub fn clear(&self) {
+              self.flag.store(false, Ordering::SeqCst);
+          }
+
+          pub fn is_set(&self) -> bool {
+              self.flag.load(Ordering::SeqCst)
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: shared_state_file
+  selector:
+    path: src/shared_state.rs
+- id: req_global_0
+  selector:
+    anchor: use std::sync::{Arc, Mutex, RwLock, Condvar};
+- id: req_global_1
+  selector:
+    anchor: 'history: Arc<RwLock<Vec<i32>>>,'
+- id: no_channel
+  selector:
+    path: src/channel.rs
+- id: no_atomic_flag
+  selector:
+    path: src/atomic_flag.rs
+- id: no_global_0
+  selector:
+    anchor: MessageChannel
+- id: no_global_1
+  selector:
+    anchor: AtomicFlag
+- id: no_global_2
+  selector:
+    anchor: AtomicBool
+- id: no_global_3
+  selector:
+    anchor: channel.rs
+- id: no_global_4
+  selector:
+    anchor: atomic_flag.rs
+oracle:
+  required:
+  - shared_state_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_channel
+  - no_atomic_flag
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

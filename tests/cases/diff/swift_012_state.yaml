@@ -1,0 +1,313 @@
+name: swift_012_state
+repo:
+  initial_files:
+    Sources/Models/Item.swift: |
+      struct Item: Identifiable {
+          let id: String
+          let title: String
+          let subtitle: String
+      }
+    Sources/Views/ContentView.swift: |
+      import SwiftUI
+
+      struct ContentView: View {
+          var body: some View {
+              Text("placeholder")
+          }
+      }
+    Sources/Models/Theme.swift: |
+      struct Theme {
+          let primaryColor: String
+          let secondaryColor: String
+          let fontName: String
+          let cornerRadius: Double
+
+          static let defaultTheme = Theme(
+              primaryColor: "#007AFF",
+              secondaryColor: "#5856D6",
+              fontName: "SF Pro",
+              cornerRadius: 8
+          )
+      }
+    Sources/Views/SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @State private var notificationsEnabled = true
+          @State private var syncInterval: Double = 30
+          @State private var selectedTheme = "system"
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  Slider(value: $syncInterval, in: 5...120)
+                  Picker("Theme", selection: $selectedTheme) {
+                      Text("System").tag("system")
+                      Text("Light").tag("light")
+                      Text("Dark").tag("dark")
+                  }
+              }
+          }
+      }
+    Sources/Views/ItemDetailView.swift: |
+      import SwiftUI
+
+      struct ItemDetailView: View {
+          let item: Item
+
+          var body: some View {
+              VStack(alignment: .leading, spacing: 12) {
+                  Text(item.title)
+                      .font(.largeTitle)
+                      .fontWeight(.bold)
+                  Text(item.subtitle)
+                      .font(.body)
+                      .foregroundColor(.secondary)
+                  Spacer()
+              }
+              .padding()
+              .navigationTitle(item.title)
+          }
+      }
+    Sources/ViewModels/ContentViewModel.swift: |
+      import Foundation
+
+      class ContentViewModel: ObservableObject {
+          @Published var items: [Item] = []
+          @Published var isLoading = false
+
+          func fetchItems() async {
+              isLoading = true
+              defer { isLoading = false }
+              items = [
+                  Item(id: "1", title: "First", subtitle: "Description"),
+                  Item(id: "2", title: "Second", subtitle: "Another one")
+              ]
+          }
+      }
+    Sources/Models/Section.swift: |
+      struct Section: Identifiable {
+          let id: String
+          let name: String
+          let items: [Item]
+
+          var itemCount: Int { items.count }
+      }
+  changed_files:
+    Sources/Models/Item.swift: |
+      struct Item: Identifiable {
+          let id: String
+          let title: String
+          let subtitle: String
+      }
+    Sources/Views/ContentView.swift: |
+      import SwiftUI
+
+      struct ContentView: View {
+          @State private var isLoading = false
+          @State private var items: [Item] = []
+
+          var body: some View {
+              VStack {
+                  if isLoading {
+                      ProgressView()
+                  } else {
+                      List(items) { item in
+                          VStack(alignment: .leading) {
+                              Text(item.title).font(.headline)
+                              Text(item.subtitle).font(.caption)
+                          }
+                      }
+                  }
+                  Button("Load") {
+                      isLoading = true
+                  }
+              }
+          }
+      }
+    Sources/Models/Theme.swift: |
+      struct Theme {
+          let primaryColor: String
+          let secondaryColor: String
+          let fontName: String
+          let cornerRadius: Double
+
+          static let defaultTheme = Theme(
+              primaryColor: "#007AFF",
+              secondaryColor: "#5856D6",
+              fontName: "SF Pro",
+              cornerRadius: 8
+          )
+      }
+    Sources/Views/SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @State private var notificationsEnabled = true
+          @State private var syncInterval: Double = 30
+          @State private var selectedTheme = "system"
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  Slider(value: $syncInterval, in: 5...120)
+                  Picker("Theme", selection: $selectedTheme) {
+                      Text("System").tag("system")
+                      Text("Light").tag("light")
+                      Text("Dark").tag("dark")
+                  }
+              }
+          }
+      }
+    Sources/Views/ItemDetailView.swift: |
+      import SwiftUI
+
+      struct ItemDetailView: View {
+          let item: Item
+
+          var body: some View {
+              VStack(alignment: .leading, spacing: 12) {
+                  Text(item.title)
+                      .font(.largeTitle)
+                      .fontWeight(.bold)
+                  Text(item.subtitle)
+                      .font(.body)
+                      .foregroundColor(.secondary)
+                  Spacer()
+              }
+              .padding()
+              .navigationTitle(item.title)
+          }
+      }
+    Sources/ViewModels/ContentViewModel.swift: |
+      import Foundation
+
+      class ContentViewModel: ObservableObject {
+          @Published var items: [Item] = []
+          @Published var isLoading = false
+
+          func fetchItems() async {
+              isLoading = true
+              defer { isLoading = false }
+              items = [
+                  Item(id: "1", title: "First", subtitle: "Description"),
+                  Item(id: "2", title: "Second", subtitle: "Another one")
+              ]
+          }
+      }
+    Sources/Models/Section.swift: |
+      struct Section: Identifiable {
+          let id: String
+          let name: String
+          let items: [Item]
+
+          var itemCount: Int { items.count }
+      }
+  commit_message: Update files
+fragments:
+- id: contentview
+  selector:
+    path: Sources/Views/ContentView.swift
+    anchor: '@State private var items: [Item] = []'
+- id: contentview_1
+  selector:
+    path: Sources/Views/ContentView.swift
+    anchor: Text(item.title)
+- id: contentview_2
+  selector:
+    path: Sources/Views/ContentView.swift
+    anchor: Text(item.subtitle)
+- id: item
+  selector:
+    path: Sources/Models/Item.swift
+    anchor: 'struct Item: Identifiable'
+- id: item_1
+  selector:
+    path: Sources/Models/Item.swift
+    anchor: 'let title: String'
+- id: item_2
+  selector:
+    path: Sources/Models/Item.swift
+    anchor: 'let subtitle: String'
+- id: no_theme
+  selector:
+    path: Sources/Models/Theme.swift
+- id: no_settingsview
+  selector:
+    path: Sources/Views/SettingsView.swift
+- id: no_itemdetailview
+  selector:
+    path: Sources/Views/ItemDetailView.swift
+- id: no_contentviewmodel
+  selector:
+    path: Sources/ViewModels/ContentViewModel.swift
+- id: no_section
+  selector:
+    path: Sources/Models/Section.swift
+- id: no_global_0
+  selector:
+    anchor: Theme
+- id: no_global_1
+  selector:
+    anchor: primaryColor
+- id: no_global_2
+  selector:
+    anchor: cornerRadius
+- id: no_global_3
+  selector:
+    anchor: SettingsView
+- id: no_global_4
+  selector:
+    anchor: notificationsEnabled
+- id: no_global_5
+  selector:
+    anchor: syncInterval
+- id: no_global_6
+  selector:
+    anchor: ItemDetailView
+- id: no_global_7
+  selector:
+    anchor: .largeTitle
+- id: no_global_8
+  selector:
+    anchor: .fontWeight(.bold)
+- id: no_global_9
+  selector:
+    anchor: ContentViewModel
+- id: no_global_10
+  selector:
+    anchor: fetchItems
+- id: no_global_11
+  selector:
+    anchor: struct Section
+- id: no_global_12
+  selector:
+    anchor: itemCount
+oracle:
+  required:
+  - contentview
+  - contentview_1
+  - contentview_2
+  - item
+  - item_1
+  - item_2
+  allowed: []
+  forbidden:
+  - no_theme
+  - no_settingsview
+  - no_itemdetailview
+  - no_contentviewmodel
+  - no_section
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

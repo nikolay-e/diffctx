@@ -1,0 +1,141 @@
+name: cicd_and_docs_048_changelog_pr_reference
+repo:
+  initial_files:
+    CHANGELOG.md: |
+      # Changelog
+
+      ## [1.0.0] - 2024-01-01
+
+      ### Added
+      - Initial release
+    src/feature.py: |
+      def new_feature():
+          pass
+    src/auth.py: |
+      def authenticate(token):
+          return True
+    package.json: |
+      {
+        "name": "changelog-app",
+        "version": "1.0.0"
+      }
+    garbage_changelog_parser.ts: |
+      const GARBAGE_CICD_DOCS_048_PARSER_MARKER_A = "keep-a-changelog";
+      const GARBAGE_CICD_DOCS_048_FORMAT_MARKER_B = "markdown";
+
+      class GarbageChangelogParser {
+        static GARBAGE_CICD_DOCS_048_STRICT_MARKER_C = true;
+        parse(): void {}
+      }
+    garbage_changelog_generator.ts: |
+      const GARBAGE_CICD_DOCS_048_GENERATOR_MARKER_D = "conventional-changelog";
+      const GARBAGE_CICD_DOCS_048_PRESET_MARKER_E = "angular";
+
+      class GarbageChangelogGenerator {
+        static GARBAGE_CICD_DOCS_048_APPEND_MARKER_F = false;
+        generate(): void {}
+      }
+  changed_files:
+    CHANGELOG.md: |
+      # Changelog
+
+      ## [1.1.0] - 2024-02-01
+
+      ### Added
+      - User authentication (#123)
+      - OAuth2 support (#125)
+
+      ### Fixed
+      - Login timeout issue (#124)
+
+      ### Changed
+      - Updated API response format (#126)
+
+      ## [1.0.0] - 2024-01-01
+
+      ### Added
+      - Initial release
+    src/feature.py: |
+      def new_feature():
+          pass
+    src/auth.py: |
+      def authenticate(token):
+          return True
+
+      def oauth2_login(provider, code):
+          return {"access_token": "token123"}
+    package.json: |
+      {
+        "name": "changelog-app",
+        "version": "1.1.0"
+      }
+    garbage_changelog_parser.ts: |
+      const GARBAGE_CICD_DOCS_048_PARSER_MARKER_A = "keep-a-changelog";
+      const GARBAGE_CICD_DOCS_048_FORMAT_MARKER_B = "markdown";
+
+      class GarbageChangelogParser {
+        static GARBAGE_CICD_DOCS_048_STRICT_MARKER_C = true;
+        parse(): void {}
+      }
+    garbage_changelog_generator.ts: |
+      const GARBAGE_CICD_DOCS_048_GENERATOR_MARKER_D = "conventional-changelog";
+      const GARBAGE_CICD_DOCS_048_PRESET_MARKER_E = "angular";
+
+      class GarbageChangelogGenerator {
+        static GARBAGE_CICD_DOCS_048_APPEND_MARKER_F = false;
+        generate(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: changelog_file
+  selector:
+    path: CHANGELOG.md
+- id: auth_file
+  selector:
+    path: src/auth.py
+- id: req_global_0
+  selector:
+    anchor: '- User authentication (#123)'
+- id: req_global_1
+  selector:
+    anchor: '- Login timeout issue (#124)'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_APPEND_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_FORMAT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_GENERATOR_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_PARSER_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_PRESET_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_048_STRICT_MARKER_C
+- id: no_global_6
+  selector:
+    anchor: garbage_changelog_generator.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_changelog_parser.ts
+oracle:
+  required:
+  - changelog_file
+  - auth_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

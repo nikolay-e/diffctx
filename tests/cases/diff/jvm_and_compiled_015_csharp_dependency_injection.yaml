@@ -1,0 +1,257 @@
+name: jvm_and_compiled_015_csharp_dependency_injection
+repo:
+  initial_files:
+    Interfaces/IUserService.cs: |
+      using MyApp.Models;
+
+      namespace MyApp.Interfaces
+      {
+          public interface IUserService
+          {
+              User GetUser(int id);
+              void CreateUser(User user);
+          }
+      }
+    Services/UserService.cs: |
+      using MyApp.Interfaces;
+      using MyApp.Models;
+
+      namespace MyApp.Services
+      {
+          public class UserService : IUserService
+          {
+              private readonly IUserRepository _repository;
+
+              public UserService(IUserRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public User GetUser(int id)
+              {
+                  return _repository.FindById(id);
+              }
+
+              public void CreateUser(User user)
+              {
+                  _repository.Add(user);
+                  _repository.SaveChanges();
+              }
+          }
+      }
+    Startup.cs: |
+      namespace MyApp
+      {
+          class Startup { }
+      }
+    Services/ProductService.cs: |
+      using MyApp.Interfaces;
+      using MyApp.Models;
+
+      namespace MyApp.Services
+      {
+          public class ProductService : IProductService
+          {
+              private readonly IProductRepository _repository;
+
+              public ProductService(IProductRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public Product GetProduct(int id)
+              {
+                  return _repository.FindById(id);
+              }
+
+              public void CreateProduct(Product product)
+              {
+                  _repository.Add(product);
+                  _repository.SaveChanges();
+              }
+          }
+      }
+    Controllers/UserController.cs: |
+      using Microsoft.AspNetCore.Mvc;
+      using MyApp.Interfaces;
+      using MyApp.Models;
+
+      namespace MyApp.Controllers
+      {
+          [ApiController]
+          [Route("api/[controller]")]
+          public class UserController : ControllerBase
+          {
+              private readonly IUserService _userService;
+
+              public UserController(IUserService userService)
+              {
+                  _userService = userService;
+              }
+
+              [HttpGet("{id}")]
+              public ActionResult<User> Get(int id)
+              {
+                  var user = _userService.GetUser(id);
+                  return user != null ? Ok(user) : NotFound();
+              }
+          }
+      }
+    Tests/UserServiceTests.cs: |
+      using MyApp.Interfaces;
+      using MyApp.Services;
+      using Xunit;
+
+      namespace MyApp.Tests
+      {
+          public class UserServiceTests
+          {
+              [Fact]
+              public void GetUser_ReturnsUserFromRepository()
+              {
+                  var mockRepo = new MockUserRepository();
+                  var service = new UserService(mockRepo);
+                  var user = service.GetUser(1);
+                  Assert.NotNull(user);
+              }
+          }
+      }
+    Middleware/RequestLoggingMiddleware.cs: |
+      using Microsoft.AspNetCore.Http;
+
+      namespace MyApp.Middleware
+      {
+          public class RequestLoggingMiddleware
+          {
+              private readonly RequestDelegate _next;
+
+              public RequestLoggingMiddleware(RequestDelegate next)
+              {
+                  _next = next;
+              }
+
+              public async Task InvokeAsync(HttpContext context)
+              {
+                  var path = context.Request.Path;
+                  Console.WriteLine($"Request: {context.Request.Method} {path}");
+                  await _next(context);
+                  Console.WriteLine($"Response: {context.Response.StatusCode}");
+              }
+          }
+      }
+  changed_files:
+    Startup.cs: |
+      using Microsoft.Extensions.DependencyInjection;
+      using MyApp.Interfaces;
+      using MyApp.Services;
+
+      namespace MyApp
+      {
+          class Startup
+          {
+              public void ConfigureServices(IServiceCollection services)
+              {
+                  services.AddScoped<IUserService, UserService>();
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: startup
+  selector:
+    path: Startup.cs
+    anchor: services.AddScoped<IUserService, UserService>()
+- id: iuserservice
+  selector:
+    path: Interfaces/IUserService.cs
+    anchor: public interface IUserService
+- id: iuserservice_1
+  selector:
+    path: Interfaces/IUserService.cs
+    anchor: User GetUser(int id)
+- id: iuserservice_2
+  selector:
+    path: Interfaces/IUserService.cs
+    anchor: void CreateUser(User user)
+- id: userservice
+  selector:
+    path: Services/UserService.cs
+    anchor: 'public class UserService : IUserService'
+- id: userservice_1
+  selector:
+    path: Services/UserService.cs
+    anchor: IUserRepository _repository
+- id: no_productservice
+  selector:
+    path: Services/ProductService.cs
+- id: no_usercontroller
+  selector:
+    path: Controllers/UserController.cs
+- id: no_userservicetests
+  selector:
+    path: Tests/UserServiceTests.cs
+- id: no_requestloggingmiddleware
+  selector:
+    path: Middleware/RequestLoggingMiddleware.cs
+- id: no_global_0
+  selector:
+    anchor: ProductService
+- id: no_global_1
+  selector:
+    anchor: IProductService
+- id: no_global_2
+  selector:
+    anchor: IProductRepository
+- id: no_global_3
+  selector:
+    anchor: GetProduct
+- id: no_global_4
+  selector:
+    anchor: UserController
+- id: no_global_5
+  selector:
+    anchor: '[ApiController]'
+- id: no_global_6
+  selector:
+    anchor: _userService.GetUser
+- id: no_global_7
+  selector:
+    anchor: UserServiceTests
+- id: no_global_8
+  selector:
+    anchor: MockUserRepository
+- id: no_global_9
+  selector:
+    anchor: RequestLoggingMiddleware
+- id: no_global_10
+  selector:
+    anchor: InvokeAsync
+- id: no_global_11
+  selector:
+    anchor: RequestDelegate
+oracle:
+  required:
+  - startup
+  - iuserservice
+  - iuserservice_1
+  - iuserservice_2
+  - userservice
+  - userservice_1
+  allowed: []
+  forbidden:
+  - no_productservice
+  - no_usercontroller
+  - no_userservicetests
+  - no_requestloggingmiddleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

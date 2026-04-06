@@ -1,0 +1,236 @@
+name: nix_003_overlay
+repo:
+  initial_files:
+    overlays/custom-packages.nix: |
+      final: prev: {
+        mytool = final.stdenv.mkDerivation {
+          pname = "mytool";
+          version = "2.0.0";
+          src = final.fetchFromGitHub {
+            owner = "example";
+            repo = "mytool";
+            rev = "v2.0.0";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          };
+          buildInputs = [ final.openssl ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp mytool $out/bin/
+          '';
+        };
+      }
+    configuration.nix: |
+      { config, pkgs, ... }:
+
+      {
+        imports = [
+          ./hardware-configuration.nix
+          ./modules/networking.nix
+          ./modules/users.nix
+        ];
+
+        nixpkgs.overlays = [
+          (import ./overlays/custom-packages.nix)
+        ];
+
+        environment.systemPackages = with pkgs; [
+          vim
+          git
+          htop
+          mytool
+        ];
+
+        services.openssh.enable = true;
+
+        system.stateVersion = "23.11";
+      }
+    overlays/python-overrides.nix: |
+      final: prev: {
+        GARBAGE_NIX_003_A = "noise_python_overlay";
+
+        python3 = prev.python3.override {
+          packageOverrides = python-final: python-prev: {
+            requests = python-prev.requests.overridePythonAttrs (old: {
+              version = "2.31.0";
+            });
+          };
+        };
+      }
+    modules/networking.nix: |
+      { config, pkgs, ... }:
+
+      {
+        GARBAGE_NIX_003_B = "noise_networking_module";
+
+        networking.hostName = "myserver";
+        networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+        networking.nameservers = [ "1.1.1.1" "8.8.8.8" ];
+      }
+    modules/users.nix: |
+      { config, pkgs, ... }:
+
+      {
+        GARBAGE_NIX_003_C = "noise_users_module";
+
+        users.users.admin = {
+          isNormalUser = true;
+          extraGroups = [ "wheel" "docker" ];
+          openssh.authorizedKeys.keys = [];
+        };
+      }
+  changed_files:
+    overlays/custom-packages.nix: |
+      final: prev: {
+        mytool = final.stdenv.mkDerivation {
+          pname = "mytool";
+          version = "2.0.0";
+          src = final.fetchFromGitHub {
+            owner = "example";
+            repo = "mytool";
+            rev = "v2.0.0";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          };
+          buildInputs = [ final.openssl ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp mytool $out/bin/
+          '';
+        };
+
+        myservice = final.stdenv.mkDerivation {
+          pname = "myservice";
+          version = "1.0.0";
+          src = final.fetchFromGitHub {
+            owner = "example";
+            repo = "myservice";
+            rev = "v1.0.0";
+            sha256 = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+          };
+          buildInputs = [ final.openssl final.postgresql ];
+          installPhase = ''
+            mkdir -p $out/bin
+            cp myservice $out/bin/
+          '';
+        };
+      }
+    configuration.nix: |
+      { config, pkgs, ... }:
+
+      {
+        imports = [
+          ./hardware-configuration.nix
+          ./modules/networking.nix
+          ./modules/users.nix
+        ];
+
+        nixpkgs.overlays = [
+          (import ./overlays/custom-packages.nix)
+        ];
+
+        environment.systemPackages = with pkgs; [
+          vim
+          git
+          htop
+          mytool
+          myservice
+        ];
+
+        systemd.services.myservice = {
+          description = "My Custom Service";
+          after = [ "network.target" "postgresql.service" ];
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            ExecStart = "${pkgs.myservice}/bin/myservice";
+            Restart = "always";
+            User = "myservice";
+          };
+        };
+
+        services.openssh.enable = true;
+
+        system.stateVersion = "23.11";
+      }
+    overlays/python-overrides.nix: |
+      final: prev: {
+        GARBAGE_NIX_003_A = "noise_python_overlay";
+
+        python3 = prev.python3.override {
+          packageOverrides = python-final: python-prev: {
+            requests = python-prev.requests.overridePythonAttrs (old: {
+              version = "2.31.0";
+            });
+          };
+        };
+      }
+    modules/networking.nix: |
+      { config, pkgs, ... }:
+
+      {
+        GARBAGE_NIX_003_B = "noise_networking_module";
+
+        networking.hostName = "myserver";
+        networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+        networking.nameservers = [ "1.1.1.1" "8.8.8.8" ];
+      }
+    modules/users.nix: |
+      { config, pkgs, ... }:
+
+      {
+        GARBAGE_NIX_003_C = "noise_users_module";
+
+        users.users.admin = {
+          isNormalUser = true;
+          extraGroups = [ "wheel" "docker" ];
+          openssh.authorizedKeys.keys = [];
+        };
+      }
+  commit_message: Update files
+fragments:
+- id: custom_packages
+  selector:
+    path: overlays/custom-packages.nix
+    anchor: myservice
+- id: custom_packages_1
+  selector:
+    path: overlays/custom-packages.nix
+    anchor: final.postgresql
+- id: configuration
+  selector:
+    path: configuration.nix
+    anchor: systemd.services.myservice
+- id: configuration_1
+  selector:
+    path: configuration.nix
+    anchor: pkgs.myservice
+- id: no_python_overrides
+  selector:
+    path: overlays/python-overrides.nix
+- id: no_networking
+  selector:
+    path: modules/networking.nix
+- id: no_users
+  selector:
+    path: modules/users.nix
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIX_003_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIX_003_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_NIX_003_C
+oracle:
+  required:
+  - custom_packages
+  - custom_packages_1
+  - configuration
+  - configuration_1
+  allowed: []
+  forbidden:
+  - no_python_overrides
+  - no_networking
+  - no_users
+  - no_global_0
+  - no_global_1
+  - no_global_2

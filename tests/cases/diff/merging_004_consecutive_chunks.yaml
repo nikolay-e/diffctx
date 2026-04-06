@@ -1,0 +1,189 @@
+name: merging_004_consecutive_chunks
+repo:
+  initial_files:
+    docs/deployment_guide.txt: |
+      Deployment Guide for Production Services
+      =========================================
+
+      Prerequisites:
+      - Docker Engine 24.0 or later
+      - Kubernetes 1.28 or later
+      - Helm 3.12 or later
+      - Access to container registry
+
+      Step 1: Build the Docker Image
+      Run the build script from the project root.
+      Ensure all tests pass before proceeding.
+      Tag the image with the current git SHA.
+
+      Step 2: Push to Registry
+      Authenticate with the container registry.
+      Push the tagged image to the staging repository.
+      Verify the image digest matches local build.
+
+      Step 3: Deploy to Staging
+      Apply the Helm chart with staging values.
+      Wait for all pods to become ready.
+      Run the smoke test suite against staging.
+
+      Step 4: Production Promotion
+      Create a release tag following semver.
+      Update the production values file.
+      Apply the Helm chart with production values.
+      Monitor the rollout for any errors.
+
+      Step 5: Post-Deployment Verification
+      Check application health endpoints.
+      Verify metrics are flowing to Grafana.
+      Confirm log aggregation is working.
+      Run the production smoke tests.
+    docs/release_notes.txt: |
+      Release Notes v2.4.0
+      ====================
+
+      New Features:
+      - Added multi-region failover support
+      - Implemented request tracing with OpenTelemetry
+      - Added Prometheus metrics endpoint
+
+      Bug Fixes:
+      - Fixed connection pool exhaustion under high load
+      - Resolved race condition in session management
+      - Corrected timezone handling in audit logs
+
+      Known Issues:
+      - Dashboard latency metrics may show spikes during deployments
+      - WebSocket reconnection takes up to 30s after pod restart
+    docs/runbook.txt: |
+      Incident Response Runbook
+      =========================
+
+      Severity Levels:
+      - SEV1: Complete service outage (response within 15 min)
+      - SEV2: Partial degradation (response within 30 min)
+      - SEV3: Minor issue (response within 2 hours)
+
+      Escalation Path:
+      1. On-call engineer assesses impact
+      2. If SEV1, page team lead immediately
+      3. Open incident channel in Slack
+      4. Begin diagnostic using Grafana dashboards
+
+      Common Remediation Steps:
+      - Pod crash loop: check logs, increase memory limits
+      - High latency: scale horizontally, check database connections
+      - Certificate expiry: trigger cert-manager renewal
+  changed_files:
+    docs/deployment_guide.txt: |
+      Deployment Guide for Production Services
+      =========================================
+
+      Prerequisites:
+      - Docker Engine 24.0 or later
+      - Kubernetes 1.28 or later
+      - Helm 3.14 or later
+      - Access to container registry
+      - kubectl configured with cluster credentials
+
+      Step 1: Build the Docker Image
+      Run the build script from the project root.
+      Ensure all tests pass before proceeding.
+      Tag the image with the current git SHA.
+
+      Step 2: Push to Registry
+      Authenticate with the container registry.
+      Push the tagged image to the staging repository.
+      Verify the image digest matches local build.
+
+      Step 3: Deploy to Staging
+      Apply the Helm chart with staging values.
+      Wait for all pods to become ready.
+      Run the smoke test suite against staging.
+      Verify database migrations completed successfully.
+
+      Step 4: Production Promotion
+      Create a release tag following semver.
+      Update the production values file.
+      Apply the Helm chart with production values.
+      Monitor the rollout for any errors.
+
+      Step 5: Post-Deployment Verification
+      Check application health endpoints.
+      Verify metrics are flowing to Grafana.
+      Confirm log aggregation is working.
+      Run the production smoke tests.
+      Notify the team via Slack webhook.
+    docs/release_notes.txt: |
+      Release Notes v2.4.0
+      ====================
+
+      New Features:
+      - Added multi-region failover support
+      - Implemented request tracing with OpenTelemetry
+      - Added Prometheus metrics endpoint
+
+      Bug Fixes:
+      - Fixed connection pool exhaustion under high load
+      - Resolved race condition in session management
+      - Corrected timezone handling in audit logs
+
+      Known Issues:
+      - Dashboard latency metrics may show spikes during deployments
+      - WebSocket reconnection takes up to 30s after pod restart
+    docs/runbook.txt: |
+      Incident Response Runbook
+      =========================
+
+      Severity Levels:
+      - SEV1: Complete service outage (response within 15 min)
+      - SEV2: Partial degradation (response within 30 min)
+      - SEV3: Minor issue (response within 2 hours)
+
+      Escalation Path:
+      1. On-call engineer assesses impact
+      2. If SEV1, page team lead immediately
+      3. Open incident channel in Slack
+      4. Begin diagnostic using Grafana dashboards
+
+      Common Remediation Steps:
+      - Pod crash loop: check logs, increase memory limits
+      - High latency: scale horizontally, check database connections
+      - Certificate expiry: trigger cert-manager renewal
+  commit_message: Update files
+fragments:
+- id: deployment_guide_file
+  selector:
+    path: docs/deployment_guide.txt
+- id: req_global_0
+  selector:
+    anchor: '- Helm 3.14 or later'
+- id: no_release_notes
+  selector:
+    path: docs/release_notes.txt
+- id: no_runbook
+  selector:
+    path: docs/runbook.txt
+- id: no_global_0
+  selector:
+    anchor: Release Notes v2.4.0
+- id: no_global_1
+  selector:
+    anchor: Incident Response Runbook
+- id: no_global_2
+  selector:
+    anchor: release_notes.txt
+- id: no_global_3
+  selector:
+    anchor: runbook.txt
+oracle:
+  required:
+  - deployment_guide_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_release_notes
+  - no_runbook
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

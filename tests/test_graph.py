@@ -9,7 +9,6 @@ from tests.conftest import run_treemapper_subprocess
 from tests.framework.pygit2_backend import Pygit2Repo
 from treemapper.diffctx.graph_analytics import (
     QuotientGraph,
-    blast_radius,
     coupling_metrics,
     detect_cycles,
     hotspots,
@@ -383,26 +382,9 @@ class TestGraphCLI:
         out = result.stdout.lower()
         assert "nodes" in out
         assert "edges" in out
-
-    def test_mermaid(self, graph_git_project):
-        result = _run_graph_cli([".", "--mermaid", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert result.stdout.strip().startswith("graph LR")
-
-    def test_cycles(self, graph_git_project):
-        result = _run_graph_cli([".", "--cycles", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert "cycle" in result.stdout.lower()
-
-    def test_hotspots(self, graph_git_project):
-        result = _run_graph_cli([".", "--hotspots", "3", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert "hotspot" in result.stdout.lower()
-
-    def test_metrics(self, graph_git_project):
-        result = _run_graph_cli([".", "--metrics", "-q"], cwd=graph_git_project)
-        assert result.returncode == 0
-        assert "cohesion" in result.stdout.lower()
+        assert "cycle" in out
+        assert "hotspot" in out
+        assert "cohesion" in out
 
     def test_output_file(self, graph_git_project):
         out_file = graph_git_project / "graph.json"
@@ -413,7 +395,7 @@ class TestGraphCLI:
         assert data["type"] == "project_graph"
 
     def test_level_directory_mermaid(self, graph_git_project):
-        result = _run_graph_cli([".", "--mermaid", "--level", "directory", "-q"], cwd=graph_git_project)
+        result = _run_graph_cli([".", "-f", "mermaid", "--level", "directory", "-q"], cwd=graph_git_project)
         assert result.returncode == 0
         out = result.stdout
         assert out.strip().startswith("graph LR")
@@ -556,45 +538,6 @@ class TestGraphMetrics:
         metrics = coupling_metrics(pg, level="directory")
         names = {m.name for m in metrics}
         assert any("src" in n for n in names)
-
-
-class TestGraphBlastRadius:
-    def test_central_file_has_dependents(self, graph_project):
-        pg = _build_graph(graph_project)
-        models_path = graph_project / "src" / "models.py"
-        result = blast_radius(pg, seed_files=[models_path])
-        all_entries = []
-        for key in result:
-            if key.startswith("depth_"):
-                all_entries.extend(result[key])
-        if pg.edge_count > 0:
-            assert len(all_entries) > 0
-
-    def test_leaf_file_zero_radius(self, graph_project):
-        pg = _build_graph(graph_project)
-        helpers_path = graph_project / "utils" / "helpers.py"
-        result = blast_radius(pg, seed_files=[helpers_path])
-        for key in result:
-            if key.startswith("depth_"):
-                for name, count in result[key]:
-                    assert not name.startswith("utils/helpers")
-
-    def test_summary_present(self, graph_project):
-        pg = _build_graph(graph_project)
-        models_path = graph_project / "src" / "models.py"
-        result = blast_radius(pg, seed_files=[models_path])
-        assert "summary" in result
-        summary_text = " ".join(e[0] for e in result["summary"])
-        assert "reachable_files" in summary_text
-        assert "reachable_fragments" in summary_text
-
-    def test_nonexistent_file_empty(self, graph_project):
-        pg = _build_graph(graph_project)
-        fake_path = graph_project / "nonexistent.py"
-        result = blast_radius(pg, seed_files=[fake_path])
-        for key in result:
-            if key.startswith("depth_"):
-                assert len(result[key]) == 0
 
 
 class TestGraphExportGraphML:

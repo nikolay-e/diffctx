@@ -1,0 +1,263 @@
+name: scripting_019_extend
+repo:
+  initial_files:
+    class_methods.rb: |
+      module ClassMethods
+        def find(id)
+          new(id: id)
+        end
+
+        def all
+          []
+        end
+
+        def count
+          all.size
+        end
+      end
+    model.rb: |
+      class Model
+        attr_reader :id
+
+        def initialize(id:)
+          @id = id
+        end
+      end
+    query_builder.rb: |
+      class QueryBuilder
+        def initialize(table)
+          @table = table
+          @conditions = []
+          @order = nil
+        end
+
+        def where(condition)
+          @conditions << condition
+          self
+        end
+
+        def order_by(column, direction = :asc)
+          @order = "#{column} #{direction}"
+          self
+        end
+
+        def to_sql
+          sql = "SELECT * FROM #{@table}"
+          sql += " WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+          sql += " ORDER BY #{@order}" if @order
+          sql
+        end
+      end
+    serializer.rb: |
+      module Serializer
+        def self.to_json(object)
+          fields = object.instance_variables.map do |var|
+            key = var.to_s.delete('@')
+            value = object.instance_variable_get(var)
+            "\"#{key}\": \"#{value}\""
+          end
+          "{ #{fields.join(', ')} }"
+        end
+
+        def self.from_json(json_str, klass)
+          pairs = json_str.scan(/"(\w+)":\s*"([^"]*)"/)
+          obj = klass.allocate
+          pairs.each { |k, v| obj.instance_variable_set("@#{k}", v) }
+          obj
+        end
+      end
+    record.rb: |
+      require_relative 'class_methods'
+
+      class Record
+        extend ClassMethods
+
+        attr_reader :id, :type
+
+        def initialize(id:, type: 'generic')
+          @id = id
+          @type = type
+        end
+
+        def save
+          puts "Saving record #{id}"
+        end
+      end
+
+      r = Record.find(42)
+      puts r.id
+    lib/instance_methods.rb: |
+      module InstanceMethods
+        def save
+          raise NotImplementedError, "#{self.class}#save not implemented"
+        end
+
+        def destroy
+          raise NotImplementedError, "#{self.class}#destroy not implemented"
+        end
+
+        def persisted?
+          !@id.nil?
+        end
+
+        def new_record?
+          !persisted?
+        end
+      end
+    active_model.rb: |
+      class ActiveModel
+        attr_reader :id
+
+        def self.find(id)
+          new(id)
+        end
+
+        def self.all
+          @records ||= []
+        end
+
+        def self.create(attrs = {})
+          instance = new(nil)
+          attrs.each { |k, v| instance.instance_variable_set("@#{k}", v) }
+          instance
+        end
+
+        def initialize(id)
+          @id = id
+        end
+      end
+  changed_files:
+    class_methods.rb: |
+      module ClassMethods
+        def find(id)
+          new(id: id)
+        end
+
+        def all
+          []
+        end
+
+        def count
+          all.size
+        end
+      end
+    model.rb: |
+      require_relative 'class_methods'
+
+      class Model
+        extend ClassMethods
+
+        attr_reader :id
+
+        def initialize(id:)
+          @id = id
+        end
+      end
+
+      model = Model.find(1)
+  commit_message: Update files
+fragments:
+- id: class_methods
+  selector:
+    path: class_methods.rb
+    anchor: def find(id)
+- id: class_methods_1
+  selector:
+    path: class_methods.rb
+    anchor: def all
+- id: model
+  selector:
+    path: model.rb
+    anchor: extend ClassMethods
+- id: model_1
+  selector:
+    path: model.rb
+    anchor: Model.find
+- id: no_query_builder
+  selector:
+    path: query_builder.rb
+- id: no_serializer
+  selector:
+    path: serializer.rb
+- id: no_record
+  selector:
+    path: record.rb
+- id: no_instance_methods
+  selector:
+    path: lib/instance_methods.rb
+- id: no_active_model
+  selector:
+    path: active_model.rb
+- id: no_global_0
+  selector:
+    anchor: QueryBuilder
+- id: no_global_1
+  selector:
+    anchor: to_sql
+- id: no_global_2
+  selector:
+    anchor: order_by
+- id: no_global_3
+  selector:
+    anchor: Serializer
+- id: no_global_4
+  selector:
+    anchor: to_json
+- id: no_global_5
+  selector:
+    anchor: from_json
+- id: no_global_6
+  selector:
+    anchor: class Record
+- id: no_global_7
+  selector:
+    anchor: 'type: ''generic'''
+- id: no_global_8
+  selector:
+    anchor: Saving record
+- id: no_global_9
+  selector:
+    anchor: InstanceMethods
+- id: no_global_10
+  selector:
+    anchor: persisted?
+- id: no_global_11
+  selector:
+    anchor: new_record?
+- id: no_global_12
+  selector:
+    anchor: ActiveModel
+- id: no_global_13
+  selector:
+    anchor: create
+- id: no_global_14
+  selector:
+    anchor: '@records'
+oracle:
+  required:
+  - class_methods
+  - class_methods_1
+  - model
+  - model_1
+  allowed: []
+  forbidden:
+  - no_query_builder
+  - no_serializer
+  - no_record
+  - no_instance_methods
+  - no_active_model
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

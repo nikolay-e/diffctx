@@ -1,0 +1,242 @@
+name: scala_006_implicit_class
+repo:
+  initial_files:
+    src/extensions/StringExtensions.scala: |
+      package extensions
+
+      object StringExtensions {
+        implicit class RichString(val s: String) extends AnyVal {
+          def shout: String = s.toUpperCase + "!"
+          def whisper: String = s.toLowerCase + "..."
+          def repeat(n: Int): String = s * n
+          def truncate(maxLen: Int): String =
+            if (s.length <= maxLen) s else s.take(maxLen) + "..."
+          def isBlank: Boolean = s.trim.isEmpty
+        }
+      }
+    src/services/Formatter.scala: |
+      package services
+
+      class Formatter {
+        def formatTitle(text: String): String = text.trim
+      }
+    src/extensions/CollectionExtensions.scala: |
+      package extensions
+
+      object CollectionExtensions {
+        implicit class RichList[T](val list: List[T]) extends AnyVal {
+          def secondOption: Option[T] = list.drop(1).headOption
+          def takeEvery(n: Int): List[T] = list.zipWithIndex.collect {
+            case (elem, i) if i % n == 0 => elem
+          }
+          def distinctBy[K](f: T => K): List[T] = {
+            var seen = Set.empty[K]
+            list.filter { elem =>
+              val key = f(elem)
+              if (seen.contains(key)) false
+              else { seen += key; true }
+            }
+          }
+        }
+      }
+    src/extensions/NumberExtensions.scala: |
+      package extensions
+
+      object NumberExtensions {
+        implicit class RichInt(val n: Int) extends AnyVal {
+          def isEven: Boolean = n % 2 == 0
+          def isOdd: Boolean = n % 2 != 0
+          def squared: Int = n * n
+          def factorial: BigInt = (1 to n).foldLeft(BigInt(1))(_ * _)
+        }
+
+        implicit class RichDouble(val d: Double) extends AnyVal {
+          def roundTo(places: Int): Double = {
+            val factor = math.pow(10, places)
+            (d * factor).round / factor
+          }
+        }
+      }
+    src/services/Validator.scala: |
+      package services
+
+      class Validator {
+        def isValidEmail(email: String): Boolean =
+          email.contains("@") && email.contains(".")
+
+        def isValidLength(text: String, min: Int, max: Int): Boolean =
+          text.length >= min && text.length <= max
+
+        def sanitize(text: String): String =
+          text.trim.replaceAll("[<>]", "")
+      }
+    src/services/Sanitizer.scala: |
+      package services
+
+      import extensions.StringExtensions._
+
+      class Sanitizer {
+        def clean(text: String): String = {
+          if (text.isBlank) ""
+          else text.truncate(500).trim
+        }
+
+        def normalizeWhitespace(text: String): String = {
+          text.replaceAll("\\s+", " ").trim
+        }
+      }
+    src/services/FormatterTest.scala: |
+      package services
+
+      class FormatterTest {
+        def testFormatLoud(): Unit = {
+          val f = new Formatter
+          assert(f.formatLoud("hello") == "HELLO!")
+        }
+
+        def testFormatQuiet(): Unit = {
+          val f = new Formatter
+          assert(f.formatQuiet("HELLO") == "hello...")
+        }
+
+        def testFormatSummaryEmpty(): Unit = {
+          val f = new Formatter
+          assert(f.formatSummary("  ", 100) == "(empty)")
+        }
+      }
+  changed_files:
+    src/services/Formatter.scala: |
+      package services
+
+      import extensions.StringExtensions._
+
+      class Formatter {
+        def formatTitle(text: String): String = text.trim
+
+        def formatLoud(text: String): String = text.shout
+
+        def formatQuiet(text: String): String = text.whisper
+
+        def formatRepeated(text: String, times: Int): String =
+          text.repeat(times)
+
+        def formatSummary(text: String, maxLen: Int): String = {
+          if (text.isBlank) "(empty)"
+          else text.truncate(maxLen)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: stringextensions
+  selector:
+    path: src/extensions/StringExtensions.scala
+    anchor: implicit class RichString
+- id: stringextensions_1
+  selector:
+    path: src/extensions/StringExtensions.scala
+    anchor: 'def shout: String'
+- id: stringextensions_2
+  selector:
+    path: src/extensions/StringExtensions.scala
+    anchor: 'def whisper: String'
+- id: stringextensions_3
+  selector:
+    path: src/extensions/StringExtensions.scala
+    anchor: 'def truncate(maxLen: Int)'
+- id: stringextensions_4
+  selector:
+    path: src/extensions/StringExtensions.scala
+    anchor: 'def isBlank: Boolean'
+- id: no_collectionextensions
+  selector:
+    path: src/extensions/CollectionExtensions.scala
+- id: no_numberextensions
+  selector:
+    path: src/extensions/NumberExtensions.scala
+- id: no_validator
+  selector:
+    path: src/services/Validator.scala
+- id: no_sanitizer
+  selector:
+    path: src/services/Sanitizer.scala
+- id: no_formattertest
+  selector:
+    path: src/services/FormatterTest.scala
+- id: no_global_0
+  selector:
+    anchor: RichList
+- id: no_global_1
+  selector:
+    anchor: secondOption
+- id: no_global_2
+  selector:
+    anchor: takeEvery
+- id: no_global_3
+  selector:
+    anchor: distinctBy
+- id: no_global_4
+  selector:
+    anchor: RichInt
+- id: no_global_5
+  selector:
+    anchor: RichDouble
+- id: no_global_6
+  selector:
+    anchor: def squared
+- id: no_global_7
+  selector:
+    anchor: def isEven
+- id: no_global_8
+  selector:
+    anchor: class Validator
+- id: no_global_9
+  selector:
+    anchor: isValidEmail
+- id: no_global_10
+  selector:
+    anchor: sanitize
+- id: no_global_11
+  selector:
+    anchor: class Sanitizer
+- id: no_global_12
+  selector:
+    anchor: def clean
+- id: no_global_13
+  selector:
+    anchor: normalizeWhitespace
+- id: no_global_14
+  selector:
+    anchor: class FormatterTest
+- id: no_global_15
+  selector:
+    anchor: testFormatLoud
+oracle:
+  required:
+  - stringextensions
+  - stringextensions_1
+  - stringextensions_2
+  - stringextensions_3
+  - stringextensions_4
+  allowed: []
+  forbidden:
+  - no_collectionextensions
+  - no_numberextensions
+  - no_validator
+  - no_sanitizer
+  - no_formattertest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

@@ -1,0 +1,141 @@
+name: merging_006_small_paragraphs
+repo:
+  initial_files:
+    docs/release_notes.txt: |
+      Release Notes v2.4.0
+      ====================
+
+      Bug Fixes:
+      Fixed memory leak in connection pool manager.
+      Resolved race condition in session cleanup.
+
+      Performance:
+      Reduced database query latency by 15%.
+
+      New Features:
+      Added support for webhook retry with exponential backoff.
+      Implemented batch processing for bulk import operations.
+
+      Breaking Changes:
+      Removed deprecated v1 authentication endpoint.
+      Changed default timeout from 30s to 15s.
+
+      Known Issues:
+      Intermittent timeout on large file uploads over 100MB.
+      Dashboard chart rendering slow with more than 10000 data points.
+
+      Migration Guide:
+      Update all API clients to use v2 authentication.
+      Review timeout settings in configuration files.
+      Test webhook integrations with the new retry behavior.
+    docs/api_reference.txt: |
+      API Reference
+      =============
+
+      GET /api/users
+        Returns a list of all active users.
+        Parameters: page (int), limit (int)
+
+      POST /api/users
+        Creates a new user account.
+        Body: { name, email, role }
+
+      DELETE /api/users/:id
+        Deactivates a user account.
+        Requires admin permissions.
+    docs/architecture.txt: |
+      Architecture Overview
+      =====================
+
+      The system follows a layered architecture:
+      - Presentation layer: REST API endpoints
+      - Business layer: Service classes with domain logic
+      - Data layer: Repository pattern with PostgreSQL
+
+      All communication between layers uses typed DTOs.
+      Background jobs run via a Redis-backed task queue.
+  changed_files:
+    docs/release_notes.txt: |
+      Release Notes v2.4.1
+      ====================
+
+      Bug Fixes:
+      Fixed memory leak in connection pool manager.
+      Resolved race condition in session cleanup.
+      Fixed CSV export encoding issue for Unicode characters.
+
+      Performance:
+      Reduced database query latency by 15%.
+
+      New Features:
+      Added support for webhook retry with exponential backoff.
+      Implemented batch processing for bulk import operations.
+
+      Breaking Changes:
+      Removed deprecated v1 authentication endpoint.
+      Changed default timeout from 30s to 15s.
+
+      Known Issues:
+      Dashboard chart rendering slow with more than 10000 data points.
+
+      Migration Guide:
+      Update all API clients to use v2 authentication.
+      Review timeout settings in configuration files.
+      Test webhook integrations with the new retry behavior.
+      Run the data migration script before deploying.
+    docs/api_reference.txt: |
+      API Reference
+      =============
+
+      GET /api/users
+        Returns a list of all active users.
+        Parameters: page (int), limit (int)
+
+      POST /api/users
+        Creates a new user account.
+        Body: { name, email, role }
+
+      DELETE /api/users/:id
+        Deactivates a user account.
+        Requires admin permissions.
+    docs/architecture.txt: |
+      Architecture Overview
+      =====================
+
+      The system follows a layered architecture:
+      - Presentation layer: REST API endpoints
+      - Business layer: Service classes with domain logic
+      - Data layer: Repository pattern with PostgreSQL
+
+      All communication between layers uses typed DTOs.
+      Background jobs run via a Redis-backed task queue.
+  commit_message: Update files
+fragments:
+- id: release_notes_file
+  selector:
+    path: docs/release_notes.txt
+- id: req_global_0
+  selector:
+    anchor: Fixed CSV export encoding issue for Unicode characters.
+- id: no_global_0
+  selector:
+    anchor: API Reference
+- id: no_global_1
+  selector:
+    anchor: GET /api/users
+- id: no_global_2
+  selector:
+    anchor: Architecture Overview
+- id: no_global_3
+  selector:
+    anchor: layered architecture
+oracle:
+  required:
+  - release_notes_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

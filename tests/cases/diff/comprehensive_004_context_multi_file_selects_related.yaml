@@ -1,0 +1,172 @@
+name: comprehensive_004_context_multi_file_selects_related
+repo:
+  initial_files:
+    src/models/user.py: |
+      class User:
+          def __init__(self, name, email, role="viewer"):
+              self.name = name
+              self.email = email
+              self.role = role
+
+          def validate(self):
+              return len(self.name) > 0 and "@" in self.email
+
+          def is_admin(self):
+              return self.role == "admin"
+
+          def display_name(self):
+              return f"{self.name} ({self.role})"
+    src/services/auth.py: |
+      from src.models.user import User
+
+      def authenticate(username, password):
+          user = User(username, f"{username}@example.com")
+          if user.validate():
+              return check_password(password)
+          return False
+
+      def check_password(password):
+          return len(password) >= 8
+
+      def generate_session_token(user):
+          return f"token_{user.name}_{user.role}"
+    src/api/routes.py: |
+      from src.services.auth import authenticate
+
+      def login_endpoint(request):
+          result = authenticate(request.username, request.password)
+          return {"success": result}
+
+      def logout_endpoint(request):
+          return {"success": True, "message": "Logged out"}
+
+      def health_check():
+          return {"status": "ok", "version": "1.0.0"}
+    garbage_notification_hub.py: |
+      GARBAGE_COMP_004_CHANNEL_TYPE_A = "websocket"
+      GARBAGE_COMP_004_DELIVERY_MODE_B = "push"
+
+      class GarbageNotificationHub:
+          GARBAGE_COMP_004_MAX_RETRIES_C = 3
+          def notify(self):
+              pass
+    garbage_audit_logger.py: |
+      GARBAGE_COMP_004_LOG_RETENTION_D = "days"
+      GARBAGE_COMP_004_COMPLIANCE_LEVEL_E = "gdpr"
+
+      class GarbageAuditLogger:
+          GARBAGE_COMP_004_ROTATION_POLICY_F = "daily"
+          def log(self):
+              pass
+  changed_files:
+    src/models/user.py: |
+      class User:
+          def __init__(self, name, email, role="viewer"):
+              self.name = name
+              self.email = email
+              self.role = role
+
+          def validate(self):
+              return len(self.name) > 0 and "@" in self.email
+
+          def is_admin(self):
+              return self.role == "admin"
+
+          def display_name(self):
+              return f"{self.name} ({self.role})"
+    src/services/auth.py: |
+      from src.models.user import User
+
+      def authenticate(username, password):
+          user = User(username, f"{username}@example.com")
+          if not user.validate():
+              raise ValueError("Invalid username")
+          if not check_password(password):
+              raise ValueError("Invalid password")
+          return True
+
+      def check_password(password):
+          has_upper = any(c.isupper() for c in password)
+          has_digit = any(c.isdigit() for c in password)
+          return len(password) >= 8 and has_upper and has_digit
+
+      def generate_session_token(user):
+          return f"token_{user.name}_{user.role}"
+    src/api/routes.py: |
+      from src.services.auth import authenticate
+
+      def login_endpoint(request):
+          result = authenticate(request.username, request.password)
+          return {"success": result}
+
+      def logout_endpoint(request):
+          return {"success": True, "message": "Logged out"}
+
+      def health_check():
+          return {"status": "ok", "version": "1.0.0"}
+    garbage_notification_hub.py: |
+      GARBAGE_COMP_004_CHANNEL_TYPE_A = "websocket"
+      GARBAGE_COMP_004_DELIVERY_MODE_B = "push"
+
+      class GarbageNotificationHub:
+          GARBAGE_COMP_004_MAX_RETRIES_C = 3
+          def notify(self):
+              pass
+    garbage_audit_logger.py: |
+      GARBAGE_COMP_004_LOG_RETENTION_D = "days"
+      GARBAGE_COMP_004_COMPLIANCE_LEVEL_E = "gdpr"
+
+      class GarbageAuditLogger:
+          GARBAGE_COMP_004_ROTATION_POLICY_F = "daily"
+          def log(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: auth_file
+  selector:
+    path: src/services/auth.py
+- id: req_global_0
+  selector:
+    anchor: 'if not user.validate():'
+- id: req_global_1
+  selector:
+    anchor: has_upper = any(c.isupper() for c in password)
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_004_CHANNEL_TYPE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_004_COMPLIANCE_LEVEL_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_004_DELIVERY_MODE_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_004_LOG_RETENTION_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_004_MAX_RETRIES_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_004_ROTATION_POLICY_F
+- id: no_global_6
+  selector:
+    anchor: garbage_audit_logger.py
+- id: no_global_7
+  selector:
+    anchor: garbage_notification_hub.py
+oracle:
+  required:
+  - auth_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

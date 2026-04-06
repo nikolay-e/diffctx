@@ -1,0 +1,305 @@
+name: javascript_extended_017_event_emitter_change
+repo:
+  initial_files:
+    src/events/emitter.ts: |
+      import { EventEmitter } from 'events';
+
+      export const appEmitter = new EventEmitter();
+      appEmitter.setMaxListeners(20);
+
+      export function emitUserCreated(user: { id: string; name: string; email: string }) {
+          appEmitter.emit('userCreated', user);
+      }
+    src/events/user-listener.ts: |
+      import { appEmitter } from './emitter';
+
+      appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+          console.log(`Welcome email queued for ${user.email}`);
+      });
+
+      appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+          console.log(`Analytics: new signup ${user.id}`);
+      });
+    src/middleware/audit-logger.ts: |
+      interface AuditEntry {
+        timestamp: Date;
+        action: string;
+        userId: string;
+        resource: string;
+        statusCode: number;
+      }
+
+      const auditLog: AuditEntry[] = [];
+
+      export function logAuditEvent(
+        action: string,
+        userId: string,
+        resource: string,
+        statusCode: number
+      ): void {
+        auditLog.push({
+          timestamp: new Date(),
+          action,
+          userId,
+          resource,
+          statusCode,
+        });
+      }
+
+      export function getAuditTrail(userId: string): AuditEntry[] {
+        return auditLog.filter(entry => entry.userId === userId);
+      }
+    src/services/user-service.ts: |
+      interface UserRecord {
+        id: string;
+        name: string;
+        email: string;
+        createdAt: Date;
+      }
+
+      const users = new Map<string, UserRecord>();
+
+      export function createUser(name: string, email: string): UserRecord {
+        const user: UserRecord = {
+          id: crypto.randomUUID(),
+          name,
+          email,
+          createdAt: new Date(),
+        };
+        users.set(user.id, user);
+        return user;
+      }
+
+      export function deleteUser(id: string): boolean {
+        return users.delete(id);
+      }
+
+      export function updateUser(id: string, updates: Partial<UserRecord>): UserRecord | null {
+        const existing = users.get(id);
+        if (!existing) return null;
+        const updated = { ...existing, ...updates };
+        users.set(id, updated);
+        return updated;
+      }
+    src/notifications/notification-channels.ts: |
+      type Channel = 'email' | 'sms' | 'push';
+
+      interface NotificationConfig {
+        channel: Channel;
+        recipient: string;
+        template: string;
+      }
+
+      export function routeNotification(config: NotificationConfig): boolean {
+        switch (config.channel) {
+          case 'email':
+            return sendEmail(config.recipient, config.template);
+          case 'sms':
+            return sendSms(config.recipient, config.template);
+          case 'push':
+            return sendPush(config.recipient, config.template);
+        }
+      }
+
+      function sendEmail(to: string, template: string): boolean { return true; }
+      function sendSms(to: string, template: string): boolean { return true; }
+      function sendPush(to: string, template: string): boolean { return true; }
+  changed_files:
+    src/events/emitter.ts: |
+      import { EventEmitter } from 'events';
+
+      export const appEmitter = new EventEmitter();
+      appEmitter.setMaxListeners(20);
+
+      export function emitUserCreated(user: { id: string; name: string; email: string }) {
+          appEmitter.emit('userCreated', user);
+      }
+
+      export function emitUserDeleted(userId: string, reason: string) {
+          appEmitter.emit('userDeleted', { userId, reason, deletedAt: new Date() });
+      }
+
+      export function emitUserUpdated(userId: string, changes: Record<string, unknown>) {
+          appEmitter.emit('userUpdated', { userId, changes, updatedAt: new Date() });
+      }
+    src/events/user-listener.ts: |
+      import { appEmitter } from './emitter';
+
+      appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+          console.log(`Welcome email queued for ${user.email}`);
+      });
+
+      appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+          console.log(`Analytics: new signup ${user.id}`);
+      });
+    src/middleware/audit-logger.ts: |
+      interface AuditEntry {
+        timestamp: Date;
+        action: string;
+        userId: string;
+        resource: string;
+        statusCode: number;
+      }
+
+      const auditLog: AuditEntry[] = [];
+
+      export function logAuditEvent(
+        action: string,
+        userId: string,
+        resource: string,
+        statusCode: number
+      ): void {
+        auditLog.push({
+          timestamp: new Date(),
+          action,
+          userId,
+          resource,
+          statusCode,
+        });
+      }
+
+      export function getAuditTrail(userId: string): AuditEntry[] {
+        return auditLog.filter(entry => entry.userId === userId);
+      }
+    src/services/user-service.ts: |
+      interface UserRecord {
+        id: string;
+        name: string;
+        email: string;
+        createdAt: Date;
+      }
+
+      const users = new Map<string, UserRecord>();
+
+      export function createUser(name: string, email: string): UserRecord {
+        const user: UserRecord = {
+          id: crypto.randomUUID(),
+          name,
+          email,
+          createdAt: new Date(),
+        };
+        users.set(user.id, user);
+        return user;
+      }
+
+      export function deleteUser(id: string): boolean {
+        return users.delete(id);
+      }
+
+      export function updateUser(id: string, updates: Partial<UserRecord>): UserRecord | null {
+        const existing = users.get(id);
+        if (!existing) return null;
+        const updated = { ...existing, ...updates };
+        users.set(id, updated);
+        return updated;
+      }
+    src/notifications/notification-channels.ts: |
+      type Channel = 'email' | 'sms' | 'push';
+
+      interface NotificationConfig {
+        channel: Channel;
+        recipient: string;
+        template: string;
+      }
+
+      export function routeNotification(config: NotificationConfig): boolean {
+        switch (config.channel) {
+          case 'email':
+            return sendEmail(config.recipient, config.template);
+          case 'sms':
+            return sendSms(config.recipient, config.template);
+          case 'push':
+            return sendPush(config.recipient, config.template);
+        }
+      }
+
+      function sendEmail(to: string, template: string): boolean { return true; }
+      function sendSms(to: string, template: string): boolean { return true; }
+      function sendPush(to: string, template: string): boolean { return true; }
+  commit_message: Update files
+fragments:
+- id: emitter
+  selector:
+    path: src/events/emitter.ts
+    anchor: emitUserDeleted
+- id: emitter_1
+  selector:
+    path: src/events/emitter.ts
+    anchor: emitUserUpdated
+- id: emitter_2
+  selector:
+    path: src/events/emitter.ts
+    anchor: appEmitter.emit
+- id: user_listener
+  selector:
+    path: src/events/user-listener.ts
+    anchor: appEmitter.on('userCreated'
+- id: user_listener_1
+  selector:
+    path: src/events/user-listener.ts
+    anchor: Welcome email queued
+- id: no_audit_logger
+  selector:
+    path: src/middleware/audit-logger.ts
+- id: no_user_service
+  selector:
+    path: src/services/user-service.ts
+- id: no_notification_channels
+  selector:
+    path: src/notifications/notification-channels.ts
+- id: no_global_0
+  selector:
+    anchor: AuditEntry
+- id: no_global_1
+  selector:
+    anchor: logAuditEvent
+- id: no_global_2
+  selector:
+    anchor: getAuditTrail
+- id: no_global_3
+  selector:
+    anchor: UserRecord
+- id: no_global_4
+  selector:
+    anchor: createUser
+- id: no_global_5
+  selector:
+    anchor: deleteUser
+- id: no_global_6
+  selector:
+    anchor: updateUser
+- id: no_global_7
+  selector:
+    anchor: routeNotification
+- id: no_global_8
+  selector:
+    anchor: NotificationConfig
+- id: no_global_9
+  selector:
+    anchor: sendEmail
+- id: no_global_10
+  selector:
+    anchor: sendSms
+oracle:
+  required:
+  - emitter
+  - emitter_1
+  - emitter_2
+  - user_listener
+  - user_listener_1
+  allowed: []
+  forbidden:
+  - no_audit_logger
+  - no_user_service
+  - no_notification_channels
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

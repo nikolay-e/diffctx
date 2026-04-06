@@ -1,0 +1,175 @@
+name: scala_025_build_sbt
+repo:
+  initial_files:
+    build.sbt: |
+      name := "myapp"
+      version := "0.1.0"
+      scalaVersion := "3.3.0"
+
+      libraryDependencies ++= Seq(
+        "org.typelevel" %% "cats-core" % "2.9.0"
+      )
+    src/main/scala/Main.scala: |
+      package myapp
+
+      import cats.syntax.all._
+
+      object Main extends App {
+        val result = Option(42).map(_ + 1)
+        println(result.show)
+
+        val validated = (Option("hello"), Option(42)).mapN { (s, n) =>
+          s"$s: $n"
+        }
+        println(validated.getOrElse("none"))
+      }
+    project/plugins.sbt: |
+      addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1")
+      addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
+    project/build.properties: |
+      sbt.version=1.9.7
+    src/main/scala/config/AppConfig.scala: |
+      package myapp.config
+
+      object AppConfig {
+        val appName: String = "myapp"
+        val port: Int = 8080
+        val host: String = "0.0.0.0"
+
+        def baseUrl: String = s"http://$host:$port"
+
+        def isProduction: Boolean = {
+          sys.env.getOrElse("ENV", "development") == "production"
+        }
+
+        def logLevel: String = if (isProduction) "INFO" else "DEBUG"
+      }
+    src/main/scala/utils/MathUtils.scala: |
+      package myapp.utils
+
+      object MathUtils {
+        def factorial(n: Int): BigInt = {
+          if (n <= 1) BigInt(1) else BigInt(n) * factorial(n - 1)
+        }
+
+        def gcd(a: Int, b: Int): Int = {
+          if (b == 0) a else gcd(b, a % b)
+        }
+
+        def isPrime(n: Int): Boolean = {
+          if (n < 2) false
+          else (2 to math.sqrt(n).toInt).forall(n % _ != 0)
+        }
+      }
+    src/test/scala/MainSpec.scala: |
+      package myapp
+
+      import cats.syntax.all._
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      class MainSpec extends AnyFlatSpec with Matchers {
+        "result" should "be Some(43)" in {
+          val result = Option(42).map(_ + 1)
+          result.show should be("Some(43)")
+        }
+
+        "validated" should "combine options" in {
+          val combined = (Option("hello"), Option(42)).mapN((s, n) => s"$s: $n")
+          combined should be(Some("hello: 42"))
+        }
+      }
+  changed_files:
+    build.sbt: |
+      name := "myapp"
+      version := "0.1.0"
+      scalaVersion := "3.3.0"
+
+      libraryDependencies ++= Seq(
+        "org.typelevel" %% "cats-core" % "2.9.0",
+        "org.typelevel" %% "cats-effect" % "3.5.0",
+        "co.fs2" %% "fs2-core" % "3.7.0",
+        "org.scalatest" %% "scalatest" % "3.2.15" % Test
+      )
+
+      scalacOptions ++= Seq(
+        "-deprecation",
+        "-feature",
+        "-Xfatal-warnings"
+      )
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main/scala/Main.scala
+    anchor: import cats.syntax.all._
+- id: main_1
+  selector:
+    path: src/main/scala/Main.scala
+    anchor: result.show
+- id: no_build
+  selector:
+    path: project/build.properties
+- id: no_plugins
+  selector:
+    path: project/plugins.sbt
+- id: no_appconfig
+  selector:
+    path: src/main/scala/config/AppConfig.scala
+- id: no_mathutils
+  selector:
+    path: src/main/scala/utils/MathUtils.scala
+- id: no_mainspec
+  selector:
+    path: src/test/scala/MainSpec.scala
+- id: no_global_0
+  selector:
+    anchor: sbt-assembly
+- id: no_global_1
+  selector:
+    anchor: sbt-native-packager
+- id: no_global_2
+  selector:
+    anchor: object AppConfig
+- id: no_global_3
+  selector:
+    anchor: isProduction
+- id: no_global_4
+  selector:
+    anchor: logLevel
+- id: no_global_5
+  selector:
+    anchor: object MathUtils
+- id: no_global_6
+  selector:
+    anchor: factorial
+- id: no_global_7
+  selector:
+    anchor: isPrime
+- id: no_global_8
+  selector:
+    anchor: class MainSpec
+- id: no_global_9
+  selector:
+    anchor: result.show should be
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_build
+  - no_plugins
+  - no_appconfig
+  - no_mathutils
+  - no_mainspec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

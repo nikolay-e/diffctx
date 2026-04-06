@@ -1,0 +1,641 @@
+name: python_009_decorator_usage
+repo:
+  initial_files:
+    decorators.py: |
+      import functools
+      import time
+      import logging
+      from typing import Callable, TypeVar, Any, Optional, Dict
+      from dataclasses import dataclass
+      from datetime import datetime, timedelta
+      import threading
+
+      logger = logging.getLogger(__name__)
+
+      F = TypeVar('F', bound=Callable[..., Any])
+
+      @dataclass
+      class RateLimitState:
+          calls: int = 0
+          window_start: datetime = None
+
+          def reset(self) -> None:
+              self.calls = 0
+              self.window_start = datetime.now()
+
+      class RateLimitExceeded(Exception):
+          def __init__(self, retry_after: float):
+              self.retry_after = retry_after
+              super().__init__(f"Rate limit exceeded. Retry after {retry_after:.1f}s")
+
+      def rate_limit(calls_per_second: int = 10, burst: int = 0):
+          def decorator(func: F) -> F:
+              state = RateLimitState()
+              lock = threading.Lock()
+              last_call = [0.0]
+              burst_tokens = [burst]
+
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  with lock:
+                      now = time.time()
+                      elapsed = now - last_call[0]
+                      burst_tokens[0] = min(burst, burst_tokens[0] + elapsed * calls_per_second)
+                      if burst_tokens[0] >= 1:
+                          burst_tokens[0] -= 1
+                      elif elapsed < 1.0 / calls_per_second:
+                          sleep_time = 1.0 / calls_per_second - elapsed
+                          time.sleep(sleep_time)
+                      last_call[0] = time.time()
+                      return func(*args, **kwargs)
+              return wrapper
+          return decorator
+
+      def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0, exceptions: tuple = (Exception,)):
+          def decorator(func: F) -> F:
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  current_delay = delay
+                  last_exception = None
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except exceptions as e:
+                          last_exception = e
+                          if attempt < max_attempts - 1:
+                              logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {current_delay}s")
+                              time.sleep(current_delay)
+                              current_delay *= backoff
+                  raise last_exception
+              return wrapper
+          return decorator
+
+      def timed(name: Optional[str] = None):
+          def decorator(func: F) -> F:
+              func_name = name or func.__name__
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  start = time.perf_counter()
+                  try:
+                      return func(*args, **kwargs)
+                  finally:
+                      elapsed = time.perf_counter() - start
+                      logger.info(f"{func_name} took {elapsed:.3f}s")
+              return wrapper
+          return decorator
+
+      def cached(ttl_seconds: int = 300):
+          def decorator(func: F) -> F:
+              cache: Dict[str, tuple] = {}
+              lock = threading.Lock()
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  key = str((args, sorted(kwargs.items())))
+                  with lock:
+                      if key in cache:
+                          value, expires_at = cache[key]
+                          if datetime.now() < expires_at:
+                              return value
+                      result = func(*args, **kwargs)
+                      cache[key] = (result, datetime.now() + timedelta(seconds=ttl_seconds))
+                      return result
+              return wrapper
+          return decorator
+    api.py: |
+      from typing import Dict, Any, Optional, List
+      import time
+      import random
+
+      class APIError(Exception):
+          def __init__(self, status_code: int, message: str):
+              self.status_code = status_code
+              self.message = message
+              super().__init__(message)
+
+      class APIClient:
+          def __init__(self, base_url: str, api_key: str):
+              self.base_url = base_url
+              self.api_key = api_key
+              self._request_count = 0
+
+          def call_api(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:
+              self._request_count += 1
+              time.sleep(0.01)
+              return {"endpoint": endpoint, "method": method, "status": "success"}
+
+          def get(self, endpoint: str) -> Dict[str, Any]:
+              return self.call_api(endpoint, "GET")
+
+          def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+              return self.call_api(endpoint, "POST", data)
+
+          def get_request_count(self) -> int:
+              return self._request_count
+    test_api.py: |
+      from api import APIClient
+
+      class TestAPIClient:
+          def setup(self):
+              self.client = APIClient("https://api.test.com", "test-key")
+
+          def test_get_is_cached(self):
+              r1 = self.client.get("/users")
+              r2 = self.client.get("/users")
+              assert self.client.get_request_count() == 1
+
+          def test_post_not_cached(self):
+              self.client.post("/users", {"name": "Alice"})
+              self.client.post("/users", {"name": "Bob"})
+              assert self.client.get_request_count() == 2
+
+          def test_rate_limit_burst(self):
+              for i in range(10):
+                  self.client.call_api(f"/endpoint_{i}")
+    api_factory.py: |
+      from api import APIClient
+
+      class APIClientFactory:
+          def __init__(self, default_base_url: str = "https://api.prod.com"):
+              self._base_url = default_base_url
+              self._clients: dict[str, APIClient] = {}
+
+          def create(self, api_key: str, base_url: str = None) -> APIClient:
+              url = base_url or self._base_url
+              key = f"{url}:{api_key}"
+              if key not in self._clients:
+                  self._clients[key] = APIClient(url, api_key)
+              return self._clients[key]
+
+          def get_active_count(self) -> int:
+              return len(self._clients)
+    middleware.py: |
+      import time
+      import logging
+      from typing import Dict, Any, Callable, Optional
+      from dataclasses import dataclass
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class RequestContext:
+          method: str
+          path: str
+          headers: Dict[str, str]
+          start_time: float
+
+      class MiddlewareChain:
+          def __init__(self):
+              self._middlewares: list[Callable] = []
+
+          def add(self, middleware: Callable) -> None:
+              self._middlewares.append(middleware)
+
+          def execute(self, context: RequestContext, handler: Callable) -> Any:
+              chain = handler
+              for mw in reversed(self._middlewares):
+                  chain = lambda ctx, next_handler=chain, middleware=mw: middleware(ctx, next_handler)
+              return chain(context)
+
+      def logging_middleware(context: RequestContext, next_handler: Callable) -> Any:
+          logger.info(f"{context.method} {context.path}")
+          result = next_handler(context)
+          elapsed = time.time() - context.start_time
+          logger.info(f"Completed in {elapsed:.3f}s")
+          return result
+
+      def timing_middleware(context: RequestContext, next_handler: Callable) -> Any:
+          start = time.perf_counter()
+          result = next_handler(context)
+          elapsed = time.perf_counter() - start
+          return result
+    circuit_breaker.py: |
+      import time
+      from typing import Callable, Any, Optional
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class CircuitState(Enum):
+          CLOSED = "closed"
+          OPEN = "open"
+          HALF_OPEN = "half_open"
+
+      @dataclass
+      class CircuitBreakerConfig:
+          failure_threshold: int = 5
+          recovery_timeout: float = 30.0
+          half_open_max_calls: int = 1
+
+      class CircuitBreaker:
+          def __init__(self, config: CircuitBreakerConfig):
+              self._config = config
+              self._state = CircuitState.CLOSED
+              self._failure_count = 0
+              self._last_failure_time: Optional[float] = None
+
+          def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+              if self._state == CircuitState.OPEN:
+                  if time.time() - self._last_failure_time > self._config.recovery_timeout:
+                      self._state = CircuitState.HALF_OPEN
+                  else:
+                      raise RuntimeError("Circuit breaker is open")
+              try:
+                  result = func(*args, **kwargs)
+                  self._on_success()
+                  return result
+              except Exception as e:
+                  self._on_failure()
+                  raise
+
+          def _on_success(self) -> None:
+              self._failure_count = 0
+              self._state = CircuitState.CLOSED
+
+          def _on_failure(self) -> None:
+              self._failure_count += 1
+              self._last_failure_time = time.time()
+              if self._failure_count >= self._config.failure_threshold:
+                  self._state = CircuitState.OPEN
+  changed_files:
+    decorators.py: |
+      import functools
+      import time
+      import logging
+      from typing import Callable, TypeVar, Any, Optional, Dict
+      from dataclasses import dataclass
+      from datetime import datetime, timedelta
+      import threading
+
+      logger = logging.getLogger(__name__)
+
+      F = TypeVar('F', bound=Callable[..., Any])
+
+      @dataclass
+      class RateLimitState:
+          calls: int = 0
+          window_start: datetime = None
+
+          def reset(self) -> None:
+              self.calls = 0
+              self.window_start = datetime.now()
+
+      class RateLimitExceeded(Exception):
+          def __init__(self, retry_after: float):
+              self.retry_after = retry_after
+              super().__init__(f"Rate limit exceeded. Retry after {retry_after:.1f}s")
+
+      def rate_limit(calls_per_second: int = 10, burst: int = 0):
+          def decorator(func: F) -> F:
+              state = RateLimitState()
+              lock = threading.Lock()
+              last_call = [0.0]
+              burst_tokens = [burst]
+
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  with lock:
+                      now = time.time()
+                      elapsed = now - last_call[0]
+                      burst_tokens[0] = min(burst, burst_tokens[0] + elapsed * calls_per_second)
+                      if burst_tokens[0] >= 1:
+                          burst_tokens[0] -= 1
+                      elif elapsed < 1.0 / calls_per_second:
+                          sleep_time = 1.0 / calls_per_second - elapsed
+                          time.sleep(sleep_time)
+                      last_call[0] = time.time()
+                      return func(*args, **kwargs)
+              return wrapper
+          return decorator
+
+      def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0, exceptions: tuple = (Exception,)):
+          def decorator(func: F) -> F:
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  current_delay = delay
+                  last_exception = None
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except exceptions as e:
+                          last_exception = e
+                          if attempt < max_attempts - 1:
+                              logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {current_delay}s")
+                              time.sleep(current_delay)
+                              current_delay *= backoff
+                  raise last_exception
+              return wrapper
+          return decorator
+
+      def timed(name: Optional[str] = None):
+          def decorator(func: F) -> F:
+              func_name = name or func.__name__
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  start = time.perf_counter()
+                  try:
+                      return func(*args, **kwargs)
+                  finally:
+                      elapsed = time.perf_counter() - start
+                      logger.info(f"{func_name} took {elapsed:.3f}s")
+              return wrapper
+          return decorator
+
+      def cached(ttl_seconds: int = 300):
+          def decorator(func: F) -> F:
+              cache: Dict[str, tuple] = {}
+              lock = threading.Lock()
+              @functools.wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  key = str((args, sorted(kwargs.items())))
+                  with lock:
+                      if key in cache:
+                          value, expires_at = cache[key]
+                          if datetime.now() < expires_at:
+                              return value
+                      result = func(*args, **kwargs)
+                      cache[key] = (result, datetime.now() + timedelta(seconds=ttl_seconds))
+                      return result
+              return wrapper
+          return decorator
+    api.py: |
+      from typing import Dict, Any, Optional, List
+      import time
+      import random
+      from decorators import rate_limit, retry, timed, cached
+
+      class APIError(Exception):
+          def __init__(self, status_code: int, message: str):
+              self.status_code = status_code
+              self.message = message
+              super().__init__(message)
+
+      class APIClient:
+          def __init__(self, base_url: str, api_key: str):
+              self.base_url = base_url
+              self.api_key = api_key
+              self._request_count = 0
+
+          @rate_limit(calls_per_second=100, burst=10)
+          @retry(max_attempts=3, delay=0.5)
+          @timed("api_call")
+          def call_api(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:
+              self._request_count += 1
+              time.sleep(0.01)
+              return {"endpoint": endpoint, "method": method, "status": "success"}
+
+          @cached(ttl_seconds=60)
+          def get(self, endpoint: str) -> Dict[str, Any]:
+              return self.call_api(endpoint, "GET")
+
+          def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+              return self.call_api(endpoint, "POST", data)
+
+          def get_request_count(self) -> int:
+              return self._request_count
+    test_api.py: |
+      from api import APIClient
+
+      class TestAPIClient:
+          def setup(self):
+              self.client = APIClient("https://api.test.com", "test-key")
+
+          def test_get_is_cached(self):
+              r1 = self.client.get("/users")
+              r2 = self.client.get("/users")
+              assert self.client.get_request_count() == 1
+
+          def test_post_not_cached(self):
+              self.client.post("/users", {"name": "Alice"})
+              self.client.post("/users", {"name": "Bob"})
+              assert self.client.get_request_count() == 2
+
+          def test_rate_limit_burst(self):
+              for i in range(10):
+                  self.client.call_api(f"/endpoint_{i}")
+    api_factory.py: |
+      from api import APIClient
+
+      class APIClientFactory:
+          def __init__(self, default_base_url: str = "https://api.prod.com"):
+              self._base_url = default_base_url
+              self._clients: dict[str, APIClient] = {}
+
+          def create(self, api_key: str, base_url: str = None) -> APIClient:
+              url = base_url or self._base_url
+              key = f"{url}:{api_key}"
+              if key not in self._clients:
+                  self._clients[key] = APIClient(url, api_key)
+              return self._clients[key]
+
+          def get_active_count(self) -> int:
+              return len(self._clients)
+    middleware.py: |
+      import time
+      import logging
+      from typing import Dict, Any, Callable, Optional
+      from dataclasses import dataclass
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class RequestContext:
+          method: str
+          path: str
+          headers: Dict[str, str]
+          start_time: float
+
+      class MiddlewareChain:
+          def __init__(self):
+              self._middlewares: list[Callable] = []
+
+          def add(self, middleware: Callable) -> None:
+              self._middlewares.append(middleware)
+
+          def execute(self, context: RequestContext, handler: Callable) -> Any:
+              chain = handler
+              for mw in reversed(self._middlewares):
+                  chain = lambda ctx, next_handler=chain, middleware=mw: middleware(ctx, next_handler)
+              return chain(context)
+
+      def logging_middleware(context: RequestContext, next_handler: Callable) -> Any:
+          logger.info(f"{context.method} {context.path}")
+          result = next_handler(context)
+          elapsed = time.time() - context.start_time
+          logger.info(f"Completed in {elapsed:.3f}s")
+          return result
+
+      def timing_middleware(context: RequestContext, next_handler: Callable) -> Any:
+          start = time.perf_counter()
+          result = next_handler(context)
+          elapsed = time.perf_counter() - start
+          return result
+    circuit_breaker.py: |
+      import time
+      from typing import Callable, Any, Optional
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class CircuitState(Enum):
+          CLOSED = "closed"
+          OPEN = "open"
+          HALF_OPEN = "half_open"
+
+      @dataclass
+      class CircuitBreakerConfig:
+          failure_threshold: int = 5
+          recovery_timeout: float = 30.0
+          half_open_max_calls: int = 1
+
+      class CircuitBreaker:
+          def __init__(self, config: CircuitBreakerConfig):
+              self._config = config
+              self._state = CircuitState.CLOSED
+              self._failure_count = 0
+              self._last_failure_time: Optional[float] = None
+
+          def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+              if self._state == CircuitState.OPEN:
+                  if time.time() - self._last_failure_time > self._config.recovery_timeout:
+                      self._state = CircuitState.HALF_OPEN
+                  else:
+                      raise RuntimeError("Circuit breaker is open")
+              try:
+                  result = func(*args, **kwargs)
+                  self._on_success()
+                  return result
+              except Exception as e:
+                  self._on_failure()
+                  raise
+
+          def _on_success(self) -> None:
+              self._failure_count = 0
+              self._state = CircuitState.CLOSED
+
+          def _on_failure(self) -> None:
+              self._failure_count += 1
+              self._last_failure_time = time.time()
+              if self._failure_count >= self._config.failure_threshold:
+                  self._state = CircuitState.OPEN
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: api.py
+    anchor: from decorators import rate_limit, retry, timed, cached
+- id: api_1
+  selector:
+    path: api.py
+    anchor: '@rate_limit(calls_per_second=100, burst=10)'
+- id: api_2
+  selector:
+    path: api.py
+    anchor: '@retry(max_attempts=3, delay=0.5)'
+- id: api_3
+  selector:
+    path: api.py
+    anchor: '@timed("api_call")'
+- id: api_4
+  selector:
+    path: api.py
+    anchor: '@cached(ttl_seconds=60)'
+- id: decorators
+  selector:
+    path: decorators.py
+    anchor: def rate_limit(calls_per_second
+- id: decorators_1
+  selector:
+    path: decorators.py
+    anchor: burst_tokens
+- id: decorators_2
+  selector:
+    path: decorators.py
+    anchor: def retry(max_attempts
+- id: decorators_3
+  selector:
+    path: decorators.py
+    anchor: def cached(ttl_seconds
+- id: decorators_4
+  selector:
+    path: decorators.py
+    anchor: expires_at
+- id: no_test_api
+  selector:
+    path: test_api.py
+- id: no_api_factory
+  selector:
+    path: api_factory.py
+- id: no_middleware
+  selector:
+    path: middleware.py
+- id: no_circuit_breaker
+  selector:
+    path: circuit_breaker.py
+- id: no_global_0
+  selector:
+    anchor: TestAPIClient
+- id: no_global_1
+  selector:
+    anchor: test_get_is_cached
+- id: no_global_2
+  selector:
+    anchor: test_post_not_cached
+- id: no_global_3
+  selector:
+    anchor: test_rate_limit_burst
+- id: no_global_4
+  selector:
+    anchor: APIClientFactory
+- id: no_global_5
+  selector:
+    anchor: get_active_count
+- id: no_global_6
+  selector:
+    anchor: MiddlewareChain
+- id: no_global_7
+  selector:
+    anchor: RequestContext
+- id: no_global_8
+  selector:
+    anchor: logging_middleware
+- id: no_global_9
+  selector:
+    anchor: timing_middleware
+- id: no_global_10
+  selector:
+    anchor: CircuitBreaker
+- id: no_global_11
+  selector:
+    anchor: CircuitState
+- id: no_global_12
+  selector:
+    anchor: CircuitBreakerConfig
+oracle:
+  required:
+  - api
+  - api_1
+  - api_2
+  - api_3
+  - api_4
+  - decorators
+  - decorators_1
+  - decorators_2
+  - decorators_3
+  - decorators_4
+  allowed: []
+  forbidden:
+  - no_test_api
+  - no_api_factory
+  - no_middleware
+  - no_circuit_breaker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

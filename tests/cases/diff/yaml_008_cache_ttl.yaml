@@ -1,0 +1,135 @@
+name: yaml_008_cache_ttl
+repo:
+  initial_files:
+    config/cache.yaml: |
+      cache:
+        default_ttl: 300
+        max_size: 1000
+    src/caching.py: |
+      from functools import lru_cache
+
+      def cached(ttl: int = 300):
+          def decorator(func):
+              @lru_cache(maxsize=1000)
+              def wrapper(*args):
+                  return func(*args)
+              return wrapper
+          return decorator
+
+      def invalidate_all():
+          cached.__wrapped__ = {}
+    config/cdn.yaml: |
+      cdn:
+        provider: cloudflare
+        edge_ttl: 86400
+        browser_ttl: 3600
+        cache_everything: false
+        purge_on_deploy: true
+    src/session_store.py: |
+      import time
+
+      class SessionStore:
+          def __init__(self, ttl: int = 3600):
+              self.ttl = ttl
+              self._sessions: dict[str, tuple[dict, float]] = {}
+
+          def set(self, session_id: str, data: dict):
+              self._sessions[session_id] = (data, time.time())
+
+          def get(self, session_id: str) -> dict | None:
+              if session_id not in self._sessions:
+                  return None
+              data, created = self._sessions[session_id]
+              if time.time() - created > self.ttl:
+                  del self._sessions[session_id]
+                  return None
+              return data
+  changed_files:
+    config/cache.yaml: |
+      cache:
+        default_ttl: 600
+        max_size: 5000
+        eviction_policy: lru
+    src/caching.py: |
+      from functools import lru_cache
+
+      def cached(ttl: int = 300):
+          def decorator(func):
+              @lru_cache(maxsize=1000)
+              def wrapper(*args):
+                  return func(*args)
+              return wrapper
+          return decorator
+
+      def invalidate_all():
+          cached.__wrapped__ = {}
+    config/cdn.yaml: |
+      cdn:
+        provider: cloudflare
+        edge_ttl: 86400
+        browser_ttl: 3600
+        cache_everything: false
+        purge_on_deploy: true
+    src/session_store.py: |
+      import time
+
+      class SessionStore:
+          def __init__(self, ttl: int = 3600):
+              self.ttl = ttl
+              self._sessions: dict[str, tuple[dict, float]] = {}
+
+          def set(self, session_id: str, data: dict):
+              self._sessions[session_id] = (data, time.time())
+
+          def get(self, session_id: str) -> dict | None:
+              if session_id not in self._sessions:
+                  return None
+              data, created = self._sessions[session_id]
+              if time.time() - created > self.ttl:
+                  del self._sessions[session_id]
+                  return None
+              return data
+  commit_message: Update files
+fragments:
+- id: caching
+  selector:
+    path: src/caching.py
+    anchor: '@lru_cache(maxsize=1000)'
+- id: caching_1
+  selector:
+    path: src/caching.py
+    anchor: 'ttl: int = 300'
+- id: no_cdn
+  selector:
+    path: config/cdn.yaml
+- id: no_session_store
+  selector:
+    path: src/session_store.py
+- id: no_global_0
+  selector:
+    anchor: cloudflare
+- id: no_global_1
+  selector:
+    anchor: edge_ttl
+- id: no_global_2
+  selector:
+    anchor: purge_on_deploy
+- id: no_global_3
+  selector:
+    anchor: SessionStore
+- id: no_global_4
+  selector:
+    anchor: session_id
+oracle:
+  required:
+  - caching
+  - caching_1
+  allowed: []
+  forbidden:
+  - no_cdn
+  - no_session_store
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

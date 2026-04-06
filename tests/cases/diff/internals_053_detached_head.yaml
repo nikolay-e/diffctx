@@ -1,0 +1,20 @@
+name: internals_053_detached_head
+repo:
+  initial_files:
+    code.py: |
+      def version_1():
+          return 1
+  changed_files:
+    code.py: |
+      def version_1():
+          return 100
+  commit_message: Update files
+fragments:
+- id: code_file
+  selector:
+    path: code.py
+oracle:
+  required:
+  - code_file
+  allowed: []
+  forbidden: []

@@ -1,0 +1,220 @@
+name: dependencies_036_test_parametrize_includes_function
+repo:
+  initial_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+
+      def divide(a: int, b: int) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add
+
+      def test_add_basic():
+          assert add(1, 2) == 3
+    tests/test_calculator_extended.py: |
+      import pytest
+      from src.calculator import divide
+      GARBAGE_DEP036_EXTTEST_A = "extended_calc_tests"
+      GARBAGE_DEP036_EXTTEST_INIT_B = True
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (10, 2, 5.0),
+          (9, 3, 3.0),
+          (7, 2, 3.5),
+      ])
+      def test_divide_parametrized(a, b, expected):
+          GARBAGE_DEP036_EXTTEST_RUN_C = "running"
+          assert divide(a, b) == expected
+    src/scientific_calculator.py: |
+      GARBAGE_DEP036_SCICALC_D = "scientific_calculator"
+      GARBAGE_DEP036_SCICALC_INIT_E = True
+
+      def add(a: int, b: int) -> int:
+          GARBAGE_DEP036_SCICALC_ADD_F = "scientific_add"
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+    tests/test_string_math.py: |
+      import pytest
+      GARBAGE_DEP036_STRMATH_G = "string_math_tests"
+      GARBAGE_DEP036_STRMATH_INIT_H = True
+
+      def add(a, b):
+          return str(int(a) + int(b))
+
+      @pytest.mark.parametrize("a,b,expected", [
+          ("1", "2", "3"),
+          ("0", "0", "0"),
+      ])
+      def test_string_add_parametrized(a, b, expected):
+          GARBAGE_DEP036_STRMATH_RUN_I = "running"
+          assert add(a, b) == expected
+  changed_files:
+    src/calculator.py: |
+      def add(a: int, b: int) -> int:
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+
+      def divide(a: int, b: int) -> float:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add, subtract, multiply
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (1, 2, 3),
+          (0, 0, 0),
+          (-1, 1, 0),
+          (100, 200, 300),
+          (-5, -3, -8),
+      ])
+      def test_add_parametrized(a, b, expected):
+          assert add(a, b) == expected
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (5, 3, 2),
+          (0, 0, 0),
+          (-1, -1, 0),
+      ])
+      def test_subtract_parametrized(a, b, expected):
+          assert subtract(a, b) == expected
+
+      def test_multiply_basic():
+          assert multiply(2, 3) == 6
+    tests/test_calculator_extended.py: |
+      import pytest
+      from src.calculator import divide
+      GARBAGE_DEP036_EXTTEST_A = "extended_calc_tests"
+      GARBAGE_DEP036_EXTTEST_INIT_B = True
+
+      @pytest.mark.parametrize("a,b,expected", [
+          (10, 2, 5.0),
+          (9, 3, 3.0),
+          (7, 2, 3.5),
+      ])
+      def test_divide_parametrized(a, b, expected):
+          GARBAGE_DEP036_EXTTEST_RUN_C = "running"
+          assert divide(a, b) == expected
+    src/scientific_calculator.py: |
+      GARBAGE_DEP036_SCICALC_D = "scientific_calculator"
+      GARBAGE_DEP036_SCICALC_INIT_E = True
+
+      def add(a: int, b: int) -> int:
+          GARBAGE_DEP036_SCICALC_ADD_F = "scientific_add"
+          return a + b
+
+      def subtract(a: int, b: int) -> int:
+          return a - b
+
+      def multiply(a: int, b: int) -> int:
+          return a * b
+    tests/test_string_math.py: |
+      import pytest
+      GARBAGE_DEP036_STRMATH_G = "string_math_tests"
+      GARBAGE_DEP036_STRMATH_INIT_H = True
+
+      def add(a, b):
+          return str(int(a) + int(b))
+
+      @pytest.mark.parametrize("a,b,expected", [
+          ("1", "2", "3"),
+          ("0", "0", "0"),
+      ])
+      def test_string_add_parametrized(a, b, expected):
+          GARBAGE_DEP036_STRMATH_RUN_I = "running"
+          assert add(a, b) == expected
+  commit_message: Update files
+fragments:
+- id: test_calculator
+  selector:
+    path: tests/test_calculator.py
+    anchor: from src.calculator import add, subtract, multiply
+- id: test_calculator_1
+  selector:
+    path: tests/test_calculator.py
+    anchor: '@pytest.mark.parametrize("a,b,expected", ['
+- id: test_calculator_2
+  selector:
+    path: tests/test_calculator.py
+    anchor: 'def test_add_parametrized(a, b, expected):'
+- id: calculator
+  selector:
+    path: src/calculator.py
+    anchor: 'def add(a: int, b: int) -> int:'
+- id: no_test_calculator_extended
+  selector:
+    path: tests/test_calculator_extended.py
+- id: no_scientific_calculator
+  selector:
+    path: src/scientific_calculator.py
+- id: no_test_string_math
+  selector:
+    path: tests/test_string_math.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP036_EXTTEST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP036_EXTTEST_INIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP036_EXTTEST_RUN_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP036_SCICALC_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP036_SCICALC_INIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP036_SCICALC_ADD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP036_STRMATH_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP036_STRMATH_INIT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP036_STRMATH_RUN_I
+oracle:
+  required:
+  - test_calculator
+  - test_calculator_1
+  - test_calculator_2
+  - calculator
+  allowed: []
+  forbidden:
+  - no_test_calculator_extended
+  - no_scientific_calculator
+  - no_test_string_math
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

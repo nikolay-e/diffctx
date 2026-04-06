@@ -1,0 +1,450 @@
+name: ppr_003_disconnected_components
+repo:
+  initial_files:
+    component_alpha/core.py: |
+      from component_alpha.utils import alpha_util_one, alpha_util_two
+
+      def alpha_main():
+          intermediate = alpha_helper()
+          return alpha_util_one(intermediate)
+
+      def alpha_helper():
+          return alpha_util_two("input")
+
+      def alpha_processor(data):
+          return alpha_main() + data
+    component_alpha/utils.py: |
+      def alpha_util_one(value):
+          return value.upper()
+
+      def alpha_util_two(raw):
+          return raw.strip()
+
+      def alpha_util_three():
+          return "unused_alpha_util"
+    component_beta/core.py: |
+      from component_beta.services import beta_service_main
+
+      def beta_entry():
+          return beta_service_main()
+
+      def beta_secondary():
+          return beta_entry() + "_sec"
+
+      def beta_tertiary():
+          return beta_secondary() + "_ter"
+    component_beta/services.py: |
+      def beta_service_main():
+          return beta_service_helper()
+
+      def beta_service_helper():
+          return "beta_service_value"
+
+      def beta_service_unused():
+          return "never_called_beta"
+    component_gamma/standalone.py: |
+      GAMMA_CONSTANT = "gamma_val"
+
+      def gamma_func_one():
+          return GAMMA_CONSTANT
+
+      def gamma_func_two():
+          return gamma_func_one() + "_two"
+
+      def gamma_func_three():
+          return gamma_func_two() + "_three"
+
+      def gamma_orchestrator():
+          return gamma_func_three()
+    component_delta/isolated.py: |
+      def delta_isolated_main():
+          return delta_isolated_helper()
+
+      def delta_isolated_helper():
+          return "delta_helper_result"
+
+      def delta_chain_one():
+          return delta_isolated_main()
+
+      def delta_chain_two():
+          return delta_chain_one()
+    component_alpha/garbage_alpha_consumer.py: |
+      from component_alpha.utils import alpha_util_one, alpha_util_two
+      GARBAGE_PPR_003_ALPHA_CONSUMER_A = "alpha_consumer_marker"
+      GARBAGE_PPR_003_ALPHA_CONSUMER_B = 99
+
+      class AlphaUtilConsumer:
+          def run(self):
+              return alpha_util_one("test")
+
+          def validate(self, raw):
+              return alpha_util_two(raw)
+    component_alpha/garbage_alpha_collision.py: |
+      GARBAGE_PPR_003_ALPHA_COLLISION_C = "collision_alpha"
+      GARBAGE_PPR_003_ALPHA_COLLISION_D = True
+
+      def alpha_main():
+          return "different_alpha_main_entirely"
+
+      def alpha_main_reporter():
+          return alpha_main() + "_report"
+    component_alpha/garbage_alpha_metrics.py: |
+      GARBAGE_PPR_003_ALPHA_SIBLING_E = "sibling_metrics"
+      GARBAGE_PPR_003_ALPHA_SIBLING_F = 7
+
+      def compute_alpha_score(items):
+          return sum(items) / len(items)
+
+      def format_alpha_report(score):
+          return f"alpha_score={score}"
+    garbage/GARBAGE_PPR_s1t2u3_disconnected.py: |
+      GARBAGE_DISCONNECTED_MARKER_PPR003 = "disconnected_garbage"
+
+      def garbage_disconn_ppr003_alpha():
+          return GARBAGE_DISCONNECTED_MARKER_PPR003
+
+      def garbage_disconn_ppr003_beta():
+          return garbage_disconn_ppr003_alpha() + "_beta"
+
+      def garbage_disconn_ppr003_gamma():
+          return garbage_disconn_ppr003_beta() + "_gamma"
+    garbage/GARBAGE_PPR_v4w5x6_noise_comp.py: |
+      NOISE_COMP_FLAG_PPR003 = True
+
+      def noise_comp_ppr003_one():
+          return NOISE_COMP_FLAG_PPR003
+
+      def noise_comp_ppr003_two():
+          return not noise_comp_ppr003_one()
+
+      def noise_comp_ppr003_chain():
+          if noise_comp_ppr003_one():
+              return noise_comp_ppr003_two()
+          return False
+    garbage/GARBAGE_PPR_y7z8a9_fake_component.py: |
+      class FakeComponentPPR003:
+          FAKE_CONST = "fake_const"
+
+          def fake_method_one(self):
+              return self.FAKE_CONST
+
+          def fake_method_two(self):
+              return self.fake_method_one() + "_two"
+
+      def fake_component_entry_ppr003():
+          return FakeComponentPPR003().fake_method_two()
+  changed_files:
+    component_alpha/core.py: |
+      from component_alpha.utils import alpha_util_one, alpha_util_two
+
+      def alpha_main():
+          intermediate = alpha_helper()
+          processed = alpha_util_one(intermediate)
+          return processed + "_modified_alpha"
+
+      def alpha_helper():
+          return alpha_util_two("input")
+
+      def alpha_processor(data):
+          return alpha_main() + data
+    component_alpha/utils.py: |
+      def alpha_util_one(value):
+          return value.upper()
+
+      def alpha_util_two(raw):
+          return raw.strip()
+
+      def alpha_util_three():
+          return "unused_alpha_util"
+    component_beta/core.py: |
+      from component_beta.services import beta_service_main
+
+      def beta_entry():
+          return beta_service_main()
+
+      def beta_secondary():
+          return beta_entry() + "_sec"
+
+      def beta_tertiary():
+          return beta_secondary() + "_ter"
+    component_beta/services.py: |
+      def beta_service_main():
+          return beta_service_helper()
+
+      def beta_service_helper():
+          return "beta_service_value"
+
+      def beta_service_unused():
+          return "never_called_beta"
+    component_gamma/standalone.py: |
+      GAMMA_CONSTANT = "gamma_val"
+
+      def gamma_func_one():
+          return GAMMA_CONSTANT
+
+      def gamma_func_two():
+          return gamma_func_one() + "_two"
+
+      def gamma_func_three():
+          return gamma_func_two() + "_three"
+
+      def gamma_orchestrator():
+          return gamma_func_three()
+    component_delta/isolated.py: |
+      def delta_isolated_main():
+          return delta_isolated_helper()
+
+      def delta_isolated_helper():
+          return "delta_helper_result"
+
+      def delta_chain_one():
+          return delta_isolated_main()
+
+      def delta_chain_two():
+          return delta_chain_one()
+    component_alpha/garbage_alpha_consumer.py: |
+      from component_alpha.utils import alpha_util_one, alpha_util_two
+      GARBAGE_PPR_003_ALPHA_CONSUMER_A = "alpha_consumer_marker"
+      GARBAGE_PPR_003_ALPHA_CONSUMER_B = 99
+
+      class AlphaUtilConsumer:
+          def run(self):
+              return alpha_util_one("test")
+
+          def validate(self, raw):
+              return alpha_util_two(raw)
+    component_alpha/garbage_alpha_collision.py: |
+      GARBAGE_PPR_003_ALPHA_COLLISION_C = "collision_alpha"
+      GARBAGE_PPR_003_ALPHA_COLLISION_D = True
+
+      def alpha_main():
+          return "different_alpha_main_entirely"
+
+      def alpha_main_reporter():
+          return alpha_main() + "_report"
+    component_alpha/garbage_alpha_metrics.py: |
+      GARBAGE_PPR_003_ALPHA_SIBLING_E = "sibling_metrics"
+      GARBAGE_PPR_003_ALPHA_SIBLING_F = 7
+
+      def compute_alpha_score(items):
+          return sum(items) / len(items)
+
+      def format_alpha_report(score):
+          return f"alpha_score={score}"
+    garbage/GARBAGE_PPR_s1t2u3_disconnected.py: |
+      GARBAGE_DISCONNECTED_MARKER_PPR003 = "disconnected_garbage"
+
+      def garbage_disconn_ppr003_alpha():
+          return GARBAGE_DISCONNECTED_MARKER_PPR003
+
+      def garbage_disconn_ppr003_beta():
+          return garbage_disconn_ppr003_alpha() + "_beta"
+
+      def garbage_disconn_ppr003_gamma():
+          return garbage_disconn_ppr003_beta() + "_gamma"
+    garbage/GARBAGE_PPR_v4w5x6_noise_comp.py: |
+      NOISE_COMP_FLAG_PPR003 = True
+
+      def noise_comp_ppr003_one():
+          return NOISE_COMP_FLAG_PPR003
+
+      def noise_comp_ppr003_two():
+          return not noise_comp_ppr003_one()
+
+      def noise_comp_ppr003_chain():
+          if noise_comp_ppr003_one():
+              return noise_comp_ppr003_two()
+          return False
+    garbage/GARBAGE_PPR_y7z8a9_fake_component.py: |
+      class FakeComponentPPR003:
+          FAKE_CONST = "fake_const"
+
+          def fake_method_one(self):
+              return self.FAKE_CONST
+
+          def fake_method_two(self):
+              return self.fake_method_one() + "_two"
+
+      def fake_component_entry_ppr003():
+          return FakeComponentPPR003().fake_method_two()
+  commit_message: Update files
+fragments:
+- id: core
+  selector:
+    path: component_alpha/core.py
+    anchor: 'def alpha_main():'
+- id: core_1
+  selector:
+    path: component_alpha/core.py
+    anchor: processed = alpha_util_one(intermediate)
+- id: core_2
+  selector:
+    path: component_alpha/core.py
+    anchor: return processed + "_modified_alpha"
+- id: no_garbage_ppr_s1t2u3_disconnected
+  selector:
+    path: garbage/GARBAGE_PPR_s1t2u3_disconnected.py
+- id: no_garbage_ppr_v4w5x6_noise_comp
+  selector:
+    path: garbage/GARBAGE_PPR_v4w5x6_noise_comp.py
+- id: no_garbage_ppr_y7z8a9_fake_component
+  selector:
+    path: garbage/GARBAGE_PPR_y7z8a9_fake_component.py
+- id: no_garbage_alpha_consumer
+  selector:
+    path: component_alpha/garbage_alpha_consumer.py
+- id: no_garbage_alpha_collision
+  selector:
+    path: component_alpha/garbage_alpha_collision.py
+- id: no_garbage_alpha_metrics
+  selector:
+    path: component_alpha/garbage_alpha_metrics.py
+- id: no_core
+  selector:
+    path: component_beta/core.py
+- id: no_services
+  selector:
+    path: component_beta/services.py
+- id: no_standalone
+  selector:
+    path: component_gamma/standalone.py
+- id: no_isolated
+  selector:
+    path: component_delta/isolated.py
+- id: no_global_0
+  selector:
+    anchor: beta_entry
+- id: no_global_1
+  selector:
+    anchor: beta_secondary
+- id: no_global_2
+  selector:
+    anchor: beta_tertiary
+- id: no_global_3
+  selector:
+    anchor: beta_service_main
+- id: no_global_4
+  selector:
+    anchor: beta_service_helper
+- id: no_global_5
+  selector:
+    anchor: gamma_func_one
+- id: no_global_6
+  selector:
+    anchor: gamma_func_two
+- id: no_global_7
+  selector:
+    anchor: gamma_func_three
+- id: no_global_8
+  selector:
+    anchor: gamma_orchestrator
+- id: no_global_9
+  selector:
+    anchor: GAMMA_CONSTANT
+- id: no_global_10
+  selector:
+    anchor: delta_isolated_main
+- id: no_global_11
+  selector:
+    anchor: delta_isolated_helper
+- id: no_global_12
+  selector:
+    anchor: delta_chain_one
+- id: no_global_13
+  selector:
+    anchor: delta_chain_two
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_DISCONNECTED_MARKER_PPR003
+- id: no_global_15
+  selector:
+    anchor: garbage_disconn_ppr003_alpha
+- id: no_global_16
+  selector:
+    anchor: garbage_disconn_ppr003_beta
+- id: no_global_17
+  selector:
+    anchor: garbage_disconn_ppr003_gamma
+- id: no_global_18
+  selector:
+    anchor: NOISE_COMP_FLAG_PPR003
+- id: no_global_19
+  selector:
+    anchor: noise_comp_ppr003_one
+- id: no_global_20
+  selector:
+    anchor: noise_comp_ppr003_two
+- id: no_global_21
+  selector:
+    anchor: noise_comp_ppr003_chain
+- id: no_global_22
+  selector:
+    anchor: FakeComponentPPR003
+- id: no_global_23
+  selector:
+    anchor: fake_component_entry_ppr003
+- id: no_global_24
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_CONSUMER_A
+- id: no_global_25
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_CONSUMER_B
+- id: no_global_26
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_COLLISION_C
+- id: no_global_27
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_COLLISION_D
+- id: no_global_28
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_SIBLING_E
+- id: no_global_29
+  selector:
+    anchor: GARBAGE_PPR_003_ALPHA_SIBLING_F
+oracle:
+  required:
+  - core
+  - core_1
+  - core_2
+  allowed: []
+  forbidden:
+  - no_garbage_ppr_s1t2u3_disconnected
+  - no_garbage_ppr_v4w5x6_noise_comp
+  - no_garbage_ppr_y7z8a9_fake_component
+  - no_garbage_alpha_consumer
+  - no_garbage_alpha_collision
+  - no_garbage_alpha_metrics
+  - no_core
+  - no_services
+  - no_standalone
+  - no_isolated
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21
+  - no_global_22
+  - no_global_23
+  - no_global_24
+  - no_global_25
+  - no_global_26
+  - no_global_27
+  - no_global_28
+  - no_global_29

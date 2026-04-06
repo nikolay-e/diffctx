@@ -1,0 +1,202 @@
+name: scala_021_collections_ops
+repo:
+  initial_files:
+    Data.scala: |
+      case class Data(id: Int, value: String, score: Double) {
+        def isHighScore: Boolean = score > 0.8
+        def formattedValue: String = value.trim.toLowerCase
+      }
+    DataProcessor.scala: |
+      class DataProcessor {}
+    DataExporter.scala: |
+      object DataExporter {
+        def toJson(items: List[Data]): String = {
+          val entries = items.map { d =>
+            s"""{"id":${d.id},"value":"${d.value}","score":${d.score}}"""
+          }
+          s"[${entries.mkString(",")}]"
+        }
+
+        def toCsv(items: List[Data]): String = {
+          val header = "id,value,score"
+          val rows = items.map(d => s"${d.id},${d.value},${d.score}")
+          (header :: rows).mkString("\n")
+        }
+
+        def toXml(items: List[Data]): String = {
+          val entries = items.map { d =>
+            s"  <data id='${d.id}' value='${d.value}' score='${d.score}'/>"
+          }
+          s"<dataset>\n${entries.mkString("\n")}\n</dataset>"
+        }
+      }
+    DataImporter.scala: |
+      object DataImporter {
+        def fromCsv(csv: String): List[Data] = {
+          csv.split("\n").drop(1).toList.map { line =>
+            val parts = line.split(",")
+            Data(parts(0).toInt, parts(1), parts(2).toDouble)
+          }
+        }
+
+        def fromJson(json: String): List[Data] = {
+          List.empty
+        }
+      }
+    ScoreThresholds.scala: |
+      object ScoreThresholds {
+        val Low: Double = 0.3
+        val Medium: Double = 0.6
+        val High: Double = 0.9
+
+        def tier(score: Double): String = score match {
+          case s if s >= High => "excellent"
+          case s if s >= Medium => "good"
+          case s if s >= Low => "fair"
+          case _ => "poor"
+        }
+
+        def isPassingScore(score: Double): Boolean = score >= Low
+      }
+    DataValidator.scala: |
+      class DataValidator {
+        def validate(data: Data): Either[String, Data] = {
+          if (data.score < 0.0 || data.score > 1.0) {
+            Left(s"Score ${data.score} out of range for id ${data.id}")
+          } else if (data.value.isEmpty) {
+            Left(s"Empty value for id ${data.id}")
+          } else {
+            Right(data)
+          }
+        }
+
+        def validateBatch(items: List[Data]): (List[String], List[Data]) = {
+          val results = items.map(validate)
+          (results.collect { case Left(e) => e }, results.collect { case Right(d) => d })
+        }
+      }
+    DataSpec.scala: |
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      class DataSpec extends AnyFlatSpec with Matchers {
+        "Data" should "report high scores" in {
+          Data(1, "test", 0.9).isHighScore should be(true)
+          Data(2, "test", 0.5).isHighScore should be(false)
+        }
+
+        it should "format values" in {
+          Data(1, "  Hello  ", 0.5).formattedValue should be("hello")
+        }
+      }
+  changed_files:
+    DataProcessor.scala: |
+      class DataProcessor {
+        def filterByScore(items: List[Data], minScore: Double): List[Data] = {
+          items.filter(_.score >= minScore)
+        }
+
+        def groupByFirstChar(items: List[Data]): Map[Char, List[Data]] = {
+          items.groupBy(_.value.headOption.getOrElse('_'))
+        }
+
+        def topN(items: List[Data], n: Int): List[Data] = {
+          items.sortBy(-_.score).take(n)
+        }
+
+        def averageScore(items: List[Data]): Double = {
+          if (items.isEmpty) 0.0
+          else items.map(_.score).sum / items.size
+        }
+
+        def flatMapValues(items: List[Data]): List[Char] = {
+          items.flatMap(_.value.toList)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: data
+  selector:
+    path: Data.scala
+    anchor: 'case class Data(id: Int, value: String, score: Double)'
+- id: no_dataexporter
+  selector:
+    path: DataExporter.scala
+- id: no_dataimporter
+  selector:
+    path: DataImporter.scala
+- id: no_scorethresholds
+  selector:
+    path: ScoreThresholds.scala
+- id: no_datavalidator
+  selector:
+    path: DataValidator.scala
+- id: no_dataspec
+  selector:
+    path: DataSpec.scala
+- id: no_global_0
+  selector:
+    anchor: object DataExporter
+- id: no_global_1
+  selector:
+    anchor: toJson
+- id: no_global_2
+  selector:
+    anchor: toCsv
+- id: no_global_3
+  selector:
+    anchor: toXml
+- id: no_global_4
+  selector:
+    anchor: object DataImporter
+- id: no_global_5
+  selector:
+    anchor: fromCsv
+- id: no_global_6
+  selector:
+    anchor: object ScoreThresholds
+- id: no_global_7
+  selector:
+    anchor: excellent
+- id: no_global_8
+  selector:
+    anchor: isPassingScore
+- id: no_global_9
+  selector:
+    anchor: class DataValidator
+- id: no_global_10
+  selector:
+    anchor: validateBatch
+- id: no_global_11
+  selector:
+    anchor: out of range
+- id: no_global_12
+  selector:
+    anchor: class DataSpec
+- id: no_global_13
+  selector:
+    anchor: report high scores
+oracle:
+  required:
+  - data
+  allowed: []
+  forbidden:
+  - no_dataexporter
+  - no_dataimporter
+  - no_scorethresholds
+  - no_datavalidator
+  - no_dataspec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

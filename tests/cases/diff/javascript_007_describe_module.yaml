@@ -1,0 +1,114 @@
+name: javascript_007_describe_module
+repo:
+  initial_files:
+    calculator.ts: |
+      export function add(a: number, b: number): number {
+          return a + b;
+      }
+
+      export function multiply(a: number, b: number): number {
+          return a * b;
+      }
+    calculator.test.ts: |
+      console.log('initial');
+    string-utils.ts: |
+      export function capitalize(str: string): string {
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLength: number): string {
+          return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+      }
+    calculator.config.ts: |
+      export const PRECISION = 2;
+      export const ROUNDING_MODE = 'half-up';
+
+      export function roundToDecimal(value: number, decimals: number = PRECISION): number {
+          const factor = Math.pow(10, decimals);
+          return Math.round(value * factor) / factor;
+      }
+  changed_files:
+    calculator.ts: |
+      export function add(a: number, b: number): number {
+          return a + b;
+      }
+
+      export function multiply(a: number, b: number): number {
+          return a * b;
+      }
+    calculator.test.ts: |
+      import { add, multiply } from './calculator';
+
+      describe('Calculator', () => {
+          describe('add', () => {
+              it('should add two numbers', () => {
+                  expect(add(1, 2)).toBe(3);
+              });
+          });
+
+          describe('multiply', () => {
+              it('should multiply two numbers', () => {
+                  expect(multiply(2, 3)).toBe(6);
+              });
+          });
+      });
+    string-utils.ts: |
+      export function capitalize(str: string): string {
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLength: number): string {
+          return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+      }
+    calculator.config.ts: |
+      export const PRECISION = 2;
+      export const ROUNDING_MODE = 'half-up';
+
+      export function roundToDecimal(value: number, decimals: number = PRECISION): number {
+          const factor = Math.pow(10, decimals);
+          return Math.round(value * factor) / factor;
+      }
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: calculator.ts
+    anchor: 'function add(a: number, b: number)'
+- id: calculator_1
+  selector:
+    path: calculator.ts
+    anchor: 'function multiply(a: number, b: number)'
+- id: no_string_utils
+  selector:
+    path: string-utils.ts
+- id: no_calculator_config
+  selector:
+    path: calculator.config.ts
+- id: no_global_0
+  selector:
+    anchor: capitalize
+- id: no_global_1
+  selector:
+    anchor: truncate
+- id: no_global_2
+  selector:
+    anchor: PRECISION
+- id: no_global_3
+  selector:
+    anchor: ROUNDING_MODE
+- id: no_global_4
+  selector:
+    anchor: roundToDecimal
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  allowed: []
+  forbidden:
+  - no_string_utils
+  - no_calculator_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

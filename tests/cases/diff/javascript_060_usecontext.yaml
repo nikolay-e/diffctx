@@ -1,0 +1,120 @@
+name: javascript_060_usecontext
+repo:
+  initial_files:
+    ThemeContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface Theme {
+          primary: string;
+          secondary: string;
+      }
+
+      export const ThemeContext = createContext<Theme>({ primary: '#000', secondary: '#fff' });
+    Button.tsx: |
+      console.log('initial');
+    AuthContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface AuthState {
+          isAuthenticated: boolean;
+          userId: string | null;
+      }
+
+      export const AuthContext = createContext<AuthState>({ isAuthenticated: false, userId: null });
+    ThemeProvider.tsx: |
+      import { useState } from 'react';
+      import { ThemeContext, Theme } from './ThemeContext';
+
+      const lightTheme: Theme = { primary: '#007bff', secondary: '#6c757d' };
+      const darkTheme: Theme = { primary: '#375a7f', secondary: '#444' };
+
+      export function ThemeProvider({ children }: { children: React.ReactNode }) {
+          const [theme] = useState<Theme>(lightTheme);
+          return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
+      }
+  changed_files:
+    ThemeContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface Theme {
+          primary: string;
+          secondary: string;
+      }
+
+      export const ThemeContext = createContext<Theme>({ primary: '#000', secondary: '#fff' });
+    Button.tsx: |
+      import { useContext } from 'react';
+      import { ThemeContext } from './ThemeContext';
+
+      export function Button({ children }: { children: React.ReactNode }) {
+          const theme = useContext(ThemeContext);
+          return <button style={{ backgroundColor: theme.primary }}>{children}</button>;
+      }
+    AuthContext.tsx: |
+      import { createContext } from 'react';
+
+      export interface AuthState {
+          isAuthenticated: boolean;
+          userId: string | null;
+      }
+
+      export const AuthContext = createContext<AuthState>({ isAuthenticated: false, userId: null });
+    ThemeProvider.tsx: |
+      import { useState } from 'react';
+      import { ThemeContext, Theme } from './ThemeContext';
+
+      const lightTheme: Theme = { primary: '#007bff', secondary: '#6c757d' };
+      const darkTheme: Theme = { primary: '#375a7f', secondary: '#444' };
+
+      export function ThemeProvider({ children }: { children: React.ReactNode }) {
+          const [theme] = useState<Theme>(lightTheme);
+          return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
+      }
+  commit_message: Update files
+fragments:
+- id: themecontext
+  selector:
+    path: ThemeContext.tsx
+    anchor: interface Theme {
+- id: themecontext_1
+  selector:
+    path: ThemeContext.tsx
+    anchor: 'primary: string'
+- id: no_authcontext
+  selector:
+    path: AuthContext.tsx
+- id: no_themeprovider
+  selector:
+    path: ThemeProvider.tsx
+- id: no_global_0
+  selector:
+    anchor: AuthState
+- id: no_global_1
+  selector:
+    anchor: AuthContext
+- id: no_global_2
+  selector:
+    anchor: isAuthenticated
+- id: no_global_3
+  selector:
+    anchor: ThemeProvider
+- id: no_global_4
+  selector:
+    anchor: lightTheme
+- id: no_global_5
+  selector:
+    anchor: darkTheme
+oracle:
+  required:
+  - themecontext
+  - themecontext_1
+  allowed: []
+  forbidden:
+  - no_authcontext
+  - no_themeprovider
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

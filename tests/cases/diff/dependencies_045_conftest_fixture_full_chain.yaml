@@ -1,0 +1,128 @@
+name: dependencies_045_conftest_fixture_full_chain
+repo:
+  initial_files:
+    src/calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def multiply(a, b):
+          return a * b
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def calculator_instance():
+          from src.calculator import add, multiply
+          return {"add": add, "multiply": multiply}
+    tests/test_calculator.py: |
+      def test_add(calculator_instance):
+          assert calculator_instance["add"](2, 3) == 5
+
+      def test_multiply(calculator_instance):
+          assert calculator_instance["multiply"](4, 5) == 20
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP_045_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP_045_INTEG_SETUP_B = True
+
+      @pytest.fixture
+      def calculator_instance():
+          GARBAGE_DEP_045_INTEG_FIXTURE_C = "integration_calc"
+          from src.calculator import add
+          return {"add": add}
+    tests/integration/test_advanced_calc.py: |
+      GARBAGE_DEP_045_ADVTEST_D = "advanced_calc_tests"
+      GARBAGE_DEP_045_ADVTEST_INIT_E = True
+
+      def test_add_negative(calculator_instance):
+          GARBAGE_DEP_045_ADVTEST_NEG_F = "negative_test"
+          assert calculator_instance["add"](-1, -2) == -3
+  changed_files:
+    src/calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def multiply(a, b):
+          return a * b
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def calculator_instance():
+          from src.calculator import add, multiply
+          return {"add": add, "multiply": multiply, "subtract": lambda a, b: a - b}
+    tests/test_calculator.py: |
+      def test_add(calculator_instance):
+          assert calculator_instance["add"](2, 3) == 5
+
+      def test_multiply(calculator_instance):
+          assert calculator_instance["multiply"](4, 5) == 20
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP_045_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP_045_INTEG_SETUP_B = True
+
+      @pytest.fixture
+      def calculator_instance():
+          GARBAGE_DEP_045_INTEG_FIXTURE_C = "integration_calc"
+          from src.calculator import add
+          return {"add": add}
+    tests/integration/test_advanced_calc.py: |
+      GARBAGE_DEP_045_ADVTEST_D = "advanced_calc_tests"
+      GARBAGE_DEP_045_ADVTEST_INIT_E = True
+
+      def test_add_negative(calculator_instance):
+          GARBAGE_DEP_045_ADVTEST_NEG_F = "negative_test"
+          assert calculator_instance["add"](-1, -2) == -3
+  commit_message: Update files
+fragments:
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: 'def calculator_instance():'
+- id: conftest_1
+  selector:
+    path: tests/conftest.py
+    anchor: subtract
+- id: req_global_0
+  selector:
+    anchor: calculator_instance
+- id: no_conftest
+  selector:
+    path: tests/integration/conftest.py
+- id: no_test_advanced_calc
+  selector:
+    path: tests/integration/test_advanced_calc.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_045_INTEG_CONFTEST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_045_INTEG_SETUP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_045_INTEG_FIXTURE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_045_ADVTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_045_ADVTEST_INIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_045_ADVTEST_NEG_F
+oracle:
+  required:
+  - conftest
+  - conftest_1
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_conftest
+  - no_test_advanced_calc
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

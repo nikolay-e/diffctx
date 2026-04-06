@@ -1,0 +1,344 @@
+name: algorithm_013_merge_nested_class_method
+repo:
+  initial_files:
+    src/services/user_service.py: |
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class User:
+          id: int
+          username: str
+          email: str
+          created_at: datetime
+
+      class UserService:
+          def __init__(self, db_connection):
+              self.db = db_connection
+              self.cache: Dict[int, User] = {}
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              if user_id in self.cache:
+                  return self.cache[user_id]
+              user = self.db.query(User).filter_by(id=user_id).first()
+              if user:
+                  self.cache[user_id] = user
+              return user
+
+          def create_user(self, username: str, email: str) -> User:
+              user = User(
+                  id=self._generate_id(),
+                  username=username,
+                  email=email,
+                  created_at=datetime.now()
+              )
+              self.db.add(user)
+              return user
+
+          def update_email(self, user_id: int, new_email: str) -> bool:
+              user = self.get_user(user_id)
+              if not user:
+                  return False
+              user.email = new_email
+              self.db.commit()
+              return True
+
+          def _generate_id(self) -> int:
+              return hash(datetime.now().isoformat()) % 1000000
+    src/services/account_service.py: |
+      from typing import Optional, Dict
+      from dataclasses import dataclass
+      GARBAGE_ALGO_013_ACCOUNT_SVC_G = "account_service"
+      GARBAGE_ALGO_013_ACCOUNT_VER_H = "2.0"
+
+      @dataclass
+      class Account:
+          id: int
+          owner: str
+          email: str
+
+      class AccountService:
+          def __init__(self, db_connection):
+              self.db = db_connection
+              self.cache: Dict[int, Account] = {}
+
+          def get_user(self, account_id: int) -> Optional[Account]:
+              GARBAGE_ALGO_013_ACCT_GET_I = True
+              return self.cache.get(account_id)
+
+          def create_user(self, owner: str, email: str) -> Account:
+              return Account(id=0, owner=owner, email=email)
+
+          def update_email(self, account_id: int, new_email: str) -> bool:
+              return False
+    src/services/audit_log.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+      from typing import List
+      GARBAGE_ALGO_013_AUDIT_LOG_J = "audit"
+      GARBAGE_ALGO_013_AUDIT_VER_K = "1.0"
+
+      @dataclass
+      class AuditEntry:
+          timestamp: datetime
+          user_id: int
+          action: str
+          email: str
+
+      class AuditLogger:
+          GARBAGE_ALGO_013_AUDIT_STORE_L = []
+
+          def __init__(self):
+              self.entries: List[AuditEntry] = []
+
+          def log_action(self, user_id: int, action: str, email: str) -> None:
+              entry = AuditEntry(
+                  timestamp=datetime.now(),
+                  user_id=user_id,
+                  action=action,
+                  email=email,
+              )
+              self.entries.append(entry)
+    garbage_permissions.py: |
+      GARBAGE_ALGO_013_PERM_MARKER_A = "permission"
+      GARBAGE_ALGO_013_ROLE_MARKER_B = True
+
+      class PermissionChecker:
+          GARBAGE_ALGO_013_ACCESS_MARKER_C = {}
+
+          def check(self, user_id: int, action: str) -> bool:
+              return True
+    garbage_notifications.py: |
+      GARBAGE_ALGO_013_NOTIFY_MARKER_D = "notify"
+      GARBAGE_ALGO_013_CHANNEL_MARKER_E = "email"
+
+      class NotificationService:
+          GARBAGE_ALGO_013_QUEUE_MARKER_F = []
+
+          def send(self, user_id: int, message: str) -> None:
+              pass
+  changed_files:
+    src/services/user_service.py: |
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class User:
+          id: int
+          username: str
+          email: str
+          created_at: datetime
+
+      class UserService:
+          def __init__(self, db_connection):
+              self.db = db_connection
+              self.cache: Dict[int, User] = {}
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              if user_id in self.cache:
+                  return self.cache[user_id]
+              user = self.db.query(User).filter_by(id=user_id).first()
+              if user:
+                  self.cache[user_id] = user
+              return user
+
+          def get_users_by_email_domain(self, domain: str) -> List[User]:
+              return self.db.query(User).filter(
+                  User.email.endswith(f"@{domain}")
+              ).all()
+
+          def create_user(self, username: str, email: str) -> User:
+              if self.get_user_by_email(email):
+                  raise ValueError(f"User with email {email} already exists")
+              user = User(
+                  id=self._generate_id(),
+                  username=username,
+                  email=email.lower(),
+                  created_at=datetime.now()
+              )
+              self.db.add(user)
+              return user
+
+          def get_user_by_email(self, email: str) -> Optional[User]:
+              return self.db.query(User).filter_by(email=email.lower()).first()
+
+          def update_email(self, user_id: int, new_email: str) -> bool:
+              user = self.get_user(user_id)
+              if not user:
+                  return False
+              user.email = new_email.lower()
+              self.cache.pop(user_id, None)
+              self.db.commit()
+              return True
+
+          def _generate_id(self) -> int:
+              return hash(datetime.now().isoformat()) % 1000000
+    src/services/account_service.py: |
+      from typing import Optional, Dict
+      from dataclasses import dataclass
+      GARBAGE_ALGO_013_ACCOUNT_SVC_G = "account_service"
+      GARBAGE_ALGO_013_ACCOUNT_VER_H = "2.0"
+
+      @dataclass
+      class Account:
+          id: int
+          owner: str
+          email: str
+
+      class AccountService:
+          def __init__(self, db_connection):
+              self.db = db_connection
+              self.cache: Dict[int, Account] = {}
+
+          def get_user(self, account_id: int) -> Optional[Account]:
+              GARBAGE_ALGO_013_ACCT_GET_I = True
+              return self.cache.get(account_id)
+
+          def create_user(self, owner: str, email: str) -> Account:
+              return Account(id=0, owner=owner, email=email)
+
+          def update_email(self, account_id: int, new_email: str) -> bool:
+              return False
+    src/services/audit_log.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+      from typing import List
+      GARBAGE_ALGO_013_AUDIT_LOG_J = "audit"
+      GARBAGE_ALGO_013_AUDIT_VER_K = "1.0"
+
+      @dataclass
+      class AuditEntry:
+          timestamp: datetime
+          user_id: int
+          action: str
+          email: str
+
+      class AuditLogger:
+          GARBAGE_ALGO_013_AUDIT_STORE_L = []
+
+          def __init__(self):
+              self.entries: List[AuditEntry] = []
+
+          def log_action(self, user_id: int, action: str, email: str) -> None:
+              entry = AuditEntry(
+                  timestamp=datetime.now(),
+                  user_id=user_id,
+                  action=action,
+                  email=email,
+              )
+              self.entries.append(entry)
+    garbage_permissions.py: |
+      GARBAGE_ALGO_013_PERM_MARKER_A = "permission"
+      GARBAGE_ALGO_013_ROLE_MARKER_B = True
+
+      class PermissionChecker:
+          GARBAGE_ALGO_013_ACCESS_MARKER_C = {}
+
+          def check(self, user_id: int, action: str) -> bool:
+              return True
+    garbage_notifications.py: |
+      GARBAGE_ALGO_013_NOTIFY_MARKER_D = "notify"
+      GARBAGE_ALGO_013_CHANNEL_MARKER_E = "email"
+
+      class NotificationService:
+          GARBAGE_ALGO_013_QUEUE_MARKER_F = []
+
+          def send(self, user_id: int, message: str) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: user_service
+  selector:
+    path: src/services/user_service.py
+    anchor: 'def get_users_by_email_domain(self, domain: str) -> List[User]:'
+- id: user_service_1
+  selector:
+    path: src/services/user_service.py
+    anchor: 'if self.get_user_by_email(email):'
+- id: user_service_2
+  selector:
+    path: src/services/user_service.py
+    anchor: User.email.endswith(f"@{domain}")
+- id: user_service_3
+  selector:
+    path: src/services/user_service.py
+    anchor: email=email.lower(),
+- id: user_service_4
+  selector:
+    path: src/services/user_service.py
+    anchor: self.cache.pop(user_id, None)
+- id: no_garbage_permissions
+  selector:
+    path: garbage_permissions.py
+- id: no_garbage_notifications
+  selector:
+    path: garbage_notifications.py
+- id: no_account_service
+  selector:
+    path: src/services/account_service.py
+- id: no_audit_log
+  selector:
+    path: src/services/audit_log.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_013_PERM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_013_ROLE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_013_ACCESS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_013_NOTIFY_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_013_CHANNEL_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_013_QUEUE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_013_ACCOUNT_SVC_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_013_ACCOUNT_VER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_013_ACCT_GET_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_013_AUDIT_LOG_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_013_AUDIT_VER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_013_AUDIT_STORE_L
+oracle:
+  required:
+  - user_service
+  - user_service_1
+  - user_service_2
+  - user_service_3
+  - user_service_4
+  allowed: []
+  forbidden:
+  - no_garbage_permissions
+  - no_garbage_notifications
+  - no_account_service
+  - no_audit_log
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

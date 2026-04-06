@@ -1,0 +1,118 @@
+name: jvm_and_compiled_058_scala_trait_mixin
+repo:
+  initial_files:
+    Logging.scala: |
+      trait Logging {
+        def log(message: String): Unit = println(s"[LOG] $message")
+        def debug(message: String): Unit = println(s"[DEBUG] $message")
+      }
+    Metrics.scala: |
+      trait Metrics {
+        def recordMetric(name: String, value: Double): Unit = {
+          println(s"Metric: $name = $value")
+        }
+      }
+    Service.scala: |
+      // Initial
+      class Service {}
+    Auditing.scala: |
+      trait Auditing {
+        def audit(action: String, userId: String): Unit = {
+          println(s"[AUDIT] $userId: $action at ${System.currentTimeMillis()}")
+        }
+
+        def auditAccess(resource: String, userId: String): Unit = {
+          audit(s"accessed $resource", userId)
+        }
+      }
+    HealthCheck.scala: |
+      trait HealthCheck {
+        def isHealthy: Boolean = true
+
+        def checkDependency(name: String): Boolean = {
+          println(s"Checking health of $name")
+          true
+        }
+
+        def status: Map[String, Boolean] = Map("self" -> isHealthy)
+      }
+  changed_files:
+    Logging.scala: |
+      trait Logging {
+        def log(message: String): Unit = println(s"[LOG] $message")
+        def debug(message: String): Unit = println(s"[DEBUG] $message")
+      }
+    Metrics.scala: |
+      trait Metrics {
+        def recordMetric(name: String, value: Double): Unit = {
+          println(s"Metric: $name = $value")
+        }
+      }
+    Service.scala: |
+      class Service extends Logging with Metrics {
+        def process(data: String): Unit = {
+          log(s"Processing: $data")
+          recordMetric("process_count", 1.0)
+          debug("Process complete")
+        }
+      }
+    Auditing.scala: |
+      trait Auditing {
+        def audit(action: String, userId: String): Unit = {
+          println(s"[AUDIT] $userId: $action at ${System.currentTimeMillis()}")
+        }
+
+        def auditAccess(resource: String, userId: String): Unit = {
+          audit(s"accessed $resource", userId)
+        }
+      }
+    HealthCheck.scala: |
+      trait HealthCheck {
+        def isHealthy: Boolean = true
+
+        def checkDependency(name: String): Boolean = {
+          println(s"Checking health of $name")
+          true
+        }
+
+        def status: Map[String, Boolean] = Map("self" -> isHealthy)
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: Service.scala
+    anchor: class Service extends Logging with Metrics {
+- id: no_auditing
+  selector:
+    path: Auditing.scala
+- id: no_healthcheck
+  selector:
+    path: HealthCheck.scala
+- id: no_global_0
+  selector:
+    anchor: Auditing
+- id: no_global_1
+  selector:
+    anchor: auditAccess
+- id: no_global_2
+  selector:
+    anchor: HealthCheck
+- id: no_global_3
+  selector:
+    anchor: checkDependency
+- id: no_global_4
+  selector:
+    anchor: isHealthy
+oracle:
+  required:
+  - service
+  allowed: []
+  forbidden:
+  - no_auditing
+  - no_healthcheck
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,112 @@
+name: output_009_fragment_count_matches
+repo:
+  initial_files:
+    a.py: |
+      def a():
+          pass
+    b.py: |
+      def b():
+          pass
+    utils/audit_logger.py: |
+      AUDIT_TABLE = "audit_trail"
+      AUDIT_RETENTION_DAYS = 365
+
+      class AuditLogger:
+          def __init__(self, table: str = AUDIT_TABLE):
+              self.table = table
+
+          def log_action(self, user: str, action: str) -> None:
+              pass
+
+          def get_trail(self, user: str, limit: int = 50) -> list[dict]:
+              return []
+    utils/compliance_checker.py: |
+      COMPLIANCE_STANDARDS = ["SOC2", "GDPR", "HIPAA"]
+      CHECK_INTERVAL_HOURS = 24
+
+      class ComplianceChecker:
+          def validate(self, record: dict) -> bool:
+              return True
+
+          def get_violations(self, records: list[dict]) -> list[dict]:
+              return []
+  changed_files:
+    a.py: |
+      def a():
+          return 1
+    b.py: |
+      def b():
+          return 2
+    utils/audit_logger.py: |
+      AUDIT_TABLE = "audit_trail"
+      AUDIT_RETENTION_DAYS = 365
+
+      class AuditLogger:
+          def __init__(self, table: str = AUDIT_TABLE):
+              self.table = table
+
+          def log_action(self, user: str, action: str) -> None:
+              pass
+
+          def get_trail(self, user: str, limit: int = 50) -> list[dict]:
+              return []
+    utils/compliance_checker.py: |
+      COMPLIANCE_STANDARDS = ["SOC2", "GDPR", "HIPAA"]
+      CHECK_INTERVAL_HOURS = 24
+
+      class ComplianceChecker:
+          def validate(self, record: dict) -> bool:
+              return True
+
+          def get_violations(self, records: list[dict]) -> list[dict]:
+              return []
+  commit_message: Update files
+fragments:
+- id: a_file
+  selector:
+    path: a.py
+- id: b_file
+  selector:
+    path: b.py
+- id: req_global_0
+  selector:
+    anchor: '    return 1'
+- id: no_audit_logger
+  selector:
+    path: utils/audit_logger.py
+- id: no_compliance_checker
+  selector:
+    path: utils/compliance_checker.py
+- id: no_global_0
+  selector:
+    anchor: AuditLogger
+- id: no_global_1
+  selector:
+    anchor: AUDIT_TABLE
+- id: no_global_2
+  selector:
+    anchor: AUDIT_RETENTION_DAYS
+- id: no_global_3
+  selector:
+    anchor: ComplianceChecker
+- id: no_global_4
+  selector:
+    anchor: COMPLIANCE_STANDARDS
+- id: no_global_5
+  selector:
+    anchor: CHECK_INTERVAL_HOURS
+oracle:
+  required:
+  - a_file
+  - b_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_audit_logger
+  - no_compliance_checker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

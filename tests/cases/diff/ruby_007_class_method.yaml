@@ -1,0 +1,233 @@
+name: ruby_007_class_method
+repo:
+  initial_files:
+    app/models/user.rb: |
+      class User
+        attr_reader :id, :name, :email, :role
+
+        def self.find(id)
+          new(id: id, name: "User #{id}")
+        end
+
+        def self.all
+          @records ||= []
+        end
+
+        def self.where(role:)
+          all.select { |u| u.role == role }
+        end
+
+        def self.create(attrs)
+          user = new(**attrs)
+          all << user
+          user
+        end
+
+        def initialize(id: nil, name: nil, email: nil, role: 'user')
+          @id = id
+          @name = name
+          @email = email
+          @role = role
+        end
+      end
+    app/controllers/users_controller.rb: |
+      class UsersController
+        def index
+          "list"
+        end
+      end
+    lib/user_serializer.rb: |
+      class UserSerializer
+        def initialize(user)
+          @user = user
+        end
+
+        def to_json
+          {
+            id: @user.id,
+            name: @user.name,
+            email: @user.email,
+            role: @user.role
+          }.to_json
+        end
+
+        def to_api_response
+          { data: { type: 'user', attributes: to_hash } }
+        end
+
+        private
+
+        def to_hash
+          { id: @user.id, name: @user.name, email: @user.email }
+        end
+      end
+    app/services/notification_service.rb: |
+      class NotificationService
+        def initialize(mailer:, sms_gateway: nil)
+          @mailer = mailer
+          @sms_gateway = sms_gateway
+        end
+
+        def notify_user(user_id, message, channel: :email)
+          case channel
+          when :email
+            @mailer.send_email(user_id, message)
+          when :sms
+            @sms_gateway&.send_sms(user_id, message)
+          end
+        end
+
+        def broadcast(user_ids, message)
+          user_ids.each { |uid| notify_user(uid, message) }
+        end
+      end
+  changed_files:
+    app/models/user.rb: |
+      class User
+        attr_reader :id, :name, :email, :role
+
+        def self.find(id)
+          new(id: id, name: "User #{id}")
+        end
+
+        def self.all
+          @records ||= []
+        end
+
+        def self.where(role:)
+          all.select { |u| u.role == role }
+        end
+
+        def self.create(attrs)
+          user = new(**attrs)
+          all << user
+          user
+        end
+
+        def initialize(id: nil, name: nil, email: nil, role: 'user')
+          @id = id
+          @name = name
+          @email = email
+          @role = role
+        end
+      end
+    app/controllers/users_controller.rb: |
+      require_relative '../models/user'
+
+      class UsersController
+        def show(id)
+          @user = User.find(id)
+        end
+
+        def index
+          @users = User.all
+        end
+
+        def admins
+          @admins = User.where(role: 'admin')
+        end
+
+        def create(params)
+          @user = User.create(params)
+          @user
+        end
+      end
+    lib/user_serializer.rb: |
+      class UserSerializer
+        def initialize(user)
+          @user = user
+        end
+
+        def to_json
+          {
+            id: @user.id,
+            name: @user.name,
+            email: @user.email,
+            role: @user.role
+          }.to_json
+        end
+
+        def to_api_response
+          { data: { type: 'user', attributes: to_hash } }
+        end
+
+        private
+
+        def to_hash
+          { id: @user.id, name: @user.name, email: @user.email }
+        end
+      end
+    app/services/notification_service.rb: |
+      class NotificationService
+        def initialize(mailer:, sms_gateway: nil)
+          @mailer = mailer
+          @sms_gateway = sms_gateway
+        end
+
+        def notify_user(user_id, message, channel: :email)
+          case channel
+          when :email
+            @mailer.send_email(user_id, message)
+          when :sms
+            @sms_gateway&.send_sms(user_id, message)
+          end
+        end
+
+        def broadcast(user_ids, message)
+          user_ids.each { |uid| notify_user(uid, message) }
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: users_controller
+  selector:
+    path: app/controllers/users_controller.rb
+    anchor: '@user = User.find(id)'
+- id: users_controller_1
+  selector:
+    path: app/controllers/users_controller.rb
+    anchor: '@user = User.create(params)'
+- id: user
+  selector:
+    path: app/models/user.rb
+    anchor: def self.find(id)
+- id: user_1
+  selector:
+    path: app/models/user.rb
+    anchor: def self.create(attrs)
+- id: no_user_serializer
+  selector:
+    path: lib/user_serializer.rb
+- id: no_notification_service
+  selector:
+    path: app/services/notification_service.rb
+- id: no_global_0
+  selector:
+    anchor: UserSerializer
+- id: no_global_1
+  selector:
+    anchor: to_api_response
+- id: no_global_2
+  selector:
+    anchor: NotificationService
+- id: no_global_3
+  selector:
+    anchor: notify_user
+- id: no_global_4
+  selector:
+    anchor: broadcast
+oracle:
+  required:
+  - users_controller
+  - users_controller_1
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_user_serializer
+  - no_notification_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

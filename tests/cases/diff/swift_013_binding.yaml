@@ -1,0 +1,328 @@
+name: swift_013_binding
+repo:
+  initial_files:
+    Models/User.swift: |
+      import Foundation
+
+      struct User: Identifiable {
+          let id: UUID
+          var name: String
+          var email: String
+          var avatarURL: URL?
+
+          static let placeholder = User(
+              id: UUID(),
+              name: "",
+              email: "",
+              avatarURL: nil
+          )
+      }
+    Features/UserEditor/UserEditorView.swift: |
+      import SwiftUI
+
+      struct UserEditorView: View {
+          var body: some View { Text("TODO") }
+      }
+    Models/Product.swift: |
+      import Foundation
+
+      struct Product: Identifiable {
+          let id: UUID
+          var title: String
+          var price: Decimal
+          var description: String
+          var imageURL: URL?
+      }
+    Features/Settings/SettingsView.swift: |
+      import SwiftUI
+
+      struct AppSettings {
+          var notificationsEnabled: Bool
+          var darkModeEnabled: Bool
+          var fontSize: CGFloat
+      }
+
+      struct SettingsView: View {
+          @Binding var settings: AppSettings
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $settings.notificationsEnabled)
+                  Toggle("Dark Mode", isOn: $settings.darkModeEnabled)
+              }
+          }
+      }
+    Features/UserEditor/AvatarPickerView.swift: |
+      import SwiftUI
+
+      struct AvatarPickerView: View {
+          @Binding var user: User
+          @State private var showImagePicker = false
+
+          var body: some View {
+              VStack {
+                  if let url = user.avatarURL {
+                      AsyncImage(url: url) { image in
+                          image.resizable().scaledToFit()
+                      } placeholder: {
+                          ProgressView()
+                      }
+                      .frame(width: 100, height: 100)
+                  }
+                  Button("Change Avatar") {
+                      showImagePicker = true
+                  }
+              }
+          }
+      }
+    Views/UserListView.swift: |
+      import SwiftUI
+
+      struct UserListView: View {
+          @State private var users: [User] = [.placeholder]
+
+          var body: some View {
+              NavigationStack {
+                  List($users) { $user in
+                      NavigationLink(user.name) {
+                          UserEditorView(user: $user)
+                      }
+                  }
+                  .navigationTitle("Users")
+              }
+          }
+      }
+    Models/Address.swift: |
+      struct Address {
+          var street: String
+          var city: String
+          var state: String
+          var zipCode: String
+          var country: String
+
+          static let empty = Address(
+              street: "", city: "", state: "", zipCode: "", country: ""
+          )
+      }
+  changed_files:
+    Models/User.swift: |
+      import Foundation
+
+      struct User: Identifiable {
+          let id: UUID
+          var name: String
+          var email: String
+          var avatarURL: URL?
+
+          static let placeholder = User(
+              id: UUID(),
+              name: "",
+              email: "",
+              avatarURL: nil
+          )
+      }
+    Features/UserEditor/UserEditorView.swift: |
+      import SwiftUI
+
+      struct UserEditorView: View {
+          @Binding var user: User
+
+          var body: some View {
+              Form {
+                  Section("Personal Info") {
+                      TextField("Name", text: $user.name)
+                      TextField("Email", text: $user.email)
+                  }
+              }
+              .navigationTitle("Edit User")
+          }
+      }
+    Models/Product.swift: |
+      import Foundation
+
+      struct Product: Identifiable {
+          let id: UUID
+          var title: String
+          var price: Decimal
+          var description: String
+          var imageURL: URL?
+      }
+    Features/Settings/SettingsView.swift: |
+      import SwiftUI
+
+      struct AppSettings {
+          var notificationsEnabled: Bool
+          var darkModeEnabled: Bool
+          var fontSize: CGFloat
+      }
+
+      struct SettingsView: View {
+          @Binding var settings: AppSettings
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $settings.notificationsEnabled)
+                  Toggle("Dark Mode", isOn: $settings.darkModeEnabled)
+              }
+          }
+      }
+    Features/UserEditor/AvatarPickerView.swift: |
+      import SwiftUI
+
+      struct AvatarPickerView: View {
+          @Binding var user: User
+          @State private var showImagePicker = false
+
+          var body: some View {
+              VStack {
+                  if let url = user.avatarURL {
+                      AsyncImage(url: url) { image in
+                          image.resizable().scaledToFit()
+                      } placeholder: {
+                          ProgressView()
+                      }
+                      .frame(width: 100, height: 100)
+                  }
+                  Button("Change Avatar") {
+                      showImagePicker = true
+                  }
+              }
+          }
+      }
+    Views/UserListView.swift: |
+      import SwiftUI
+
+      struct UserListView: View {
+          @State private var users: [User] = [.placeholder]
+
+          var body: some View {
+              NavigationStack {
+                  List($users) { $user in
+                      NavigationLink(user.name) {
+                          UserEditorView(user: $user)
+                      }
+                  }
+                  .navigationTitle("Users")
+              }
+          }
+      }
+    Models/Address.swift: |
+      struct Address {
+          var street: String
+          var city: String
+          var state: String
+          var zipCode: String
+          var country: String
+
+          static let empty = Address(
+              street: "", city: "", state: "", zipCode: "", country: ""
+          )
+      }
+  commit_message: Update files
+fragments:
+- id: usereditorview
+  selector:
+    path: Features/UserEditor/UserEditorView.swift
+    anchor: '@Binding var user: User'
+- id: usereditorview_1
+  selector:
+    path: Features/UserEditor/UserEditorView.swift
+    anchor: $user.name
+- id: usereditorview_2
+  selector:
+    path: Features/UserEditor/UserEditorView.swift
+    anchor: $user.email
+- id: user
+  selector:
+    path: Models/User.swift
+    anchor: 'struct User: Identifiable'
+- id: user_1
+  selector:
+    path: Models/User.swift
+    anchor: 'var name: String'
+- id: user_2
+  selector:
+    path: Models/User.swift
+    anchor: 'var email: String'
+- id: no_product
+  selector:
+    path: Models/Product.swift
+- id: no_settingsview
+  selector:
+    path: Features/Settings/SettingsView.swift
+- id: no_avatarpickerview
+  selector:
+    path: Features/UserEditor/AvatarPickerView.swift
+- id: no_userlistview
+  selector:
+    path: Views/UserListView.swift
+- id: no_address
+  selector:
+    path: Models/Address.swift
+- id: no_global_0
+  selector:
+    anchor: struct Product
+- id: no_global_1
+  selector:
+    anchor: 'var price: Decimal'
+- id: no_global_2
+  selector:
+    anchor: imageURL
+- id: no_global_3
+  selector:
+    anchor: AppSettings
+- id: no_global_4
+  selector:
+    anchor: notificationsEnabled
+- id: no_global_5
+  selector:
+    anchor: darkModeEnabled
+- id: no_global_6
+  selector:
+    anchor: AvatarPickerView
+- id: no_global_7
+  selector:
+    anchor: showImagePicker
+- id: no_global_8
+  selector:
+    anchor: Change Avatar
+- id: no_global_9
+  selector:
+    anchor: UserListView
+- id: no_global_10
+  selector:
+    anchor: NavigationStack
+- id: no_global_11
+  selector:
+    anchor: Address
+- id: no_global_12
+  selector:
+    anchor: zipCode
+oracle:
+  required:
+  - usereditorview
+  - usereditorview_1
+  - usereditorview_2
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_product
+  - no_settingsview
+  - no_avatarpickerview
+  - no_userlistview
+  - no_address
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

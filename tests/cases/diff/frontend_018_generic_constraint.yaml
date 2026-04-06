@@ -1,0 +1,184 @@
+name: frontend_018_generic_constraint
+repo:
+  initial_files:
+    src/entities.ts: |
+      export interface BaseEntity {
+          id: string;
+          createdAt: Date;
+          updatedAt: Date;
+      }
+
+      export interface Identifiable {
+          id: string;
+      }
+
+      export interface Timestamped {
+          createdAt: Date;
+          updatedAt: Date;
+      }
+    src/repository.ts: |
+      console.log('initial');
+    src/validators.ts: |
+      export interface Validatable {
+          validate(): boolean;
+      }
+
+      export function validateAll<T extends Validatable>(items: T[]): boolean {
+          return items.every(item => item.validate());
+      }
+
+      export function findInvalid<T extends Validatable>(items: T[]): T[] {
+          return items.filter(item => !item.validate());
+      }
+
+      export class ValidationError extends Error {
+          constructor(public field: string, message: string) {
+              super(message);
+          }
+      }
+    src/types/serializable.ts: |
+      export interface Serializable {
+          toJSON(): Record<string, unknown>;
+          fromJSON(data: Record<string, unknown>): void;
+      }
+
+      export function serialize<T extends Serializable>(item: T): string {
+          return JSON.stringify(item.toJSON());
+      }
+
+      export function deserialize<T extends Serializable>(
+          json: string,
+          factory: () => T
+      ): T {
+          const instance = factory();
+          instance.fromJSON(JSON.parse(json));
+          return instance;
+      }
+  changed_files:
+    src/entities.ts: |
+      export interface BaseEntity {
+          id: string;
+          createdAt: Date;
+          updatedAt: Date;
+      }
+
+      export interface Identifiable {
+          id: string;
+      }
+
+      export interface Timestamped {
+          createdAt: Date;
+          updatedAt: Date;
+      }
+    src/repository.ts: |
+      import { BaseEntity, Identifiable } from './entities';
+
+      export function findById<T extends BaseEntity>(
+          items: T[],
+          id: string
+      ): T | undefined {
+          return items.find(item => item.id === id);
+      }
+
+      export function updateEntity<T extends BaseEntity>(
+          entity: T,
+          updates: Partial<Omit<T, 'id' | 'createdAt'>>
+      ): T {
+          return {
+              ...entity,
+              ...updates,
+              updatedAt: new Date(),
+          };
+      }
+
+      export class Repository<T extends Identifiable> {
+          private items: Map<string, T> = new Map();
+
+          save(item: T): void {
+              this.items.set(item.id, item);
+          }
+
+          get(id: string): T | undefined {
+              return this.items.get(id);
+          }
+      }
+    src/validators.ts: |
+      export interface Validatable {
+          validate(): boolean;
+      }
+
+      export function validateAll<T extends Validatable>(items: T[]): boolean {
+          return items.every(item => item.validate());
+      }
+
+      export function findInvalid<T extends Validatable>(items: T[]): T[] {
+          return items.filter(item => !item.validate());
+      }
+
+      export class ValidationError extends Error {
+          constructor(public field: string, message: string) {
+              super(message);
+          }
+      }
+    src/types/serializable.ts: |
+      export interface Serializable {
+          toJSON(): Record<string, unknown>;
+          fromJSON(data: Record<string, unknown>): void;
+      }
+
+      export function serialize<T extends Serializable>(item: T): string {
+          return JSON.stringify(item.toJSON());
+      }
+
+      export function deserialize<T extends Serializable>(
+          json: string,
+          factory: () => T
+      ): T {
+          const instance = factory();
+          instance.fromJSON(JSON.parse(json));
+          return instance;
+      }
+  commit_message: Update files
+fragments:
+- id: repository
+  selector:
+    path: src/repository.ts
+    anchor: import { BaseEntity, Identifiable } from './entities'
+- id: repository_1
+  selector:
+    path: src/repository.ts
+    anchor: function findById<T extends BaseEntity>(
+- id: no_validators
+  selector:
+    path: src/validators.ts
+- id: no_serializable
+  selector:
+    path: src/types/serializable.ts
+- id: no_global_0
+  selector:
+    anchor: Validatable
+- id: no_global_1
+  selector:
+    anchor: validateAll
+- id: no_global_2
+  selector:
+    anchor: ValidationError
+- id: no_global_3
+  selector:
+    anchor: Serializable
+- id: no_global_4
+  selector:
+    anchor: deserialize
+oracle:
+  required:
+  - repository
+  - repository_1
+  allowed: []
+  forbidden:
+  - no_validators
+  - no_serializable
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,114 @@
+name: output_010_relative_paths_in_nested
+repo:
+  initial_files:
+    src/module.py: |
+      def func():
+          pass
+    utils/path_resolver.py: |
+      import os
+
+      PATH_SEPARATOR = os.sep
+      MAX_PATH_DEPTH = 50
+
+      class PathResolver:
+          def resolve(self, relative_path: str, base: str = ".") -> str:
+              return os.path.abspath(os.path.join(base, relative_path))
+
+          def normalize(self, path: str) -> str:
+              return os.path.normpath(path)
+
+          def relative_to(self, path: str, base: str) -> str:
+              return os.path.relpath(path, base)
+    utils/checksum_calculator.py: |
+      import hashlib
+
+      DEFAULT_ALGORITHM = "sha256"
+      BUFFER_SIZE = 65536
+
+      class ChecksumCalculator:
+          def compute_file(self, filepath: str, algorithm: str = DEFAULT_ALGORITHM) -> str:
+              h = hashlib.new(algorithm)
+              return h.hexdigest()
+
+          def verify(self, filepath: str, expected: str) -> bool:
+              return self.compute_file(filepath) == expected
+  changed_files:
+    src/module.py: |
+      def func():
+          return 1
+    utils/path_resolver.py: |
+      import os
+
+      PATH_SEPARATOR = os.sep
+      MAX_PATH_DEPTH = 50
+
+      class PathResolver:
+          def resolve(self, relative_path: str, base: str = ".") -> str:
+              return os.path.abspath(os.path.join(base, relative_path))
+
+          def normalize(self, path: str) -> str:
+              return os.path.normpath(path)
+
+          def relative_to(self, path: str, base: str) -> str:
+              return os.path.relpath(path, base)
+    utils/checksum_calculator.py: |
+      import hashlib
+
+      DEFAULT_ALGORITHM = "sha256"
+      BUFFER_SIZE = 65536
+
+      class ChecksumCalculator:
+          def compute_file(self, filepath: str, algorithm: str = DEFAULT_ALGORITHM) -> str:
+              h = hashlib.new(algorithm)
+              return h.hexdigest()
+
+          def verify(self, filepath: str, expected: str) -> bool:
+              return self.compute_file(filepath) == expected
+  commit_message: Update files
+fragments:
+- id: module_file
+  selector:
+    path: src/module.py
+- id: req_global_0
+  selector:
+    anchor: |-
+      def func():
+          return 1
+- id: no_path_resolver
+  selector:
+    path: utils/path_resolver.py
+- id: no_checksum_calculator
+  selector:
+    path: utils/checksum_calculator.py
+- id: no_global_0
+  selector:
+    anchor: PathResolver
+- id: no_global_1
+  selector:
+    anchor: PATH_SEPARATOR
+- id: no_global_2
+  selector:
+    anchor: MAX_PATH_DEPTH
+- id: no_global_3
+  selector:
+    anchor: ChecksumCalculator
+- id: no_global_4
+  selector:
+    anchor: DEFAULT_ALGORITHM
+- id: no_global_5
+  selector:
+    anchor: BUFFER_SIZE
+oracle:
+  required:
+  - module_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_path_resolver
+  - no_checksum_calculator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

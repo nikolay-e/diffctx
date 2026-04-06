@@ -1,0 +1,105 @@
+name: javascript_054_request_body_validation
+repo:
+  initial_files:
+    schemas.ts: |
+      export interface CreateUserBody {
+          name: string;
+          email: string;
+          password: string;
+      }
+    controller.ts: |
+      console.log('initial');
+    update-schema.ts: |
+      export interface UpdateUserBody {
+          name?: string;
+          email?: string;
+      }
+
+      export function validateUpdate(body: unknown): body is UpdateUserBody {
+          if (!body || typeof body !== 'object') return false;
+          return true;
+      }
+    password-hasher.ts: |
+      export async function hashPassword(plain: string): Promise<string> {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(plain);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+  changed_files:
+    schemas.ts: |
+      export interface CreateUserBody {
+          name: string;
+          email: string;
+          password: string;
+      }
+    controller.ts: |
+      import { Request, Response } from 'express';
+      import { CreateUserBody } from './schemas';
+
+      export function createUser(req: Request, res: Response) {
+          const body = req.body as CreateUserBody;
+          res.status(201).json({ id: '1', name: body.name, email: body.email });
+      }
+    update-schema.ts: |
+      export interface UpdateUserBody {
+          name?: string;
+          email?: string;
+      }
+
+      export function validateUpdate(body: unknown): body is UpdateUserBody {
+          if (!body || typeof body !== 'object') return false;
+          return true;
+      }
+    password-hasher.ts: |
+      export async function hashPassword(plain: string): Promise<string> {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(plain);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+  commit_message: Update files
+fragments:
+- id: schemas
+  selector:
+    path: schemas.ts
+    anchor: interface CreateUserBody {
+- id: schemas_1
+  selector:
+    path: schemas.ts
+    anchor: 'name: string'
+- id: schemas_2
+  selector:
+    path: schemas.ts
+    anchor: 'email: string'
+- id: no_update_schema
+  selector:
+    path: update-schema.ts
+- id: no_password_hasher
+  selector:
+    path: password-hasher.ts
+- id: no_global_0
+  selector:
+    anchor: UpdateUserBody
+- id: no_global_1
+  selector:
+    anchor: validateUpdate
+- id: no_global_2
+  selector:
+    anchor: hashPassword
+- id: no_global_3
+  selector:
+    anchor: SHA-256
+oracle:
+  required:
+  - schemas
+  - schemas_1
+  - schemas_2
+  allowed: []
+  forbidden:
+  - no_update_schema
+  - no_password_hasher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

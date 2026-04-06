@@ -1,0 +1,120 @@
+name: output_011_valid_kind_class_and_function
+repo:
+  initial_files:
+    module.py: |
+      class MyClass:
+          def method(self):
+              pass
+
+      def function():
+          pass
+    utils/stream_compressor.py: |
+      import zlib
+
+      COMPRESSION_LEVEL = 6
+      CHUNK_SIZE = 8192
+
+      class StreamCompressor:
+          def __init__(self, level: int = COMPRESSION_LEVEL):
+              self.level = level
+
+          def compress(self, data: bytes) -> bytes:
+              return zlib.compress(data, self.level)
+
+          def decompress(self, data: bytes) -> bytes:
+              return zlib.decompress(data)
+    utils/archive_builder.py: |
+      TAR_FORMAT = "gz"
+      MAX_ARCHIVE_SIZE_MB = 500
+
+      class ArchiveBuilder:
+          def __init__(self):
+              self._files: list[str] = []
+
+          def add_file(self, path: str) -> None:
+              self._files.append(path)
+
+          def create(self, output_path: str) -> str:
+              return output_path
+  changed_files:
+    module.py: |
+      class MyClass:
+          def method(self):
+              return 1
+
+      def function():
+          return 2
+    utils/stream_compressor.py: |
+      import zlib
+
+      COMPRESSION_LEVEL = 6
+      CHUNK_SIZE = 8192
+
+      class StreamCompressor:
+          def __init__(self, level: int = COMPRESSION_LEVEL):
+              self.level = level
+
+          def compress(self, data: bytes) -> bytes:
+              return zlib.compress(data, self.level)
+
+          def decompress(self, data: bytes) -> bytes:
+              return zlib.decompress(data)
+    utils/archive_builder.py: |
+      TAR_FORMAT = "gz"
+      MAX_ARCHIVE_SIZE_MB = 500
+
+      class ArchiveBuilder:
+          def __init__(self):
+              self._files: list[str] = []
+
+          def add_file(self, path: str) -> None:
+              self._files.append(path)
+
+          def create(self, output_path: str) -> str:
+              return output_path
+  commit_message: Update files
+fragments:
+- id: module_file
+  selector:
+    path: module.py
+- id: req_global_0
+  selector:
+    anchor: '    return 1'
+- id: no_stream_compressor
+  selector:
+    path: utils/stream_compressor.py
+- id: no_archive_builder
+  selector:
+    path: utils/archive_builder.py
+- id: no_global_0
+  selector:
+    anchor: StreamCompressor
+- id: no_global_1
+  selector:
+    anchor: COMPRESSION_LEVEL
+- id: no_global_2
+  selector:
+    anchor: CHUNK_SIZE
+- id: no_global_3
+  selector:
+    anchor: ArchiveBuilder
+- id: no_global_4
+  selector:
+    anchor: TAR_FORMAT
+- id: no_global_5
+  selector:
+    anchor: MAX_ARCHIVE_SIZE_MB
+oracle:
+  required:
+  - module_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_stream_compressor
+  - no_archive_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

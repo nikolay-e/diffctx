@@ -1,0 +1,100 @@
+name: internals_066_file_scoped_content_assertion
+repo:
+  initial_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+
+          def greet(self) -> str:
+              return f"Hello, {self.name}"
+    services/auth.py: |
+      from models.user import User
+
+      class AuthService:
+          def login(self, email: str, password: str) -> User:
+              return User(name="test", email=email)
+    garbage_int066_metrics.py: |
+      GARBAGE_INT066_METRICS_MARKER_A = "metrics_garbage_a"
+      class MetricsCollector:
+          GARBAGE_INT066_METRICS_MARKER_B = "metrics_garbage_b"
+          def collect(self):
+              return "GARBAGE_INT066_METRICS_MARKER_C"
+    garbage_int066_cache.py: |
+      GARBAGE_INT066_CACHE_MARKER_A = "cache_garbage_a"
+      def warm_cache():
+          return "GARBAGE_INT066_CACHE_MARKER_B"
+  changed_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str, role: str = "viewer"):
+              self.name = name
+              self.email = email
+              self.role = role
+
+          def greet(self) -> str:
+              return f"Hello, {self.name}"
+
+          def is_admin(self) -> bool:
+              return self.role == "admin"
+    services/auth.py: |
+      from models.user import User
+
+      class AuthService:
+          def login(self, email: str, password: str) -> User:
+              return User(name="test", email=email)
+
+          def check_permission(self, user: User, action: str) -> bool:
+              return user.is_admin() or action == "read"
+    garbage_int066_metrics.py: |
+      GARBAGE_INT066_METRICS_MARKER_A = "metrics_garbage_a"
+      class MetricsCollector:
+          GARBAGE_INT066_METRICS_MARKER_B = "metrics_garbage_b"
+          def collect(self):
+              return "GARBAGE_INT066_METRICS_MARKER_C"
+    garbage_int066_cache.py: |
+      GARBAGE_INT066_CACHE_MARKER_A = "cache_garbage_a"
+      def warm_cache():
+          return "GARBAGE_INT066_CACHE_MARKER_B"
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: models/user.py
+    anchor: 'def is_admin(self) -> bool:'
+- id: user_1
+  selector:
+    path: models/user.py
+    anchor: role
+- id: auth
+  selector:
+    path: services/auth.py
+    anchor: 'def check_permission(self, user: User, action: str) -> bool:'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT066_METRICS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT066_METRICS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT066_METRICS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT066_CACHE_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_INT066_CACHE_MARKER_B
+oracle:
+  required:
+  - user
+  - user_1
+  - auth
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

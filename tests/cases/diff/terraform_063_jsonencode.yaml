@@ -1,0 +1,124 @@
+name: terraform_063_jsonencode
+repo:
+  initial_files:
+    ecs.tf: |
+      resource "aws_ecs_task_definition" "worker" {
+        family = "worker"
+        container_definitions = jsonencode([{
+          name      = "worker"
+          image     = "worker:latest"
+          cpu       = 256
+          memory    = 512
+          essential = true
+          environment = [
+            { name = "APP_ENV", value = "staging" }
+          ]
+        }])
+      }
+    service.tf: |
+      resource "aws_ecs_service" "worker" {
+        name            = "worker-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.worker.arn
+        desired_count   = 2
+
+        network_configuration {
+          subnets         = var.private_subnet_ids
+          security_groups = [aws_security_group.worker.id]
+        }
+      }
+    logging.tf: |
+      resource "aws_cloudwatch_log_group" "ecs_worker" {
+        name              = "/ecs/worker"
+        retention_in_days = 14
+      }
+    scheduler/task.tf: |
+      resource "aws_ecs_task_definition" "scheduler" {
+        family = "scheduler"
+        container_definitions = jsonencode([{
+          name      = "scheduler"
+          image     = "scheduler:latest"
+          cpu       = 128
+          memory    = 256
+          essential = true
+        }])
+      }
+    storage/backups.tf: |
+      resource "aws_s3_bucket" "backups" {
+        bucket = "app-backups-bucket"
+      }
+  changed_files:
+    ecs.tf: |
+      resource "aws_ecs_task_definition" "worker" {
+        family = "worker"
+        container_definitions = jsonencode([{
+          name      = "worker"
+          image     = "worker:v2"
+          cpu       = 512
+          memory    = 1024
+          essential = true
+          environment = [
+            { name = "APP_ENV", value = "production" },
+            { name = "LOG_FORMAT", value = "json" }
+          ]
+          logConfiguration = {
+            logDriver = "awslogs"
+            options = {
+              "awslogs-group"  = "/ecs/worker"
+              "awslogs-region" = "us-east-1"
+            }
+          }
+        }])
+      }
+  commit_message: Update files
+fragments:
+- id: ecs
+  selector:
+    path: ecs.tf
+    anchor: image     = "worker:v2"
+- id: ecs_1
+  selector:
+    path: ecs.tf
+    anchor: cpu       = 512
+- id: ecs_2
+  selector:
+    path: ecs.tf
+    anchor: logDriver = "awslogs"
+- id: service
+  selector:
+    path: service.tf
+    anchor: resource "aws_ecs_service" "worker" {
+- id: service_1
+  selector:
+    path: service.tf
+    anchor: aws_ecs_task_definition.worker.arn
+- id: logging
+  selector:
+    path: logging.tf
+    anchor: name              = "/ecs/worker"
+- id: no_task
+  selector:
+    path: scheduler/task.tf
+- id: no_backups
+  selector:
+    path: storage/backups.tf
+- id: no_global_0
+  selector:
+    anchor: scheduler
+- id: no_global_1
+  selector:
+    anchor: app-backups-bucket
+oracle:
+  required:
+  - ecs
+  - ecs_1
+  - ecs_2
+  - service
+  - service_1
+  - logging
+  allowed: []
+  forbidden:
+  - no_task
+  - no_backups
+  - no_global_0
+  - no_global_1

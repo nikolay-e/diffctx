@@ -1,0 +1,171 @@
+name: javascript_082_computed
+repo:
+  initial_files:
+    utils.ts: |
+      export function formatName(first: string, last: string): string {
+          return `${first} ${last}`;
+      }
+
+      export function formatInitials(first: string, last: string): string {
+          return `${first[0]}${last[0]}`.toUpperCase();
+      }
+    Profile.vue: |
+      <template><div>initial</div></template>
+    ProfileCard.vue: |
+      <script setup lang="ts">
+      import Profile from './Profile.vue';
+
+      const user = { first: 'John', last: 'Doe' };
+      </script>
+
+      <template>
+          <div class="profile-card">
+              <Profile />
+          </div>
+      </template>
+    name-validator.ts: |
+      export function validateName(name: string): { valid: boolean; error?: string } {
+          if (name.length < 1) return { valid: false, error: 'Name required' };
+          if (name.length > 50) return { valid: false, error: 'Name too long' };
+          if (!/^[a-zA-Z\s'-]+$/.test(name)) return { valid: false, error: 'Invalid characters' };
+          return { valid: true };
+      }
+
+      export function sanitizeName(name: string): string {
+          return name.trim().replace(/\s+/g, ' ');
+      }
+    ProfileAvatar.vue: |
+      <script setup lang="ts">
+      import { ref, computed } from 'vue';
+      import { formatInitials } from './utils';
+
+      const firstName = ref('Jane');
+      const lastName = ref('Smith');
+
+      const initials = computed(() => formatInitials(firstName.value, lastName.value));
+      </script>
+
+      <template>
+          <div class="avatar">{{ initials }}</div>
+      </template>
+  changed_files:
+    utils.ts: |
+      export function formatName(first: string, last: string): string {
+          return `${first} ${last}`;
+      }
+
+      export function formatInitials(first: string, last: string): string {
+          return `${first[0]}${last[0]}`.toUpperCase();
+      }
+    Profile.vue: |
+      <script setup lang="ts">
+      import { ref, computed } from 'vue';
+      import { formatName } from './utils';
+
+      const firstName = ref('John');
+      const lastName = ref('Doe');
+
+      const fullName = computed(() => formatName(firstName.value, lastName.value));
+      </script>
+
+      <template>
+          <div>{{ fullName }}</div>
+      </template>
+    ProfileCard.vue: |
+      <script setup lang="ts">
+      import Profile from './Profile.vue';
+
+      const user = { first: 'John', last: 'Doe' };
+      </script>
+
+      <template>
+          <div class="profile-card">
+              <Profile />
+          </div>
+      </template>
+    name-validator.ts: |
+      export function validateName(name: string): { valid: boolean; error?: string } {
+          if (name.length < 1) return { valid: false, error: 'Name required' };
+          if (name.length > 50) return { valid: false, error: 'Name too long' };
+          if (!/^[a-zA-Z\s'-]+$/.test(name)) return { valid: false, error: 'Invalid characters' };
+          return { valid: true };
+      }
+
+      export function sanitizeName(name: string): string {
+          return name.trim().replace(/\s+/g, ' ');
+      }
+    ProfileAvatar.vue: |
+      <script setup lang="ts">
+      import { ref, computed } from 'vue';
+      import { formatInitials } from './utils';
+
+      const firstName = ref('Jane');
+      const lastName = ref('Smith');
+
+      const initials = computed(() => formatInitials(firstName.value, lastName.value));
+      </script>
+
+      <template>
+          <div class="avatar">{{ initials }}</div>
+      </template>
+  commit_message: Update files
+fragments:
+- id: profile
+  selector:
+    path: Profile.vue
+    anchor: import { formatName } from './utils'
+- id: profile_1
+  selector:
+    path: Profile.vue
+    anchor: computed(() => formatName(firstName.value, lastName.value))
+- id: utils
+  selector:
+    path: utils.ts
+    anchor: 'function formatName(first: string, last: string): string'
+- id: no_profilecard
+  selector:
+    path: ProfileCard.vue
+- id: no_name_validator
+  selector:
+    path: name-validator.ts
+- id: no_profileavatar
+  selector:
+    path: ProfileAvatar.vue
+- id: no_global_0
+  selector:
+    anchor: ProfileCard
+- id: no_global_1
+  selector:
+    anchor: profile-card
+- id: no_global_2
+  selector:
+    anchor: validateName
+- id: no_global_3
+  selector:
+    anchor: sanitizeName
+- id: no_global_4
+  selector:
+    anchor: ProfileAvatar
+- id: no_global_5
+  selector:
+    anchor: formatInitials
+- id: no_global_6
+  selector:
+    anchor: initials
+oracle:
+  required:
+  - profile
+  - profile_1
+  - utils
+  allowed: []
+  forbidden:
+  - no_profilecard
+  - no_name_validator
+  - no_profileavatar
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

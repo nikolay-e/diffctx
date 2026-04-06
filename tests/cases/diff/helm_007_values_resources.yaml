@@ -1,0 +1,139 @@
+name: helm_007_values_resources
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: cache-proxy
+      version: 1.0.0
+    chart/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: cache-proxy
+        tag: "1.0.0"
+      resources:
+        limits:
+          cpu: 100m
+          memory: 128Mi
+    chart/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: {{ .Chart.Name }}
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/name: {{ .Chart.Name }}
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                resources:
+                  {{- toYaml .Values.resources | nindent 14 }}
+                ports:
+                  - name: http
+                    containerPort: 6379
+    chart/templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        type: ClusterIP
+        ports:
+          - port: 6379
+            targetPort: 6379
+        selector:
+          app.kubernetes.io/name: {{ .Chart.Name }}
+    chart/templates/metrics-exporter.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+      spec:
+        template:
+          spec:
+            containers:
+    chart/docs/capacity-plan.md: |
+      # Capacity Planning
+      ## Resource Estimates
+  changed_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: cache-proxy
+      version: 1.0.0
+    chart/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: cache-proxy
+        tag: "1.0.0"
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+    chart/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: {{ .Chart.Name }}
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/name: {{ .Chart.Name }}
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                resources:
+                  {{- toYaml .Values.resources | nindent 14 }}
+                ports:
+                  - name: http
+                    containerPort: 6379
+    chart/templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        type: ClusterIP
+        ports:
+          - port: 6379
+            targetPort: 6379
+        selector:
+          app.kubernetes.io/name: {{ .Chart.Name }}
+    chart/templates/metrics-exporter.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+      spec:
+        template:
+          spec:
+            containers:
+    chart/docs/capacity-plan.md: |
+      # Capacity Planning
+      ## Resource Estimates
+  commit_message: Update files
+fragments:
+- id: values_file
+  selector:
+    path: chart/values.yaml
+- id: req_global_0
+  selector:
+    anchor: 'memory: 512Mi'
+oracle:
+  required:
+  - values_file
+  - req_global_0
+  allowed: []
+  forbidden: []

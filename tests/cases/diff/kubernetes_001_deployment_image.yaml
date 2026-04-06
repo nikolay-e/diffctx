@@ -1,0 +1,388 @@
+name: kubernetes_001_deployment_image
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+          tier: backend
+          environment: production
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/api-server:v1.2.3
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: grpc
+              env:
+              - name: LOG_LEVEL
+                value: "info"
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              readinessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                initialDelaySeconds: 15
+                periodSeconds: 20
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: grpc
+          port: 9090
+          targetPort: 9090
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: api-server
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+        - type: Resource
+          resource:
+            name: memory
+            target:
+              type: Utilization
+              averageUtilization: 80
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: api-server
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/rate-limit: "100"
+      spec:
+        tls:
+        - hosts:
+          - api.example.com
+          secretName: api-tls-cert
+        rules:
+        - host: api.example.com
+          http:
+            paths:
+            - path: /v1
+              pathType: Prefix
+              backend:
+                service:
+                  name: api-server
+                  port:
+                    number: 80
+            - path: /grpc
+              pathType: Prefix
+              backend:
+                service:
+                  name: api-server
+                  port:
+                    number: 9090
+    k8s/base/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        minAvailable: 2
+        selector:
+          matchLabels:
+            app: api-server
+    k8s/monitoring/grafana-dashboard.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: api-server-dashboard
+        namespace: monitoring
+        labels:
+          grafana_dashboard: "true"
+      data:
+        api-server.json: |
+          {
+            "title": "API Server Overview",
+            "panels": [
+              {"type": "graph", "title": "Request Rate", "targets": [{"expr": "rate(http_requests_total{app=\"api-server\"}[5m])"}]},
+              {"type": "graph", "title": "Error Rate", "targets": [{"expr": "rate(http_errors_total{app=\"api-server\"}[5m])"}]},
+              {"type": "stat", "title": "Active Pods", "targets": [{"expr": "kube_deployment_status_replicas{deployment=\"api-server\"}"}]}
+            ]
+          }
+    k8s/jobs/db-migration.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: db-migrate-v42
+        namespace: production
+      spec:
+        backoffLimit: 3
+        template:
+          spec:
+            containers:
+            - name: migrate
+              image: registry.example.com/db-migrations:v42
+              command: ["python", "manage.py", "migrate"]
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+            restartPolicy: Never
+    Dockerfile: |
+      FROM python:3.11-slim
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+      COPY . .
+      EXPOSE 8080 9090
+      CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0"]
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+          tier: backend
+          environment: production
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/api-server:v2.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: grpc
+              env:
+              - name: LOG_LEVEL
+                value: "info"
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              readinessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8080
+                initialDelaySeconds: 15
+                periodSeconds: 20
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'image: registry.example.com/api-server:v2.0.0'
+- id: deployment_1
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'containerPort: 8080'
+- id: deployment_2
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'containerPort: 9090'
+- id: service
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'targetPort: 8080'
+- id: service_1
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'targetPort: 9090'
+- id: service_2
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'app: api-server'
+- id: no_hpa
+  selector:
+    path: k8s/base/hpa.yaml
+- id: no_ingress
+  selector:
+    path: k8s/base/ingress.yaml
+- id: no_pdb
+  selector:
+    path: k8s/base/pdb.yaml
+- id: no_grafana_dashboard
+  selector:
+    path: k8s/monitoring/grafana-dashboard.yaml
+- id: no_db_migration
+  selector:
+    path: k8s/jobs/db-migration.yaml
+- id: no_dockerfile
+  selector:
+    path: Dockerfile
+- id: no_global_0
+  selector:
+    anchor: scaleTargetRef
+- id: no_global_1
+  selector:
+    anchor: minReplicas
+- id: no_global_2
+  selector:
+    anchor: maxReplicas
+- id: no_global_3
+  selector:
+    anchor: averageUtilization
+- id: no_global_4
+  selector:
+    anchor: api.example.com
+- id: no_global_5
+  selector:
+    anchor: ssl-redirect
+- id: no_global_6
+  selector:
+    anchor: rate-limit
+- id: no_global_7
+  selector:
+    anchor: api-tls-cert
+- id: no_global_8
+  selector:
+    anchor: PodDisruptionBudget
+- id: no_global_9
+  selector:
+    anchor: minAvailable
+- id: no_global_10
+  selector:
+    anchor: api-server-dashboard
+- id: no_global_11
+  selector:
+    anchor: grafana_dashboard
+- id: no_global_12
+  selector:
+    anchor: http_requests_total
+- id: no_global_13
+  selector:
+    anchor: kube_deployment_status_replicas
+- id: no_global_14
+  selector:
+    anchor: db-migrate-v42
+- id: no_global_15
+  selector:
+    anchor: db-migrations
+- id: no_global_16
+  selector:
+    anchor: manage.py
+- id: no_global_17
+  selector:
+    anchor: FROM python:3.11-slim
+- id: no_global_18
+  selector:
+    anchor: EXPOSE 8080 9090
+- id: no_global_19
+  selector:
+    anchor: uvicorn
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - service
+  - service_1
+  - service_2
+  allowed: []
+  forbidden:
+  - no_hpa
+  - no_ingress
+  - no_pdb
+  - no_grafana_dashboard
+  - no_db_migration
+  - no_dockerfile
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19

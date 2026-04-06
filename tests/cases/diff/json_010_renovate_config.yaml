@@ -1,0 +1,150 @@
+name: json_010_renovate_config
+repo:
+  initial_files:
+    renovate.json: |
+      {
+        "extends": ["config:base"],
+        "automerge": false,
+        "labels": ["dependencies"],
+        "schedule": ["every weekend"],
+        "prHourlyLimit": 5,
+        "prConcurrentLimit": 10
+      }
+    package.json: |
+      {
+        "name": "webapp",
+        "version": "3.0.0",
+        "dependencies": {
+          "lodash": "^4.17.0",
+          "express": "^4.18.0",
+          "axios": "^1.4.0"
+        },
+        "devDependencies": {
+          "jest": "^29.6.0",
+          "eslint": "^8.45.0",
+          "typescript": "^5.2.0"
+        }
+      }
+    src/app.js: |
+      const express = require('express');
+      const axios = require('axios');
+      const _ = require('lodash');
+
+      const app = express();
+
+      app.get('/api/data', async (req, res) => {
+          const response = await axios.get('https://api.example.com/data');
+          const filtered = _.pick(response.data, ['id', 'name', 'status']);
+          res.json(filtered);
+      });
+
+      app.get('/api/health', (req, res) => {
+          res.json({ status: 'ok', version: '3.0.0' });
+      });
+
+      function startServer(port) {
+          return app.listen(port, () => {
+              console.log(`Server started on port ${port}`);
+          });
+      }
+
+      module.exports = { app, startServer };
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 18
+            - run: npm ci
+            - run: npm test
+            - run: npm run lint
+    tests/app.test.js: |
+      const request = require('supertest');
+      const { app } = require('../src/app');
+
+      describe('API endpoints', () => {
+          it('GET /api/health returns ok', async () => {
+              const res = await request(app).get('/api/health');
+              expect(res.status).toBe(200);
+              expect(res.body.status).toBe('ok');
+          });
+      });
+  changed_files:
+    renovate.json: |
+      {
+        "extends": ["config:base"],
+        "automerge": true,
+        "labels": ["dependencies"],
+        "schedule": ["every weekend"],
+        "prHourlyLimit": 5,
+        "prConcurrentLimit": 10,
+        "packageRules": [
+          {"matchPackagePatterns": ["*"], "enabled": true},
+          {"matchDepTypes": ["devDependencies"], "automerge": true}
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: renovate
+  selector:
+    path: renovate.json
+    anchor: '"automerge": true'
+- id: renovate_1
+  selector:
+    path: renovate.json
+    anchor: '"matchDepTypes": ["devDependencies"]'
+- id: no_ci
+  selector:
+    path: .github/workflows/ci.yml
+- id: no_app_test
+  selector:
+    path: tests/app.test.js
+- id: no_app
+  selector:
+    path: src/app.js
+- id: no_global_0
+  selector:
+    anchor: _.pick
+- id: no_global_1
+  selector:
+    anchor: startServer
+- id: no_global_2
+  selector:
+    anchor: api.example.com
+- id: no_global_3
+  selector:
+    anchor: actions/checkout
+- id: no_global_4
+  selector:
+    anchor: actions/setup-node
+- id: no_global_5
+  selector:
+    anchor: npm run lint
+- id: no_global_6
+  selector:
+    anchor: supertest
+- id: no_global_7
+  selector:
+    anchor: GET /api/health
+oracle:
+  required:
+  - renovate
+  - renovate_1
+  allowed: []
+  forbidden:
+  - no_ci
+  - no_app_test
+  - no_app
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

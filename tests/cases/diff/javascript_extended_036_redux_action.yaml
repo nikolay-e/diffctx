@@ -1,0 +1,240 @@
+name: javascript_extended_036_redux_action
+repo:
+  initial_files:
+    src/store/userSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      interface UserState {
+          users: User[];
+          loading: boolean;
+      }
+
+      const initialState: UserState = { users: [], loading: false };
+
+      export const userSlice = createSlice({
+          name: 'users',
+          initialState,
+          reducers: {
+              addUser: (state, action: PayloadAction<User>) => {
+                  state.users.push(action.payload);
+              },
+              removeUser: (state, action: PayloadAction<string>) => {
+                  state.users = state.users.filter(u => u.id !== action.payload);
+              },
+          },
+      });
+
+      export const { addUser, removeUser } = userSlice.actions;
+    src/components/UserForm.tsx: |
+      console.log('initial');
+    src/store/settingsSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface SettingsState {
+          theme: 'light' | 'dark';
+          language: string;
+          notificationsEnabled: boolean;
+      }
+
+      const initialState: SettingsState = {
+          theme: 'light',
+          language: 'en',
+          notificationsEnabled: true,
+      };
+
+      export const settingsSlice = createSlice({
+          name: 'settings',
+          initialState,
+          reducers: {
+              setTheme: (state, action: PayloadAction<'light' | 'dark'>) => {
+                  state.theme = action.payload;
+              },
+              setLanguage: (state, action: PayloadAction<string>) => {
+                  state.language = action.payload;
+              },
+              toggleNotifications: (state) => {
+                  state.notificationsEnabled = !state.notificationsEnabled;
+              },
+          },
+      });
+
+      export const { setTheme, setLanguage, toggleNotifications } = settingsSlice.actions;
+    src/i18n/translations.ts: |
+      interface TranslationMap {
+          [key: string]: string;
+      }
+
+      const en: TranslationMap = {
+          greeting: 'Hello',
+          farewell: 'Goodbye',
+          submit: 'Submit',
+          cancel: 'Cancel',
+      };
+
+      const es: TranslationMap = {
+          greeting: 'Hola',
+          farewell: 'Adiós',
+          submit: 'Enviar',
+          cancel: 'Cancelar',
+      };
+
+      export function translate(key: string, locale = 'en'): string {
+          const translations = locale === 'es' ? es : en;
+          return translations[key] || key;
+      }
+  changed_files:
+    src/store/userSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      interface UserState {
+          users: User[];
+          loading: boolean;
+      }
+
+      const initialState: UserState = { users: [], loading: false };
+
+      export const userSlice = createSlice({
+          name: 'users',
+          initialState,
+          reducers: {
+              addUser: (state, action: PayloadAction<User>) => {
+                  state.users.push(action.payload);
+              },
+              removeUser: (state, action: PayloadAction<string>) => {
+                  state.users = state.users.filter(u => u.id !== action.payload);
+              },
+          },
+      });
+
+      export const { addUser, removeUser } = userSlice.actions;
+    src/components/UserForm.tsx: |
+      import { useDispatch } from 'react-redux';
+      import { addUser } from '../store/userSlice';
+
+      export function UserForm() {
+          const dispatch = useDispatch();
+
+          const handleAdd = () => {
+              dispatch(addUser({ id: Date.now().toString(), name: 'New User' }));
+          };
+
+          return <button onClick={handleAdd}>Add User</button>;
+      }
+    src/store/settingsSlice.ts: |
+      import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+      interface SettingsState {
+          theme: 'light' | 'dark';
+          language: string;
+          notificationsEnabled: boolean;
+      }
+
+      const initialState: SettingsState = {
+          theme: 'light',
+          language: 'en',
+          notificationsEnabled: true,
+      };
+
+      export const settingsSlice = createSlice({
+          name: 'settings',
+          initialState,
+          reducers: {
+              setTheme: (state, action: PayloadAction<'light' | 'dark'>) => {
+                  state.theme = action.payload;
+              },
+              setLanguage: (state, action: PayloadAction<string>) => {
+                  state.language = action.payload;
+              },
+              toggleNotifications: (state) => {
+                  state.notificationsEnabled = !state.notificationsEnabled;
+              },
+          },
+      });
+
+      export const { setTheme, setLanguage, toggleNotifications } = settingsSlice.actions;
+    src/i18n/translations.ts: |
+      interface TranslationMap {
+          [key: string]: string;
+      }
+
+      const en: TranslationMap = {
+          greeting: 'Hello',
+          farewell: 'Goodbye',
+          submit: 'Submit',
+          cancel: 'Cancel',
+      };
+
+      const es: TranslationMap = {
+          greeting: 'Hola',
+          farewell: 'Adiós',
+          submit: 'Enviar',
+          cancel: 'Cancelar',
+      };
+
+      export function translate(key: string, locale = 'en'): string {
+          const translations = locale === 'es' ? es : en;
+          return translations[key] || key;
+      }
+  commit_message: Update files
+fragments:
+- id: userslice
+  selector:
+    path: src/store/userSlice.ts
+    anchor: addUser
+- id: userslice_1
+  selector:
+    path: src/store/userSlice.ts
+    anchor: PayloadAction<User>
+- id: userslice_2
+  selector:
+    path: src/store/userSlice.ts
+    anchor: state.users.push
+- id: no_settingsslice
+  selector:
+    path: src/store/settingsSlice.ts
+- id: no_translations
+  selector:
+    path: src/i18n/translations.ts
+- id: no_global_0
+  selector:
+    anchor: SettingsState
+- id: no_global_1
+  selector:
+    anchor: setTheme
+- id: no_global_2
+  selector:
+    anchor: setLanguage
+- id: no_global_3
+  selector:
+    anchor: toggleNotifications
+- id: no_global_4
+  selector:
+    anchor: TranslationMap
+- id: no_global_5
+  selector:
+    anchor: translate
+oracle:
+  required:
+  - userslice
+  - userslice_1
+  - userslice_2
+  allowed: []
+  forbidden:
+  - no_settingsslice
+  - no_translations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

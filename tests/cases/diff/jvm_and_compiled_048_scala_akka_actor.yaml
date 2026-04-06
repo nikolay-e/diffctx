@@ -1,0 +1,159 @@
+name: jvm_and_compiled_048_scala_akka_actor
+repo:
+  initial_files:
+    Messages.scala: |
+      sealed trait UserMessage
+      case class CreateUser(name: String) extends UserMessage
+      case class DeleteUser(id: String) extends UserMessage
+      case class GetUser(id: String) extends UserMessage
+      case class UserCreated(id: String, name: String)
+    UserActor.scala: |
+      // Initial
+      class UserActor {}
+    OrderActor.scala: |
+      import akka.actor.{Actor, ActorLogging, Props}
+
+      sealed trait OrderMessage
+      case class PlaceOrder(item: String, quantity: Int) extends OrderMessage
+      case class CancelOrder(orderId: String) extends OrderMessage
+
+      class OrderActor extends Actor with ActorLogging {
+        private var orders: Map[String, (String, Int)] = Map.empty
+
+        def receive: Receive = {
+          case PlaceOrder(item, qty) =>
+            val id = java.util.UUID.randomUUID().toString
+            orders = orders + (id -> (item, qty))
+            log.info(s"Placed order $id")
+
+          case CancelOrder(id) =>
+            orders = orders - id
+            log.info(s"Cancelled order $id")
+        }
+      }
+
+      object OrderActor {
+        def props: Props = Props[OrderActor]()
+      }
+    ActorConfig.scala: |
+      import akka.actor.ActorSystem
+      import com.typesafe.config.ConfigFactory
+
+      object ActorConfig {
+        val system: ActorSystem = ActorSystem("app-system", ConfigFactory.load())
+
+        def shutdown(): Unit = {
+          system.terminate()
+        }
+      }
+  changed_files:
+    Messages.scala: |
+      sealed trait UserMessage
+      case class CreateUser(name: String) extends UserMessage
+      case class DeleteUser(id: String) extends UserMessage
+      case class GetUser(id: String) extends UserMessage
+      case class UserCreated(id: String, name: String)
+    UserActor.scala: |
+      import akka.actor.{Actor, ActorLogging, Props}
+
+      class UserActor extends Actor with ActorLogging {
+        private var users: Map[String, String] = Map.empty
+
+        def receive: Receive = {
+          case CreateUser(name) =>
+            val id = java.util.UUID.randomUUID().toString
+            users = users + (id -> name)
+            log.info(s"Created user $id: $name")
+            sender() ! UserCreated(id, name)
+
+          case DeleteUser(id) =>
+            users = users - id
+            log.info(s"Deleted user $id")
+
+          case GetUser(id) =>
+            sender() ! users.get(id)
+        }
+      }
+
+      object UserActor {
+        def props: Props = Props[UserActor]()
+      }
+    OrderActor.scala: |
+      import akka.actor.{Actor, ActorLogging, Props}
+
+      sealed trait OrderMessage
+      case class PlaceOrder(item: String, quantity: Int) extends OrderMessage
+      case class CancelOrder(orderId: String) extends OrderMessage
+
+      class OrderActor extends Actor with ActorLogging {
+        private var orders: Map[String, (String, Int)] = Map.empty
+
+        def receive: Receive = {
+          case PlaceOrder(item, qty) =>
+            val id = java.util.UUID.randomUUID().toString
+            orders = orders + (id -> (item, qty))
+            log.info(s"Placed order $id")
+
+          case CancelOrder(id) =>
+            orders = orders - id
+            log.info(s"Cancelled order $id")
+        }
+      }
+
+      object OrderActor {
+        def props: Props = Props[OrderActor]()
+      }
+    ActorConfig.scala: |
+      import akka.actor.ActorSystem
+      import com.typesafe.config.ConfigFactory
+
+      object ActorConfig {
+        val system: ActorSystem = ActorSystem("app-system", ConfigFactory.load())
+
+        def shutdown(): Unit = {
+          system.terminate()
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: useractor
+  selector:
+    path: UserActor.scala
+    anchor: import akka.actor.{Actor, ActorLogging, Props}
+- id: no_orderactor
+  selector:
+    path: OrderActor.scala
+- id: no_actorconfig
+  selector:
+    path: ActorConfig.scala
+- id: no_global_0
+  selector:
+    anchor: OrderActor
+- id: no_global_1
+  selector:
+    anchor: PlaceOrder
+- id: no_global_2
+  selector:
+    anchor: CancelOrder
+- id: no_global_3
+  selector:
+    anchor: ActorConfig
+- id: no_global_4
+  selector:
+    anchor: ActorSystem
+- id: no_global_5
+  selector:
+    anchor: ConfigFactory
+oracle:
+  required:
+  - useractor
+  allowed: []
+  forbidden:
+  - no_orderactor
+  - no_actorconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

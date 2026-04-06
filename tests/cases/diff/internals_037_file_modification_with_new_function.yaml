@@ -1,0 +1,31 @@
+name: internals_037_file_modification_with_new_function
+repo:
+  initial_files:
+    keep.py: |
+      def keep_this():
+          return "staying"
+  changed_files:
+    keep.py: |
+      def keep_this():
+          return "modified"
+
+      def added_func():
+          return "new"
+  commit_message: Update files
+fragments:
+- id: keep_file
+  selector:
+    path: keep.py
+- id: req_global_0
+  selector:
+    anchor: return "modified"
+- id: req_global_1
+  selector:
+    anchor: 'def added_func():'
+oracle:
+  required:
+  - keep_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

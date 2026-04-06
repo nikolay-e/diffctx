@@ -1,0 +1,268 @@
+name: nim_003_nimble_package
+repo:
+  initial_files:
+    myproject.nimble: |
+      # Package
+      version       = "0.1.0"
+      author        = "Developer"
+      description   = "A web server project"
+      license       = "MIT"
+      srcDir        = "src"
+      bin           = @["server"]
+
+      # Dependencies
+      requires "nim >= 1.6.0"
+      requires "httpbeast >= 0.4.0"
+    src/server.nim: |
+      import httpbeast, options
+
+      proc onRequest(req: Request): Future[void] =
+        if req.httpMethod == some(HttpGet):
+          case req.path.get()
+          of "/":
+            req.send(Http200, "Hello, World!")
+          of "/health":
+            req.send(Http200, "OK")
+          else:
+            req.send(Http404, "Not Found")
+
+      proc main() =
+        run(onRequest, initSettings(port = Port(8080)))
+
+      when isMainModule:
+        main()
+    src/models.nim: |
+      import json
+
+      type
+        User* = object
+          id*: int
+          name*: string
+          email*: string
+
+        ApiResponse* = object
+          status*: int
+          message*: string
+          data*: JsonNode
+
+      let GARBAGE_NIM_003_A = "models_marker"
+      let GARBAGE_NIM_003_B = "schema_marker"
+
+      proc toJson*(user: User): JsonNode =
+        %*{"id": user.id, "name": user.name, "email": user.email}
+
+      proc fromJson*(node: JsonNode): User =
+        User(
+          id: node["id"].getInt(),
+          name: node["name"].getStr(),
+          email: node["email"].getStr()
+        )
+    src/utils.nim: |
+      import strutils, times
+
+      let GARBAGE_NIM_003_C = "utils_marker"
+      let GARBAGE_NIM_003_D = "helper_marker"
+
+      proc generateId*(): string =
+        $getTime().toUnix() & "-" & $rand(99999)
+
+      proc sanitizeInput*(input: string): string =
+        input.strip().replace("<", "&lt;").replace(">", "&gt;")
+
+      proc parseQueryString*(qs: string): seq[(string, string)] =
+        for pair in qs.split("&"):
+          let parts = pair.split("=", maxsplit = 1)
+          if parts.len == 2:
+            result.add((parts[0], parts[1]))
+    tests/test_server.nim: |
+      import unittest
+
+      let GARBAGE_NIM_003_E = "test_marker"
+      let GARBAGE_NIM_003_F = "assert_marker"
+
+      suite "server tests":
+        test "health endpoint returns OK":
+          check true
+
+        test "root endpoint returns greeting":
+          check true
+  changed_files:
+    myproject.nimble: |
+      # Package
+      version       = "0.1.0"
+      author        = "Developer"
+      description   = "A web server project"
+      license       = "MIT"
+      srcDir        = "src"
+      bin           = @["server"]
+
+      # Dependencies
+      requires "nim >= 1.6.0"
+      requires "httpbeast >= 0.4.0"
+      requires "chronos >= 3.0.0"
+    src/server.nim: |
+      import httpbeast, options
+      import chronos
+
+      proc onRequest(req: Request): Future[void] =
+        if req.httpMethod == some(HttpGet):
+          case req.path.get()
+          of "/":
+            req.send(Http200, "Hello, World!")
+          of "/health":
+            req.send(Http200, "OK")
+          of "/slow":
+            await sleepAsync(1000.milliseconds)
+            req.send(Http200, "Done after delay")
+          else:
+            req.send(Http404, "Not Found")
+
+      proc startBackgroundTask() {.async.} =
+        while true:
+          await sleepAsync(60_000.milliseconds)
+          echo "Background tick"
+
+      proc main() =
+        asyncSpawn startBackgroundTask()
+        run(onRequest, initSettings(port = Port(8080)))
+
+      when isMainModule:
+        main()
+    src/models.nim: |
+      import json
+
+      type
+        User* = object
+          id*: int
+          name*: string
+          email*: string
+
+        ApiResponse* = object
+          status*: int
+          message*: string
+          data*: JsonNode
+
+      let GARBAGE_NIM_003_A = "models_marker"
+      let GARBAGE_NIM_003_B = "schema_marker"
+
+      proc toJson*(user: User): JsonNode =
+        %*{"id": user.id, "name": user.name, "email": user.email}
+
+      proc fromJson*(node: JsonNode): User =
+        User(
+          id: node["id"].getInt(),
+          name: node["name"].getStr(),
+          email: node["email"].getStr()
+        )
+    src/utils.nim: |
+      import strutils, times
+
+      let GARBAGE_NIM_003_C = "utils_marker"
+      let GARBAGE_NIM_003_D = "helper_marker"
+
+      proc generateId*(): string =
+        $getTime().toUnix() & "-" & $rand(99999)
+
+      proc sanitizeInput*(input: string): string =
+        input.strip().replace("<", "&lt;").replace(">", "&gt;")
+
+      proc parseQueryString*(qs: string): seq[(string, string)] =
+        for pair in qs.split("&"):
+          let parts = pair.split("=", maxsplit = 1)
+          if parts.len == 2:
+            result.add((parts[0], parts[1]))
+    tests/test_server.nim: |
+      import unittest
+
+      let GARBAGE_NIM_003_E = "test_marker"
+      let GARBAGE_NIM_003_F = "assert_marker"
+
+      suite "server tests":
+        test "health endpoint returns OK":
+          check true
+
+        test "root endpoint returns greeting":
+          check true
+  commit_message: Update files
+fragments:
+- id: myproject
+  selector:
+    path: myproject.nimble
+    anchor: requires "chronos >= 3.0.0"
+- id: server
+  selector:
+    path: src/server.nim
+    anchor: import chronos
+- id: server_1
+  selector:
+    path: src/server.nim
+    anchor: await sleepAsync(1000.milliseconds)
+- id: server_2
+  selector:
+    path: src/server.nim
+    anchor: proc startBackgroundTask()
+- id: server_3
+  selector:
+    path: src/server.nim
+    anchor: asyncSpawn startBackgroundTask()
+- id: no_models
+  selector:
+    path: src/models.nim
+- id: no_utils
+  selector:
+    path: src/utils.nim
+- id: no_test_server
+  selector:
+    path: tests/test_server.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIM_003_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIM_003_B
+- id: no_global_2
+  selector:
+    anchor: ApiResponse
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_NIM_003_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_NIM_003_D
+- id: no_global_5
+  selector:
+    anchor: generateId
+- id: no_global_6
+  selector:
+    anchor: sanitizeInput
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_NIM_003_E
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_NIM_003_F
+- id: no_global_9
+  selector:
+    anchor: suite "server tests"
+oracle:
+  required:
+  - myproject
+  - server
+  - server_1
+  - server_2
+  - server_3
+  allowed: []
+  forbidden:
+  - no_models
+  - no_utils
+  - no_test_server
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

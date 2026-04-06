@@ -84,6 +84,9 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
 _SUPPRESSION_EXEMPT = frozenset({"semantic", "structural", "test_edge"})
 
 
+_HUB_OUT_DEGREE_THRESHOLD = 3
+
+
 def _apply_hub_suppression(
     edges: dict[tuple[FragmentId, FragmentId], float],
     edge_categories: dict[tuple[FragmentId, FragmentId], str],
@@ -109,5 +112,15 @@ def _apply_hub_suppression(
         if deg > d_median and cat not in _SUPPRESSION_EXEMPT:
             weight = weight / max(1.0, math.log(1 + deg))
         suppressed[(src, dst)] = weight
+
+    sem_out_degree: dict[FragmentId, int] = {}
+    for (src, _dst), cat in edge_categories.items():
+        if cat == "semantic":
+            sem_out_degree[src] = sem_out_degree.get(src, 0) + 1
+
+    for src, dst in list(suppressed.keys()):
+        out_deg = sem_out_degree.get(src, 0)
+        if out_deg >= _HUB_OUT_DEGREE_THRESHOLD and edge_categories.get((src, dst)) == "semantic":
+            suppressed[(src, dst)] = suppressed[(src, dst)] / math.sqrt(out_deg)
 
     return suppressed

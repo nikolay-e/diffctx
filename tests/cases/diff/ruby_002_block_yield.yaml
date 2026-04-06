@@ -1,0 +1,271 @@
+name: ruby_002_block_yield
+repo:
+  initial_files:
+    lib/retry_helper.rb: |
+      module RetryHelper
+        def with_retry(max_attempts: 3, delay: 1)
+          attempts = 0
+          begin
+            attempts += 1
+            yield
+          rescue StandardError => e
+            if attempts < max_attempts
+              sleep(delay * attempts)
+              retry
+            end
+            raise e
+          end
+        end
+
+        def with_timeout(seconds: 30)
+          Timeout.timeout(seconds) { yield }
+        rescue Timeout::Error
+          raise "Operation timed out after #{seconds}s"
+        end
+      end
+    lib/service.rb: |
+      class Service
+        def call
+          "default"
+        end
+      end
+    lib/http_client.rb: |
+      require 'net/http'
+      require 'json'
+
+      class HttpClient
+        def initialize(base_url)
+          @base_url = URI.parse(base_url)
+        end
+
+        def get(path, headers: {})
+          uri = URI.join(@base_url, path)
+          request = Net::HTTP::Get.new(uri)
+          headers.each { |k, v| request[k] = v }
+          response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(request) }
+          JSON.parse(response.body)
+        end
+
+        def post(path, body:, headers: {})
+          uri = URI.join(@base_url, path)
+          request = Net::HTTP::Post.new(uri)
+          request.body = body.to_json
+          request['Content-Type'] = 'application/json'
+          headers.each { |k, v| request[k] = v }
+          response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(request) }
+          JSON.parse(response.body)
+        end
+      end
+    lib/circuit_breaker.rb: |
+      class CircuitBreaker
+        STATES = [:closed, :open, :half_open].freeze
+
+        def initialize(failure_threshold: 5, reset_timeout: 30)
+          @failure_threshold = failure_threshold
+          @reset_timeout = reset_timeout
+          @failure_count = 0
+          @state = :closed
+          @last_failure_time = nil
+        end
+
+        def call
+          check_state!
+          begin
+            result = yield
+            on_success
+            result
+          rescue StandardError => e
+            on_failure
+            raise e
+          end
+        end
+
+        private
+
+        def check_state!
+          return if @state == :closed
+          if @state == :open && Time.now - @last_failure_time > @reset_timeout
+            @state = :half_open
+          end
+          raise "Circuit is open" if @state == :open
+        end
+
+        def on_success
+          @failure_count = 0
+          @state = :closed
+        end
+
+        def on_failure
+          @failure_count += 1
+          @last_failure_time = Time.now
+          @state = :open if @failure_count >= @failure_threshold
+        end
+      end
+  changed_files:
+    lib/retry_helper.rb: |
+      module RetryHelper
+        def with_retry(max_attempts: 3, delay: 1)
+          attempts = 0
+          begin
+            attempts += 1
+            yield
+          rescue StandardError => e
+            if attempts < max_attempts
+              sleep(delay * attempts)
+              retry
+            end
+            raise e
+          end
+        end
+
+        def with_timeout(seconds: 30)
+          Timeout.timeout(seconds) { yield }
+        rescue Timeout::Error
+          raise "Operation timed out after #{seconds}s"
+        end
+      end
+    lib/service.rb: |
+      require_relative 'retry_helper'
+
+      class Service
+        include RetryHelper
+
+        def fetch_data
+          with_retry(max_attempts: 5, delay: 2) do
+            response = Net::HTTP.get(URI("https://api.example.com/data"))
+            JSON.parse(response)
+          end
+        end
+
+        def fetch_with_timeout
+          with_timeout(seconds: 10) do
+            fetch_data
+          end
+        end
+      end
+    lib/http_client.rb: |
+      require 'net/http'
+      require 'json'
+
+      class HttpClient
+        def initialize(base_url)
+          @base_url = URI.parse(base_url)
+        end
+
+        def get(path, headers: {})
+          uri = URI.join(@base_url, path)
+          request = Net::HTTP::Get.new(uri)
+          headers.each { |k, v| request[k] = v }
+          response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(request) }
+          JSON.parse(response.body)
+        end
+
+        def post(path, body:, headers: {})
+          uri = URI.join(@base_url, path)
+          request = Net::HTTP::Post.new(uri)
+          request.body = body.to_json
+          request['Content-Type'] = 'application/json'
+          headers.each { |k, v| request[k] = v }
+          response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(request) }
+          JSON.parse(response.body)
+        end
+      end
+    lib/circuit_breaker.rb: |
+      class CircuitBreaker
+        STATES = [:closed, :open, :half_open].freeze
+
+        def initialize(failure_threshold: 5, reset_timeout: 30)
+          @failure_threshold = failure_threshold
+          @reset_timeout = reset_timeout
+          @failure_count = 0
+          @state = :closed
+          @last_failure_time = nil
+        end
+
+        def call
+          check_state!
+          begin
+            result = yield
+            on_success
+            result
+          rescue StandardError => e
+            on_failure
+            raise e
+          end
+        end
+
+        private
+
+        def check_state!
+          return if @state == :closed
+          if @state == :open && Time.now - @last_failure_time > @reset_timeout
+            @state = :half_open
+          end
+          raise "Circuit is open" if @state == :open
+        end
+
+        def on_success
+          @failure_count = 0
+          @state = :closed
+        end
+
+        def on_failure
+          @failure_count += 1
+          @last_failure_time = Time.now
+          @state = :open if @failure_count >= @failure_threshold
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: lib/service.rb
+    anchor: 'with_retry(max_attempts: 5, delay: 2) do'
+- id: service_1
+  selector:
+    path: lib/service.rb
+    anchor: include RetryHelper
+- id: retry_helper
+  selector:
+    path: lib/retry_helper.rb
+    anchor: 'def with_retry(max_attempts: 3, delay: 1)'
+- id: retry_helper_1
+  selector:
+    path: lib/retry_helper.rb
+    anchor: 'def with_timeout(seconds: 30)'
+- id: no_http_client
+  selector:
+    path: lib/http_client.rb
+- id: no_circuit_breaker
+  selector:
+    path: lib/circuit_breaker.rb
+- id: no_global_0
+  selector:
+    anchor: HttpClient
+- id: no_global_1
+  selector:
+    anchor: URI.join
+- id: no_global_2
+  selector:
+    anchor: CircuitBreaker
+- id: no_global_3
+  selector:
+    anchor: failure_threshold
+- id: no_global_4
+  selector:
+    anchor: check_state!
+oracle:
+  required:
+  - service
+  - service_1
+  - retry_helper
+  - retry_helper_1
+  allowed: []
+  forbidden:
+  - no_http_client
+  - no_circuit_breaker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

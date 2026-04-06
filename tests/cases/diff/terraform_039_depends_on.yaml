@@ -1,0 +1,126 @@
+name: terraform_039_depends_on
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+
+        load_balancer {
+          target_group_arn = aws_lb_target_group.app.arn
+          container_name   = "app"
+          container_port   = 8080
+        }
+      }
+    alb.tf: |
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = aws_acm_certificate.main.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+      }
+    iam.tf: |
+      resource "aws_iam_role_policy_attachment" "ecs_task" {
+        role       = aws_iam_role.ecs_task.name
+        policy_arn = aws_iam_policy.ecs_task.arn
+      }
+
+      resource "aws_iam_policy" "ecs_task" {
+        name = "ecs-task-policy"
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["s3:GetObject", "sqs:SendMessage"]
+            Resource = "*"
+          }]
+        })
+      }
+    batch/worker.tf: |
+      resource "aws_ecs_service" "worker" {
+        name            = "worker-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.worker.arn
+
+        depends_on = [
+          aws_sqs_queue.tasks,
+          aws_iam_role_policy_attachment.worker
+        ]
+      }
+    scripts/deploy.sh: |
+      #!/bin/bash
+      echo "Deploying ECS services..."
+      aws ecs update-service --cluster main --service app-service --force-new-deployment
+  changed_files:
+    main.tf: |
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+
+        load_balancer {
+          target_group_arn = aws_lb_target_group.app.arn
+          container_name   = "app"
+          container_port   = 8080
+        }
+
+        depends_on = [
+          aws_lb_listener.https,
+          aws_iam_role_policy_attachment.ecs_task
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: alb
+  selector:
+    path: alb.tf
+    anchor: resource "aws_lb_listener" "https" {
+- id: alb_1
+  selector:
+    path: alb.tf
+    anchor: target_group_arn = aws_lb_target_group.app.arn
+- id: iam
+  selector:
+    path: iam.tf
+    anchor: resource "aws_iam_role_policy_attachment" "ecs_task" {
+- id: iam_1
+  selector:
+    path: iam.tf
+    anchor: ecs-task-policy
+- id: no_worker
+  selector:
+    path: batch/worker.tf
+- id: no_deploy
+  selector:
+    path: scripts/deploy.sh
+- id: no_global_0
+  selector:
+    anchor: worker-service
+- id: no_global_1
+  selector:
+    anchor: aws_sqs_queue.tasks
+- id: no_global_2
+  selector:
+    anchor: force-new-deployment
+oracle:
+  required:
+  - alb
+  - alb_1
+  - iam
+  - iam_1
+  allowed: []
+  forbidden:
+  - no_worker
+  - no_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -1,0 +1,31 @@
+name: internals_015_fragment_all_unicode_edge_cases
+repo:
+  initial_files:
+    all_unicode.py: |
+      def placeholder():
+          pass
+  changed_files:
+    all_unicode.py: |
+      # 多语言测试 / Тест / اختبار
+      def handler():
+          cyrillic = "Привет"
+          chinese = "你好"
+          arabic = "مرحبا"
+          japanese = "こんにちは"
+          korean = "안녕하세요"
+          emoji = "🎉🔥🚀"
+          return {"status": "ok"}
+  commit_message: Update files
+fragments:
+- id: all_unicode_file
+  selector:
+    path: all_unicode.py
+- id: req_global_0
+  selector:
+    anchor: 'def handler():'
+oracle:
+  required:
+  - all_unicode_file
+  - req_global_0
+  allowed: []
+  forbidden: []

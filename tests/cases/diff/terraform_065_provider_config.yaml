@@ -1,0 +1,183 @@
+name: terraform_065_provider_config
+repo:
+  initial_files:
+    provider.tf: |
+      provider "aws" {
+        region = "us-east-1"
+      }
+    main.tf: |
+      resource "aws_s3_bucket" "data" {
+        bucket = "my-data-bucket"
+
+        tags = {
+          Name = "data-bucket"
+        }
+      }
+
+      resource "aws_dynamodb_table" "sessions" {
+        name         = "sessions"
+        billing_mode = "PAY_PER_REQUEST"
+        hash_key     = "id"
+
+        attribute {
+          name = "id"
+          type = "S"
+        }
+      }
+    acm.tf: |
+      resource "aws_acm_certificate" "cloudfront" {
+        domain_name       = "cdn.example.com"
+        validation_method = "DNS"
+
+        tags = {
+          Name = "CloudFront Certificate"
+        }
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_acm_certificate_validation" "cloudfront" {
+        certificate_arn = aws_acm_certificate.cloudfront.arn
+      }
+    modules/cdn/provider.tf: |
+      provider "aws" {
+        alias  = "us_east"
+        region = "us-east-1"
+      }
+
+      resource "aws_cloudfront_distribution" "cdn" {
+        provider = aws.us_east
+        enabled  = true
+      }
+    backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket = "terraform-state"
+          key    = "app/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+    dns/route53.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = "example.com"
+      }
+
+      resource "aws_route53_record" "app" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "app.example.com"
+        type    = "A"
+        ttl     = 300
+        records = ["10.0.1.100"]
+      }
+    outputs.tf: |
+      output "bucket_arn" {
+        value = aws_s3_bucket.data.arn
+      }
+
+      output "table_name" {
+        value = aws_dynamodb_table.sessions.name
+      }
+
+      output "certificate_arn" {
+        value = aws_acm_certificate.cloudfront.arn
+      }
+  changed_files:
+    provider.tf: |
+      provider "aws" {
+        region = "eu-west-1"
+      }
+
+      provider "aws" {
+        alias  = "us"
+        region = "us-east-1"
+      }
+  commit_message: Update files
+fragments:
+- id: provider
+  selector:
+    path: provider.tf
+    anchor: region = "eu-west-1"
+- id: provider_1
+  selector:
+    path: provider.tf
+    anchor: alias  = "us"
+- id: main
+  selector:
+    path: main.tf
+    anchor: resource "aws_s3_bucket" "data" {
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: resource "aws_dynamodb_table" "sessions" {
+- id: acm
+  selector:
+    path: acm.tf
+    anchor: resource "aws_acm_certificate" "cloudfront" {
+- id: acm_1
+  selector:
+    path: acm.tf
+    anchor: domain_name       = "cdn.example.com"
+- id: no_provider
+  selector:
+    path: modules/cdn/provider.tf
+- id: no_backend
+  selector:
+    path: backend.tf
+- id: no_route53
+  selector:
+    path: dns/route53.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_global_0
+  selector:
+    anchor: alias  = "us_east"
+- id: no_global_1
+  selector:
+    anchor: aws.us_east
+- id: no_global_2
+  selector:
+    anchor: aws_cloudfront_distribution
+- id: no_global_3
+  selector:
+    anchor: backend "s3" {
+- id: no_global_4
+  selector:
+    anchor: terraform-state
+- id: no_global_5
+  selector:
+    anchor: aws_route53_zone
+- id: no_global_6
+  selector:
+    anchor: app.example.com
+- id: no_global_7
+  selector:
+    anchor: output "bucket_arn"
+- id: no_global_8
+  selector:
+    anchor: output "table_name"
+oracle:
+  required:
+  - provider
+  - provider_1
+  - main
+  - main_1
+  - acm
+  - acm_1
+  allowed: []
+  forbidden:
+  - no_provider
+  - no_backend
+  - no_route53
+  - no_outputs
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

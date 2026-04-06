@@ -1,0 +1,54 @@
+name: helm_030_template_with
+repo:
+  initial_files:
+    values.yaml: |
+      nodeSelector:
+        kubernetes.io/os: linux
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      spec:
+        template:
+          spec:
+            containers:
+            - name: app
+    unrelated.md: |
+      # garbage_marker_12345
+      unused_marker_67890
+  changed_files:
+    values.yaml: |
+      nodeSelector:
+        kubernetes.io/os: linux
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      spec:
+        template:
+          spec:
+            {{- with .Values.nodeSelector }}
+            nodeSelector:
+      {{ toYaml . | indent 8 }}
+            {{- end }}
+            containers:
+            - name: app
+    unrelated.md: |
+      # garbage_marker_12345
+      unused_marker_67890
+  commit_message: Update files
+fragments:
+- id: deployment_file
+  selector:
+    path: templates/deployment.yaml
+- id: req_global_0
+  selector:
+    anchor: '{{- with .Values.nodeSelector }}'
+- id: no_global_0
+  selector:
+    anchor: unrelated.md
+oracle:
+  required:
+  - deployment_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

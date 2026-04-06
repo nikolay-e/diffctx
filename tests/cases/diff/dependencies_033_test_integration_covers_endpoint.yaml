@@ -1,0 +1,150 @@
+name: dependencies_033_test_integration_covers_endpoint
+repo:
+  initial_files:
+    api/users.py: |
+      def list_users():
+          return [{"id": 1, "name": "Alice"}]
+    tests/integration/test_api.py: |
+      from api.users import list_users
+
+      def test_list_users_endpoint():
+          users = list_users()
+          assert len(users) == 1
+          assert users[0]["name"] == "Alice"
+    api/admin_users.py: |
+      GARBAGE_DEP033_ADMIN_API_A = "admin_users_api"
+      GARBAGE_DEP033_ADMIN_LIST_B = True
+
+      def list_users(role="admin"):
+          GARBAGE_DEP033_ADMIN_FETCH_C = "fetching_admins"
+          return [{"id": 1, "name": "SuperAdmin", "role": role}]
+
+      def list_users_paginated(page=1, limit=10):
+          return list_users()[:limit]
+    tests/integration/test_admin_api.py: |
+      from api.admin_users import list_users
+      GARBAGE_DEP033_ADMINTEST_D = "admin_api_tests"
+      GARBAGE_DEP033_ADMINTEST_RUN_E = True
+
+      def test_list_users_endpoint():
+          GARBAGE_DEP033_ADMINTEST_ASSERT_F = "asserting"
+          users = list_users(role="admin")
+          assert len(users) == 1
+          assert users[0]["role"] == "admin"
+    api/products.py: |
+      GARBAGE_DEP033_PRODUCTS_G = "products_api"
+      GARBAGE_DEP033_PRODUCTS_LIST_H = True
+
+      def list_products(page=1, limit=10):
+          GARBAGE_DEP033_PRODUCTS_FETCH_I = "fetching"
+          products = [{"id": 1, "name": "Widget"}]
+          return products[(page-1)*limit:page*limit]
+  changed_files:
+    api/users.py: |
+      def list_users(page=1, limit=10):
+          users = [{"id": 1, "name": "Alice"}]
+          return users[(page-1)*limit:page*limit]
+    tests/integration/test_api.py: |
+      from api.users import list_users
+
+      def test_list_users_endpoint():
+          users = list_users()
+          assert len(users) == 1
+          assert users[0]["name"] == "Alice"
+    api/admin_users.py: |
+      GARBAGE_DEP033_ADMIN_API_A = "admin_users_api"
+      GARBAGE_DEP033_ADMIN_LIST_B = True
+
+      def list_users(role="admin"):
+          GARBAGE_DEP033_ADMIN_FETCH_C = "fetching_admins"
+          return [{"id": 1, "name": "SuperAdmin", "role": role}]
+
+      def list_users_paginated(page=1, limit=10):
+          return list_users()[:limit]
+    tests/integration/test_admin_api.py: |
+      from api.admin_users import list_users
+      GARBAGE_DEP033_ADMINTEST_D = "admin_api_tests"
+      GARBAGE_DEP033_ADMINTEST_RUN_E = True
+
+      def test_list_users_endpoint():
+          GARBAGE_DEP033_ADMINTEST_ASSERT_F = "asserting"
+          users = list_users(role="admin")
+          assert len(users) == 1
+          assert users[0]["role"] == "admin"
+    api/products.py: |
+      GARBAGE_DEP033_PRODUCTS_G = "products_api"
+      GARBAGE_DEP033_PRODUCTS_LIST_H = True
+
+      def list_products(page=1, limit=10):
+          GARBAGE_DEP033_PRODUCTS_FETCH_I = "fetching"
+          products = [{"id": 1, "name": "Widget"}]
+          return products[(page-1)*limit:page*limit]
+  commit_message: Update files
+fragments:
+- id: users
+  selector:
+    path: api/users.py
+    anchor: 'def list_users(page=1, limit=10):'
+- id: users_1
+  selector:
+    path: api/users.py
+    anchor: users[(page-1)*limit:page*limit]
+- id: test_api
+  selector:
+    path: tests/integration/test_api.py
+    anchor: 'def test_list_users_endpoint():'
+- id: no_admin_users
+  selector:
+    path: api/admin_users.py
+- id: no_test_admin_api
+  selector:
+    path: tests/integration/test_admin_api.py
+- id: no_products
+  selector:
+    path: api/products.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP033_ADMIN_API_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP033_ADMIN_LIST_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP033_ADMIN_FETCH_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP033_ADMINTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP033_ADMINTEST_RUN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP033_ADMINTEST_ASSERT_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP033_PRODUCTS_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP033_PRODUCTS_LIST_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP033_PRODUCTS_FETCH_I
+oracle:
+  required:
+  - users
+  - users_1
+  - test_api
+  allowed: []
+  forbidden:
+  - no_admin_users
+  - no_test_admin_api
+  - no_products
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

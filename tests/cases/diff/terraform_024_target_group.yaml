@@ -1,0 +1,118 @@
+name: terraform_024_target_group
+repo:
+  initial_files:
+    lb.tf: |
+      resource "aws_lb" "main" {
+        name = "main-alb"
+      }
+    admin_target.tf: |
+      resource "aws_lb_target_group" "admin" {
+        name        = "admin-tg"
+        port        = 9090
+        protocol    = "HTTP"
+        vpc_id      = aws_vpc.main.id
+        target_type = "ip"
+
+        health_check {
+          path                = "/admin/health"
+          healthy_threshold   = 3
+          unhealthy_threshold = 5
+          timeout             = 10
+          interval            = 60
+        }
+      }
+    app.py: |
+      from flask import Flask
+      app = Flask(__name__)
+
+      @app.route('/health')
+      def health():
+          return 'OK', 200
+  changed_files:
+    lb.tf: |
+      resource "aws_lb" "main" {
+        name = "main-alb"
+      }
+
+      resource "aws_lb_target_group" "app" {
+        name        = "app-tg"
+        port        = 8080
+        protocol    = "HTTP"
+        vpc_id      = aws_vpc.main.id
+        target_type = "ip"
+
+        health_check {
+          path                = "/health"
+          healthy_threshold   = 2
+          unhealthy_threshold = 10
+          timeout             = 5
+          interval            = 30
+        }
+      }
+    admin_target.tf: |
+      resource "aws_lb_target_group" "admin" {
+        name        = "admin-tg"
+        port        = 9090
+        protocol    = "HTTP"
+        vpc_id      = aws_vpc.main.id
+        target_type = "ip"
+
+        health_check {
+          path                = "/admin/health"
+          healthy_threshold   = 3
+          unhealthy_threshold = 5
+          timeout             = 10
+          interval            = 60
+        }
+      }
+    app.py: |
+      from flask import Flask
+      app = Flask(__name__)
+
+      @app.route('/health')
+      def health():
+          return 'OK', 200
+  commit_message: Update files
+fragments:
+- id: lb
+  selector:
+    path: lb.tf
+    anchor: resource "aws_lb_target_group" "app" {
+- id: lb_1
+  selector:
+    path: lb.tf
+    anchor: path                = "/health"
+- id: no_admin_target
+  selector:
+    path: admin_target.tf
+- id: no_app
+  selector:
+    path: app.py
+- id: no_global_0
+  selector:
+    anchor: admin-tg
+- id: no_global_1
+  selector:
+    anchor: /admin/health
+- id: no_global_2
+  selector:
+    anchor: port        = 9090
+- id: no_global_3
+  selector:
+    anchor: from flask import Flask
+- id: no_global_4
+  selector:
+    anchor: '@app.route'
+oracle:
+  required:
+  - lb
+  - lb_1
+  allowed: []
+  forbidden:
+  - no_admin_target
+  - no_app
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

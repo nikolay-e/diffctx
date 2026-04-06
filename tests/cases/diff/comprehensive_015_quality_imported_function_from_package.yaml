@@ -1,0 +1,128 @@
+name: comprehensive_015_quality_imported_function_from_package
+repo:
+  initial_files:
+    pkg/__init__.py: |
+      from .helpers import compute_square, compute_cube
+    pkg/helpers.py: |
+      def compute_square(x):
+          return x ** 2
+
+      def compute_cube(x):
+          return x ** 3
+
+      def compute_power(x, n):
+          return x ** n
+
+      def clamp(value, minimum, maximum):
+          return max(minimum, min(value, maximum))
+    src/main.py: |
+      result = 0
+
+      def process_input(value):
+          return int(value)
+
+      def display_result(result):
+          print(f"Result: {result}")
+    garbage_math_extension.py: |
+      GARBAGE_COMP_015_PRECISION_MODE_A = "arbitrary"
+      GARBAGE_COMP_015_ROUNDING_RULE_B = "banker"
+
+      class GarbageMathExtension:
+          GARBAGE_COMP_015_OVERFLOW_CHECK_C = True
+          def extend(self):
+              pass
+    garbage_numeric_parser.py: |
+      GARBAGE_COMP_015_LOCALE_FORMAT_D = "decimal_comma"
+      GARBAGE_COMP_015_SCIENTIFIC_E = "notation"
+
+      class GarbageNumericParser:
+          GARBAGE_COMP_015_STRICT_MODE_F = False
+          def parse(self):
+              pass
+  changed_files:
+    pkg/__init__.py: |
+      from .helpers import compute_square, compute_cube
+    pkg/helpers.py: |
+      def compute_square(x):
+          return x ** 2
+
+      def compute_cube(x):
+          return x ** 3
+
+      def compute_power(x, n):
+          return x ** n
+
+      def clamp(value, minimum, maximum):
+          return max(minimum, min(value, maximum))
+    src/main.py: |
+      from pkg.helpers import compute_square, compute_cube
+
+      result = compute_square(5) + compute_cube(3)
+
+      def process_input(value):
+          return int(value)
+
+      def display_result(result):
+          print(f"Result: {result}")
+    garbage_math_extension.py: |
+      GARBAGE_COMP_015_PRECISION_MODE_A = "arbitrary"
+      GARBAGE_COMP_015_ROUNDING_RULE_B = "banker"
+
+      class GarbageMathExtension:
+          GARBAGE_COMP_015_OVERFLOW_CHECK_C = True
+          def extend(self):
+              pass
+    garbage_numeric_parser.py: |
+      GARBAGE_COMP_015_LOCALE_FORMAT_D = "decimal_comma"
+      GARBAGE_COMP_015_SCIENTIFIC_E = "notation"
+
+      class GarbageNumericParser:
+          GARBAGE_COMP_015_STRICT_MODE_F = False
+          def parse(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: main_file
+  selector:
+    path: src/main.py
+- id: req_global_0
+  selector:
+    anchor: from pkg.helpers import compute_square, compute_cube
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_015_LOCALE_FORMAT_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_015_OVERFLOW_CHECK_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_015_PRECISION_MODE_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_015_ROUNDING_RULE_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_015_SCIENTIFIC_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_015_STRICT_MODE_F
+- id: no_global_6
+  selector:
+    anchor: garbage_math_extension.py
+- id: no_global_7
+  selector:
+    anchor: garbage_numeric_parser.py
+oracle:
+  required:
+  - main_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

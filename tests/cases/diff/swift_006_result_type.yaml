@@ -1,0 +1,364 @@
+name: swift_006_result_type
+repo:
+  initial_files:
+    Sources/Errors/APIError.swift: |
+      enum APIError: Error {
+          case networkError
+          case invalidResponse
+          case decodingError
+
+          var isRetryable: Bool {
+              switch self {
+              case .networkError: return true
+              case .invalidResponse: return false
+              case .decodingError: return false
+              }
+          }
+      }
+    Sources/Network/DataLoader.swift: |
+      import Foundation
+
+      struct DataLoader {
+          func placeholder() {}
+      }
+    Sources/Errors/ValidationError.swift: |
+      enum ValidationError: Error {
+          case emptyField(String)
+          case tooLong(field: String, max: Int)
+          case invalidFormat(String)
+          case outOfRange(field: String, min: Int, max: Int)
+
+          var localizedDescription: String {
+              switch self {
+              case .emptyField(let f): return "\(f) is required"
+              case .tooLong(let f, let m): return "\(f) max \(m) chars"
+              case .invalidFormat(let f): return "\(f) has invalid format"
+              case .outOfRange(let f, let min, let max): return "\(f) must be \(min)-\(max)"
+              }
+          }
+      }
+    Sources/Cache/DiskCache.swift: |
+      import Foundation
+
+      class DiskCache {
+          private let directory: URL
+
+          init(directory: URL) {
+              self.directory = directory
+          }
+
+          func store(key: String, data: Data) {
+              let url = directory.appendingPathComponent(key)
+              try? data.write(to: url)
+          }
+
+          func retrieve(key: String) -> Data? {
+              let url = directory.appendingPathComponent(key)
+              return try? Data(contentsOf: url)
+          }
+
+          func evict(key: String) {
+              let url = directory.appendingPathComponent(key)
+              try? FileManager.default.removeItem(at: url)
+          }
+      }
+    Sources/Network/APIClient.swift: |
+      import Foundation
+
+      class APIClient {
+          private let loader = DataLoader()
+
+          func fetchData(from url: URL) -> Result<Data, APIError> {
+              let result = loader.load(from: url)
+              switch result {
+              case .success(let data):
+                  print("Received \(data.count) bytes")
+                  return .success(data)
+              case .failure(let error):
+                  print("Failed: \(error)")
+                  return .failure(error)
+              }
+          }
+      }
+    Sources/Network/RetryHandler.swift: |
+      import Foundation
+
+      struct RetryHandler {
+          let maxAttempts: Int
+
+          func shouldRetry(error: APIError, attempt: Int) -> Bool {
+              guard attempt < maxAttempts else { return false }
+              return error.isRetryable
+          }
+
+          func execute<T>(_ operation: () -> Result<T, APIError>) -> Result<T, APIError> {
+              var attempt = 0
+              while true {
+                  let result = operation()
+                  switch result {
+                  case .success: return result
+                  case .failure(let error):
+                      if !shouldRetry(error: error, attempt: attempt) { return result }
+                      attempt += 1
+                  }
+              }
+          }
+      }
+    Sources/Errors/StorageError.swift: |
+      enum StorageError: Error {
+          case fileNotFound(path: String)
+          case permissionDenied(path: String)
+          case diskFull
+          case corruptedData
+
+          var localizedDescription: String {
+              switch self {
+              case .fileNotFound(let p): return "File not found: \(p)"
+              case .permissionDenied(let p): return "Permission denied: \(p)"
+              case .diskFull: return "Disk is full"
+              case .corruptedData: return "Data is corrupted"
+              }
+          }
+      }
+  changed_files:
+    Sources/Errors/APIError.swift: |
+      enum APIError: Error {
+          case networkError
+          case invalidResponse
+          case decodingError
+
+          var isRetryable: Bool {
+              switch self {
+              case .networkError: return true
+              case .invalidResponse: return false
+              case .decodingError: return false
+              }
+          }
+      }
+    Sources/Network/DataLoader.swift: |
+      import Foundation
+
+      struct DataLoader {
+          func load(from url: URL) -> Result<Data, APIError> {
+              guard let data = "test".data(using: .utf8) else {
+                  return .failure(.invalidResponse)
+              }
+              return .success(data)
+          }
+
+          func process(url: URL) {
+              let result = load(from: url)
+              switch result {
+              case .success(let data):
+                  print("Loaded \(data.count) bytes")
+              case .failure(let error):
+                  print("Error: \(error)")
+              }
+          }
+      }
+    Sources/Errors/ValidationError.swift: |
+      enum ValidationError: Error {
+          case emptyField(String)
+          case tooLong(field: String, max: Int)
+          case invalidFormat(String)
+          case outOfRange(field: String, min: Int, max: Int)
+
+          var localizedDescription: String {
+              switch self {
+              case .emptyField(let f): return "\(f) is required"
+              case .tooLong(let f, let m): return "\(f) max \(m) chars"
+              case .invalidFormat(let f): return "\(f) has invalid format"
+              case .outOfRange(let f, let min, let max): return "\(f) must be \(min)-\(max)"
+              }
+          }
+      }
+    Sources/Cache/DiskCache.swift: |
+      import Foundation
+
+      class DiskCache {
+          private let directory: URL
+
+          init(directory: URL) {
+              self.directory = directory
+          }
+
+          func store(key: String, data: Data) {
+              let url = directory.appendingPathComponent(key)
+              try? data.write(to: url)
+          }
+
+          func retrieve(key: String) -> Data? {
+              let url = directory.appendingPathComponent(key)
+              return try? Data(contentsOf: url)
+          }
+
+          func evict(key: String) {
+              let url = directory.appendingPathComponent(key)
+              try? FileManager.default.removeItem(at: url)
+          }
+      }
+    Sources/Network/APIClient.swift: |
+      import Foundation
+
+      class APIClient {
+          private let loader = DataLoader()
+
+          func fetchData(from url: URL) -> Result<Data, APIError> {
+              let result = loader.load(from: url)
+              switch result {
+              case .success(let data):
+                  print("Received \(data.count) bytes")
+                  return .success(data)
+              case .failure(let error):
+                  print("Failed: \(error)")
+                  return .failure(error)
+              }
+          }
+      }
+    Sources/Network/RetryHandler.swift: |
+      import Foundation
+
+      struct RetryHandler {
+          let maxAttempts: Int
+
+          func shouldRetry(error: APIError, attempt: Int) -> Bool {
+              guard attempt < maxAttempts else { return false }
+              return error.isRetryable
+          }
+
+          func execute<T>(_ operation: () -> Result<T, APIError>) -> Result<T, APIError> {
+              var attempt = 0
+              while true {
+                  let result = operation()
+                  switch result {
+                  case .success: return result
+                  case .failure(let error):
+                      if !shouldRetry(error: error, attempt: attempt) { return result }
+                      attempt += 1
+                  }
+              }
+          }
+      }
+    Sources/Errors/StorageError.swift: |
+      enum StorageError: Error {
+          case fileNotFound(path: String)
+          case permissionDenied(path: String)
+          case diskFull
+          case corruptedData
+
+          var localizedDescription: String {
+              switch self {
+              case .fileNotFound(let p): return "File not found: \(p)"
+              case .permissionDenied(let p): return "Permission denied: \(p)"
+              case .diskFull: return "Disk is full"
+              case .corruptedData: return "Data is corrupted"
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: dataloader
+  selector:
+    path: Sources/Network/DataLoader.swift
+    anchor: .failure(.invalidResponse)
+- id: dataloader_1
+  selector:
+    path: Sources/Network/DataLoader.swift
+    anchor: Result<Data, APIError>
+- id: apierror
+  selector:
+    path: Sources/Errors/APIError.swift
+    anchor: 'enum APIError: Error'
+- id: apierror_1
+  selector:
+    path: Sources/Errors/APIError.swift
+    anchor: case invalidResponse
+- id: apierror_2
+  selector:
+    path: Sources/Errors/APIError.swift
+    anchor: case networkError
+- id: no_validationerror
+  selector:
+    path: Sources/Errors/ValidationError.swift
+- id: no_diskcache
+  selector:
+    path: Sources/Cache/DiskCache.swift
+- id: no_apiclient
+  selector:
+    path: Sources/Network/APIClient.swift
+- id: no_retryhandler
+  selector:
+    path: Sources/Network/RetryHandler.swift
+- id: no_storageerror
+  selector:
+    path: Sources/Errors/StorageError.swift
+- id: no_global_0
+  selector:
+    anchor: ValidationError
+- id: no_global_1
+  selector:
+    anchor: emptyField
+- id: no_global_2
+  selector:
+    anchor: outOfRange
+- id: no_global_3
+  selector:
+    anchor: DiskCache
+- id: no_global_4
+  selector:
+    anchor: retrieve
+- id: no_global_5
+  selector:
+    anchor: evict
+- id: no_global_6
+  selector:
+    anchor: APIClient
+- id: no_global_7
+  selector:
+    anchor: fetchData
+- id: no_global_8
+  selector:
+    anchor: RetryHandler
+- id: no_global_9
+  selector:
+    anchor: shouldRetry
+- id: no_global_10
+  selector:
+    anchor: maxAttempts
+- id: no_global_11
+  selector:
+    anchor: StorageError
+- id: no_global_12
+  selector:
+    anchor: fileNotFound
+- id: no_global_13
+  selector:
+    anchor: diskFull
+oracle:
+  required:
+  - dataloader
+  - dataloader_1
+  - apierror
+  - apierror_1
+  - apierror_2
+  allowed: []
+  forbidden:
+  - no_validationerror
+  - no_diskcache
+  - no_apiclient
+  - no_retryhandler
+  - no_storageerror
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

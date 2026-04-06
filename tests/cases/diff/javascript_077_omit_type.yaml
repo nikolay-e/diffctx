@@ -1,0 +1,185 @@
+name: javascript_077_omit_type
+repo:
+  initial_files:
+    full.ts: |
+      export interface FullRecord {
+          id: string;
+          name: string;
+          secret: string;
+          internal: boolean;
+      }
+    public.ts: |
+      console.log('initial');
+    record-logger.ts: |
+      import { FullRecord } from './full';
+
+      export function logRecordAccess(record: FullRecord, action: string): void {
+          console.log(`[${action}] Record ${record.id}: ${record.name}`);
+      }
+
+      export function logSensitiveAccess(record: FullRecord): void {
+          console.log(`[SENSITIVE] Accessed secret for record ${record.id}`);
+      }
+    admin-record.ts: |
+      import { FullRecord } from './full';
+
+      export interface AdminRecord extends FullRecord {
+          lastModifiedBy: string;
+          auditTrail: { timestamp: Date; action: string }[];
+      }
+
+      export function createAdminRecord(base: FullRecord, adminId: string): AdminRecord {
+          return { ...base, lastModifiedBy: adminId, auditTrail: [] };
+      }
+    record-validator.ts: |
+      import { FullRecord } from './full';
+
+      export function validateRecord(record: FullRecord): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!record.id) errors.push('id is required');
+          if (!record.name || record.name.length < 1) errors.push('name is required');
+          if (!record.secret || record.secret.length < 16) errors.push('secret must be at least 16 chars');
+          return { valid: errors.length === 0, errors };
+      }
+  changed_files:
+    full.ts: |
+      export interface FullRecord {
+          id: string;
+          name: string;
+          secret: string;
+          internal: boolean;
+      }
+    public.ts: |
+      import { FullRecord } from './full';
+
+      type PublicRecord = Omit<FullRecord, 'secret' | 'internal'>;
+
+      function sanitize(record: FullRecord): PublicRecord {
+          const { secret, internal, ...publicData } = record;
+          return publicData;
+      }
+    record-logger.ts: |
+      import { FullRecord } from './full';
+
+      export function logRecordAccess(record: FullRecord, action: string): void {
+          console.log(`[${action}] Record ${record.id}: ${record.name}`);
+      }
+
+      export function logSensitiveAccess(record: FullRecord): void {
+          console.log(`[SENSITIVE] Accessed secret for record ${record.id}`);
+      }
+    admin-record.ts: |
+      import { FullRecord } from './full';
+
+      export interface AdminRecord extends FullRecord {
+          lastModifiedBy: string;
+          auditTrail: { timestamp: Date; action: string }[];
+      }
+
+      export function createAdminRecord(base: FullRecord, adminId: string): AdminRecord {
+          return { ...base, lastModifiedBy: adminId, auditTrail: [] };
+      }
+    record-validator.ts: |
+      import { FullRecord } from './full';
+
+      export function validateRecord(record: FullRecord): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!record.id) errors.push('id is required');
+          if (!record.name || record.name.length < 1) errors.push('name is required');
+          if (!record.secret || record.secret.length < 16) errors.push('secret must be at least 16 chars');
+          return { valid: errors.length === 0, errors };
+      }
+  commit_message: Update files
+fragments:
+- id: public
+  selector:
+    path: public.ts
+    anchor: import { FullRecord } from './full'
+- id: public_1
+  selector:
+    path: public.ts
+    anchor: type PublicRecord = Omit<FullRecord, 'secret' | 'internal'>
+- id: public_2
+  selector:
+    path: public.ts
+    anchor: const { secret, internal, ...publicData } = record
+- id: full
+  selector:
+    path: full.ts
+    anchor: interface FullRecord {
+- id: full_1
+  selector:
+    path: full.ts
+    anchor: 'id: string'
+- id: full_2
+  selector:
+    path: full.ts
+    anchor: 'name: string'
+- id: full_3
+  selector:
+    path: full.ts
+    anchor: 'secret: string'
+- id: full_4
+  selector:
+    path: full.ts
+    anchor: 'internal: boolean'
+- id: no_record_logger
+  selector:
+    path: record-logger.ts
+- id: no_admin_record
+  selector:
+    path: admin-record.ts
+- id: no_record_validator
+  selector:
+    path: record-validator.ts
+- id: no_global_0
+  selector:
+    anchor: logRecordAccess
+- id: no_global_1
+  selector:
+    anchor: logSensitiveAccess
+- id: no_global_2
+  selector:
+    anchor: '[SENSITIVE]'
+- id: no_global_3
+  selector:
+    anchor: AdminRecord
+- id: no_global_4
+  selector:
+    anchor: createAdminRecord
+- id: no_global_5
+  selector:
+    anchor: lastModifiedBy
+- id: no_global_6
+  selector:
+    anchor: auditTrail
+- id: no_global_7
+  selector:
+    anchor: validateRecord
+- id: no_global_8
+  selector:
+    anchor: secret must be at least
+oracle:
+  required:
+  - public
+  - public_1
+  - public_2
+  - full
+  - full_1
+  - full_2
+  - full_3
+  - full_4
+  allowed: []
+  forbidden:
+  - no_record_logger
+  - no_admin_record
+  - no_record_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

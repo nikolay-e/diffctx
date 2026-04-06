@@ -1,0 +1,147 @@
+name: cicd_and_docs_011_gha_artifacts
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm run build
+    package.json: |
+      {
+        "name": "artifact-app",
+        "version": "2.0.0",
+        "scripts": {
+          "build": "vite build",
+          "test": "vitest"
+        }
+      }
+    vite.config.ts: |
+      import { defineConfig } from 'vite';
+
+      export default defineConfig({
+        build: {
+          outDir: 'dist',
+          sourcemap: true
+        }
+      });
+    garbage_storage.ts: |
+      const GARBAGE_CICD_DOCS_011_STORAGE_MARKER_A = "s3";
+      const GARBAGE_CICD_DOCS_011_BUCKET_MARKER_B = "artifacts-bucket";
+
+      class GarbageStorageService {
+        static GARBAGE_CICD_DOCS_011_REGION_MARKER_C = "us-east-1";
+        upload(): void {}
+      }
+    garbage_retention.ts: |
+      const GARBAGE_CICD_DOCS_011_RETENTION_MARKER_D = 30;
+      const GARBAGE_CICD_DOCS_011_CLEANUP_MARKER_E = "daily";
+
+      class GarbageRetentionPolicy {
+        static GARBAGE_CICD_DOCS_011_ARCHIVE_MARKER_F = true;
+        cleanup(): void {}
+      }
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm run build
+            - uses: actions/upload-artifact@v4
+              with:
+                name: dist
+                path: dist/
+        deploy:
+          needs: build
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/download-artifact@v4
+              with:
+                name: dist
+    package.json: |
+      {
+        "name": "artifact-app",
+        "version": "2.0.0",
+        "scripts": {
+          "build": "vite build",
+          "test": "vitest"
+        }
+      }
+    vite.config.ts: |
+      import { defineConfig } from 'vite';
+
+      export default defineConfig({
+        build: {
+          outDir: 'dist',
+          sourcemap: true
+        }
+      });
+    garbage_storage.ts: |
+      const GARBAGE_CICD_DOCS_011_STORAGE_MARKER_A = "s3";
+      const GARBAGE_CICD_DOCS_011_BUCKET_MARKER_B = "artifacts-bucket";
+
+      class GarbageStorageService {
+        static GARBAGE_CICD_DOCS_011_REGION_MARKER_C = "us-east-1";
+        upload(): void {}
+      }
+    garbage_retention.ts: |
+      const GARBAGE_CICD_DOCS_011_RETENTION_MARKER_D = 30;
+      const GARBAGE_CICD_DOCS_011_CLEANUP_MARKER_E = "daily";
+
+      class GarbageRetentionPolicy {
+        static GARBAGE_CICD_DOCS_011_ARCHIVE_MARKER_F = true;
+        cleanup(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- uses: actions/upload-artifact@v4'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_ARCHIVE_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_BUCKET_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_CLEANUP_MARKER_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_REGION_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_RETENTION_MARKER_D
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_011_STORAGE_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: garbage_retention.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_storage.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,208 @@
+name: jvm_and_compiled_063_swift_error_handling
+repo:
+  initial_files:
+    AppError.swift: |
+      enum AppError: Error {
+          case networkError(String)
+          case validationError(String)
+          case notFound
+          case unauthorized
+
+          var localizedDescription: String {
+              switch self {
+              case .networkError(let message):
+                  return "Network error: \(message)"
+              case .validationError(let message):
+                  return "Validation error: \(message)"
+              case .notFound:
+                  return "Resource not found"
+              case .unauthorized:
+                  return "Unauthorized access"
+              }
+          }
+      }
+    UserService.swift: |
+      // Initial
+      class UserService {}
+    ErrorPresenter.swift: |
+      import Foundation
+
+      class ErrorPresenter {
+          func presentAlert(for error: AppError) -> String {
+              switch error {
+              case .networkError:
+                  return "Please check your internet connection"
+              case .validationError:
+                  return "Please correct the highlighted fields"
+              case .notFound:
+                  return "The requested item could not be found"
+              case .unauthorized:
+                  return "Your session has expired. Please log in again"
+              }
+          }
+
+          func shouldRetry(error: AppError) -> Bool {
+              if case .networkError = error { return true }
+              return false
+          }
+      }
+    NetworkMonitor.swift: |
+      import Foundation
+
+      class NetworkMonitor {
+          private(set) var isConnected = true
+          private(set) var connectionType: String = "wifi"
+
+          func startMonitoring() {
+              print("Network monitoring started")
+          }
+
+          func stopMonitoring() {
+              print("Network monitoring stopped")
+          }
+
+          func checkConnectivity() -> Bool {
+              return isConnected
+          }
+      }
+  changed_files:
+    AppError.swift: |
+      enum AppError: Error {
+          case networkError(String)
+          case validationError(String)
+          case notFound
+          case unauthorized
+
+          var localizedDescription: String {
+              switch self {
+              case .networkError(let message):
+                  return "Network error: \(message)"
+              case .validationError(let message):
+                  return "Validation error: \(message)"
+              case .notFound:
+                  return "Resource not found"
+              case .unauthorized:
+                  return "Unauthorized access"
+              }
+          }
+      }
+    UserService.swift: |
+      class UserService {
+          func fetchUser(id: String) throws -> User {
+              guard !id.isEmpty else {
+                  throw AppError.validationError("ID cannot be empty")
+              }
+
+              guard let user = findUser(id: id) else {
+                  throw AppError.notFound
+              }
+
+              return user
+          }
+
+          func handleError(_ error: AppError) {
+              switch error {
+              case .networkError(let msg):
+                  print("Network issue: \(msg)")
+              case .validationError(let msg):
+                  print("Invalid input: \(msg)")
+              case .notFound:
+                  print("User not found")
+              case .unauthorized:
+                  print("Please login")
+              }
+          }
+
+          private func findUser(id: String) -> User? {
+              return nil
+          }
+      }
+
+      struct User {
+          let id: String
+          let name: String
+      }
+    ErrorPresenter.swift: |
+      import Foundation
+
+      class ErrorPresenter {
+          func presentAlert(for error: AppError) -> String {
+              switch error {
+              case .networkError:
+                  return "Please check your internet connection"
+              case .validationError:
+                  return "Please correct the highlighted fields"
+              case .notFound:
+                  return "The requested item could not be found"
+              case .unauthorized:
+                  return "Your session has expired. Please log in again"
+              }
+          }
+
+          func shouldRetry(error: AppError) -> Bool {
+              if case .networkError = error { return true }
+              return false
+          }
+      }
+    NetworkMonitor.swift: |
+      import Foundation
+
+      class NetworkMonitor {
+          private(set) var isConnected = true
+          private(set) var connectionType: String = "wifi"
+
+          func startMonitoring() {
+              print("Network monitoring started")
+          }
+
+          func stopMonitoring() {
+              print("Network monitoring stopped")
+          }
+
+          func checkConnectivity() -> Bool {
+              return isConnected
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: UserService.swift
+    anchor: class UserService {
+- id: no_errorpresenter
+  selector:
+    path: ErrorPresenter.swift
+- id: no_networkmonitor
+  selector:
+    path: NetworkMonitor.swift
+- id: no_global_0
+  selector:
+    anchor: ErrorPresenter
+- id: no_global_1
+  selector:
+    anchor: presentAlert
+- id: no_global_2
+  selector:
+    anchor: shouldRetry
+- id: no_global_3
+  selector:
+    anchor: NetworkMonitor
+- id: no_global_4
+  selector:
+    anchor: startMonitoring
+- id: no_global_5
+  selector:
+    anchor: checkConnectivity
+oracle:
+  required:
+  - userservice
+  allowed: []
+  forbidden:
+  - no_errorpresenter
+  - no_networkmonitor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

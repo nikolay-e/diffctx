@@ -1,0 +1,184 @@
+name: javascript_extended_022_route_handler
+repo:
+  initial_files:
+    src/routes/users.ts: |
+      import { Router } from 'express';
+
+      export const userRouter = Router();
+
+      userRouter.get('/users', (req, res) => {
+          res.json({ users: [] });
+      });
+    src/handlers/user-handler.ts: |
+      import { Request, Response } from 'express';
+
+      export interface UserDTO {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export async function getUserHandler(req: Request, res: Response): Promise<void> {
+          const { id } = req.params;
+          const user: UserDTO = { id, name: 'John Doe', email: 'john@example.com' };
+          res.json(user);
+      }
+
+      export async function listUsersHandler(req: Request, res: Response): Promise<void> {
+          const page = parseInt(req.query.page as string) || 1;
+          const limit = parseInt(req.query.limit as string) || 10;
+          res.json({ page, limit, users: [] });
+      }
+    src/middleware/cors-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      const ALLOWED_ORIGINS = ['http://localhost:3000', 'https://app.example.com'];
+
+      export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
+          const origin = req.headers.origin;
+          if (origin && ALLOWED_ORIGINS.includes(origin)) {
+              res.setHeader('Access-Control-Allow-Origin', origin);
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          }
+          next();
+      }
+
+      export function preflight(req: Request, res: Response): void {
+          res.status(204).end();
+      }
+    src/handlers/product-handler.ts: |
+      import { Request, Response } from 'express';
+
+      export interface ProductDTO {
+          id: string;
+          name: string;
+          price: number;
+          category: string;
+      }
+
+      export async function getProductHandler(req: Request, res: Response): Promise<void> {
+          const { id } = req.params;
+          const product: ProductDTO = { id, name: 'Widget', price: 9.99, category: 'gadgets' };
+          res.json(product);
+      }
+
+      export async function listProductsHandler(req: Request, res: Response): Promise<void> {
+          const page = parseInt(req.query.page as string) || 1;
+          res.json({ page, products: [] });
+      }
+  changed_files:
+    src/routes/users.ts: |
+      import { Router } from 'express';
+      import { getUserHandler, listUsersHandler } from '../handlers/user-handler';
+
+      export const userRouter = Router();
+
+      userRouter.get('/users', listUsersHandler);
+      userRouter.get('/users/:id', getUserHandler);
+    src/handlers/user-handler.ts: |
+      import { Request, Response } from 'express';
+
+      export interface UserDTO {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export async function getUserHandler(req: Request, res: Response): Promise<void> {
+          const { id } = req.params;
+          const user: UserDTO = { id, name: 'John Doe', email: 'john@example.com' };
+          res.json(user);
+      }
+
+      export async function listUsersHandler(req: Request, res: Response): Promise<void> {
+          const page = parseInt(req.query.page as string) || 1;
+          const limit = parseInt(req.query.limit as string) || 10;
+          res.json({ page, limit, users: [] });
+      }
+    src/middleware/cors-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      const ALLOWED_ORIGINS = ['http://localhost:3000', 'https://app.example.com'];
+
+      export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
+          const origin = req.headers.origin;
+          if (origin && ALLOWED_ORIGINS.includes(origin)) {
+              res.setHeader('Access-Control-Allow-Origin', origin);
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          }
+          next();
+      }
+
+      export function preflight(req: Request, res: Response): void {
+          res.status(204).end();
+      }
+    src/handlers/product-handler.ts: |
+      import { Request, Response } from 'express';
+
+      export interface ProductDTO {
+          id: string;
+          name: string;
+          price: number;
+          category: string;
+      }
+
+      export async function getProductHandler(req: Request, res: Response): Promise<void> {
+          const { id } = req.params;
+          const product: ProductDTO = { id, name: 'Widget', price: 9.99, category: 'gadgets' };
+          res.json(product);
+      }
+
+      export async function listProductsHandler(req: Request, res: Response): Promise<void> {
+          const page = parseInt(req.query.page as string) || 1;
+          res.json({ page, products: [] });
+      }
+  commit_message: Update files
+fragments:
+- id: user_handler
+  selector:
+    path: src/handlers/user-handler.ts
+    anchor: getUserHandler
+- id: user_handler_1
+  selector:
+    path: src/handlers/user-handler.ts
+    anchor: listUsersHandler
+- id: no_cors_handler
+  selector:
+    path: src/middleware/cors-handler.ts
+- id: no_product_handler
+  selector:
+    path: src/handlers/product-handler.ts
+- id: no_global_0
+  selector:
+    anchor: corsMiddleware
+- id: no_global_1
+  selector:
+    anchor: ALLOWED_ORIGINS
+- id: no_global_2
+  selector:
+    anchor: preflight
+- id: no_global_3
+  selector:
+    anchor: ProductDTO
+- id: no_global_4
+  selector:
+    anchor: getProductHandler
+- id: no_global_5
+  selector:
+    anchor: listProductsHandler
+oracle:
+  required:
+  - user_handler
+  - user_handler_1
+  allowed: []
+  forbidden:
+  - no_cors_handler
+  - no_product_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

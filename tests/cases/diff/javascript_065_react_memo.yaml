@@ -1,0 +1,139 @@
+name: javascript_065_react_memo
+repo:
+  initial_files:
+    src/ExpensiveList.tsx: |
+      import { memo } from 'react';
+
+      interface Item {
+          id: string;
+          name: string;
+      }
+
+      interface ExpensiveListProps {
+          items: Item[];
+      }
+
+      function ExpensiveListComponent({ items }: ExpensiveListProps) {
+          return (
+              <ul>
+                  {items.map(item => (
+                      <li key={item.id}>{item.name}</li>
+                  ))}
+              </ul>
+          );
+      }
+
+      export const ExpensiveList = memo(ExpensiveListComponent);
+    src/Dashboard.tsx: |
+      export function Dashboard() {
+          return <div>Placeholder</div>;
+      }
+    src/Sidebar.tsx: |
+      interface SidebarProps {
+          collapsed: boolean;
+          onToggle: () => void;
+      }
+
+      export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+          return (
+              <aside style={{ width: collapsed ? '60px' : '240px' }}>
+                  <button onClick={onToggle}>{collapsed ? '>' : '<'}</button>
+              </aside>
+          );
+      }
+    src/list-utils.ts: |
+      export function groupBy<T>(items: T[], key: keyof T): Record<string, T[]> {
+          return items.reduce((groups, item) => {
+              const value = String(item[key]);
+              (groups[value] = groups[value] ?? []).push(item);
+              return groups;
+          }, {} as Record<string, T[]>);
+      }
+  changed_files:
+    src/ExpensiveList.tsx: |
+      import { memo } from 'react';
+
+      interface Item {
+          id: string;
+          name: string;
+      }
+
+      interface ExpensiveListProps {
+          items: Item[];
+      }
+
+      function ExpensiveListComponent({ items }: ExpensiveListProps) {
+          return (
+              <ul>
+                  {items.map(item => (
+                      <li key={item.id}>{item.name}</li>
+                  ))}
+              </ul>
+          );
+      }
+
+      export const ExpensiveList = memo(ExpensiveListComponent);
+    src/Dashboard.tsx: |
+      import { useState } from 'react';
+      import { ExpensiveList } from './ExpensiveList';
+
+      export function Dashboard() {
+          const [items] = useState([{ id: '1', name: 'Item 1' }]);
+          const [count, setCount] = useState(0);
+
+          return (
+              <div>
+                  <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+                  <ExpensiveList items={items} />
+              </div>
+          );
+      }
+    src/Sidebar.tsx: |
+      interface SidebarProps {
+          collapsed: boolean;
+          onToggle: () => void;
+      }
+
+      export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+          return (
+              <aside style={{ width: collapsed ? '60px' : '240px' }}>
+                  <button onClick={onToggle}>{collapsed ? '>' : '<'}</button>
+              </aside>
+          );
+      }
+    src/list-utils.ts: |
+      export function groupBy<T>(items: T[], key: keyof T): Record<string, T[]> {
+          return items.reduce((groups, item) => {
+              const value = String(item[key]);
+              (groups[value] = groups[value] ?? []).push(item);
+              return groups;
+          }, {} as Record<string, T[]>);
+      }
+  commit_message: Update files
+fragments:
+- id: expensivelist
+  selector:
+    path: src/ExpensiveList.tsx
+    anchor: memo(ExpensiveListComponent)
+- id: expensivelist_1
+  selector:
+    path: src/ExpensiveList.tsx
+    anchor: ExpensiveListProps
+- id: no_global_0
+  selector:
+    anchor: SidebarProps
+- id: no_global_1
+  selector:
+    anchor: collapsed
+- id: no_global_2
+  selector:
+    anchor: groupBy
+oracle:
+  required:
+  - expensivelist
+  - expensivelist_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2

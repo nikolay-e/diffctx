@@ -1,0 +1,145 @@
+name: cicd_and_docs_019_gha_outputs
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        version:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: echo "1.0.0"
+        deploy:
+          needs: version
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: ./deploy.sh
+    scripts/version.sh: |
+      #!/bin/bash
+      VERSION=$(git describe --tags --always)
+      echo "Current version: $VERSION"
+    src/version.ts: |
+      export function getVersion(): string {
+        return process.env.APP_VERSION || '0.0.0-dev';
+      }
+
+      export function getBuildInfo(): { version: string; commit: string } {
+        return {
+          version: getVersion(),
+          commit: process.env.GIT_COMMIT || 'unknown'
+        };
+      }
+    garbage_semver.ts: |
+      const GARBAGE_CICD_DOCS_019_SEMVER_MARKER_A = "major";
+      const GARBAGE_CICD_DOCS_019_PRERELEASE_MARKER_B = "beta";
+
+      class GarbageSemverParser {
+        static GARBAGE_CICD_DOCS_019_STRICT_MARKER_C = true;
+        parse(): string { return ""; }
+      }
+    garbage_changelog.ts: |
+      const GARBAGE_CICD_DOCS_019_CHANGELOG_MARKER_D = "conventional";
+      const GARBAGE_CICD_DOCS_019_FORMAT_MARKER_E = "markdown";
+
+      class GarbageChangelogGenerator {
+        static GARBAGE_CICD_DOCS_019_UNRELEASED_MARKER_F = true;
+        generate(): string { return ""; }
+      }
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        version:
+          runs-on: ubuntu-latest
+          outputs:
+            version: ${{ steps.version.outputs.value }}
+          steps:
+            - uses: actions/checkout@v4
+            - id: version
+              run: echo "value=1.0.0" >> $GITHUB_OUTPUT
+        deploy:
+          needs: version
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: ./deploy.sh --version ${{ needs.version.outputs.version }}
+    scripts/version.sh: |
+      #!/bin/bash
+      VERSION=$(git describe --tags --always)
+      echo "Current version: $VERSION"
+    src/version.ts: |
+      export function getVersion(): string {
+        return process.env.APP_VERSION || '0.0.0-dev';
+      }
+
+      export function getBuildInfo(): { version: string; commit: string } {
+        return {
+          version: getVersion(),
+          commit: process.env.GIT_COMMIT || 'unknown'
+        };
+      }
+    garbage_semver.ts: |
+      const GARBAGE_CICD_DOCS_019_SEMVER_MARKER_A = "major";
+      const GARBAGE_CICD_DOCS_019_PRERELEASE_MARKER_B = "beta";
+
+      class GarbageSemverParser {
+        static GARBAGE_CICD_DOCS_019_STRICT_MARKER_C = true;
+        parse(): string { return ""; }
+      }
+    garbage_changelog.ts: |
+      const GARBAGE_CICD_DOCS_019_CHANGELOG_MARKER_D = "conventional";
+      const GARBAGE_CICD_DOCS_019_FORMAT_MARKER_E = "markdown";
+
+      class GarbageChangelogGenerator {
+        static GARBAGE_CICD_DOCS_019_UNRELEASED_MARKER_F = true;
+        generate(): string { return ""; }
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'version: ${{ steps.version.outputs.value }}'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_CHANGELOG_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_FORMAT_MARKER_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_PRERELEASE_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_SEMVER_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_STRICT_MARKER_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_019_UNRELEASED_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: garbage_changelog.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_semver.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

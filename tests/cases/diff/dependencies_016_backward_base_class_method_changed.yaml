@@ -1,0 +1,142 @@
+name: dependencies_016_backward_base_class_method_changed
+repo:
+  initial_files:
+    base.py: |
+      class BaseProcessor:
+          def process(self, data):
+              return data
+    processors/json.py: |
+      from base import BaseProcessor
+
+      class JsonProcessor(BaseProcessor):
+          def process(self, data):
+              import json
+              return json.loads(data)
+    processors/xml.py: |
+      from base import BaseProcessor
+
+      class XmlProcessor(BaseProcessor):
+          def process(self, data):
+              return f"<xml>{data}</xml>"
+    utils/base_processor.py: |
+      GARBAGE_DEP_016_BASEPROC_COLLISION_A = "name_collision"
+      GARBAGE_DEP_016_BASEPROC_UTIL_B = True
+
+      class BaseProcessor:
+          def process(self, data):
+              return data.upper()
+
+          def preprocess(self, data, options):
+              GARBAGE_DEP_016_BASEPROC_PREPROC_C = "preprocess_util"
+              return data.strip()
+    processors/yaml_processor.py: |
+      GARBAGE_DEP_016_YAML_MODULE_G = "yaml_sibling"
+      GARBAGE_DEP_016_YAML_PARSE_H = 42
+
+      class YamlProcessor:
+          GARBAGE_DEP_016_YAML_CLASS_I = "no_inheritance"
+
+          def process(self, data):
+              return {"raw": data}
+
+          def preprocess(self, data, options):
+              return data
+  changed_files:
+    base.py: |
+      class BaseProcessor:
+          def process(self, data, options=None):
+              if options:
+                  data = self.preprocess(data, options)
+              return data
+
+          def preprocess(self, data, options):
+              return data
+    processors/json.py: |
+      from base import BaseProcessor
+
+      class JsonProcessor(BaseProcessor):
+          def process(self, data):
+              import json
+              return json.loads(data)
+    processors/xml.py: |
+      from base import BaseProcessor
+
+      class XmlProcessor(BaseProcessor):
+          def process(self, data):
+              return f"<xml>{data}</xml>"
+    utils/base_processor.py: |
+      GARBAGE_DEP_016_BASEPROC_COLLISION_A = "name_collision"
+      GARBAGE_DEP_016_BASEPROC_UTIL_B = True
+
+      class BaseProcessor:
+          def process(self, data):
+              return data.upper()
+
+          def preprocess(self, data, options):
+              GARBAGE_DEP_016_BASEPROC_PREPROC_C = "preprocess_util"
+              return data.strip()
+    processors/yaml_processor.py: |
+      GARBAGE_DEP_016_YAML_MODULE_G = "yaml_sibling"
+      GARBAGE_DEP_016_YAML_PARSE_H = 42
+
+      class YamlProcessor:
+          GARBAGE_DEP_016_YAML_CLASS_I = "no_inheritance"
+
+          def process(self, data):
+              return {"raw": data}
+
+          def preprocess(self, data, options):
+              return data
+  commit_message: Update files
+fragments:
+- id: base
+  selector:
+    path: base.py
+    anchor: 'def process(self, data, options=None):'
+- id: base_1
+  selector:
+    path: base.py
+    anchor: 'def preprocess(self, data, options):'
+- id: base_2
+  selector:
+    path: base.py
+    anchor: self.preprocess(data, options)
+- id: no_base_processor
+  selector:
+    path: utils/base_processor.py
+- id: no_yaml_processor
+  selector:
+    path: processors/yaml_processor.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_016_BASEPROC_COLLISION_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_016_BASEPROC_UTIL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_016_BASEPROC_PREPROC_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_016_YAML_MODULE_G
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_016_YAML_PARSE_H
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_016_YAML_CLASS_I
+oracle:
+  required:
+  - base
+  - base_1
+  - base_2
+  allowed: []
+  forbidden:
+  - no_base_processor
+  - no_yaml_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

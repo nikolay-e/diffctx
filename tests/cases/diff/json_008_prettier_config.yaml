@@ -1,0 +1,170 @@
+name: json_008_prettier_config
+repo:
+  initial_files:
+    .prettierrc.json: |
+      {
+        "semi": true,
+        "singleQuote": false,
+        "tabWidth": 2,
+        "trailingComma": "es5",
+        "arrowParens": "always",
+        "endOfLine": "lf",
+        "bracketSpacing": true
+      }
+    src/format.js: |
+      function formatCode(code) {
+          return code.trim();
+      }
+
+      function normalizeWhitespace(text) {
+          return text
+              .replace(/\t/g, '    ')
+              .replace(/[ ]+$/gm, '')
+              .replace(/\n{3,}/g, '\n\n');
+      }
+
+      function indentBlock(text, spaces) {
+          const prefix = ' '.repeat(spaces);
+          return text
+              .split('\n')
+              .map((line) => (line.length > 0 ? prefix + line : line))
+              .join('\n');
+      }
+
+      function wrapLines(text, maxWidth) {
+          const words = text.split(' ');
+          const lines = [];
+          let current = '';
+          for (const word of words) {
+              if (current.length + word.length + 1 > maxWidth && current.length > 0) {
+                  lines.push(current);
+                  current = word;
+              } else {
+                  current = current.length > 0 ? current + ' ' + word : word;
+              }
+          }
+          if (current.length > 0) lines.push(current);
+          return lines.join('\n');
+      }
+
+      export { formatCode, normalizeWhitespace, indentBlock, wrapLines };
+    src/config-loader.js: |
+      import { formatCode, normalizeWhitespace } from './format';
+
+      function loadConfig(rawText) {
+          const cleaned = normalizeWhitespace(rawText);
+          const formatted = formatCode(cleaned);
+          return JSON.parse(formatted);
+      }
+
+      function validateConfig(config) {
+          const required = ['name', 'version', 'entry'];
+          const missing = required.filter((key) => !(key in config));
+          if (missing.length > 0) {
+              throw new Error(`Missing config keys: ${missing.join(', ')}`);
+          }
+          return true;
+      }
+
+      export { loadConfig, validateConfig };
+    .editorconfig: |
+      root = true
+
+      [*]
+      indent_style = space
+      indent_size = 4
+      end_of_line = lf
+      charset = utf-8
+      trim_trailing_whitespace = true
+      insert_final_newline = true
+    package.json: |
+      {
+        "name": "format-app",
+        "version": "1.0.0",
+        "scripts": {
+          "format": "prettier --write .",
+          "format:check": "prettier --check ."
+        },
+        "devDependencies": {
+          "prettier": "^3.0.0"
+        }
+      }
+  changed_files:
+    .prettierrc.json: |
+      {
+        "semi": false,
+        "singleQuote": true,
+        "tabWidth": 4,
+        "printWidth": 100,
+        "trailingComma": "all",
+        "arrowParens": "always",
+        "endOfLine": "lf",
+        "bracketSpacing": true
+      }
+  commit_message: Update files
+fragments:
+- id: prettierrc
+  selector:
+    path: .prettierrc.json
+    anchor: '"semi": false'
+- id: prettierrc_1
+  selector:
+    path: .prettierrc.json
+    anchor: '"singleQuote": true'
+- id: prettierrc_2
+  selector:
+    path: .prettierrc.json
+    anchor: '"tabWidth": 4'
+- id: prettierrc_3
+  selector:
+    path: .prettierrc.json
+    anchor: '"printWidth": 100'
+- id: prettierrc_4
+  selector:
+    path: .prettierrc.json
+    anchor: '"trailingComma": "all"'
+- id: no_editorconfig
+  selector:
+    path: .editorconfig
+- id: no_package
+  selector:
+    path: package.json
+- id: no_global_0
+  selector:
+    anchor: root = true
+- id: no_global_1
+  selector:
+    anchor: indent_style
+- id: no_global_2
+  selector:
+    anchor: trim_trailing_whitespace
+- id: no_global_3
+  selector:
+    anchor: insert_final_newline
+- id: no_global_4
+  selector:
+    anchor: prettier --write
+- id: no_global_5
+  selector:
+    anchor: format:check
+- id: no_global_6
+  selector:
+    anchor: format-app
+oracle:
+  required:
+  - prettierrc
+  - prettierrc_1
+  - prettierrc_2
+  - prettierrc_3
+  - prettierrc_4
+  allowed: []
+  forbidden:
+  - no_editorconfig
+  - no_package
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

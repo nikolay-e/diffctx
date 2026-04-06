@@ -1,0 +1,146 @@
+name: patterns_024_edge_vendor_copy
+repo:
+  initial_files:
+    third_party/lodash/chunk.js: |
+      function chunk(array, size) {
+          const result = [];
+          for (let i = 0; i < array.length; i += size) {
+              result.push(array.slice(i, i + size));
+          }
+          return result;
+      }
+      module.exports = chunk;
+    src/utils.js: |
+      const chunk = require('../third_party/lodash/chunk');
+
+      function processInBatches(items) {
+          return chunk(items, 10);
+      }
+
+      module.exports = { processInBatches };
+    third_party/lodash/flatten.js: |
+      function flatten(array, depth) {
+          depth = depth || 1;
+          const result = [];
+          function recurse(arr, d) {
+              for (let i = 0; i < arr.length; i++) {
+                  if (Array.isArray(arr[i]) && d < depth) {
+                      recurse(arr[i], d + 1);
+                  } else {
+                      result.push(arr[i]);
+                  }
+              }
+          }
+          recurse(array, 0);
+          return result;
+      }
+      module.exports = flatten;
+    src/batch_processor.js: |
+      function splitIntoBatches(items, batchSize) {
+          const batches = [];
+          for (let i = 0; i < items.length; i += batchSize) {
+              batches.push(items.slice(i, i + batchSize));
+          }
+          return batches;
+      }
+
+      function processBatch(batch) {
+          return batch.map(item => ({ processed: true, value: item }));
+      }
+
+      module.exports = { splitIntoBatches, processBatch };
+  changed_files:
+    third_party/lodash/chunk.js: |
+      function chunk(array, size) {
+          if (!Array.isArray(array)) {
+              throw new TypeError('Expected array');
+          }
+          if (typeof size !== 'number' || size < 1) {
+              size = 1;
+          }
+          const result = [];
+          for (let i = 0; i < array.length; i += size) {
+              result.push(array.slice(i, i + size));
+          }
+          return result;
+      }
+      module.exports = chunk;
+    src/utils.js: |
+      const chunk = require('../third_party/lodash/chunk');
+
+      function processInBatches(items) {
+          return chunk(items, 10);
+      }
+
+      module.exports = { processInBatches };
+    third_party/lodash/flatten.js: |
+      function flatten(array, depth) {
+          depth = depth || 1;
+          const result = [];
+          function recurse(arr, d) {
+              for (let i = 0; i < arr.length; i++) {
+                  if (Array.isArray(arr[i]) && d < depth) {
+                      recurse(arr[i], d + 1);
+                  } else {
+                      result.push(arr[i]);
+                  }
+              }
+          }
+          recurse(array, 0);
+          return result;
+      }
+      module.exports = flatten;
+    src/batch_processor.js: |
+      function splitIntoBatches(items, batchSize) {
+          const batches = [];
+          for (let i = 0; i < items.length; i += batchSize) {
+              batches.push(items.slice(i, i + batchSize));
+          }
+          return batches;
+      }
+
+      function processBatch(batch) {
+          return batch.map(item => ({ processed: true, value: item }));
+      }
+
+      module.exports = { splitIntoBatches, processBatch };
+  commit_message: Update files
+fragments:
+- id: chunk
+  selector:
+    path: third_party/lodash/chunk.js
+    anchor: if (!Array.isArray(array))
+- id: chunk_1
+  selector:
+    path: third_party/lodash/chunk.js
+    anchor: throw new TypeError('Expected array')
+- id: no_flatten
+  selector:
+    path: third_party/lodash/flatten.js
+- id: no_batch_processor
+  selector:
+    path: src/batch_processor.js
+- id: no_global_0
+  selector:
+    anchor: flatten
+- id: no_global_1
+  selector:
+    anchor: recurse
+- id: no_global_2
+  selector:
+    anchor: splitIntoBatches
+- id: no_global_3
+  selector:
+    anchor: processBatch
+oracle:
+  required:
+  - chunk
+  - chunk_1
+  allowed: []
+  forbidden:
+  - no_flatten
+  - no_batch_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

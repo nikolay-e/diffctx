@@ -1,0 +1,148 @@
+name: json_013_vercel_config
+repo:
+  initial_files:
+    vercel.json: |
+      {
+        "version": 2,
+        "builds": [
+          {"src": "api/*.js", "use": "@vercel/node"}
+        ],
+        "routes": [
+          {"src": "/api/(.*)", "dest": "/api/$1"},
+          {"src": "/(.*)", "dest": "/public/$1"}
+        ],
+        "env": {
+          "NODE_ENV": "production"
+        }
+      }
+    api/hello.js: |
+      module.exports = (req, res) => {
+          const name = req.query.name || 'World';
+          res.json({ message: `Hello, ${name}!` });
+      };
+    api/users.js: |
+      const { getUsers, createUser } = require('../lib/userService');
+
+      module.exports = async (req, res) => {
+          if (req.method === 'GET') {
+              const users = await getUsers();
+              return res.json({ users, count: users.length });
+          }
+
+          if (req.method === 'POST') {
+              const user = await createUser(req.body);
+              return res.status(201).json({ user });
+          }
+
+          res.status(405).json({ error: 'Method not allowed' });
+      };
+    lib/userService.js: |
+      const users = [];
+
+      async function getUsers() {
+          return [...users];
+      }
+
+      async function createUser(data) {
+          const user = {
+              id: users.length + 1,
+              name: data.name,
+              email: data.email,
+              createdAt: new Date().toISOString(),
+          };
+          users.push(user);
+          return user;
+      }
+
+      module.exports = { getUsers, createUser };
+    package.json: |
+      {
+        "name": "vercel-app",
+        "version": "1.0.0",
+        "scripts": {
+          "dev": "vercel dev",
+          "build": "vercel build"
+        },
+        "dependencies": {
+          "express": "^4.18.0"
+        }
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "outDir": "dist",
+          "strict": true,
+          "esModuleInterop": true
+        },
+        "include": ["api/**/*.ts", "lib/**/*.ts"]
+      }
+  changed_files:
+    vercel.json: |
+      {
+        "version": 2,
+        "builds": [
+          {"src": "api/**/*.ts", "use": "@vercel/node"}
+        ],
+        "routes": [
+          {"src": "/api/(.*)", "dest": "/api/$1"},
+          {"src": "/(.*)", "dest": "/public/$1"}
+        ],
+        "regions": ["sfo1", "iad1"],
+        "env": {
+          "NODE_ENV": "production"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: vercel
+  selector:
+    path: vercel.json
+    anchor: '"src": "api/**/*.ts"'
+- id: vercel_1
+  selector:
+    path: vercel.json
+    anchor: '"regions": ["sfo1", "iad1"]'
+- id: no_userservice
+  selector:
+    path: lib/userService.js
+- id: no_package
+  selector:
+    path: package.json
+- id: no_tsconfig
+  selector:
+    path: tsconfig.json
+- id: no_global_0
+  selector:
+    anchor: getUsers
+- id: no_global_1
+  selector:
+    anchor: createUser
+- id: no_global_2
+  selector:
+    anchor: users.length + 1
+- id: no_global_3
+  selector:
+    anchor: vercel dev
+- id: no_global_4
+  selector:
+    anchor: vercel build
+- id: no_global_5
+  selector:
+    anchor: esModuleInterop
+oracle:
+  required:
+  - vercel
+  - vercel_1
+  allowed: []
+  forbidden:
+  - no_userservice
+  - no_package
+  - no_tsconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

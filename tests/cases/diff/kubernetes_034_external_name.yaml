@@ -1,0 +1,463 @@
+name: kubernetes_034_external_name
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-service
+        namespace: production
+        labels:
+          app: backend-service
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-service
+        template:
+          metadata:
+            labels:
+              app: backend-service
+              tier: backend
+          spec:
+            containers:
+            - name: backend
+              image: registry.example.com/backend-service:v1.2.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: DATABASE_URL
+                value: "postgresql://external-db.production.svc.cluster.local:5432/mydb"
+              - name: REDIS_URL
+                value: "redis://cache.internal.svc.cluster.local:6379"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-service
+        namespace: production
+      spec:
+        selector:
+          app: backend-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/service-db.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: external-db
+        namespace: production
+        labels:
+          app: external-db
+          type: external
+      spec:
+        type: ClusterIP
+        ports:
+        - name: postgres
+          port: 5432
+          targetPort: 5432
+    k8s/jobs/db-migration.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: db-migration
+        namespace: production
+      spec:
+        schedule: "0 3 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: migrate
+                  image: registry.example.com/db-migrator:v1.0.0
+                  env:
+                  - name: DATABASE_URL
+                    value: "postgresql://external-db.production.svc.cluster.local:5432/mydb"
+                  - name: MIGRATION_DIR
+                    value: "/migrations"
+                restartPolicy: OnFailure
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: backend-config
+        namespace: production
+      data:
+        LOG_LEVEL: info
+        POOL_SIZE: "10"
+        TIMEOUT: "30"
+    k8s/iac/crossplane-composition.yaml: |
+      apiVersion: apiextensions.crossplane.io/v1
+      kind: Composition
+      metadata:
+        name: rds-postgres-composition
+      spec:
+        compositeTypeRef:
+          apiVersion: database.example.com/v1alpha1
+          kind: PostgreSQLInstance
+        resources:
+        - name: rds-instance
+          base:
+            apiVersion: rds.aws.crossplane.io/v1alpha1
+            kind: DBInstance
+            spec:
+              forProvider:
+                engine: postgres
+                engineVersion: "15.4"
+                instanceClass: db.r6g.large
+                dbName: mydb
+    k8s/iac/terraform-state.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: terraform-backend-config
+        namespace: terraform
+      data:
+        backend.tf: |
+          terraform {
+            backend "s3" {
+              bucket = "mycompany-tfstate"
+              key    = "production/rds/terraform.tfstate"
+              region = "us-east-1"
+            }
+          }
+    k8s/monitoring/postgres-exporter.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: postgres-exporter
+        namespace: monitoring
+        labels:
+          app: postgres-exporter
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: postgres-exporter
+        template:
+          spec:
+            containers:
+            - name: exporter
+              image: prometheuscommunity/postgres-exporter:v0.15.0
+              ports:
+              - containerPort: 9187
+                name: metrics
+              env:
+              - name: DATA_SOURCE_NAME
+                value: "postgresql://monitor:monitor@external-db.production.svc.cluster.local:5432/mydb?sslmode=require"
+    k8s/base/networkpolicy-db.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-db-egress
+        namespace: production
+      spec:
+        podSelector:
+          matchLabels:
+            app: backend-service
+        policyTypes:
+        - Egress
+        egress:
+        - to:
+          - ipBlock:
+              cidr: 10.0.0.0/8
+          ports:
+          - protocol: TCP
+            port: 5432
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-service
+        namespace: production
+        labels:
+          app: backend-service
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-service
+        template:
+          metadata:
+            labels:
+              app: backend-service
+              tier: backend
+          spec:
+            containers:
+            - name: backend
+              image: registry.example.com/backend-service:v1.2.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: DATABASE_URL
+                value: "postgresql://external-db.production.svc.cluster.local:5432/mydb"
+              - name: REDIS_URL
+                value: "redis://cache.internal.svc.cluster.local:6379"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-service
+        namespace: production
+      spec:
+        selector:
+          app: backend-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/service-db.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: external-db
+        namespace: production
+        labels:
+          app: external-db
+          type: external
+        annotations:
+          description: "Points to managed PostgreSQL instance in AWS RDS"
+      spec:
+        type: ExternalName
+        externalName: mydb.abc123xyz.us-east-1.rds.amazonaws.com
+        ports:
+        - name: postgres
+          port: 5432
+          targetPort: 5432
+    k8s/jobs/db-migration.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: db-migration
+        namespace: production
+      spec:
+        schedule: "0 3 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: migrate
+                  image: registry.example.com/db-migrator:v1.0.0
+                  env:
+                  - name: DATABASE_URL
+                    value: "postgresql://external-db.production.svc.cluster.local:5432/mydb"
+                  - name: MIGRATION_DIR
+                    value: "/migrations"
+                restartPolicy: OnFailure
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: backend-config
+        namespace: production
+      data:
+        LOG_LEVEL: info
+        POOL_SIZE: "10"
+        TIMEOUT: "30"
+    k8s/iac/crossplane-composition.yaml: |
+      apiVersion: apiextensions.crossplane.io/v1
+      kind: Composition
+      metadata:
+        name: rds-postgres-composition
+      spec:
+        compositeTypeRef:
+          apiVersion: database.example.com/v1alpha1
+          kind: PostgreSQLInstance
+        resources:
+        - name: rds-instance
+          base:
+            apiVersion: rds.aws.crossplane.io/v1alpha1
+            kind: DBInstance
+            spec:
+              forProvider:
+                engine: postgres
+                engineVersion: "15.4"
+                instanceClass: db.r6g.large
+                dbName: mydb
+    k8s/iac/terraform-state.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: terraform-backend-config
+        namespace: terraform
+      data:
+        backend.tf: |
+          terraform {
+            backend "s3" {
+              bucket = "mycompany-tfstate"
+              key    = "production/rds/terraform.tfstate"
+              region = "us-east-1"
+            }
+          }
+    k8s/monitoring/postgres-exporter.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: postgres-exporter
+        namespace: monitoring
+        labels:
+          app: postgres-exporter
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: postgres-exporter
+        template:
+          spec:
+            containers:
+            - name: exporter
+              image: prometheuscommunity/postgres-exporter:v0.15.0
+              ports:
+              - containerPort: 9187
+                name: metrics
+              env:
+              - name: DATA_SOURCE_NAME
+                value: "postgresql://monitor:monitor@external-db.production.svc.cluster.local:5432/mydb?sslmode=require"
+    k8s/base/networkpolicy-db.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-db-egress
+        namespace: production
+      spec:
+        podSelector:
+          matchLabels:
+            app: backend-service
+        policyTypes:
+        - Egress
+        egress:
+        - to:
+          - ipBlock:
+              cidr: 10.0.0.0/8
+          ports:
+          - protocol: TCP
+            port: 5432
+  commit_message: Update files
+fragments:
+- id: service_db
+  selector:
+    path: k8s/base/service-db.yaml
+    anchor: 'type: ExternalName'
+- id: service_db_1
+  selector:
+    path: k8s/base/service-db.yaml
+    anchor: mydb.abc123xyz.us-east-1.rds.amazonaws.com
+- id: deployment
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: external-db.production.svc.cluster.local
+- id: db_migration
+  selector:
+    path: k8s/jobs/db-migration.yaml
+    anchor: external-db.production.svc.cluster.local
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_crossplane_composition
+  selector:
+    path: k8s/iac/crossplane-composition.yaml
+- id: no_terraform_state
+  selector:
+    path: k8s/iac/terraform-state.yaml
+- id: no_postgres_exporter
+  selector:
+    path: k8s/monitoring/postgres-exporter.yaml
+- id: no_networkpolicy_db
+  selector:
+    path: k8s/base/networkpolicy-db.yaml
+- id: no_global_0
+  selector:
+    anchor: POOL_SIZE
+- id: no_global_1
+  selector:
+    anchor: TIMEOUT
+- id: no_global_2
+  selector:
+    anchor: rds-postgres-composition
+- id: no_global_3
+  selector:
+    anchor: PostgreSQLInstance
+- id: no_global_4
+  selector:
+    anchor: db.r6g.large
+- id: no_global_5
+  selector:
+    anchor: terraform-backend-config
+- id: no_global_6
+  selector:
+    anchor: mycompany-tfstate
+- id: no_global_7
+  selector:
+    anchor: terraform.tfstate
+- id: no_global_8
+  selector:
+    anchor: postgres-exporter
+- id: no_global_9
+  selector:
+    anchor: DATA_SOURCE_NAME
+- id: no_global_10
+  selector:
+    anchor: 'containerPort: 9187'
+- id: no_global_11
+  selector:
+    anchor: allow-db-egress
+- id: no_global_12
+  selector:
+    anchor: NetworkPolicy
+- id: no_global_13
+  selector:
+    anchor: 'cidr: 10.0.0.0/8'
+- id: no_global_14
+  selector:
+    anchor: 'targetPort: 8080'
+oracle:
+  required:
+  - service_db
+  - service_db_1
+  - deployment
+  - db_migration
+  allowed: []
+  forbidden:
+  - no_configmap
+  - no_crossplane_composition
+  - no_terraform_state
+  - no_postgres_exporter
+  - no_networkpolicy_db
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

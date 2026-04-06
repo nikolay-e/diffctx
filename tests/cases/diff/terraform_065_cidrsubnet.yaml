@@ -1,0 +1,138 @@
+name: terraform_065_cidrsubnet
+repo:
+  initial_files:
+    networking.tf: |
+      variable "vpc_cidr" {
+        default = "10.0.0.0/16"
+      }
+
+      resource "aws_subnet" "public_a" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 1)
+        availability_zone = "us-east-1a"
+      }
+
+      resource "aws_subnet" "private_a" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 10)
+        availability_zone = "us-east-1a"
+      }
+    routes.tf: |
+      resource "aws_route_table" "public" {
+        vpc_id = aws_vpc.main.id
+
+        route {
+          cidr_block = "0.0.0.0/0"
+          gateway_id = aws_internet_gateway.main.id
+        }
+      }
+
+      resource "aws_route_table_association" "public_a" {
+        subnet_id      = aws_subnet.public_a.id
+        route_table_id = aws_route_table.public.id
+      }
+    database/subnets.tf: |
+      resource "aws_subnet" "db_a" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 100)
+        availability_zone = "us-east-1a"
+      }
+
+      resource "aws_subnet" "db_b" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 101)
+        availability_zone = "us-east-1b"
+      }
+    waf/rules.tf: |
+      resource "aws_wafv2_web_acl" "main" {
+        name  = "app-waf"
+        scope = "REGIONAL"
+        default_action {
+          allow {}
+        }
+        visibility_config {
+          metric_name                = "app-waf"
+          sampled_requests_enabled   = true
+          cloudwatch_metrics_enabled = true
+        }
+      }
+  changed_files:
+    networking.tf: |
+      variable "vpc_cidr" {
+        default = "10.0.0.0/16"
+      }
+
+      resource "aws_subnet" "public_a" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 1)
+        availability_zone = "us-east-1a"
+      }
+
+      resource "aws_subnet" "public_b" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 2)
+        availability_zone = "us-east-1b"
+      }
+
+      resource "aws_subnet" "private_a" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 10)
+        availability_zone = "us-east-1a"
+      }
+
+      resource "aws_subnet" "private_b" {
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.vpc_cidr, 8, 11)
+        availability_zone = "us-east-1b"
+      }
+  commit_message: Update files
+fragments:
+- id: networking
+  selector:
+    path: networking.tf
+    anchor: resource "aws_subnet" "public_b"
+- id: networking_1
+  selector:
+    path: networking.tf
+    anchor: cidrsubnet(var.vpc_cidr, 8, 2)
+- id: networking_2
+  selector:
+    path: networking.tf
+    anchor: resource "aws_subnet" "private_b"
+- id: networking_3
+  selector:
+    path: networking.tf
+    anchor: cidrsubnet(var.vpc_cidr, 8, 11)
+- id: routes
+  selector:
+    path: routes.tf
+    anchor: resource "aws_route_table" "public" {
+- id: no_subnets
+  selector:
+    path: database/subnets.tf
+- id: no_rules
+  selector:
+    path: waf/rules.tf
+- id: no_global_0
+  selector:
+    anchor: aws_subnet" "db_a"
+- id: no_global_1
+  selector:
+    anchor: cidrsubnet(var.vpc_cidr, 8, 100)
+- id: no_global_2
+  selector:
+    anchor: aws_wafv2_web_acl
+oracle:
+  required:
+  - networking
+  - networking_1
+  - networking_2
+  - networking_3
+  - routes
+  allowed: []
+  forbidden:
+  - no_subnets
+  - no_rules
+  - no_global_0
+  - no_global_1
+  - no_global_2

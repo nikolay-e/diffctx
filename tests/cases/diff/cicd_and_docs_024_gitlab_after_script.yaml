@@ -1,0 +1,124 @@
+name: cicd_and_docs_024_gitlab_after_script
+repo:
+  initial_files:
+    cleanup.sh: |
+      #!/bin/bash
+      set -e
+      echo "Cleaning up test artifacts..."
+      rm -rf /tmp/test-*
+      rm -rf ./coverage
+      rm -rf ./node_modules/.cache
+    .gitlab-ci.yml: |
+      test:
+        script:
+          - npm ci
+          - npm test
+    package.json: |
+      {
+        "name": "gitlab-cleanup-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test": "jest --coverage"
+        }
+      }
+    garbage_cleanup.ts: |
+      const GARBAGE_CICD_DOCS_024_CLEANUP_MARKER_A = "temp";
+      const GARBAGE_CICD_DOCS_024_PATTERN_MARKER_B = "*.tmp";
+
+      class GarbageCleanupService {
+        static GARBAGE_CICD_DOCS_024_RECURSIVE_MARKER_C = true;
+        clean(): void {}
+      }
+    garbage_finalizer.ts: |
+      const GARBAGE_CICD_DOCS_024_FINALIZER_MARKER_D = "always";
+      const GARBAGE_CICD_DOCS_024_IGNORE_MARKER_E = false;
+
+      class GarbageFinalizerHandler {
+        static GARBAGE_CICD_DOCS_024_ASYNC_MARKER_F = true;
+        finalize(): void {}
+      }
+  changed_files:
+    cleanup.sh: |
+      #!/bin/bash
+      set -e
+      echo "Cleaning up test artifacts..."
+      rm -rf /tmp/test-*
+      rm -rf ./coverage
+      rm -rf ./node_modules/.cache
+    .gitlab-ci.yml: |
+      test:
+        script:
+          - npm ci
+          - npm test
+        after_script:
+          - ./cleanup.sh
+    package.json: |
+      {
+        "name": "gitlab-cleanup-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test": "jest --coverage"
+        }
+      }
+    garbage_cleanup.ts: |
+      const GARBAGE_CICD_DOCS_024_CLEANUP_MARKER_A = "temp";
+      const GARBAGE_CICD_DOCS_024_PATTERN_MARKER_B = "*.tmp";
+
+      class GarbageCleanupService {
+        static GARBAGE_CICD_DOCS_024_RECURSIVE_MARKER_C = true;
+        clean(): void {}
+      }
+    garbage_finalizer.ts: |
+      const GARBAGE_CICD_DOCS_024_FINALIZER_MARKER_D = "always";
+      const GARBAGE_CICD_DOCS_024_IGNORE_MARKER_E = false;
+
+      class GarbageFinalizerHandler {
+        static GARBAGE_CICD_DOCS_024_ASYNC_MARKER_F = true;
+        finalize(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'after_script:'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_ASYNC_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_CLEANUP_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_FINALIZER_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_IGNORE_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_PATTERN_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_024_RECURSIVE_MARKER_C
+- id: no_global_6
+  selector:
+    anchor: garbage_cleanup.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_finalizer.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

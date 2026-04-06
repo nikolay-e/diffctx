@@ -1,0 +1,333 @@
+name: kubernetes_039_multiport_service
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: microservice-app
+        namespace: production
+        labels:
+          app: microservice-app
+          tier: backend
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: microservice-app
+        template:
+          metadata:
+            labels:
+              app: microservice-app
+              tier: backend
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "9100"
+          spec:
+            containers:
+            - name: app
+              image: registry.example.com/microservice-app:v3.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              - containerPort: 9090
+                name: grpc
+              - containerPort: 9100
+                name: metrics
+              - containerPort: 8081
+                name: health
+              readinessProbe:
+                httpGet:
+                  path: /ready
+                  port: 8081
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              livenessProbe:
+                httpGet:
+                  path: /live
+                  port: 8081
+                initialDelaySeconds: 15
+                periodSeconds: 20
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: microservice-app
+        namespace: production
+        labels:
+          app: microservice-app
+      spec:
+        selector:
+          app: microservice-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: microservice-config
+        namespace: production
+      data:
+        LOG_FORMAT: json
+        ENABLE_TRACING: "true"
+        GRPC_MAX_MESSAGE_SIZE: "4194304"
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: microservice-app-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: microservice-app
+        minReplicas: 4
+        maxReplicas: 20
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 75
+    k8s/mesh/servicemesh-sidecar.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: Sidecar
+      metadata:
+        name: default-sidecar
+        namespace: production
+      spec:
+        egress:
+        - hosts:
+          - "./*"
+          - "istio-system/*"
+        outboundTrafficPolicy:
+          mode: REGISTRY_ONLY
+    k8s/tools/grpc-health-probe.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: grpc-health-check
+        namespace: monitoring
+      spec:
+        schedule: "*/5 * * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: probe
+                  image: grpc-ecosystem/grpc-health-probe:v0.4.22
+                  command:
+                  - grpc_health_probe
+                  - -addr=microservice-app.production:9090
+                restartPolicy: Never
+    openapi/spec.yaml: |
+      info:
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: microservice-app
+        namespace: production
+        labels:
+          app: microservice-app
+          tier: backend
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: microservice-app
+        template:
+          metadata:
+            labels:
+              app: microservice-app
+              tier: backend
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "9100"
+          spec:
+            containers:
+            - name: app
+              image: registry.example.com/microservice-app:v3.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              - containerPort: 9090
+                name: grpc
+              - containerPort: 9100
+                name: metrics
+              - containerPort: 8081
+                name: health
+              readinessProbe:
+                httpGet:
+                  path: /ready
+                  port: 8081
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              livenessProbe:
+                httpGet:
+                  path: /live
+                  port: 8081
+                initialDelaySeconds: 15
+                periodSeconds: 20
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: microservice-app
+        namespace: production
+        labels:
+          app: microservice-app
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9100"
+      spec:
+        selector:
+          app: microservice-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+          protocol: TCP
+        - name: https
+          port: 443
+          targetPort: 8443
+          protocol: TCP
+        - name: grpc
+          port: 9090
+          targetPort: 9090
+          protocol: TCP
+          appProtocol: grpc
+        - name: metrics
+          port: 9100
+          targetPort: 9100
+          protocol: TCP
+        - name: health
+          port: 8081
+          targetPort: 8081
+          protocol: TCP
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: microservice-config
+        namespace: production
+      data:
+        LOG_FORMAT: json
+        ENABLE_TRACING: "true"
+        GRPC_MAX_MESSAGE_SIZE: "4194304"
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: microservice-app-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: microservice-app
+        minReplicas: 4
+        maxReplicas: 20
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 75
+    k8s/mesh/servicemesh-sidecar.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: Sidecar
+      metadata:
+        name: default-sidecar
+        namespace: production
+      spec:
+        egress:
+        - hosts:
+          - "./*"
+          - "istio-system/*"
+        outboundTrafficPolicy:
+          mode: REGISTRY_ONLY
+    k8s/tools/grpc-health-probe.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: grpc-health-check
+        namespace: monitoring
+      spec:
+        schedule: "*/5 * * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: probe
+                  image: grpc-ecosystem/grpc-health-probe:v0.4.22
+                  command:
+                  - grpc_health_probe
+                  - -addr=microservice-app.production:9090
+                restartPolicy: Never
+    openapi/spec.yaml: |
+      info:
+  commit_message: Update files
+fragments:
+- id: service_file
+  selector:
+    path: k8s/base/service.yaml
+- id: req_global_0
+  selector:
+    anchor: 'prometheus.io/scrape: "true"'
+- id: no_servicemesh_sidecar
+  selector:
+    path: k8s/mesh/servicemesh-sidecar.yaml
+- id: no_grpc_health_probe
+  selector:
+    path: k8s/tools/grpc-health-probe.yaml
+- id: no_global_0
+  selector:
+    anchor: default-sidecar
+- id: no_global_1
+  selector:
+    anchor: grpc-health-check
+- id: no_global_2
+  selector:
+    anchor: servicemesh-sidecar.yaml
+- id: no_global_3
+  selector:
+    anchor: grpc-health-probe.yaml
+oracle:
+  required:
+  - service_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_servicemesh_sidecar
+  - no_grpc_health_probe
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

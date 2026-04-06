@@ -1,0 +1,190 @@
+name: dependencies_018_backward_global_constant_changed
+repo:
+  initial_files:
+    config.py: |
+      MAX_RETRIES = 3
+      TIMEOUT = 30
+    client.py: |
+      from config import MAX_RETRIES
+
+      def fetch_with_retry(url):
+          for i in range(MAX_RETRIES):
+              try:
+                  return fetch(url)
+              except:
+                  pass
+          return None
+
+      def fetch(url):
+          return "data"
+    worker.py: |
+      from config import MAX_RETRIES
+
+      def process_job(job):
+          attempts = 0
+          while attempts < MAX_RETRIES:
+              try:
+                  return do_work(job)
+              except:
+                  attempts += 1
+          return None
+
+      def do_work(job):
+          return "done"
+    services/retry_config.py: |
+      GARBAGE_DEP_018_RETRY_CFG_A = "retry_module"
+      GARBAGE_DEP_018_RETRY_ALT_B = True
+
+      MAX_RETRIES = 10
+      TIMEOUT = 60
+      GARBAGE_DEP_018_RETRY_CONST_C = "constant_collision"
+    scheduler.py: |
+      from config import MAX_RETRIES
+      GARBAGE_DEP_018_SCHED_IMPORT_D = "scheduler_consumer"
+      GARBAGE_DEP_018_SCHED_QUEUE_E = 50
+
+      def schedule_task(task):
+          GARBAGE_DEP_018_SCHED_RUN_F = True
+          for attempt in range(MAX_RETRIES):
+              try:
+                  return run_task(task)
+              except:
+                  pass
+          return None
+
+      def run_task(task):
+          return "scheduled"
+    defaults.py: |
+      GARBAGE_DEP_018_DEFAULTS_MOD_G = "defaults_sibling"
+      GARBAGE_DEP_018_DEFAULTS_KEY_H = 99
+
+      MAX_RETRIES = 3
+      TIMEOUT = 30
+      BATCH_SIZE = 100
+      GARBAGE_DEP_018_DEFAULTS_EXTRA_I = "extra_config"
+  changed_files:
+    config.py: |
+      MAX_RETRIES = 5
+      TIMEOUT = 30
+    client.py: |
+      from config import MAX_RETRIES
+
+      def fetch_with_retry(url):
+          for i in range(MAX_RETRIES):
+              try:
+                  return fetch(url)
+              except:
+                  pass
+          return None
+
+      def fetch(url):
+          return "data"
+    worker.py: |
+      from config import MAX_RETRIES
+
+      def process_job(job):
+          attempts = 0
+          while attempts < MAX_RETRIES:
+              try:
+                  return do_work(job)
+              except:
+                  attempts += 1
+          return None
+
+      def do_work(job):
+          return "done"
+    services/retry_config.py: |
+      GARBAGE_DEP_018_RETRY_CFG_A = "retry_module"
+      GARBAGE_DEP_018_RETRY_ALT_B = True
+
+      MAX_RETRIES = 10
+      TIMEOUT = 60
+      GARBAGE_DEP_018_RETRY_CONST_C = "constant_collision"
+    scheduler.py: |
+      from config import MAX_RETRIES
+      GARBAGE_DEP_018_SCHED_IMPORT_D = "scheduler_consumer"
+      GARBAGE_DEP_018_SCHED_QUEUE_E = 50
+
+      def schedule_task(task):
+          GARBAGE_DEP_018_SCHED_RUN_F = True
+          for attempt in range(MAX_RETRIES):
+              try:
+                  return run_task(task)
+              except:
+                  pass
+          return None
+
+      def run_task(task):
+          return "scheduled"
+    defaults.py: |
+      GARBAGE_DEP_018_DEFAULTS_MOD_G = "defaults_sibling"
+      GARBAGE_DEP_018_DEFAULTS_KEY_H = 99
+
+      MAX_RETRIES = 3
+      TIMEOUT = 30
+      BATCH_SIZE = 100
+      GARBAGE_DEP_018_DEFAULTS_EXTRA_I = "extra_config"
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: config.py
+    anchor: MAX_RETRIES = 5
+- id: config_1
+  selector:
+    path: config.py
+    anchor: TIMEOUT = 30
+- id: no_retry_config
+  selector:
+    path: services/retry_config.py
+- id: no_scheduler
+  selector:
+    path: scheduler.py
+- id: no_defaults
+  selector:
+    path: defaults.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_018_RETRY_CFG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_018_RETRY_ALT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_018_RETRY_CONST_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_018_SCHED_IMPORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_018_SCHED_QUEUE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_018_SCHED_RUN_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_018_DEFAULTS_MOD_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_018_DEFAULTS_KEY_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_018_DEFAULTS_EXTRA_I
+oracle:
+  required:
+  - config
+  - config_1
+  allowed: []
+  forbidden:
+  - no_retry_config
+  - no_scheduler
+  - no_defaults
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

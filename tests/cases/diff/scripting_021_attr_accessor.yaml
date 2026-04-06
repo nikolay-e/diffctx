@@ -1,0 +1,240 @@
+name: scripting_021_attr_accessor
+repo:
+  initial_files:
+    customer_profile.rb: |
+      class CustomerProfile
+        attr_accessor :full_name, :contact_email, :phone_number
+
+        def initialize(full_name:, contact_email:, phone_number: nil)
+          @full_name = full_name
+          @contact_email = contact_email
+          @phone_number = phone_number
+        end
+
+        def display_name
+          full_name.split(' ').first
+        end
+      end
+    registration.rb: |
+      puts 'Registration starting'
+    email_validator.rb: |
+      module EmailValidator
+        PATTERN = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+
+        def self.valid?(address)
+          !!(address =~ PATTERN)
+        end
+
+        def self.normalize(address)
+          address.strip.downcase
+        end
+
+        def self.domain(address)
+          address.split('@').last
+        end
+      end
+    shipping_address.rb: |
+      class ShippingAddress
+        attr_accessor :street, :city, :zip_code, :country
+
+        def initialize(street:, city:, zip_code:, country: 'US')
+          @street = street
+          @city = city
+          @zip_code = zip_code
+          @country = country
+        end
+
+        def full_address
+          "#{street}, #{city} #{zip_code}, #{country}"
+        end
+
+        def domestic?
+          country == 'US'
+        end
+      end
+    profile_updater.rb: |
+      require_relative 'customer_profile'
+
+      class ProfileUpdater
+        def initialize(profile)
+          @profile = profile
+        end
+
+        def update_email(new_email)
+          @profile.contact_email = new_email
+        end
+
+        def update_name(new_name)
+          @profile.full_name = new_name
+        end
+
+        def update_phone(new_phone)
+          @profile.phone_number = new_phone
+        end
+
+        def apply_changes(params)
+          update_email(params[:email]) if params[:email]
+          update_name(params[:name]) if params[:name]
+          update_phone(params[:phone]) if params[:phone]
+        end
+      end
+    contact_form.rb: |
+      ContactForm = Struct.new(:full_name, :email, :message, keyword_init: true) do
+        def valid?
+          !full_name.nil? && !email.nil? && !message.nil?
+        end
+
+        def to_hash
+          { full_name: full_name, email: email, message: message }
+        end
+
+        def summary
+          "From: #{full_name} <#{email}>"
+        end
+      end
+    lib/serializable.rb: |
+      module Serializable
+        def to_json
+          vars = instance_variables.map do |var|
+            key = var.to_s.delete('@')
+            value = instance_variable_get(var)
+            "\"#{key}\": \"#{value}\""
+          end
+          "{ #{vars.join(', ')} }"
+        end
+
+        def from_hash(hash)
+          hash.each do |key, value|
+            setter = "#{key}="
+            send(setter, value) if respond_to?(setter)
+          end
+          self
+        end
+      end
+  changed_files:
+    customer_profile.rb: |
+      class CustomerProfile
+        attr_accessor :full_name, :contact_email, :phone_number
+
+        def initialize(full_name:, contact_email:, phone_number: nil)
+          @full_name = full_name
+          @contact_email = contact_email
+          @phone_number = phone_number
+        end
+
+        def display_name
+          full_name.split(' ').first
+        end
+      end
+    registration.rb: |
+      require_relative 'customer_profile'
+
+      profile = CustomerProfile.new(full_name: 'John', contact_email: 'john@example.com')
+      puts profile.full_name
+      profile.contact_email = 'new@example.com'
+  commit_message: Update files
+fragments:
+- id: customer_profile
+  selector:
+    path: customer_profile.rb
+    anchor: attr_accessor :full_name, :contact_email
+- id: customer_profile_1
+  selector:
+    path: customer_profile.rb
+    anchor: 'def initialize(full_name:, contact_email:'
+- id: registration
+  selector:
+    path: registration.rb
+    anchor: CustomerProfile.new
+- id: registration_1
+  selector:
+    path: registration.rb
+    anchor: profile.full_name
+- id: no_email_validator
+  selector:
+    path: email_validator.rb
+- id: no_shipping_address
+  selector:
+    path: shipping_address.rb
+- id: no_profile_updater
+  selector:
+    path: profile_updater.rb
+- id: no_contact_form
+  selector:
+    path: contact_form.rb
+- id: no_serializable
+  selector:
+    path: lib/serializable.rb
+- id: no_global_0
+  selector:
+    anchor: EmailValidator
+- id: no_global_1
+  selector:
+    anchor: normalize
+- id: no_global_2
+  selector:
+    anchor: PATTERN
+- id: no_global_3
+  selector:
+    anchor: ShippingAddress
+- id: no_global_4
+  selector:
+    anchor: full_address
+- id: no_global_5
+  selector:
+    anchor: zip_code
+- id: no_global_6
+  selector:
+    anchor: domestic?
+- id: no_global_7
+  selector:
+    anchor: ProfileUpdater
+- id: no_global_8
+  selector:
+    anchor: update_email
+- id: no_global_9
+  selector:
+    anchor: update_name
+- id: no_global_10
+  selector:
+    anchor: apply_changes
+- id: no_global_11
+  selector:
+    anchor: ContactForm
+- id: no_global_12
+  selector:
+    anchor: summary
+- id: no_global_13
+  selector:
+    anchor: Serializable
+- id: no_global_14
+  selector:
+    anchor: from_hash
+oracle:
+  required:
+  - customer_profile
+  - customer_profile_1
+  - registration
+  - registration_1
+  allowed: []
+  forbidden:
+  - no_email_validator
+  - no_shipping_address
+  - no_profile_updater
+  - no_contact_form
+  - no_serializable
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

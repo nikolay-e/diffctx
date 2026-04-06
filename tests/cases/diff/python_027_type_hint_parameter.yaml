@@ -1,0 +1,230 @@
+name: python_027_type_hint_parameter
+repo:
+  initial_files:
+    models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      from datetime import datetime
+
+      @dataclass
+      class UserProfile:
+          user_id: int
+          username: str
+          email: str
+          created_at: datetime
+          is_active: bool = True
+          display_name: Optional[str] = None
+
+          def full_display(self) -> str:
+              return self.display_name or self.username
+
+          def deactivate(self) -> None:
+              self.is_active = False
+
+          def is_email_verified(self) -> bool:
+              return "@" in self.email and "." in self.email.split("@")[1]
+    services/user_service.py: |
+      from models.user import UserProfile
+
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def get_active_users(self):
+              all_users = self.repository.find_all()
+              return [u for u in all_users if u.is_active]
+
+          def process(self, data):
+              pass
+
+          def find_by_email(self, email: str):
+              users = self.repository.find_all()
+              for user in users:
+                  if user.email == email:
+                      return user
+              return None
+    services/audit_service.py: |
+      from typing import Dict, Any, List, Optional
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class AuditRecord:
+          user_id: int
+          action: str
+          resource: str
+          timestamp: datetime
+
+      class AuditService:
+          def __init__(self):
+              self._records: List[AuditRecord] = []
+
+          def log_action(self, user_id: int, action: str, resource: str) -> None:
+              self._records.append(AuditRecord(
+                  user_id=user_id, action=action, resource=resource, timestamp=datetime.now()
+              ))
+
+          def get_user_actions(self, user_id: int) -> List[AuditRecord]:
+              return [r for r in self._records if r.user_id == user_id]
+    services/permission_service.py: |
+      from typing import Dict, Set, Optional
+
+      class PermissionService:
+          def __init__(self):
+              self._user_permissions: Dict[int, Set[str]] = {}
+
+          def grant(self, user_id: int, permission: str) -> None:
+              if user_id not in self._user_permissions:
+                  self._user_permissions[user_id] = set()
+              self._user_permissions[user_id].add(permission)
+
+          def has_permission(self, user_id: int, permission: str) -> bool:
+              return permission in self._user_permissions.get(user_id, set())
+
+          def revoke(self, user_id: int, permission: str) -> bool:
+              perms = self._user_permissions.get(user_id, set())
+              if permission in perms:
+                  perms.discard(permission)
+                  return True
+              return False
+  changed_files:
+    models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      from datetime import datetime
+
+      @dataclass
+      class UserProfile:
+          user_id: int
+          username: str
+          email: str
+          created_at: datetime
+          is_active: bool = True
+          display_name: Optional[str] = None
+
+          def full_display(self) -> str:
+              return self.display_name or self.username
+
+          def deactivate(self) -> None:
+              self.is_active = False
+
+          def is_email_verified(self) -> bool:
+              return "@" in self.email and "." in self.email.split("@")[1]
+    services/user_service.py: |
+      from models.user import UserProfile
+
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def get_active_users(self):
+              all_users = self.repository.find_all()
+              return [u for u in all_users if u.is_active]
+
+          def process(self, user: UserProfile) -> dict:
+              if not user.is_active:
+                  raise ValueError("Cannot process inactive user")
+              return {"id": user.user_id, "name": user.full_display()}
+
+          def find_by_email(self, email: str):
+              users = self.repository.find_all()
+              for user in users:
+                  if user.email == email:
+                      return user
+              return None
+    services/audit_service.py: |
+      from typing import Dict, Any, List, Optional
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class AuditRecord:
+          user_id: int
+          action: str
+          resource: str
+          timestamp: datetime
+
+      class AuditService:
+          def __init__(self):
+              self._records: List[AuditRecord] = []
+
+          def log_action(self, user_id: int, action: str, resource: str) -> None:
+              self._records.append(AuditRecord(
+                  user_id=user_id, action=action, resource=resource, timestamp=datetime.now()
+              ))
+
+          def get_user_actions(self, user_id: int) -> List[AuditRecord]:
+              return [r for r in self._records if r.user_id == user_id]
+    services/permission_service.py: |
+      from typing import Dict, Set, Optional
+
+      class PermissionService:
+          def __init__(self):
+              self._user_permissions: Dict[int, Set[str]] = {}
+
+          def grant(self, user_id: int, permission: str) -> None:
+              if user_id not in self._user_permissions:
+                  self._user_permissions[user_id] = set()
+              self._user_permissions[user_id].add(permission)
+
+          def has_permission(self, user_id: int, permission: str) -> bool:
+              return permission in self._user_permissions.get(user_id, set())
+
+          def revoke(self, user_id: int, permission: str) -> bool:
+              perms = self._user_permissions.get(user_id, set())
+              if permission in perms:
+                  perms.discard(permission)
+                  return True
+              return False
+  commit_message: Update files
+fragments:
+- id: user_service
+  selector:
+    path: services/user_service.py
+    anchor: from models.user import UserProfile
+- id: user_service_1
+  selector:
+    path: services/user_service.py
+    anchor: 'def process(self, user: UserProfile) -> dict:'
+- id: user_file
+  selector:
+    path: models/user.py
+- id: no_audit_service
+  selector:
+    path: services/audit_service.py
+- id: no_permission_service
+  selector:
+    path: services/permission_service.py
+- id: no_global_0
+  selector:
+    anchor: AuditService
+- id: no_global_1
+  selector:
+    anchor: AuditRecord
+- id: no_global_2
+  selector:
+    anchor: log_action
+- id: no_global_3
+  selector:
+    anchor: PermissionService
+- id: no_global_4
+  selector:
+    anchor: has_permission
+- id: no_global_5
+  selector:
+    anchor: revoke
+oracle:
+  required:
+  - user_service
+  - user_service_1
+  - user_file
+  allowed: []
+  forbidden:
+  - no_audit_service
+  - no_permission_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

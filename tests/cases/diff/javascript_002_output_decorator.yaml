@@ -1,0 +1,204 @@
+name: javascript_002_output_decorator
+repo:
+  initial_files:
+    item.model.ts: |
+      export interface Item {
+          id: string;
+          name: string;
+      }
+    item-row.component.ts: |
+      console.log('initial');
+    item-list.component.ts: |
+      import { Component } from '@angular/core';
+      import { Item } from './item.model';
+
+      @Component({
+          selector: 'app-item-list',
+          template: `
+              <div class="list">
+                  <app-item-row
+                      *ngFor="let item of items"
+                      [item]="item"
+                      (deleted)="onItemDeleted($event)">
+                  </app-item-row>
+              </div>
+          `
+      })
+      export class ItemListComponent {
+          items: Item[] = [];
+
+          onItemDeleted(id: string): void {
+              this.items = this.items.filter(item => item.id !== id);
+          }
+
+          addItem(name: string): void {
+              this.items.push({ id: Date.now().toString(), name });
+          }
+      }
+    item.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+      import { Item } from './item.model';
+
+      @Injectable({ providedIn: 'root' })
+      export class ItemService {
+          constructor(private http: HttpClient) {}
+
+          getItems(): Observable<Item[]> {
+              return this.http.get<Item[]>('/api/items');
+          }
+
+          deleteItem(id: string): Observable<void> {
+              return this.http.delete<void>(`/api/items/${id}`);
+          }
+      }
+  changed_files:
+    item.model.ts: |
+      export interface Item {
+          id: string;
+          name: string;
+      }
+    item-row.component.ts: |
+      import { Component, Input, Output, EventEmitter } from '@angular/core';
+      import { Item } from './item.model';
+
+      @Component({
+          selector: 'app-item-row',
+          template: `
+              <div class="row">
+                  <span>{{ item.name }}</span>
+                  <button (click)="onDelete()">Delete</button>
+              </div>
+          `
+      })
+      export class ItemRowComponent {
+          @Input() item!: Item;
+          @Output() deleted = new EventEmitter<string>();
+
+          onDelete() {
+              this.deleted.emit(this.item.id);
+          }
+      }
+    item-list.component.ts: |
+      import { Component } from '@angular/core';
+      import { Item } from './item.model';
+
+      @Component({
+          selector: 'app-item-list',
+          template: `
+              <div class="list">
+                  <app-item-row
+                      *ngFor="let item of items"
+                      [item]="item"
+                      (deleted)="onItemDeleted($event)">
+                  </app-item-row>
+              </div>
+          `
+      })
+      export class ItemListComponent {
+          items: Item[] = [];
+
+          onItemDeleted(id: string): void {
+              this.items = this.items.filter(item => item.id !== id);
+          }
+
+          addItem(name: string): void {
+              this.items.push({ id: Date.now().toString(), name });
+          }
+      }
+    item.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+      import { Item } from './item.model';
+
+      @Injectable({ providedIn: 'root' })
+      export class ItemService {
+          constructor(private http: HttpClient) {}
+
+          getItems(): Observable<Item[]> {
+              return this.http.get<Item[]>('/api/items');
+          }
+
+          deleteItem(id: string): Observable<void> {
+              return this.http.delete<void>(`/api/items/${id}`);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: item_row_component
+  selector:
+    path: item-row.component.ts
+    anchor: import { Item } from './item.model'
+- id: item_row_component_1
+  selector:
+    path: item-row.component.ts
+    anchor: '@Input() item!: Item'
+- id: item_row_component_2
+  selector:
+    path: item-row.component.ts
+    anchor: '@Output() deleted = new EventEmitter<string>()'
+- id: item_row_component_3
+  selector:
+    path: item-row.component.ts
+    anchor: this.deleted.emit(this.item.id)
+- id: item_model
+  selector:
+    path: item.model.ts
+    anchor: interface Item
+- id: item_model_1
+  selector:
+    path: item.model.ts
+    anchor: 'id: string'
+- id: item_model_2
+  selector:
+    path: item.model.ts
+    anchor: 'name: string'
+- id: no_item_list_component
+  selector:
+    path: item-list.component.ts
+- id: no_item_service
+  selector:
+    path: item.service.ts
+- id: no_global_0
+  selector:
+    anchor: ItemListComponent
+- id: no_global_1
+  selector:
+    anchor: app-item-list
+- id: no_global_2
+  selector:
+    anchor: onItemDeleted
+- id: no_global_3
+  selector:
+    anchor: addItem
+- id: no_global_4
+  selector:
+    anchor: ItemService
+- id: no_global_5
+  selector:
+    anchor: getItems
+- id: no_global_6
+  selector:
+    anchor: deleteItem
+oracle:
+  required:
+  - item_row_component
+  - item_row_component_1
+  - item_row_component_2
+  - item_row_component_3
+  - item_model
+  - item_model_1
+  - item_model_2
+  allowed: []
+  forbidden:
+  - no_item_list_component
+  - no_item_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

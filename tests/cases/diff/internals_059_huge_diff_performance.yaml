@@ -1,0 +1,32 @@
+name: internals_059_huge_diff_performance
+repo:
+  initial_files:
+    huge_file.py: |
+      def func_0():
+          return 0
+
+      def func_1():
+          return 1
+
+      def func_2():
+          return 2
+  changed_files:
+    huge_file.py: |
+      def func_0():
+          return 100
+
+      def func_1():
+          return 200
+
+      def func_2():
+          return 300
+  commit_message: Update files
+fragments:
+- id: huge_file_file
+  selector:
+    path: huge_file.py
+oracle:
+  required:
+  - huge_file_file
+  allowed: []
+  forbidden: []

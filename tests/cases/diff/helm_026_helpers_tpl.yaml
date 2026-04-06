@@ -1,0 +1,49 @@
+name: helm_026_helpers_tpl
+repo:
+  initial_files:
+    templates/_helpers.tpl: |
+      {{/* Common labels */}}
+    unrelated.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  changed_files:
+    templates/_helpers.tpl: |
+      {{/*
+      Expand the name of the chart.
+      */}}
+      {{- define "app.name" -}}
+      {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+      {{- end }}
+
+      {{/*
+      Create a default fully qualified app name.
+      */}}
+      {{- define "app.fullname" -}}
+      {{- if .Values.fullnameOverride }}
+      {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+      {{- else }}
+      {{- $name := default .Chart.Name .Values.nameOverride }}
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+      {{- end }}
+      {{- end }}
+    unrelated.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  commit_message: Update files
+fragments:
+- id: helpers_file
+  selector:
+    path: templates/_helpers.tpl
+- id: req_global_0
+  selector:
+    anchor: Expand the name of the chart.
+- id: no_global_0
+  selector:
+    anchor: unrelated.txt
+oracle:
+  required:
+  - helpers_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

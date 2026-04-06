@@ -1,0 +1,180 @@
+name: javascript_extended_038_render
+repo:
+  initial_files:
+    components/Greeting.tsx: |
+      interface GreetingProps {
+          name: string;
+      }
+
+      export function Greeting({ name }: GreetingProps) {
+          return <h1>Hello, {name}!</h1>;
+      }
+    components/Greeting.test.tsx: |
+      console.log('placeholder');
+    components/Banner.tsx: |
+      interface BannerProps {
+          message: string;
+          variant: 'info' | 'warning' | 'error';
+      }
+
+      export function Banner({ message, variant }: BannerProps) {
+          return (
+              <div className={`banner banner-${variant}`}>
+                  <p>{message}</p>
+              </div>
+          );
+      }
+    components/Banner.test.tsx: |
+      import { render, screen } from '@testing-library/react';
+      import { Banner } from './Banner';
+
+      describe('Banner', () => {
+          it('should display message with info variant', () => {
+              render(<Banner message="System update" variant="info" />);
+              expect(screen.getByText('System update')).toBeInTheDocument();
+          });
+
+          it('should apply variant class', () => {
+              const { container } = render(<Banner message="Warning" variant="warning" />);
+              expect(container.querySelector('.banner-warning')).toBeTruthy();
+          });
+      });
+    components/Avatar.tsx: |
+      interface AvatarProps {
+          src: string;
+          alt: string;
+          size?: number;
+      }
+
+      export function Avatar({ src, alt, size = 40 }: AvatarProps) {
+          return (
+              <img
+                  className="avatar"
+                  src={src}
+                  alt={alt}
+                  width={size}
+                  height={size}
+              />
+          );
+      }
+  changed_files:
+    components/Greeting.tsx: |
+      interface GreetingProps {
+          name: string;
+      }
+
+      export function Greeting({ name }: GreetingProps) {
+          return <h1>Hello, {name}!</h1>;
+      }
+    components/Greeting.test.tsx: |
+      import { render, screen } from '@testing-library/react';
+      import { Greeting } from './Greeting';
+
+      describe('Greeting', () => {
+          it('should display name', () => {
+              render(<Greeting name="World" />);
+              expect(screen.getByText('Hello, World!')).toBeInTheDocument();
+          });
+      });
+    components/Banner.tsx: |
+      interface BannerProps {
+          message: string;
+          variant: 'info' | 'warning' | 'error';
+      }
+
+      export function Banner({ message, variant }: BannerProps) {
+          return (
+              <div className={`banner banner-${variant}`}>
+                  <p>{message}</p>
+              </div>
+          );
+      }
+    components/Banner.test.tsx: |
+      import { render, screen } from '@testing-library/react';
+      import { Banner } from './Banner';
+
+      describe('Banner', () => {
+          it('should display message with info variant', () => {
+              render(<Banner message="System update" variant="info" />);
+              expect(screen.getByText('System update')).toBeInTheDocument();
+          });
+
+          it('should apply variant class', () => {
+              const { container } = render(<Banner message="Warning" variant="warning" />);
+              expect(container.querySelector('.banner-warning')).toBeTruthy();
+          });
+      });
+    components/Avatar.tsx: |
+      interface AvatarProps {
+          src: string;
+          alt: string;
+          size?: number;
+      }
+
+      export function Avatar({ src, alt, size = 40 }: AvatarProps) {
+          return (
+              <img
+                  className="avatar"
+                  src={src}
+                  alt={alt}
+                  width={size}
+                  height={size}
+              />
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: greeting
+  selector:
+    path: components/Greeting.tsx
+    anchor: GreetingProps
+- id: greeting_1
+  selector:
+    path: components/Greeting.tsx
+    anchor: Hello, {name}!
+- id: no_banner
+  selector:
+    path: components/Banner.tsx
+- id: no_banner_test
+  selector:
+    path: components/Banner.test.tsx
+- id: no_avatar
+  selector:
+    path: components/Avatar.tsx
+- id: no_global_0
+  selector:
+    anchor: BannerProps
+- id: no_global_1
+  selector:
+    anchor: banner banner-
+- id: no_global_2
+  selector:
+    anchor: Banner message=
+- id: no_global_3
+  selector:
+    anchor: System update
+- id: no_global_4
+  selector:
+    anchor: banner-warning
+- id: no_global_5
+  selector:
+    anchor: AvatarProps
+- id: no_global_6
+  selector:
+    anchor: className="avatar"
+oracle:
+  required:
+  - greeting
+  - greeting_1
+  allowed: []
+  forbidden:
+  - no_banner
+  - no_banner_test
+  - no_avatar
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

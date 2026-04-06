@@ -1,0 +1,374 @@
+name: kubernetes_027_ingress_tls
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: secure-api
+        namespace: production
+        labels:
+          app: secure-api
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: secure-api
+        template:
+          metadata:
+            labels:
+              app: secure-api
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/secure-api:v2.1.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: TLS_ENABLED
+                value: "true"
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: secure-api
+        namespace: production
+      spec:
+        selector:
+          app: secure-api
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/certificate.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: api-tls
+        namespace: production
+      spec:
+        secretName: tls-cert
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        dnsNames:
+        - api.example.com
+        - api-backup.example.com
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: api-ingress
+        namespace: production
+        annotations:
+          kubernetes.io/ingress.class: nginx
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+      spec:
+        rules:
+        - host: api.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: secure-api
+                  port:
+                    number: 80
+    k8s/infra/sealed-secret.yaml: |
+      apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      metadata:
+        name: db-credentials
+        namespace: sealed-secrets
+      spec:
+        encryptedData:
+          username: AgBz7K8mNpQrVwXyZ1234567890abcdefg
+          password: AgCx9M2oRsTuWxYz0987654321hijklmn
+        template:
+          metadata:
+            name: db-credentials
+            namespace: production
+    k8s/infra/oauth2-proxy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: oauth2-proxy
+        namespace: auth
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: oauth2-proxy
+        template:
+          spec:
+            containers:
+            - name: oauth2-proxy
+              image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.1
+              args:
+              - --provider=oidc
+              - --cookie-secure=true
+              - --upstream=http://secure-api.production.svc:80
+              ports:
+              - containerPort: 4180
+    k8s/infra/cert-manager-issuer.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: letsencrypt-prod
+      spec:
+        acme:
+          email: admin@example.com
+          server: https://acme-v02.api.letsencrypt.org/directory
+          privateKeySecretRef:
+            name: letsencrypt-prod-key
+          solvers:
+          - http01:
+              ingress:
+                class: nginx
+    Makefile: "deploy:\n\tkubectl apply -f k8s/base/\n"
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: secure-api
+        namespace: production
+        labels:
+          app: secure-api
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: secure-api
+        template:
+          metadata:
+            labels:
+              app: secure-api
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/secure-api:v2.1.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: TLS_ENABLED
+                value: "true"
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: secure-api
+        namespace: production
+      spec:
+        selector:
+          app: secure-api
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/certificate.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: api-tls
+        namespace: production
+      spec:
+        secretName: tls-cert
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        dnsNames:
+        - api.example.com
+        - api-backup.example.com
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: api-ingress
+        namespace: production
+        annotations:
+          kubernetes.io/ingress.class: nginx
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      spec:
+        tls:
+        - hosts:
+          - api.example.com
+          - api-backup.example.com
+          secretName: tls-cert
+        rules:
+        - host: api.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: secure-api
+                  port:
+                    number: 80
+        - host: api-backup.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: secure-api
+                  port:
+                    number: 80
+    k8s/infra/sealed-secret.yaml: |
+      apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      metadata:
+        name: db-credentials
+        namespace: sealed-secrets
+      spec:
+        encryptedData:
+          username: AgBz7K8mNpQrVwXyZ1234567890abcdefg
+          password: AgCx9M2oRsTuWxYz0987654321hijklmn
+        template:
+          metadata:
+            name: db-credentials
+            namespace: production
+    k8s/infra/oauth2-proxy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: oauth2-proxy
+        namespace: auth
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: oauth2-proxy
+        template:
+          spec:
+            containers:
+            - name: oauth2-proxy
+              image: quay.io/oauth2-proxy/oauth2-proxy:v7.5.1
+              args:
+              - --provider=oidc
+              - --cookie-secure=true
+              - --upstream=http://secure-api.production.svc:80
+              ports:
+              - containerPort: 4180
+    k8s/infra/cert-manager-issuer.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: letsencrypt-prod
+      spec:
+        acme:
+          email: admin@example.com
+          server: https://acme-v02.api.letsencrypt.org/directory
+          privateKeySecretRef:
+            name: letsencrypt-prod-key
+          solvers:
+          - http01:
+              ingress:
+                class: nginx
+    Makefile: "deploy:\n\tkubectl apply -f k8s/base/\n"
+  commit_message: Update files
+fragments:
+- id: ingress
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/ssl-redirect: "true"'
+- id: ingress_1
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'secretName: tls-cert'
+- id: ingress_2
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'host: api-backup.example.com'
+- id: no_sealed_secret
+  selector:
+    path: k8s/infra/sealed-secret.yaml
+- id: no_oauth2_proxy
+  selector:
+    path: k8s/infra/oauth2-proxy.yaml
+- id: no_cert_manager_issuer
+  selector:
+    path: k8s/infra/cert-manager-issuer.yaml
+- id: no_deployment
+  selector:
+    path: k8s/base/deployment.yaml
+- id: no_global_0
+  selector:
+    anchor: SealedSecret
+- id: no_global_1
+  selector:
+    anchor: db-credentials
+- id: no_global_2
+  selector:
+    anchor: encryptedData
+- id: no_global_3
+  selector:
+    anchor: oauth2-proxy
+- id: no_global_4
+  selector:
+    anchor: --provider=oidc
+- id: no_global_5
+  selector:
+    anchor: --cookie-secure=true
+- id: no_global_6
+  selector:
+    anchor: acme-v02.api.letsencrypt.org
+- id: no_global_7
+  selector:
+    anchor: privateKeySecretRef
+- id: no_global_8
+  selector:
+    anchor: admin@example.com
+- id: no_global_9
+  selector:
+    anchor: TLS_ENABLED
+- id: no_global_10
+  selector:
+    anchor: secure-api:v2.1.0
+oracle:
+  required:
+  - ingress
+  - ingress_1
+  - ingress_2
+  allowed: []
+  forbidden:
+  - no_sealed_secret
+  - no_oauth2_proxy
+  - no_cert_manager_issuer
+  - no_deployment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

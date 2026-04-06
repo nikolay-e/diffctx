@@ -1,0 +1,592 @@
+name: cpp_001_function_pointer
+repo:
+  initial_files:
+    include/callback/handler.hpp: |
+      #pragma once
+      #include <functional>
+      #include <string>
+      #include <map>
+      #include <vector>
+
+      namespace app::callback {
+
+      enum class StatusCode {
+          Success = 0,
+          Timeout = 1,
+          ConnectionError = 2,
+          InvalidResponse = 3,
+          AuthenticationFailed = 4
+      };
+
+      struct ResponseContext {
+          StatusCode code;
+          std::string message;
+          std::map<std::string, std::string> headers;
+          std::vector<char> body;
+
+          bool isSuccess() const { return code == StatusCode::Success; }
+          size_t bodySize() const { return body.size(); }
+      };
+
+      using SuccessHandler = void(*)(const ResponseContext&);
+      using ErrorHandler = void(*)(StatusCode, const std::string&);
+
+      void defaultSuccessHandler(const ResponseContext& ctx);
+      void defaultErrorHandler(StatusCode code, const std::string& msg);
+
+      class CallbackRegistry {
+      public:
+          void registerSuccess(const std::string& name, SuccessHandler handler);
+          void registerError(const std::string& name, ErrorHandler handler);
+          SuccessHandler getSuccessHandler(const std::string& name) const;
+          ErrorHandler getErrorHandler(const std::string& name) const;
+
+      private:
+          std::map<std::string, SuccessHandler> successHandlers_;
+          std::map<std::string, ErrorHandler> errorHandlers_;
+      };
+
+      }
+    src/main.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    src/http/client.cpp: |
+      #include "callback/handler.hpp"
+      #include <curl/curl.h>
+      GARBAGE_CPP_HTTP_CLIENT_241_011 // marker
+
+      namespace app::http {
+
+      // GARBAGE_CPP_HTTP_EXEC_241_012
+      class HttpClient {
+      public:
+          void get(const std::string& url,
+                   app::callback::SuccessHandler onSuccess,
+                   app::callback::ErrorHandler onError) {
+              // GARBAGE_CPP_HTTP_GET_241_013
+              app::callback::ResponseContext ctx;
+              ctx.code = app::callback::StatusCode::Success;
+              ctx.message = "OK";
+              onSuccess(ctx);
+          }
+
+          void post(const std::string& url, const std::string& body,
+                    app::callback::SuccessHandler onSuccess,
+                    app::callback::ErrorHandler onError) {
+              // GARBAGE_CPP_HTTP_POST_241_014
+              app::callback::ResponseContext ctx;
+              ctx.code = app::callback::StatusCode::Success;
+              onSuccess(ctx);
+          }
+      };
+
+      }
+    tests/test_main.cpp: |
+      #include "callback/handler.hpp"
+      #include <cassert>
+      // GARBAGE_CPP_TEST_MAIN_241_015
+
+      namespace {
+
+      // GARBAGE_CPP_TEST_SUCCESS_241_016
+      void testSuccessHandler(const app::callback::ResponseContext& ctx) {
+          assert(ctx.isSuccess());
+          assert(ctx.bodySize() > 0);
+      }
+
+      // GARBAGE_CPP_TEST_ERROR_241_017
+      void testErrorHandler(app::callback::StatusCode code, const std::string& msg) {
+          assert(code != app::callback::StatusCode::Success);
+      }
+
+      }
+
+      // GARBAGE_CPP_TEST_RUN_241_018
+      int main() {
+          app::callback::ResponseContext ctx;
+          ctx.code = app::callback::StatusCode::Success;
+          ctx.body = {'t', 'e', 's', 't'};
+          testSuccessHandler(ctx);
+          testErrorHandler(app::callback::StatusCode::Timeout, "timeout");
+          return 0;
+      }
+    include/grpc/status.hpp: |
+      #pragma once
+      // GARBAGE_CPP_GRPC_STATUS_241_019
+
+      namespace app::grpc {
+
+      // GARBAGE_CPP_GRPC_ENUM_241_020
+      enum class StatusCode {
+          OK = 0,
+          Cancelled = 1,
+          Unknown = 2,
+          DeadlineExceeded = 4,
+          Unavailable = 14
+      };
+
+      struct ResponseContext {
+          StatusCode code;
+          std::string message;
+          // GARBAGE_CPP_GRPC_CTX_241_021
+      };
+
+      using ErrorHandler = void(*)(StatusCode, const std::string&);
+
+      }
+    include/unrelated/telemetry_collector.hpp: |
+      #pragma once
+      // GARBAGE_CPP_TELEMETRY_241_001
+      #define GARBAGE_CPP_TELEMETRY_MARKER_241_002 "telemetry_unrelated"
+
+      namespace app::unrelated::telemetry {
+
+      // GARBAGE_CPP_TELEMETRY_CLASS_241_003
+      class TelemetryCollector {
+      public:
+          void recordMetric(const char* name, double value) {}
+          void flush() {}
+      private:
+          // GARBAGE_CPP_TELEMETRY_PRIVATE_241_004
+          int bufferSize_ = 1024;
+      };
+
+      inline void initTelemetry() {
+          // GARBAGE_CPP_TELEMETRY_INIT_241_005
+      }
+
+      }
+    src/unrelated/audio_processor.cpp: |
+      // GARBAGE_CPP_AUDIO_241_006
+      #include <cmath>
+
+      namespace app::unrelated::audio {
+
+      // GARBAGE_CPP_AUDIO_CLASS_241_007
+      class AudioProcessor {
+      public:
+          void processBuffer(float* buffer, size_t samples) {
+              // GARBAGE_CPP_AUDIO_PROCESS_241_008
+              for (size_t i = 0; i < samples; ++i) {
+                  buffer[i] *= 0.5f;
+              }
+          }
+
+          float calculateRMS(const float* buffer, size_t samples) {
+              // GARBAGE_CPP_AUDIO_RMS_241_009
+              float sum = 0.0f;
+              for (size_t i = 0; i < samples; ++i) {
+                  sum += buffer[i] * buffer[i];
+              }
+              return std::sqrt(sum / samples);
+          }
+      };
+
+      // GARBAGE_CPP_AUDIO_FACTORY_241_010
+      AudioProcessor* createProcessor() {
+          return new AudioProcessor();
+      }
+
+      }
+  changed_files:
+    include/callback/handler.hpp: |
+      #pragma once
+      #include <functional>
+      #include <string>
+      #include <map>
+      #include <vector>
+
+      namespace app::callback {
+
+      enum class StatusCode {
+          Success = 0,
+          Timeout = 1,
+          ConnectionError = 2,
+          InvalidResponse = 3,
+          AuthenticationFailed = 4
+      };
+
+      struct ResponseContext {
+          StatusCode code;
+          std::string message;
+          std::map<std::string, std::string> headers;
+          std::vector<char> body;
+
+          bool isSuccess() const { return code == StatusCode::Success; }
+          size_t bodySize() const { return body.size(); }
+      };
+
+      using SuccessHandler = void(*)(const ResponseContext&);
+      using ErrorHandler = void(*)(StatusCode, const std::string&);
+
+      void defaultSuccessHandler(const ResponseContext& ctx);
+      void defaultErrorHandler(StatusCode code, const std::string& msg);
+
+      class CallbackRegistry {
+      public:
+          void registerSuccess(const std::string& name, SuccessHandler handler);
+          void registerError(const std::string& name, ErrorHandler handler);
+          SuccessHandler getSuccessHandler(const std::string& name) const;
+          ErrorHandler getErrorHandler(const std::string& name) const;
+
+      private:
+          std::map<std::string, SuccessHandler> successHandlers_;
+          std::map<std::string, ErrorHandler> errorHandlers_;
+      };
+
+      }
+    src/main.cpp: |
+      #include "callback/handler.hpp"
+      #include <iostream>
+      #include <memory>
+
+      namespace {
+
+      void onRequestSuccess(const app::callback::ResponseContext& ctx) {
+          std::cout << "Request succeeded with " << ctx.bodySize() << " bytes\n";
+          if (!ctx.headers.empty()) {
+              std::cout << "Headers received: " << ctx.headers.size() << "\n";
+          }
+      }
+
+      void onRequestError(app::callback::StatusCode code, const std::string& msg) {
+          std::cerr << "Request failed: " << msg << " (code: "
+                    << static_cast<int>(code) << ")\n";
+      }
+
+      void onTimeoutError(app::callback::StatusCode code, const std::string& msg) {
+          std::cerr << "Timeout: " << msg << "\n";
+      }
+
+      }
+
+      class RequestExecutor {
+      public:
+          using SuccessCallback = void(*)(const app::callback::ResponseContext&);
+          using ErrorCallback = void(*)(app::callback::StatusCode, const std::string&);
+
+          RequestExecutor(SuccessCallback onSuccess, ErrorCallback onError)
+              : successHandler_(onSuccess)
+              , errorHandler_(onError) {}
+
+          void execute(bool simulateSuccess) {
+              if (simulateSuccess) {
+                  app::callback::ResponseContext ctx;
+                  ctx.code = app::callback::StatusCode::Success;
+                  ctx.message = "OK";
+                  ctx.body = {'d', 'a', 't', 'a'};
+                  successHandler_(ctx);
+              } else {
+                  errorHandler_(app::callback::StatusCode::Timeout, "Connection timed out");
+              }
+          }
+
+          void setErrorHandler(ErrorCallback handler) {
+              errorHandler_ = handler;
+          }
+
+      private:
+          SuccessCallback successHandler_;
+          ErrorCallback errorHandler_;
+      };
+
+      int main() {
+          void (*successPtr)(const app::callback::ResponseContext&) = onRequestSuccess;
+          void (*errorPtr)(app::callback::StatusCode, const std::string&) = onRequestError;
+
+          RequestExecutor executor(successPtr, errorPtr);
+          executor.execute(true);
+
+          executor.setErrorHandler(onTimeoutError);
+          executor.execute(false);
+
+          return 0;
+      }
+    src/http/client.cpp: |
+      #include "callback/handler.hpp"
+      #include <curl/curl.h>
+      GARBAGE_CPP_HTTP_CLIENT_241_011 // marker
+
+      namespace app::http {
+
+      // GARBAGE_CPP_HTTP_EXEC_241_012
+      class HttpClient {
+      public:
+          void get(const std::string& url,
+                   app::callback::SuccessHandler onSuccess,
+                   app::callback::ErrorHandler onError) {
+              // GARBAGE_CPP_HTTP_GET_241_013
+              app::callback::ResponseContext ctx;
+              ctx.code = app::callback::StatusCode::Success;
+              ctx.message = "OK";
+              onSuccess(ctx);
+          }
+
+          void post(const std::string& url, const std::string& body,
+                    app::callback::SuccessHandler onSuccess,
+                    app::callback::ErrorHandler onError) {
+              // GARBAGE_CPP_HTTP_POST_241_014
+              app::callback::ResponseContext ctx;
+              ctx.code = app::callback::StatusCode::Success;
+              onSuccess(ctx);
+          }
+      };
+
+      }
+    tests/test_main.cpp: |
+      #include "callback/handler.hpp"
+      #include <cassert>
+      // GARBAGE_CPP_TEST_MAIN_241_015
+
+      namespace {
+
+      // GARBAGE_CPP_TEST_SUCCESS_241_016
+      void testSuccessHandler(const app::callback::ResponseContext& ctx) {
+          assert(ctx.isSuccess());
+          assert(ctx.bodySize() > 0);
+      }
+
+      // GARBAGE_CPP_TEST_ERROR_241_017
+      void testErrorHandler(app::callback::StatusCode code, const std::string& msg) {
+          assert(code != app::callback::StatusCode::Success);
+      }
+
+      }
+
+      // GARBAGE_CPP_TEST_RUN_241_018
+      int main() {
+          app::callback::ResponseContext ctx;
+          ctx.code = app::callback::StatusCode::Success;
+          ctx.body = {'t', 'e', 's', 't'};
+          testSuccessHandler(ctx);
+          testErrorHandler(app::callback::StatusCode::Timeout, "timeout");
+          return 0;
+      }
+    include/grpc/status.hpp: |
+      #pragma once
+      // GARBAGE_CPP_GRPC_STATUS_241_019
+
+      namespace app::grpc {
+
+      // GARBAGE_CPP_GRPC_ENUM_241_020
+      enum class StatusCode {
+          OK = 0,
+          Cancelled = 1,
+          Unknown = 2,
+          DeadlineExceeded = 4,
+          Unavailable = 14
+      };
+
+      struct ResponseContext {
+          StatusCode code;
+          std::string message;
+          // GARBAGE_CPP_GRPC_CTX_241_021
+      };
+
+      using ErrorHandler = void(*)(StatusCode, const std::string&);
+
+      }
+    include/unrelated/telemetry_collector.hpp: |
+      #pragma once
+      // GARBAGE_CPP_TELEMETRY_241_001
+      #define GARBAGE_CPP_TELEMETRY_MARKER_241_002 "telemetry_unrelated"
+
+      namespace app::unrelated::telemetry {
+
+      // GARBAGE_CPP_TELEMETRY_CLASS_241_003
+      class TelemetryCollector {
+      public:
+          void recordMetric(const char* name, double value) {}
+          void flush() {}
+      private:
+          // GARBAGE_CPP_TELEMETRY_PRIVATE_241_004
+          int bufferSize_ = 1024;
+      };
+
+      inline void initTelemetry() {
+          // GARBAGE_CPP_TELEMETRY_INIT_241_005
+      }
+
+      }
+    src/unrelated/audio_processor.cpp: |
+      // GARBAGE_CPP_AUDIO_241_006
+      #include <cmath>
+
+      namespace app::unrelated::audio {
+
+      // GARBAGE_CPP_AUDIO_CLASS_241_007
+      class AudioProcessor {
+      public:
+          void processBuffer(float* buffer, size_t samples) {
+              // GARBAGE_CPP_AUDIO_PROCESS_241_008
+              for (size_t i = 0; i < samples; ++i) {
+                  buffer[i] *= 0.5f;
+              }
+          }
+
+          float calculateRMS(const float* buffer, size_t samples) {
+              // GARBAGE_CPP_AUDIO_RMS_241_009
+              float sum = 0.0f;
+              for (size_t i = 0; i < samples; ++i) {
+                  sum += buffer[i] * buffer[i];
+              }
+              return std::sqrt(sum / samples);
+          }
+      };
+
+      // GARBAGE_CPP_AUDIO_FACTORY_241_010
+      AudioProcessor* createProcessor() {
+          return new AudioProcessor();
+      }
+
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main.cpp
+    anchor: void onRequestSuccess(const app::callback::ResponseContext& ctx)
+- id: main_1
+  selector:
+    path: src/main.cpp
+    anchor: void onRequestError(app::callback::StatusCode code, const std::string& msg)
+- id: main_2
+  selector:
+    path: src/main.cpp
+    anchor: class RequestExecutor
+- id: main_3
+  selector:
+    path: src/main.cpp
+    anchor: void execute(bool simulateSuccess)
+- id: main_4
+  selector:
+    path: src/main.cpp
+    anchor: RequestExecutor executor(successPtr, errorPtr)
+- id: handler
+  selector:
+    path: include/callback/handler.hpp
+    anchor: struct ResponseContext
+- id: handler_1
+  selector:
+    path: include/callback/handler.hpp
+    anchor: enum class StatusCode
+- id: handler_2
+  selector:
+    path: include/callback/handler.hpp
+    anchor: using SuccessHandler = void(*)(const ResponseContext&)
+- id: no_client
+  selector:
+    path: src/http/client.cpp
+- id: no_test_main
+  selector:
+    path: tests/test_main.cpp
+- id: no_status
+  selector:
+    path: include/grpc/status.hpp
+- id: no_telemetry_collector
+  selector:
+    path: include/unrelated/telemetry_collector.hpp
+- id: no_audio_processor
+  selector:
+    path: src/unrelated/audio_processor.cpp
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CPP_TELEMETRY_241_001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CPP_TELEMETRY_MARKER_241_002
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CPP_TELEMETRY_CLASS_241_003
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CPP_TELEMETRY_PRIVATE_241_004
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CPP_TELEMETRY_INIT_241_005
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CPP_AUDIO_241_006
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CPP_AUDIO_CLASS_241_007
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CPP_AUDIO_PROCESS_241_008
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CPP_AUDIO_RMS_241_009
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CPP_AUDIO_FACTORY_241_010
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_CPP_HTTP_CLIENT_241_011
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_CPP_HTTP_EXEC_241_012
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_CPP_HTTP_GET_241_013
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_CPP_HTTP_POST_241_014
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_CPP_TEST_MAIN_241_015
+- id: no_global_15
+  selector:
+    anchor: GARBAGE_CPP_TEST_SUCCESS_241_016
+- id: no_global_16
+  selector:
+    anchor: GARBAGE_CPP_TEST_ERROR_241_017
+- id: no_global_17
+  selector:
+    anchor: GARBAGE_CPP_TEST_RUN_241_018
+- id: no_global_18
+  selector:
+    anchor: GARBAGE_CPP_GRPC_STATUS_241_019
+- id: no_global_19
+  selector:
+    anchor: GARBAGE_CPP_GRPC_ENUM_241_020
+- id: no_global_20
+  selector:
+    anchor: GARBAGE_CPP_GRPC_CTX_241_021
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - main_4
+  - handler
+  - handler_1
+  - handler_2
+  allowed: []
+  forbidden:
+  - no_client
+  - no_test_main
+  - no_status
+  - no_telemetry_collector
+  - no_audio_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

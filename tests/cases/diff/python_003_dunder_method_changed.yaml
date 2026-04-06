@@ -1,0 +1,359 @@
+name: python_003_dunder_method_changed
+repo:
+  initial_files:
+    money.py: |
+      from typing import Optional, Union
+      from decimal import Decimal, ROUND_HALF_UP
+      from functools import total_ordering
+
+      SUPPORTED_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"}
+
+      class CurrencyMismatchError(Exception):
+          def __init__(self, currency1: str, currency2: str):
+              self.currency1 = currency1
+              self.currency2 = currency2
+              super().__init__(f"Cannot operate on {currency1} and {currency2}")
+
+      class InvalidCurrencyError(Exception):
+          pass
+
+      @total_ordering
+      class Money:
+          def __init__(self, amount: Union[int, float, Decimal], currency: str = "USD"):
+              if currency not in SUPPORTED_CURRENCIES:
+                  raise InvalidCurrencyError(f"Unsupported currency: {currency}")
+              self._amount = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+              self._currency = currency
+
+          @property
+          def amount(self) -> Decimal:
+              return self._amount
+
+          @property
+          def currency(self) -> str:
+              return self._currency
+
+          def __str__(self) -> str:
+              return f"{self._currency} {self._amount:.2f}"
+
+          def __repr__(self) -> str:
+              return f"Money({self._amount!r}, {self._currency!r})"
+
+          def __eq__(self, other: object) -> bool:
+              if not isinstance(other, Money):
+                  return NotImplemented
+              return self._amount == other._amount and self._currency == other._currency
+
+          def __lt__(self, other: "Money") -> bool:
+              if self._currency != other._currency:
+                  raise CurrencyMismatchError(self._currency, other._currency)
+              return self._amount < other._amount
+
+          def __hash__(self) -> int:
+              return hash((self._amount, self._currency))
+
+          def __bool__(self) -> bool:
+              return self._amount != 0
+
+          def __neg__(self) -> "Money":
+              return Money(-self._amount, self._currency)
+
+          def __abs__(self) -> "Money":
+              return Money(abs(self._amount), self._currency)
+
+          def is_positive(self) -> bool:
+              return self._amount > 0
+
+          def is_negative(self) -> bool:
+              return self._amount < 0
+
+          def round_to(self, decimals: int = 0) -> "Money":
+              factor = Decimal(10) ** -decimals
+              rounded = self._amount.quantize(factor, rounding=ROUND_HALF_UP)
+              return Money(rounded, self._currency)
+    calculator.py: |
+      from money import Money, CurrencyMismatchError
+      from typing import List, Optional
+      from decimal import Decimal
+
+      class MoneyCalculator:
+          def __init__(self, default_currency: str = "USD"):
+              self.default_currency = default_currency
+
+          def sum_money(self, m1: Money, m2: Money) -> Money:
+              if m1.currency != m2.currency:
+                  raise CurrencyMismatchError(m1.currency, m2.currency)
+              return Money(m1.amount + m2.amount, m1.currency)
+
+          def sum_all(self, amounts: List[Money]) -> Optional[Money]:
+              if not amounts:
+                  return None
+              result = amounts[0]
+              for m in amounts[1:]:
+                  result = self.sum_money(result, m)
+              return result
+
+          def apply_discount(self, amount: Money, discount_percent: float) -> Money:
+              discount = amount.amount * Decimal(str(discount_percent / 100))
+              return Money(amount.amount - discount, amount.currency)
+
+          def apply_tax(self, amount: Money, tax_rate: float) -> Money:
+              tax = amount.amount * Decimal(str(tax_rate / 100))
+              return Money(amount.amount + tax, amount.currency)
+
+          def split_evenly(self, amount: Money, parts: int) -> List[Money]:
+              if parts <= 0:
+                  raise ValueError("Parts must be positive")
+              per_part = amount.amount / parts
+              return [Money(per_part, amount.currency) for _ in range(parts)]
+    tax_calculator.py: |
+      from decimal import Decimal, ROUND_HALF_UP
+      from typing import List
+
+      class TaxCalculator:
+          def __init__(self, base_rate: float = 0.0):
+              self.base_rate = Decimal(str(base_rate))
+
+          def calculate_tax(self, amount: Decimal, rate: float) -> Decimal:
+              tax_rate = Decimal(str(rate / 100))
+              return (amount * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+          def calculate_total_with_tax(self, amount: Decimal) -> Decimal:
+              return amount + self.calculate_tax(amount, float(self.base_rate))
+
+      class TaxBracket:
+          def __init__(self, lower: float, upper: float, rate: float):
+              self.lower = Decimal(str(lower))
+              self.upper = Decimal(str(upper))
+              self.rate = rate
+    currency_converter.py: |
+      from decimal import Decimal
+
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): Decimal("0.85"),
+          ("EUR", "USD"): Decimal("1.18"),
+          ("GBP", "USD"): Decimal("1.36"),
+      }
+
+      class CurrencyConverter:
+          def convert(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+              rate = EXCHANGE_RATES.get((from_currency, to_currency))
+              if rate is None:
+                  raise ValueError(f"No rate for {from_currency} -> {to_currency}")
+              return amount * rate
+
+          def get_rate(self, from_currency: str, to_currency: str) -> Decimal:
+              return EXCHANGE_RATES.get((from_currency, to_currency), Decimal("0"))
+  changed_files:
+    money.py: |
+      from typing import Optional, Union
+      from decimal import Decimal, ROUND_HALF_UP
+      from functools import total_ordering
+
+      SUPPORTED_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"}
+
+      class CurrencyMismatchError(Exception):
+          def __init__(self, currency1: str, currency2: str):
+              self.currency1 = currency1
+              self.currency2 = currency2
+              super().__init__(f"Cannot operate on {currency1} and {currency2}")
+
+      class InvalidCurrencyError(Exception):
+          pass
+
+      @total_ordering
+      class Money:
+          def __init__(self, amount: Union[int, float, Decimal], currency: str = "USD"):
+              if currency not in SUPPORTED_CURRENCIES:
+                  raise InvalidCurrencyError(f"Unsupported currency: {currency}")
+              self._amount = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+              self._currency = currency
+
+          @property
+          def amount(self) -> Decimal:
+              return self._amount
+
+          @property
+          def currency(self) -> str:
+              return self._currency
+
+          def __str__(self) -> str:
+              return f"{self._currency} {self._amount:.2f}"
+
+          def __repr__(self) -> str:
+              return f"Money({self._amount!r}, {self._currency!r})"
+
+          def __eq__(self, other: object) -> bool:
+              if not isinstance(other, Money):
+                  return NotImplemented
+              return self._amount == other._amount and self._currency == other._currency
+
+          def __lt__(self, other: "Money") -> bool:
+              if self._currency != other._currency:
+                  raise CurrencyMismatchError(self._currency, other._currency)
+              return self._amount < other._amount
+
+          def __hash__(self) -> int:
+              return hash((self._amount, self._currency))
+
+          def __bool__(self) -> bool:
+              return self._amount != 0
+
+          def __neg__(self) -> "Money":
+              return Money(-self._amount, self._currency)
+
+          def __abs__(self) -> "Money":
+              return Money(abs(self._amount), self._currency)
+
+          def __add__(self, other: "Money") -> "Money":
+              if self._currency != other._currency:
+                  raise CurrencyMismatchError(self._currency, other._currency)
+              return Money(self._amount + other._amount, self._currency)
+
+          def __sub__(self, other: "Money") -> "Money":
+              if self._currency != other._currency:
+                  raise CurrencyMismatchError(self._currency, other._currency)
+              return Money(self._amount - other._amount, self._currency)
+
+          def __mul__(self, factor: Union[int, float, Decimal]) -> "Money":
+              return Money(self._amount * Decimal(str(factor)), self._currency)
+
+          def __rmul__(self, factor: Union[int, float, Decimal]) -> "Money":
+              return self.__mul__(factor)
+
+          def is_positive(self) -> bool:
+              return self._amount > 0
+
+          def is_negative(self) -> bool:
+              return self._amount < 0
+
+          def round_to(self, decimals: int = 0) -> "Money":
+              factor = Decimal(10) ** -decimals
+              rounded = self._amount.quantize(factor, rounding=ROUND_HALF_UP)
+              return Money(rounded, self._currency)
+    calculator.py: |
+      from money import Money, CurrencyMismatchError
+      from typing import List, Optional
+      from decimal import Decimal
+
+      class MoneyCalculator:
+          def __init__(self, default_currency: str = "USD"):
+              self.default_currency = default_currency
+
+          def sum_money(self, m1: Money, m2: Money) -> Money:
+              if m1.currency != m2.currency:
+                  raise CurrencyMismatchError(m1.currency, m2.currency)
+              return Money(m1.amount + m2.amount, m1.currency)
+
+          def sum_all(self, amounts: List[Money]) -> Optional[Money]:
+              if not amounts:
+                  return None
+              result = amounts[0]
+              for m in amounts[1:]:
+                  result = self.sum_money(result, m)
+              return result
+
+          def apply_discount(self, amount: Money, discount_percent: float) -> Money:
+              discount = amount.amount * Decimal(str(discount_percent / 100))
+              return Money(amount.amount - discount, amount.currency)
+
+          def apply_tax(self, amount: Money, tax_rate: float) -> Money:
+              tax = amount.amount * Decimal(str(tax_rate / 100))
+              return Money(amount.amount + tax, amount.currency)
+
+          def split_evenly(self, amount: Money, parts: int) -> List[Money]:
+              if parts <= 0:
+                  raise ValueError("Parts must be positive")
+              per_part = amount.amount / parts
+              return [Money(per_part, amount.currency) for _ in range(parts)]
+    tax_calculator.py: |
+      from decimal import Decimal, ROUND_HALF_UP
+      from typing import List
+
+      class TaxCalculator:
+          def __init__(self, base_rate: float = 0.0):
+              self.base_rate = Decimal(str(base_rate))
+
+          def calculate_tax(self, amount: Decimal, rate: float) -> Decimal:
+              tax_rate = Decimal(str(rate / 100))
+              return (amount * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+          def calculate_total_with_tax(self, amount: Decimal) -> Decimal:
+              return amount + self.calculate_tax(amount, float(self.base_rate))
+
+      class TaxBracket:
+          def __init__(self, lower: float, upper: float, rate: float):
+              self.lower = Decimal(str(lower))
+              self.upper = Decimal(str(upper))
+              self.rate = rate
+    currency_converter.py: |
+      from decimal import Decimal
+
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): Decimal("0.85"),
+          ("EUR", "USD"): Decimal("1.18"),
+          ("GBP", "USD"): Decimal("1.36"),
+      }
+
+      class CurrencyConverter:
+          def convert(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+              rate = EXCHANGE_RATES.get((from_currency, to_currency))
+              if rate is None:
+                  raise ValueError(f"No rate for {from_currency} -> {to_currency}")
+              return amount * rate
+
+          def get_rate(self, from_currency: str, to_currency: str) -> Decimal:
+              return EXCHANGE_RATES.get((from_currency, to_currency), Decimal("0"))
+  commit_message: Update files
+fragments:
+- id: money
+  selector:
+    path: money.py
+    anchor: 'def __add__(self, other: "Money") -> "Money":'
+- id: money_1
+  selector:
+    path: money.py
+    anchor: 'def __sub__(self, other: "Money") -> "Money":'
+- id: money_2
+  selector:
+    path: money.py
+    anchor: def __mul__(self, factor
+- id: no_tax_calculator
+  selector:
+    path: tax_calculator.py
+- id: no_currency_converter
+  selector:
+    path: currency_converter.py
+- id: no_global_0
+  selector:
+    anchor: TaxCalculator
+- id: no_global_1
+  selector:
+    anchor: TaxBracket
+- id: no_global_2
+  selector:
+    anchor: CurrencyConverter
+- id: no_global_3
+  selector:
+    anchor: EXCHANGE_RATES
+- id: no_global_4
+  selector:
+    anchor: calculate_tax
+- id: no_global_5
+  selector:
+    anchor: get_rate
+oracle:
+  required:
+  - money
+  - money_1
+  - money_2
+  allowed: []
+  forbidden:
+  - no_tax_calculator
+  - no_currency_converter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

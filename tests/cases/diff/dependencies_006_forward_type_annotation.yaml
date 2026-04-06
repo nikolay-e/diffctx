@@ -1,0 +1,314 @@
+name: dependencies_006_forward_type_annotation
+repo:
+  initial_files:
+    models/request.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class RequestModel:
+          method: str
+          path: str
+          body: Optional[dict] = None
+          headers: Optional[dict] = None
+
+          def is_json(self) -> bool:
+              ct = (self.headers or {}).get("Content-Type", "")
+              return "application/json" in ct
+    models/response.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class ResponseModel:
+          status_code: int
+          body: dict
+          headers: Optional[dict] = None
+
+          def is_success(self) -> bool:
+              return 200 <= self.status_code < 300
+    service.py: |
+      def process():
+          pass
+    middleware/auth.py: |
+      from models.request import RequestModel
+      from models.response import ResponseModel
+      GARBAGE_DEP_006_AUTH_IMPORT_C = "auth_middleware"
+      GARBAGE_DEP_006_AUTH_TOKEN_D = "bearer"
+
+      class AuthMiddleware:
+          GARBAGE_DEP_006_AUTH_CLASS_E = True
+
+          def process(self, request: RequestModel) -> ResponseModel:
+              token = (request.headers or {}).get("Authorization", "")
+              if not token:
+                  return ResponseModel(status_code=401, body={"error": "Unauthorized"})
+              return ResponseModel(status_code=200, body={"auth": "ok"})
+    models/grpc_models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      GARBAGE_DEP_006_GRPC_MODULE_F = "grpc_models"
+      GARBAGE_DEP_006_GRPC_VERSION_G = "3.0"
+
+      @dataclass
+      class RequestModel:
+          service: str
+          method: str
+          payload: Optional[bytes] = None
+          GARBAGE_DEP_006_GRPC_REQ_H = "grpc_request"
+
+      @dataclass
+      class ResponseModel:
+          status_code: int
+          payload: Optional[bytes] = None
+          GARBAGE_DEP_006_GRPC_RESP_I = "grpc_response"
+
+          def is_success(self) -> bool:
+              return self.status_code == 0
+    garbage/gardening_GARBAGE_DEP_006_GARDEN_A.py: |
+      def soil_ph_check_GARBAGE_DEP_006_GARDEN_A(ph: float) -> str:
+          if ph < 6.0:
+              return "acidic"
+          elif ph > 7.5:
+              return "alkaline"
+          return "neutral"
+
+      def watering_schedule_GARBAGE_DEP_006_GARDEN_A(plant_type: str) -> int:
+          schedules = {"succulent": 7, "fern": 2, "cactus": 14}
+          return schedules.get(plant_type, 3)
+
+      class GardenPlot_GARBAGE_DEP_006_GARDEN_A:
+          def __init__(self, width: float, length: float):
+              self.width = width
+              self.length = length
+              self.plants = []
+
+          def area(self) -> float:
+              return self.width * self.length
+    garbage/podcast_manager_GARBAGE_DEP_006_PODCAST_B.py: |
+      def episode_duration_GARBAGE_DEP_006_PODCAST_B(segments: list) -> int:
+          return sum(s.get("duration", 0) for s in segments)
+
+      def format_timestamp_GARBAGE_DEP_006_PODCAST_B(seconds: int) -> str:
+          h, m = divmod(seconds // 60, 60)
+          s = seconds % 60
+          return f"{h:02d}:{m:02d}:{s:02d}"
+
+      class PodcastFeed_GARBAGE_DEP_006_PODCAST_B:
+          def __init__(self, title: str):
+              self.title = title
+              self.episodes = []
+
+          def add_episode(self, title: str, duration: int) -> None:
+              self.episodes.append({"title": title, "duration": duration})
+  changed_files:
+    models/request.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class RequestModel:
+          method: str
+          path: str
+          body: Optional[dict] = None
+          headers: Optional[dict] = None
+
+          def is_json(self) -> bool:
+              ct = (self.headers or {}).get("Content-Type", "")
+              return "application/json" in ct
+    models/response.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class ResponseModel:
+          status_code: int
+          body: dict
+          headers: Optional[dict] = None
+
+          def is_success(self) -> bool:
+              return 200 <= self.status_code < 300
+    service.py: |
+      from models.request import RequestModel
+      from models.response import ResponseModel
+
+      def process(request: RequestModel) -> ResponseModel:
+          if request.method == "GET":
+              return ResponseModel(status_code=200, body={"path": request.path})
+          if request.is_json() and request.body:
+              return ResponseModel(status_code=201, body=request.body)
+          return ResponseModel(status_code=400, body={"error": "Bad request"})
+    middleware/auth.py: |
+      from models.request import RequestModel
+      from models.response import ResponseModel
+      GARBAGE_DEP_006_AUTH_IMPORT_C = "auth_middleware"
+      GARBAGE_DEP_006_AUTH_TOKEN_D = "bearer"
+
+      class AuthMiddleware:
+          GARBAGE_DEP_006_AUTH_CLASS_E = True
+
+          def process(self, request: RequestModel) -> ResponseModel:
+              token = (request.headers or {}).get("Authorization", "")
+              if not token:
+                  return ResponseModel(status_code=401, body={"error": "Unauthorized"})
+              return ResponseModel(status_code=200, body={"auth": "ok"})
+    models/grpc_models.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      GARBAGE_DEP_006_GRPC_MODULE_F = "grpc_models"
+      GARBAGE_DEP_006_GRPC_VERSION_G = "3.0"
+
+      @dataclass
+      class RequestModel:
+          service: str
+          method: str
+          payload: Optional[bytes] = None
+          GARBAGE_DEP_006_GRPC_REQ_H = "grpc_request"
+
+      @dataclass
+      class ResponseModel:
+          status_code: int
+          payload: Optional[bytes] = None
+          GARBAGE_DEP_006_GRPC_RESP_I = "grpc_response"
+
+          def is_success(self) -> bool:
+              return self.status_code == 0
+    garbage/gardening_GARBAGE_DEP_006_GARDEN_A.py: |
+      def soil_ph_check_GARBAGE_DEP_006_GARDEN_A(ph: float) -> str:
+          if ph < 6.0:
+              return "acidic"
+          elif ph > 7.5:
+              return "alkaline"
+          return "neutral"
+
+      def watering_schedule_GARBAGE_DEP_006_GARDEN_A(plant_type: str) -> int:
+          schedules = {"succulent": 7, "fern": 2, "cactus": 14}
+          return schedules.get(plant_type, 3)
+
+      class GardenPlot_GARBAGE_DEP_006_GARDEN_A:
+          def __init__(self, width: float, length: float):
+              self.width = width
+              self.length = length
+              self.plants = []
+
+          def area(self) -> float:
+              return self.width * self.length
+    garbage/podcast_manager_GARBAGE_DEP_006_PODCAST_B.py: |
+      def episode_duration_GARBAGE_DEP_006_PODCAST_B(segments: list) -> int:
+          return sum(s.get("duration", 0) for s in segments)
+
+      def format_timestamp_GARBAGE_DEP_006_PODCAST_B(seconds: int) -> str:
+          h, m = divmod(seconds // 60, 60)
+          s = seconds % 60
+          return f"{h:02d}:{m:02d}:{s:02d}"
+
+      class PodcastFeed_GARBAGE_DEP_006_PODCAST_B:
+          def __init__(self, title: str):
+              self.title = title
+              self.episodes = []
+
+          def add_episode(self, title: str, duration: int) -> None:
+              self.episodes.append({"title": title, "duration": duration})
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: from models.request import RequestModel
+- id: service_1
+  selector:
+    path: service.py
+    anchor: from models.response import ResponseModel
+- id: service_2
+  selector:
+    path: service.py
+    anchor: 'def process(request: RequestModel) -> ResponseModel:'
+- id: service_3
+  selector:
+    path: service.py
+    anchor: ResponseModel(status_code=200
+- id: service_4
+  selector:
+    path: service.py
+    anchor: request.is_json()
+- id: request
+  selector:
+    path: models/request.py
+    anchor: 'class RequestModel:'
+- id: request_1
+  selector:
+    path: models/request.py
+    anchor: '@dataclass'
+- id: response
+  selector:
+    path: models/response.py
+    anchor: 'class ResponseModel:'
+- id: response_1
+  selector:
+    path: models/response.py
+    anchor: 'def is_success(self) -> bool:'
+- id: no_auth
+  selector:
+    path: middleware/auth.py
+- id: no_grpc_models
+  selector:
+    path: models/grpc_models.py
+- id: no_gardening_garbage_dep_006_garden_a
+  selector:
+    path: garbage/gardening_GARBAGE_DEP_006_GARDEN_A.py
+- id: no_podcast_manager_garbage_dep_006_podcast_
+  selector:
+    path: garbage/podcast_manager_GARBAGE_DEP_006_PODCAST_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_006_GARDEN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_006_PODCAST_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_006_AUTH_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_006_AUTH_TOKEN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_006_AUTH_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_006_GRPC_MODULE_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_006_GRPC_VERSION_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_006_GRPC_REQ_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_006_GRPC_RESP_I
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - service_3
+  - service_4
+  - request
+  - request_1
+  - response
+  - response_1
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_grpc_models
+  - no_gardening_garbage_dep_006_garden_a
+  - no_podcast_manager_garbage_dep_006_podcast_
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

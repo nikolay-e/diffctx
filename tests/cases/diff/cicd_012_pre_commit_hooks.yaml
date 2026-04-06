@@ -1,0 +1,243 @@
+name: cicd_012_pre_commit_hooks
+repo:
+  initial_files:
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: https://github.com/pre-commit/pre-commit-hooks
+          rev: v4.5.0
+          hooks:
+            - id: trailing-whitespace
+    src/code.py: |
+      from typing import Any, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class ProcessResult:
+          success: bool
+          data: Optional[Any] = None
+          error: Optional[str] = None
+
+      class Processor:
+          def __init__(self, config: dict):
+              self.config = config
+              self._cache: dict = {}
+
+          def process(self, input_data: Any) -> ProcessResult:
+              try:
+                  validated = self._validate(input_data)
+                  transformed = self._transform(validated)
+                  result = self._execute(transformed)
+                  return ProcessResult(success=True, data=result)
+              except Exception as e:
+                  return ProcessResult(success=False, error=str(e))
+
+          def _validate(self, data: Any) -> Any:
+              if data is None:
+                  raise ValueError("Input cannot be None")
+              return data
+
+          def _transform(self, data: Any) -> Any:
+              if isinstance(data, dict):
+                  return {k: v for k, v in data.items() if v is not None}
+              return data
+
+          def _execute(self, data: Any) -> Any:
+              return data
+
+      def process() -> bool:
+          return True
+    tests/test_processor.py: |
+      import pytest
+      from src.code import Processor, ProcessResult, process
+
+      class TestProcessor:
+          def test_process_valid_data(self):
+              processor = Processor({})
+              result = processor.process({"key": "value"})
+              assert result.success is True
+
+          def test_process_none_fails(self):
+              processor = Processor({})
+              result = processor.process(None)
+              assert result.success is False
+              assert "None" in result.error
+
+      def test_process_function():
+          assert process() is True
+    garbage_validator.py: |
+      GARBAGE_CICD_012_VALIDATOR_MARKER_A = "schema"
+      GARBAGE_CICD_012_STRICT_MARKER_B = True
+
+      class GarbageSchemaValidator:
+          GARBAGE_CICD_012_VERSION_MARKER_C = "draft-07"
+
+          def validate(self, data: dict) -> bool:
+              return True
+    garbage_formatter.py: |
+      GARBAGE_CICD_012_FORMAT_MARKER_D = "json"
+      GARBAGE_CICD_012_INDENT_MARKER_E = 2
+
+      class GarbageOutputFormatter:
+          GARBAGE_CICD_012_PRETTY_MARKER_F = True
+
+          def format(self, data: dict) -> str:
+              return ""
+  changed_files:
+    .pre-commit-config.yaml: |
+      repos:
+        - repo: https://github.com/pre-commit/pre-commit-hooks
+          rev: v4.5.0
+          hooks:
+            - id: trailing-whitespace
+            - id: end-of-file-fixer
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          rev: v0.1.0
+          hooks:
+            - id: ruff
+              args: [--fix]
+    src/code.py: |
+      from typing import Any, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class ProcessResult:
+          success: bool
+          data: Optional[Any] = None
+          error: Optional[str] = None
+
+      class Processor:
+          def __init__(self, config: dict):
+              self.config = config
+              self._cache: dict = {}
+
+          def process(self, input_data: Any) -> ProcessResult:
+              try:
+                  validated = self._validate(input_data)
+                  transformed = self._transform(validated)
+                  result = self._execute(transformed)
+                  return ProcessResult(success=True, data=result)
+              except Exception as e:
+                  return ProcessResult(success=False, error=str(e))
+
+          def _validate(self, data: Any) -> Any:
+              if data is None:
+                  raise ValueError("Input cannot be None")
+              return data
+
+          def _transform(self, data: Any) -> Any:
+              if isinstance(data, dict):
+                  return {k: v for k, v in data.items() if v is not None}
+              return data
+
+          def _execute(self, data: Any) -> Any:
+              return data
+
+      def process() -> bool:
+          return True
+    tests/test_processor.py: |
+      import pytest
+      from src.code import Processor, ProcessResult, process
+
+      class TestProcessor:
+          def test_process_valid_data(self):
+              processor = Processor({})
+              result = processor.process({"key": "value"})
+              assert result.success is True
+
+          def test_process_none_fails(self):
+              processor = Processor({})
+              result = processor.process(None)
+              assert result.success is False
+              assert "None" in result.error
+
+      def test_process_function():
+          assert process() is True
+    garbage_validator.py: |
+      GARBAGE_CICD_012_VALIDATOR_MARKER_A = "schema"
+      GARBAGE_CICD_012_STRICT_MARKER_B = True
+
+      class GarbageSchemaValidator:
+          GARBAGE_CICD_012_VERSION_MARKER_C = "draft-07"
+
+          def validate(self, data: dict) -> bool:
+              return True
+    garbage_formatter.py: |
+      GARBAGE_CICD_012_FORMAT_MARKER_D = "json"
+      GARBAGE_CICD_012_INDENT_MARKER_E = 2
+
+      class GarbageOutputFormatter:
+          GARBAGE_CICD_012_PRETTY_MARKER_F = True
+
+          def format(self, data: dict) -> str:
+              return ""
+  commit_message: Update files
+fragments:
+- id: pre_commit_config
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: '- id: end-of-file-fixer'
+- id: pre_commit_config_1
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: 'repo: https://github.com/astral-sh/ruff-pre-commit'
+- id: pre_commit_config_2
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: 'rev: v0.1.0'
+- id: pre_commit_config_3
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: '- id: ruff'
+- id: pre_commit_config_4
+  selector:
+    path: .pre-commit-config.yaml
+    anchor: 'args: [--fix]'
+- id: no_garbage_formatter
+  selector:
+    path: garbage_formatter.py
+- id: no_garbage_validator
+  selector:
+    path: garbage_validator.py
+- id: no_code
+  selector:
+    path: src/code.py
+- id: no_test_processor
+  selector:
+    path: tests/test_processor.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_012_FORMAT_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_012_INDENT_MARKER_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_012_PRETTY_MARKER_F
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_012_STRICT_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_012_VALIDATOR_MARKER_A
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_012_VERSION_MARKER_C
+oracle:
+  required:
+  - pre_commit_config
+  - pre_commit_config_1
+  - pre_commit_config_2
+  - pre_commit_config_3
+  - pre_commit_config_4
+  allowed: []
+  forbidden:
+  - no_garbage_formatter
+  - no_garbage_validator
+  - no_code
+  - no_test_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

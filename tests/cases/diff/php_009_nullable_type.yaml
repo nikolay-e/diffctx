@@ -1,0 +1,428 @@
+name: php_009_nullable_type
+repo:
+  initial_files:
+    src/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User {
+          public int $id;
+          public string $name;
+          public ?string $avatar;
+
+          public function __construct(int $id, string $name, ?string $avatar = null) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->avatar = $avatar;
+          }
+
+          public function getAvatarUrl(): ?string {
+              return $this->avatar ? "/avatars/{$this->avatar}" : null;
+          }
+
+          public function hasAvatar(): bool {
+              return $this->avatar !== null;
+          }
+      }
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class UserRepository {
+          private array $store = [];
+
+          public function save(array $data): bool {
+              $this->store[] = $data;
+              return true;
+          }
+      }
+    src/Repositories/ProductRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class ProductRepository {
+          private array $products = [];
+
+          public function find(int $id): ?array {
+              return $this->products[$id] ?? null;
+          }
+
+          public function save(array $product): void {
+              $this->products[$product['id']] = $product;
+          }
+
+          public function findByCategory(string $category): array {
+              return array_filter($this->products, fn($p) => $p['category'] === $category);
+          }
+
+          public function count(): int {
+              return count($this->products);
+          }
+      }
+    src/Models/Address.php: |
+      <?php
+      namespace App\Models;
+
+      class Address {
+          public int $id;
+          public string $street;
+          public string $city;
+          public ?string $zipCode;
+
+          public function __construct(int $id, string $street, string $city, ?string $zipCode = null) {
+              $this->id = $id;
+              $this->street = $street;
+              $this->city = $city;
+              $this->zipCode = $zipCode;
+          }
+
+          public function getFullAddress(): string {
+              $parts = [$this->street, $this->city];
+              if ($this->zipCode) {
+                  $parts[] = $this->zipCode;
+              }
+              return implode(', ', $parts);
+          }
+      }
+    src/Repositories/OrderRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class OrderRepository {
+          private array $orders = [];
+
+          public function find(int $id): ?array {
+              return $this->orders[$id] ?? null;
+          }
+
+          public function save(array $order): void {
+              $this->orders[$order['id']] = $order;
+          }
+
+          public function findByStatus(string $status): array {
+              return array_filter($this->orders, fn($o) => $o['status'] === $status);
+          }
+
+          public function delete(int $id): bool {
+              if (isset($this->orders[$id])) {
+                  unset($this->orders[$id]);
+                  return true;
+              }
+              return false;
+          }
+      }
+    src/Models/UserSettings.php: |
+      <?php
+      namespace App\Models;
+
+      class UserSettings {
+          private int $userId;
+          private array $preferences;
+
+          public function __construct(int $userId, array $preferences = []) {
+              $this->userId = $userId;
+              $this->preferences = $preferences;
+          }
+
+          public function getUserId(): int {
+              return $this->userId;
+          }
+
+          public function get(string $key, mixed $default = null): mixed {
+              return $this->preferences[$key] ?? $default;
+          }
+
+          public function set(string $key, mixed $value): void {
+              $this->preferences[$key] = $value;
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class UserService {
+          public function __construct(private UserRepository $repo) {}
+
+          public function getUser(int $id): ?array {
+              $user = $this->repo->find($id);
+              return $user ? ['id' => $user->id, 'name' => $user->name] : null;
+          }
+
+          public function registerUser(string $name, string $email): void {
+              $this->repo->save(['name' => $name, 'email' => $email]);
+          }
+      }
+  changed_files:
+    src/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User {
+          public int $id;
+          public string $name;
+          public ?string $avatar;
+
+          public function __construct(int $id, string $name, ?string $avatar = null) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->avatar = $avatar;
+          }
+
+          public function getAvatarUrl(): ?string {
+              return $this->avatar ? "/avatars/{$this->avatar}" : null;
+          }
+
+          public function hasAvatar(): bool {
+              return $this->avatar !== null;
+          }
+      }
+    src/Repositories/UserRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      use App\Models\User;
+
+      class UserRepository {
+          private array $store = [];
+
+          public function find(int $id): ?User {
+              return $this->store[$id] ?? null;
+          }
+
+          public function save(User $user): void {
+              $this->store[$user->id] = $user;
+          }
+
+          public function findByName(string $name): ?User {
+              foreach ($this->store as $user) {
+                  if ($user->name === $name) {
+                      return $user;
+                  }
+              }
+              return null;
+          }
+      }
+    src/Repositories/ProductRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class ProductRepository {
+          private array $products = [];
+
+          public function find(int $id): ?array {
+              return $this->products[$id] ?? null;
+          }
+
+          public function save(array $product): void {
+              $this->products[$product['id']] = $product;
+          }
+
+          public function findByCategory(string $category): array {
+              return array_filter($this->products, fn($p) => $p['category'] === $category);
+          }
+
+          public function count(): int {
+              return count($this->products);
+          }
+      }
+    src/Models/Address.php: |
+      <?php
+      namespace App\Models;
+
+      class Address {
+          public int $id;
+          public string $street;
+          public string $city;
+          public ?string $zipCode;
+
+          public function __construct(int $id, string $street, string $city, ?string $zipCode = null) {
+              $this->id = $id;
+              $this->street = $street;
+              $this->city = $city;
+              $this->zipCode = $zipCode;
+          }
+
+          public function getFullAddress(): string {
+              $parts = [$this->street, $this->city];
+              if ($this->zipCode) {
+                  $parts[] = $this->zipCode;
+              }
+              return implode(', ', $parts);
+          }
+      }
+    src/Repositories/OrderRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class OrderRepository {
+          private array $orders = [];
+
+          public function find(int $id): ?array {
+              return $this->orders[$id] ?? null;
+          }
+
+          public function save(array $order): void {
+              $this->orders[$order['id']] = $order;
+          }
+
+          public function findByStatus(string $status): array {
+              return array_filter($this->orders, fn($o) => $o['status'] === $status);
+          }
+
+          public function delete(int $id): bool {
+              if (isset($this->orders[$id])) {
+                  unset($this->orders[$id]);
+                  return true;
+              }
+              return false;
+          }
+      }
+    src/Models/UserSettings.php: |
+      <?php
+      namespace App\Models;
+
+      class UserSettings {
+          private int $userId;
+          private array $preferences;
+
+          public function __construct(int $userId, array $preferences = []) {
+              $this->userId = $userId;
+              $this->preferences = $preferences;
+          }
+
+          public function getUserId(): int {
+              return $this->userId;
+          }
+
+          public function get(string $key, mixed $default = null): mixed {
+              return $this->preferences[$key] ?? $default;
+          }
+
+          public function set(string $key, mixed $value): void {
+              $this->preferences[$key] = $value;
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Repositories\UserRepository;
+
+      class UserService {
+          public function __construct(private UserRepository $repo) {}
+
+          public function getUser(int $id): ?array {
+              $user = $this->repo->find($id);
+              return $user ? ['id' => $user->id, 'name' => $user->name] : null;
+          }
+
+          public function registerUser(string $name, string $email): void {
+              $this->repo->save(['name' => $name, 'email' => $email]);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userrepository
+  selector:
+    path: src/Repositories/UserRepository.php
+    anchor: 'public function find(int $id): ?User'
+- id: userrepository_1
+  selector:
+    path: src/Repositories/UserRepository.php
+    anchor: $user->name === $name
+- id: userrepository_2
+  selector:
+    path: src/Repositories/UserRepository.php
+    anchor: $this->store[$user->id] = $user
+- id: user
+  selector:
+    path: src/Models/User.php
+    anchor: public int $id
+- id: user_1
+  selector:
+    path: src/Models/User.php
+    anchor: public string $name
+- id: user_2
+  selector:
+    path: src/Models/User.php
+    anchor: public ?string $avatar
+- id: no_productrepository
+  selector:
+    path: src/Repositories/ProductRepository.php
+- id: no_address
+  selector:
+    path: src/Models/Address.php
+- id: no_orderrepository
+  selector:
+    path: src/Repositories/OrderRepository.php
+- id: no_usersettings
+  selector:
+    path: src/Models/UserSettings.php
+- id: no_userservice
+  selector:
+    path: src/Services/UserService.php
+- id: no_global_0
+  selector:
+    anchor: class ProductRepository
+- id: no_global_1
+  selector:
+    anchor: findByCategory
+- id: no_global_2
+  selector:
+    anchor: class Address
+- id: no_global_3
+  selector:
+    anchor: getFullAddress
+- id: no_global_4
+  selector:
+    anchor: zipCode
+- id: no_global_5
+  selector:
+    anchor: class OrderRepository
+- id: no_global_6
+  selector:
+    anchor: findByStatus
+- id: no_global_7
+  selector:
+    anchor: class UserSettings
+- id: no_global_8
+  selector:
+    anchor: getUserId
+- id: no_global_9
+  selector:
+    anchor: preferences
+- id: no_global_10
+  selector:
+    anchor: class UserService
+- id: no_global_11
+  selector:
+    anchor: registerUser
+oracle:
+  required:
+  - userrepository
+  - userrepository_1
+  - userrepository_2
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_productrepository
+  - no_address
+  - no_orderrepository
+  - no_usersettings
+  - no_userservice
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

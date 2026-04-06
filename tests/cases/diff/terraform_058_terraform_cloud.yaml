@@ -1,0 +1,99 @@
+name: terraform_058_terraform_cloud
+repo:
+  initial_files:
+    main.tf: |
+      terraform {
+        backend "local" {}
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data-bucket"
+      }
+    envs/staging/cloud.tf: |
+      terraform {
+        cloud {
+          organization = "staging-org"
+
+          workspaces {
+            tags = ["app:api", "env:staging"]
+          }
+        }
+      }
+    networking/eip.tf: |
+      resource "aws_eip" "nat" {
+        domain = "vpc"
+        tags = {
+          Name = "nat-gateway-eip"
+        }
+      }
+  changed_files:
+    main.tf: |
+      terraform {
+        cloud {
+          organization = "my-org"
+
+          workspaces {
+            tags = ["app:web", "env:production"]
+          }
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data-bucket"
+      }
+  commit_message: Update files
+fragments:
+- id: main_file
+  selector:
+    path: main.tf
+- id: req_global_0
+  selector:
+    anchor: organization = "my-org"
+- id: req_global_1
+  selector:
+    anchor: cloud {
+- id: no_cloud
+  selector:
+    path: envs/staging/cloud.tf
+- id: no_eip
+  selector:
+    path: networking/eip.tf
+- id: no_global_0
+  selector:
+    anchor: staging-org
+- id: no_global_1
+  selector:
+    anchor: env:staging
+- id: no_global_2
+  selector:
+    anchor: nat-gateway-eip
+oracle:
+  required:
+  - main_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_cloud
+  - no_eip
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -1,0 +1,131 @@
+name: cicd_and_docs_003_gha_checkout_action
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "myapp",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "start": "node dist/index.js"
+        },
+        "dependencies": {
+          "express": "^4.18.0"
+        }
+      }
+    .github/workflows/ci.yml: |
+      name: CI
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - run: echo "no checkout"
+    src/index.ts: |
+      import express from 'express';
+      const app = express();
+      app.get('/', (req, res) => res.send('Hello'));
+      app.listen(3000);
+    garbage_backup.ts: |
+      const GARBAGE_CICD_DOCS_003_BACKUP_MARKER_A = "s3";
+      const GARBAGE_CICD_DOCS_003_RETENTION_MARKER_B = 30;
+
+      class GarbageBackupService {
+        static GARBAGE_CICD_DOCS_003_COMPRESS_MARKER_C = true;
+        backup(): void {}
+      }
+    garbage_restore.ts: |
+      const GARBAGE_CICD_DOCS_003_RESTORE_MARKER_D = "snapshot";
+      const GARBAGE_CICD_DOCS_003_VERIFY_MARKER_E = true;
+
+      class GarbageRestoreManager {
+        static GARBAGE_CICD_DOCS_003_PARALLEL_MARKER_F = 4;
+        restore(): void {}
+      }
+  changed_files:
+    package.json: |
+      {
+        "name": "myapp",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "start": "node dist/index.js"
+        },
+        "dependencies": {
+          "express": "^4.18.0"
+        }
+      }
+    .github/workflows/ci.yml: |
+      name: CI
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm run build
+    src/index.ts: |
+      import express from 'express';
+      const app = express();
+      app.get('/', (req, res) => res.send('Hello'));
+      app.listen(3000);
+    garbage_backup.ts: |
+      const GARBAGE_CICD_DOCS_003_BACKUP_MARKER_A = "s3";
+      const GARBAGE_CICD_DOCS_003_RETENTION_MARKER_B = 30;
+
+      class GarbageBackupService {
+        static GARBAGE_CICD_DOCS_003_COMPRESS_MARKER_C = true;
+        backup(): void {}
+      }
+    garbage_restore.ts: |
+      const GARBAGE_CICD_DOCS_003_RESTORE_MARKER_D = "snapshot";
+      const GARBAGE_CICD_DOCS_003_VERIFY_MARKER_E = true;
+
+      class GarbageRestoreManager {
+        static GARBAGE_CICD_DOCS_003_PARALLEL_MARKER_F = 4;
+        restore(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- uses: actions/checkout@v4'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_BACKUP_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_COMPRESS_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_PARALLEL_MARKER_F
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_RESTORE_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_RETENTION_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_003_VERIFY_MARKER_E
+- id: no_global_6
+  selector:
+    anchor: garbage_backup.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_restore.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

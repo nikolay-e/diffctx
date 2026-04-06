@@ -1,0 +1,228 @@
+name: jvm_and_compiled_004_cpp_multiple_inheritance
+repo:
+  initial_files:
+    include/interfaces.h: |
+      #pragma once
+
+      class Drawable {
+      public:
+          virtual ~Drawable() = default;
+          virtual void draw() = 0;
+      };
+
+      class Clickable {
+      public:
+          virtual ~Clickable() = default;
+          virtual void onClick() = 0;
+      };
+    src/widget.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    src/panel.cpp: |
+      #include "interfaces.h"
+      #include <iostream>
+      #include <string>
+
+      class Panel : public Drawable, public Clickable {
+          std::string title_;
+          bool expanded_ = true;
+      public:
+          Panel(const std::string& title) : title_(title) {}
+
+          void draw() override {
+              std::cout << "Panel: " << title_;
+              std::cout << (expanded_ ? " [expanded]" : " [collapsed]") << std::endl;
+          }
+
+          void onClick() override {
+              expanded_ = !expanded_;
+              std::cout << "Panel toggled: " << title_ << std::endl;
+          }
+      };
+    include/resizable.h: |
+      #pragma once
+
+      class Resizable {
+      public:
+          virtual ~Resizable() = default;
+          virtual void resize(int width, int height) = 0;
+          virtual int getWidth() const = 0;
+          virtual int getHeight() const = 0;
+      };
+    src/widget_manager.cpp: |
+      #include "interfaces.h"
+      #include <vector>
+      #include <memory>
+
+      class WidgetManager {
+          std::vector<std::unique_ptr<Drawable>> drawables_;
+          std::vector<Clickable*> clickables_;
+      public:
+          void addDrawable(std::unique_ptr<Drawable> w) {
+              drawables_.push_back(std::move(w));
+          }
+
+          void registerClickable(Clickable* c) {
+              clickables_.push_back(c);
+          }
+
+          void renderAll() {
+              for (const auto& d : drawables_) d->draw();
+          }
+
+          void handleClick() {
+              for (auto* c : clickables_) c->onClick();
+          }
+      };
+    tests/widget_test.cpp: |
+      #include "interfaces.h"
+      #include <cassert>
+      #include <sstream>
+
+      class MockWidget : public Drawable, public Clickable {
+          int drawCount_ = 0;
+          int clickCount_ = 0;
+      public:
+          void draw() override { drawCount_++; }
+          void onClick() override { clickCount_++; }
+          int drawCount() const { return drawCount_; }
+          int clickCount() const { return clickCount_; }
+      };
+
+      void test_widget_draws() {
+          MockWidget w;
+          w.draw();
+          assert(w.drawCount() == 1);
+      }
+  changed_files:
+    src/widget.cpp: |
+      #include "interfaces.h"
+      #include <iostream>
+
+      class Widget : public Drawable, public Clickable {
+      public:
+          void draw() override {
+              std::cout << "Drawing widget" << std::endl;
+          }
+
+          void onClick() override {
+              std::cout << "Widget clicked" << std::endl;
+          }
+      };
+  commit_message: Update files
+fragments:
+- id: widget
+  selector:
+    path: src/widget.cpp
+    anchor: 'class Widget : public Drawable, public Clickable'
+- id: widget_1
+  selector:
+    path: src/widget.cpp
+    anchor: void draw() override
+- id: widget_2
+  selector:
+    path: src/widget.cpp
+    anchor: void onClick() override
+- id: interfaces
+  selector:
+    path: include/interfaces.h
+    anchor: virtual void draw() = 0
+- id: interfaces_1
+  selector:
+    path: include/interfaces.h
+    anchor: virtual void onClick() = 0
+- id: interfaces_2
+  selector:
+    path: include/interfaces.h
+    anchor: virtual ~Drawable() = default
+- id: interfaces_3
+  selector:
+    path: include/interfaces.h
+    anchor: virtual ~Clickable() = default
+- id: no_panel
+  selector:
+    path: src/panel.cpp
+- id: no_resizable
+  selector:
+    path: include/resizable.h
+- id: no_widget_manager
+  selector:
+    path: src/widget_manager.cpp
+- id: no_widget_test
+  selector:
+    path: tests/widget_test.cpp
+- id: no_global_0
+  selector:
+    anchor: class Panel
+- id: no_global_1
+  selector:
+    anchor: expanded_
+- id: no_global_2
+  selector:
+    anchor: Panel toggled
+- id: no_global_3
+  selector:
+    anchor: title_
+- id: no_global_4
+  selector:
+    anchor: Resizable
+- id: no_global_5
+  selector:
+    anchor: getWidth
+- id: no_global_6
+  selector:
+    anchor: getHeight
+- id: no_global_7
+  selector:
+    anchor: WidgetManager
+- id: no_global_8
+  selector:
+    anchor: renderAll
+- id: no_global_9
+  selector:
+    anchor: handleClick
+- id: no_global_10
+  selector:
+    anchor: registerClickable
+- id: no_global_11
+  selector:
+    anchor: MockWidget
+- id: no_global_12
+  selector:
+    anchor: drawCount
+- id: no_global_13
+  selector:
+    anchor: clickCount
+- id: no_global_14
+  selector:
+    anchor: test_widget_draws
+oracle:
+  required:
+  - widget
+  - widget_1
+  - widget_2
+  - interfaces
+  - interfaces_1
+  - interfaces_2
+  - interfaces_3
+  allowed: []
+  forbidden:
+  - no_panel
+  - no_resizable
+  - no_widget_manager
+  - no_widget_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

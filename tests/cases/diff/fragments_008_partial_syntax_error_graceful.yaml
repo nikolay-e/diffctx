@@ -1,0 +1,86 @@
+name: fragments_008_partial_syntax_error_graceful
+repo:
+  initial_files:
+    partial_broken.py: |
+      import sys
+      from typing import Optional
+
+      def unrelated_before_valid_031():
+
+      class UnrelatedClassBefore031:
+
+          def method_before(self):
+
+      def valid_function():
+          return 42
+
+      def unrelated_between_031():
+
+      class BrokenClass
+          def method(self):
+              pass
+
+      def unrelated_after_broken_031():
+
+      class UnrelatedClassAfter031:
+    garbage_partial_031.py: |
+      def garbage_partial_func():
+          return "GARBAGE_FRAG_partialfunc031"
+
+      class GarbagePartial031:
+          CONST = "GARBAGE_FRAG_partialclass031"
+
+      GARBAGE_PARTIAL_CONST = "GARBAGE_FRAG_partialconst031"
+  changed_files:
+    partial_broken.py: |
+      import sys
+      from typing import Optional
+
+      def unrelated_before_valid_031():
+
+      class UnrelatedClassBefore031:
+
+          def method_before(self):
+
+      def valid_function():
+          return 100
+
+      def unrelated_between_031():
+
+      class BrokenClass
+          def method(self):
+              pass
+
+      def unrelated_after_broken_031():
+
+      class UnrelatedClassAfter031:
+    garbage_partial_031.py: |
+      def garbage_partial_func():
+          return "GARBAGE_FRAG_partialfunc031"
+
+      class GarbagePartial031:
+          CONST = "GARBAGE_FRAG_partialclass031"
+
+      GARBAGE_PARTIAL_CONST = "GARBAGE_FRAG_partialconst031"
+  commit_message: Update files
+fragments:
+- id: partial_broken_file
+  selector:
+    path: partial_broken.py
+- id: req_global_0
+  selector:
+    anchor: return 100
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PARTIAL_CONST
+- id: no_global_1
+  selector:
+    anchor: garbage_partial_031.py
+oracle:
+  required:
+  - partial_broken_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

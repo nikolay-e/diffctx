@@ -1,0 +1,72 @@
+name: internals_067_must_not_include_files
+repo:
+  initial_files:
+    app/handler.py: |
+      def handle_request(data: dict) -> dict:
+          return {"status": "ok", "data": data}
+    app/config.py: |
+      DATABASE_URL = "postgres://localhost/db"
+      CACHE_TTL = 300
+    unrelated/logging_setup.py: |
+      GARBAGE_INT067_LOG_MARKER_A = "log_garbage_a"
+      def configure_logging():
+          return "GARBAGE_INT067_LOG_MARKER_B"
+    unrelated/monitoring.py: |
+      GARBAGE_INT067_MON_MARKER_A = "mon_garbage_a"
+      class Monitor:
+          GARBAGE_INT067_MON_MARKER_B = "mon_garbage_b"
+  changed_files:
+    app/handler.py: |
+      from app.config import DATABASE_URL
+
+      def handle_request(data: dict) -> dict:
+          return {"status": "ok", "data": data, "db": DATABASE_URL}
+    app/config.py: |
+      DATABASE_URL = "postgres://localhost/db"
+      CACHE_TTL = 300
+    unrelated/logging_setup.py: |
+      GARBAGE_INT067_LOG_MARKER_A = "log_garbage_a"
+      def configure_logging():
+          return "GARBAGE_INT067_LOG_MARKER_B"
+    unrelated/monitoring.py: |
+      GARBAGE_INT067_MON_MARKER_A = "mon_garbage_a"
+      class Monitor:
+          GARBAGE_INT067_MON_MARKER_B = "mon_garbage_b"
+  commit_message: Update files
+fragments:
+- id: handler_file
+  selector:
+    path: app/handler.py
+- id: req_global_0
+  selector:
+    anchor: from app.config import DATABASE_URL
+- id: no_logging_setup
+  selector:
+    path: unrelated/logging_setup.py
+- id: no_monitoring
+  selector:
+    path: unrelated/monitoring.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT067_LOG_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT067_LOG_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT067_MON_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT067_MON_MARKER_B
+oracle:
+  required:
+  - handler_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_logging_setup
+  - no_monitoring
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

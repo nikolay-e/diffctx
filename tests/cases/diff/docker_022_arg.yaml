@@ -1,0 +1,208 @@
+name: docker_022_arg
+repo:
+  initial_files:
+    src/main.rs: |
+      use std::env;
+      use std::net::TcpListener;
+
+      fn main() {
+          let version = env!("CARGO_PKG_VERSION");
+          println!("App version: {}", version);
+
+          let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+          let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+          println!("Listening on port {}", port);
+      }
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "1.0.0"
+      edition = "2021"
+
+      [dependencies]
+      tokio = { version = "1.35", features = ["full"] }
+      axum = "0.7"
+    Dockerfile: |
+      FROM rust:1.74-alpine
+      WORKDIR /app
+      COPY . .
+      RUN cargo build --release
+      CMD ["./target/release/myapp"]
+    scripts/build.sh: |
+      #!/bin/bash
+      cargo build --release
+      echo "Binary at target/release/myapp"
+    tests/integration_test.rs: |
+      #[test]
+      fn test_main() {
+          assert!(true);
+      }
+    .github/actions/release/action.yml: |
+      name: Release
+      inputs:
+        version:
+          required: true
+      runs:
+        using: composite
+        steps:
+          - run: cargo build --release
+    benches/benchmark.rs: |
+      use criterion::{criterion_group, criterion_main, Criterion};
+      fn bench_main(c: &mut Criterion) {
+          c.bench_function("startup", |b| b.iter(|| {}));
+      }
+      criterion_group!(benches, bench_main);
+      criterion_main!(benches);
+  changed_files:
+    src/main.rs: |
+      use std::env;
+      use std::net::TcpListener;
+
+      fn main() {
+          let version = env!("CARGO_PKG_VERSION");
+          println!("App version: {}", version);
+
+          let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+          let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+          println!("Listening on port {}", port);
+      }
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "1.0.0"
+      edition = "2021"
+
+      [dependencies]
+      tokio = { version = "1.35", features = ["full"] }
+      axum = "0.7"
+    Dockerfile: |
+      # Build arguments for versioning and caching
+      ARG RUST_VERSION=1.75
+      ARG BUILDPLATFORM=linux/amd64
+      ARG TARGETPLATFORM=linux/amd64
+
+      # Build stage
+      FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-alpine AS builder
+
+      # Build arguments available inside build stage
+      ARG VERSION=0.0.0
+      ARG GIT_SHA=unknown
+      ARG BUILD_DATE
+      ARG CARGO_INCREMENTAL=0
+      ARG CARGO_NET_RETRY=10
+
+      # Install build dependencies
+      RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+
+      WORKDIR /build
+
+      # Cache dependencies
+      COPY Cargo.toml Cargo.lock ./
+      RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+          cargo build --release && \
+          rm -rf src
+
+      # Build actual application
+      COPY src ./src
+      RUN cargo build --release \
+          --config "env.APP_VERSION='${VERSION}'" \
+          --config "env.GIT_SHA='${GIT_SHA}'"
+
+      # Production stage
+      FROM gcr.io/distroless/cc-debian12:nonroot AS production
+
+      ARG VERSION=0.0.0
+      ARG GIT_SHA=unknown
+      ARG BUILD_DATE
+
+      LABEL org.opencontainers.image.version="${VERSION}" \
+            org.opencontainers.image.revision="${GIT_SHA}" \
+            org.opencontainers.image.created="${BUILD_DATE}" \
+            org.opencontainers.image.source="https://github.com/org/myapp"
+
+      COPY --from=builder --chown=nonroot:nonroot /build/target/release/myapp /app
+
+      USER nonroot:nonroot
+      ENTRYPOINT ["/app"]
+    scripts/build.sh: |
+      #!/bin/bash
+      cargo build --release
+      echo "Binary at target/release/myapp"
+    tests/integration_test.rs: |
+      #[test]
+      fn test_main() {
+          assert!(true);
+      }
+    .github/actions/release/action.yml: |
+      name: Release
+      inputs:
+        version:
+          required: true
+      runs:
+        using: composite
+        steps:
+          - run: cargo build --release
+    benches/benchmark.rs: |
+      use criterion::{criterion_group, criterion_main, Criterion};
+      fn bench_main(c: &mut Criterion) {
+          c.bench_function("startup", |b| b.iter(|| {}));
+      }
+      criterion_group!(benches, bench_main);
+      criterion_main!(benches);
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: ARG RUST_VERSION=1.75
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: ARG VERSION=0.0.0
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: ARG GIT_SHA=unknown
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: COPY Cargo.toml Cargo.lock ./
+- id: dockerfile_4
+  selector:
+    path: Dockerfile
+    anchor: cargo build --release
+- id: cargo
+  selector:
+    path: Cargo.toml
+    anchor: name = "myapp"
+- id: cargo_1
+  selector:
+    path: Cargo.toml
+    anchor: tokio = { version = "1.35", features = ["full"] }
+- id: no_build
+  selector:
+    path: scripts/build.sh
+- id: no_integration_test
+  selector:
+    path: tests/integration_test.rs
+- id: no_action
+  selector:
+    path: .github/actions/release/action.yml
+- id: no_benchmark
+  selector:
+    path: benches/benchmark.rs
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - dockerfile_4
+  - cargo
+  - cargo_1
+  allowed: []
+  forbidden:
+  - no_build
+  - no_integration_test
+  - no_action
+  - no_benchmark

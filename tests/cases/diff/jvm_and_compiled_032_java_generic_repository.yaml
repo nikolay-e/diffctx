@@ -1,0 +1,413 @@
+name: jvm_and_compiled_032_java_generic_repository
+repo:
+  initial_files:
+    src/main/java/com/example/UserRepository.java: |
+      package com.example;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class UserRepository {
+          private final Map<Long, User> storage = new HashMap<>();
+
+          public void save(User user) {
+              storage.put(user.getId(), user);
+          }
+
+          public User findById(Long id) {
+              return storage.get(id);
+          }
+      }
+    src/main/java/com/example/service/CrudService.java: |
+      package com.example.service;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class CrudService<T extends Entity<ID>, ID> {
+          private final Repository<T, ID> repository;
+
+          public CrudService(Repository<T, ID> repository) {
+              this.repository = repository;
+          }
+
+          public T save(T entity) {
+              repository.save(entity);
+              return entity;
+          }
+
+          public Optional<T> getById(ID id) {
+              return repository.findById(id);
+          }
+
+          public List<T> getAll() {
+              return repository.findAll();
+          }
+      }
+    src/main/java/com/example/jpa/JpaUserRepository.java: |
+      package com.example.jpa;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface JpaUserRepository extends JpaRepository<User, Long> {
+          List<User> findByName(String name);
+          List<User> findByEmailContaining(String domain);
+          boolean existsByEmail(String email);
+      }
+    src/main/java/com/example/UserEntity.java: |
+      package com.example;
+
+      public class UserEntity implements Entity<Long> {
+          private Long id;
+          private String name;
+          private String email;
+
+          public UserEntity(Long id, String name, String email) {
+              this.id = id;
+              this.name = name;
+              this.email = email;
+          }
+
+          @Override
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getEmail() { return email; }
+      }
+    src/main/java/com/example/factory/RepositoryFactory.java: |
+      package com.example.factory;
+
+      public class RepositoryFactory {
+          public static <T extends Entity<ID>, ID> Repository<T, ID> createInMemory() {
+              return new InMemoryRepository<>();
+          }
+
+          public static <T extends Entity<ID>, ID> Repository<T, ID> createCacheable() {
+              return new CacheableRepository<>(new InMemoryRepository<>());
+          }
+      }
+    src/main/java/com/example/cache/CacheableRepository.java: |
+      package com.example.cache;
+
+      import java.util.*;
+
+      public class CacheableRepository<T extends Entity<ID>, ID> implements Repository<T, ID> {
+          private final Repository<T, ID> delegate;
+          private final Map<ID, T> cache = new HashMap<>();
+
+          public CacheableRepository(Repository<T, ID> delegate) {
+              this.delegate = delegate;
+          }
+
+          @Override
+          public void save(T entity) {
+              cache.put(entity.getId(), entity);
+              delegate.save(entity);
+          }
+
+          @Override
+          public Optional<T> findById(ID id) {
+              return Optional.ofNullable(cache.get(id))
+                  .or(() -> delegate.findById(id));
+          }
+
+          @Override
+          public List<T> findAll() { return delegate.findAll(); }
+
+          @Override
+          public void delete(ID id) {
+              cache.remove(id);
+              delegate.delete(id);
+          }
+      }
+  changed_files:
+    src/main/java/com/example/UserRepository.java: |
+      package com.example;
+
+      import java.util.HashMap;
+      import java.util.Map;
+
+      public class UserRepository {
+          private final Map<Long, User> storage = new HashMap<>();
+
+          public void save(User user) {
+              storage.put(user.getId(), user);
+          }
+
+          public User findById(Long id) {
+              return storage.get(id);
+          }
+      }
+    src/main/java/com/example/Entity.java: |
+      package com.example;
+
+      public interface Entity<ID> {
+          ID getId();
+      }
+    src/main/java/com/example/Repository.java: |
+      package com.example;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public interface Repository<T extends Entity<ID>, ID> {
+          void save(T entity);
+          Optional<T> findById(ID id);
+          List<T> findAll();
+          void delete(ID id);
+      }
+    src/main/java/com/example/InMemoryRepository.java: |
+      package com.example;
+
+      import java.util.ArrayList;
+      import java.util.HashMap;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.Optional;
+
+      public class InMemoryRepository<T extends Entity<ID>, ID> implements Repository<T, ID> {
+          private final Map<ID, T> storage = new HashMap<>();
+
+          @Override
+          public void save(T entity) {
+              storage.put(entity.getId(), entity);
+          }
+
+          @Override
+          public Optional<T> findById(ID id) {
+              return Optional.ofNullable(storage.get(id));
+          }
+
+          @Override
+          public List<T> findAll() {
+              return new ArrayList<>(storage.values());
+          }
+
+          @Override
+          public void delete(ID id) {
+              storage.remove(id);
+          }
+      }
+    src/main/java/com/example/service/CrudService.java: |
+      package com.example.service;
+
+      import java.util.List;
+      import java.util.Optional;
+
+      public class CrudService<T extends Entity<ID>, ID> {
+          private final Repository<T, ID> repository;
+
+          public CrudService(Repository<T, ID> repository) {
+              this.repository = repository;
+          }
+
+          public T save(T entity) {
+              repository.save(entity);
+              return entity;
+          }
+
+          public Optional<T> getById(ID id) {
+              return repository.findById(id);
+          }
+
+          public List<T> getAll() {
+              return repository.findAll();
+          }
+      }
+    src/main/java/com/example/jpa/JpaUserRepository.java: |
+      package com.example.jpa;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface JpaUserRepository extends JpaRepository<User, Long> {
+          List<User> findByName(String name);
+          List<User> findByEmailContaining(String domain);
+          boolean existsByEmail(String email);
+      }
+    src/main/java/com/example/UserEntity.java: |
+      package com.example;
+
+      public class UserEntity implements Entity<Long> {
+          private Long id;
+          private String name;
+          private String email;
+
+          public UserEntity(Long id, String name, String email) {
+              this.id = id;
+              this.name = name;
+              this.email = email;
+          }
+
+          @Override
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getEmail() { return email; }
+      }
+    src/main/java/com/example/factory/RepositoryFactory.java: |
+      package com.example.factory;
+
+      public class RepositoryFactory {
+          public static <T extends Entity<ID>, ID> Repository<T, ID> createInMemory() {
+              return new InMemoryRepository<>();
+          }
+
+          public static <T extends Entity<ID>, ID> Repository<T, ID> createCacheable() {
+              return new CacheableRepository<>(new InMemoryRepository<>());
+          }
+      }
+    src/main/java/com/example/cache/CacheableRepository.java: |
+      package com.example.cache;
+
+      import java.util.*;
+
+      public class CacheableRepository<T extends Entity<ID>, ID> implements Repository<T, ID> {
+          private final Repository<T, ID> delegate;
+          private final Map<ID, T> cache = new HashMap<>();
+
+          public CacheableRepository(Repository<T, ID> delegate) {
+              this.delegate = delegate;
+          }
+
+          @Override
+          public void save(T entity) {
+              cache.put(entity.getId(), entity);
+              delegate.save(entity);
+          }
+
+          @Override
+          public Optional<T> findById(ID id) {
+              return Optional.ofNullable(cache.get(id))
+                  .or(() -> delegate.findById(id));
+          }
+
+          @Override
+          public List<T> findAll() { return delegate.findAll(); }
+
+          @Override
+          public void delete(ID id) {
+              cache.remove(id);
+              delegate.delete(id);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: entity
+  selector:
+    path: src/main/java/com/example/Entity.java
+    anchor: public interface Entity<ID>
+- id: entity_1
+  selector:
+    path: src/main/java/com/example/Entity.java
+    anchor: ID getId()
+- id: repository
+  selector:
+    path: src/main/java/com/example/Repository.java
+    anchor: public interface Repository<T extends Entity<ID>, ID>
+- id: repository_1
+  selector:
+    path: src/main/java/com/example/Repository.java
+    anchor: void save(T entity)
+- id: repository_2
+  selector:
+    path: src/main/java/com/example/Repository.java
+    anchor: Optional<T> findById(ID id)
+- id: inmemoryrepository
+  selector:
+    path: src/main/java/com/example/InMemoryRepository.java
+    anchor: implements Repository<T, ID>
+- id: inmemoryrepository_1
+  selector:
+    path: src/main/java/com/example/InMemoryRepository.java
+    anchor: storage.put(entity.getId(), entity)
+- id: no_crudservice
+  selector:
+    path: src/main/java/com/example/service/CrudService.java
+- id: no_jpauserrepository
+  selector:
+    path: src/main/java/com/example/jpa/JpaUserRepository.java
+- id: no_userentity
+  selector:
+    path: src/main/java/com/example/UserEntity.java
+- id: no_repositoryfactory
+  selector:
+    path: src/main/java/com/example/factory/RepositoryFactory.java
+- id: no_cacheablerepository
+  selector:
+    path: src/main/java/com/example/cache/CacheableRepository.java
+- id: no_global_0
+  selector:
+    anchor: CrudService
+- id: no_global_1
+  selector:
+    anchor: getById
+- id: no_global_2
+  selector:
+    anchor: getAll
+- id: no_global_3
+  selector:
+    anchor: JpaUserRepository
+- id: no_global_4
+  selector:
+    anchor: JpaRepository
+- id: no_global_5
+  selector:
+    anchor: findByName
+- id: no_global_6
+  selector:
+    anchor: findByEmailContaining
+- id: no_global_7
+  selector:
+    anchor: UserEntity
+- id: no_global_8
+  selector:
+    anchor: implements Entity<Long>
+- id: no_global_9
+  selector:
+    anchor: RepositoryFactory
+- id: no_global_10
+  selector:
+    anchor: createInMemory
+- id: no_global_11
+  selector:
+    anchor: createCacheable
+- id: no_global_12
+  selector:
+    anchor: CacheableRepository
+- id: no_global_13
+  selector:
+    anchor: delegate
+oracle:
+  required:
+  - entity
+  - entity_1
+  - repository
+  - repository_1
+  - repository_2
+  - inmemoryrepository
+  - inmemoryrepository_1
+  allowed: []
+  forbidden:
+  - no_crudservice
+  - no_jpauserrepository
+  - no_userentity
+  - no_repositoryfactory
+  - no_cacheablerepository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

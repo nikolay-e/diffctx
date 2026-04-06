@@ -1,0 +1,253 @@
+name: python_017_staticmethod_call
+repo:
+  initial_files:
+    validators.py: |
+      import re
+      from typing import Optional
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class ValidationSeverity(Enum):
+          INFO = "info"
+          WARNING = "warning"
+          ERROR = "error"
+
+      @dataclass
+      class ValidationResult:
+          is_valid: bool
+          severity: ValidationSeverity
+          message: Optional[str] = None
+
+      class Validator:
+          EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+          PHONE_PATTERN = re.compile(r'^\+?[1-9]\d{9,14}$')
+
+          @staticmethod
+          def is_email(text: str) -> bool:
+              if not text or not isinstance(text, str):
+                  return False
+              return bool(Validator.EMAIL_PATTERN.match(text.strip()))
+
+          @staticmethod
+          def is_phone(text: str) -> bool:
+              if not text or not isinstance(text, str):
+                  return False
+              cleaned = text.replace("-", "").replace(" ", "")
+              return bool(Validator.PHONE_PATTERN.match(cleaned))
+
+          @staticmethod
+          def sanitize_input(text: str) -> str:
+              dangerous = ['<', '>', '"', "'", '&']
+              result = text
+              for char in dangerous:
+                  result = result.replace(char, '')
+              return result.strip()
+    forms.py: |
+      def validate_form():
+          pass
+    input_sanitizer.py: |
+      import re
+      from typing import Optional
+
+      class InputSanitizer:
+          DANGEROUS_PATTERNS = [
+              re.compile(r'<script[^>]*>.*?</script>', re.IGNORECASE | re.DOTALL),
+          ]
+
+          @staticmethod
+          def sanitize_html(text: str) -> str:
+              result = text
+              for pattern in InputSanitizer.DANGEROUS_PATTERNS:
+                  result = pattern.sub('', result)
+              return result.strip()
+
+          @staticmethod
+          def escape_sql(text: str) -> str:
+              return text.replace("'", "''").replace(";", "")
+    password_policy.py: |
+      from typing import List
+      from dataclasses import dataclass
+
+      @dataclass
+      class PasswordPolicy:
+          min_length: int = 8
+          require_uppercase: bool = True
+          require_digit: bool = True
+
+      class PasswordValidator:
+          def __init__(self, policy: PasswordPolicy = None):
+              self._policy = policy or PasswordPolicy()
+
+          def validate(self, password: str) -> List[str]:
+              errors = []
+              if len(password) < self._policy.min_length:
+                  errors.append("Too short")
+              if self._policy.require_uppercase and not any(c.isupper() for c in password):
+                  errors.append("Must contain uppercase")
+              return errors
+  changed_files:
+    validators.py: |
+      import re
+      from typing import Optional
+      from dataclasses import dataclass
+      from enum import Enum
+
+      class ValidationSeverity(Enum):
+          INFO = "info"
+          WARNING = "warning"
+          ERROR = "error"
+
+      @dataclass
+      class ValidationResult:
+          is_valid: bool
+          severity: ValidationSeverity
+          message: Optional[str] = None
+
+      class Validator:
+          EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+          PHONE_PATTERN = re.compile(r'^\+?[1-9]\d{9,14}$')
+
+          @staticmethod
+          def is_email(text: str) -> bool:
+              if not text or not isinstance(text, str):
+                  return False
+              return bool(Validator.EMAIL_PATTERN.match(text.strip()))
+
+          @staticmethod
+          def is_phone(text: str) -> bool:
+              if not text or not isinstance(text, str):
+                  return False
+              cleaned = text.replace("-", "").replace(" ", "")
+              return bool(Validator.PHONE_PATTERN.match(cleaned))
+
+          @staticmethod
+          def sanitize_input(text: str) -> str:
+              dangerous = ['<', '>', '"', "'", '&']
+              result = text
+              for char in dangerous:
+                  result = result.replace(char, '')
+              return result.strip()
+    forms.py: |
+      from validators import Validator, ValidationResult, ValidationSeverity
+
+      class ContactForm:
+          def __init__(self):
+              self.errors: list[ValidationResult] = []
+
+          def validate_email(self, email: str) -> bool:
+              if not Validator.is_email(email):
+                  self.errors.append(ValidationResult(
+                      False, ValidationSeverity.ERROR, "Invalid email"
+                  ))
+                  return False
+              return True
+
+          def validate_phone(self, phone: str) -> bool:
+              if not Validator.is_phone(phone):
+                  self.errors.append(ValidationResult(
+                      False, ValidationSeverity.WARNING, "Invalid phone"
+                  ))
+                  return False
+              return True
+
+      def validate_form(email: str, phone: str) -> dict:
+          form = ContactForm()
+          valid_email = form.validate_email(email)
+          valid_phone = form.validate_phone(phone)
+          return {
+              "email": Validator.sanitize_input(email),
+              "phone": phone,
+              "valid": valid_email and valid_phone
+          }
+    input_sanitizer.py: |
+      import re
+      from typing import Optional
+
+      class InputSanitizer:
+          DANGEROUS_PATTERNS = [
+              re.compile(r'<script[^>]*>.*?</script>', re.IGNORECASE | re.DOTALL),
+          ]
+
+          @staticmethod
+          def sanitize_html(text: str) -> str:
+              result = text
+              for pattern in InputSanitizer.DANGEROUS_PATTERNS:
+                  result = pattern.sub('', result)
+              return result.strip()
+
+          @staticmethod
+          def escape_sql(text: str) -> str:
+              return text.replace("'", "''").replace(";", "")
+    password_policy.py: |
+      from typing import List
+      from dataclasses import dataclass
+
+      @dataclass
+      class PasswordPolicy:
+          min_length: int = 8
+          require_uppercase: bool = True
+          require_digit: bool = True
+
+      class PasswordValidator:
+          def __init__(self, policy: PasswordPolicy = None):
+              self._policy = policy or PasswordPolicy()
+
+          def validate(self, password: str) -> List[str]:
+              errors = []
+              if len(password) < self._policy.min_length:
+                  errors.append("Too short")
+              if self._policy.require_uppercase and not any(c.isupper() for c in password):
+                  errors.append("Must contain uppercase")
+              return errors
+  commit_message: Update files
+fragments:
+- id: forms
+  selector:
+    path: forms.py
+    anchor: from validators import Validator, ValidationResult, ValidationSeverity
+- id: forms_1
+  selector:
+    path: forms.py
+    anchor: 'def validate_email(self, email: str) -> bool:'
+- id: validators_file
+  selector:
+    path: validators.py
+- id: no_input_sanitizer
+  selector:
+    path: input_sanitizer.py
+- id: no_password_policy
+  selector:
+    path: password_policy.py
+- id: no_global_0
+  selector:
+    anchor: InputSanitizer
+- id: no_global_1
+  selector:
+    anchor: sanitize_html
+- id: no_global_2
+  selector:
+    anchor: escape_sql
+- id: no_global_3
+  selector:
+    anchor: PasswordValidator
+- id: no_global_4
+  selector:
+    anchor: PasswordPolicy
+- id: no_global_5
+  selector:
+    anchor: require_uppercase
+oracle:
+  required:
+  - forms
+  - forms_1
+  - validators_file
+  allowed: []
+  forbidden:
+  - no_input_sanitizer
+  - no_password_policy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,108 @@
+name: terraform_075_sqs_queue
+repo:
+  initial_files:
+    sqs.tf: |
+      resource "aws_sqs_queue" "tasks" {
+        name                       = "task-queue"
+        visibility_timeout_seconds = 30
+        message_retention_seconds  = 86400
+      }
+    src/queue.py: |
+      import boto3
+
+      def send_message(queue_url: str, message: str):
+          sqs = boto3.client("sqs")
+          sqs.send_message(QueueUrl=queue_url, MessageBody=message)
+    producer.tf: |
+      resource "aws_lambda_function" "producer" {
+        function_name = "task-producer"
+        runtime       = "python3.11"
+        handler       = "producer.handler"
+        role          = aws_iam_role.producer.arn
+        filename      = "producer.zip"
+
+        environment {
+          variables = {
+            QUEUE_URL = aws_sqs_queue.tasks.url
+          }
+        }
+      }
+    dlq/dead_letter.tf: |
+      resource "aws_sqs_queue" "dead_letter" {
+        name                       = "task-queue-dlq"
+        visibility_timeout_seconds = 120
+        message_retention_seconds  = 1209600
+      }
+
+      resource "aws_sqs_queue_redrive_allow_policy" "dead_letter" {
+        queue_url = aws_sqs_queue.dead_letter.id
+        redrive_allow_policy = jsonencode({
+          redrivePermission = "byQueue"
+          sourceQueueArns   = [aws_sqs_queue.tasks.arn]
+        })
+      }
+    cache/redis.tf: |
+      resource "aws_elasticache_cluster" "redis" {
+        cluster_id      = "app-cache"
+        engine          = "redis"
+        node_type       = "cache.t3.micro"
+        num_cache_nodes = 1
+      }
+  changed_files:
+    sqs.tf: |
+      resource "aws_sqs_queue" "tasks" {
+        name                       = "task-queue"
+        visibility_timeout_seconds = 60
+        message_retention_seconds  = 604800
+        fifo_queue                 = true
+      }
+  commit_message: Update files
+fragments:
+- id: sqs
+  selector:
+    path: sqs.tf
+    anchor: visibility_timeout_seconds = 60
+- id: sqs_1
+  selector:
+    path: sqs.tf
+    anchor: message_retention_seconds  = 604800
+- id: sqs_2
+  selector:
+    path: sqs.tf
+    anchor: fifo_queue                 = true
+- id: producer
+  selector:
+    path: producer.tf
+    anchor: QUEUE_URL = aws_sqs_queue.tasks.url
+- id: no_dead_letter
+  selector:
+    path: dlq/dead_letter.tf
+- id: no_redis
+  selector:
+    path: cache/redis.tf
+- id: no_queue
+  selector:
+    path: src/queue.py
+- id: no_global_0
+  selector:
+    anchor: task-queue-dlq
+- id: no_global_1
+  selector:
+    anchor: redrivePermission
+- id: no_global_2
+  selector:
+    anchor: app-cache
+oracle:
+  required:
+  - sqs
+  - sqs_1
+  - sqs_2
+  - producer
+  allowed: []
+  forbidden:
+  - no_dead_letter
+  - no_redis
+  - no_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2

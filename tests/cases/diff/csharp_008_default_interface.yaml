@@ -1,0 +1,130 @@
+name: csharp_008_default_interface
+repo:
+  initial_files:
+    Interfaces/IProcessor.cs: |
+      namespace MyApp.Interfaces;
+
+      public interface IProcessor
+      {
+          void Process(string data);
+
+          void ProcessBatch(string[] items)
+          {
+              foreach (var item in items)
+              {
+                  Process(item);
+              }
+          }
+      }
+    Services/DataProcessor.cs: |
+      namespace MyApp.Services;
+
+      public class DataProcessor { }
+    Unrelated/TelemetryCollector.cs: |
+      namespace MyApp.Unrelated;
+
+      public class TelemetryCollector
+      {
+          private const string GARBAGE_CS_008_TELEMETRY_A = "telemetry_collector_marker";
+
+          public void Collect(string metric) => _ = GARBAGE_CS_008_TELEMETRY_A + metric;
+      }
+    Unrelated/CircuitBreaker.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CircuitBreaker
+      {
+          public const string GARBAGE_CS_008_CIRCUIT_BREAKER_B = "circuit_breaker_marker";
+
+          public bool IsOpen() => GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length > 0;
+      }
+  changed_files:
+    Interfaces/IProcessor.cs: |
+      namespace MyApp.Interfaces;
+
+      public interface IProcessor
+      {
+          void Process(string data);
+
+          void ProcessBatch(string[] items)
+          {
+              foreach (var item in items)
+              {
+                  Process(item);
+              }
+          }
+      }
+    Services/DataProcessor.cs: |
+      using MyApp.Interfaces;
+
+      namespace MyApp.Services;
+
+      public class DataProcessor : IProcessor
+      {
+          public void Process(string data)
+          {
+              Console.WriteLine($"Processing: {data}");
+          }
+
+          public void Run(string[] items)
+          {
+              IProcessor processor = this;
+              processor.ProcessBatch(items);
+          }
+      }
+    Unrelated/TelemetryCollector.cs: |
+      namespace MyApp.Unrelated;
+
+      public class TelemetryCollector
+      {
+          private const string GARBAGE_CS_008_TELEMETRY_A = "telemetry_collector_marker";
+
+          public void Collect(string metric) => _ = GARBAGE_CS_008_TELEMETRY_A + metric;
+      }
+    Unrelated/CircuitBreaker.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CircuitBreaker
+      {
+          public const string GARBAGE_CS_008_CIRCUIT_BREAKER_B = "circuit_breaker_marker";
+
+          public bool IsOpen() => GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length > 0;
+      }
+  commit_message: Update files
+fragments:
+- id: dataprocessor_file
+  selector:
+    path: Services/DataProcessor.cs
+- id: req_global_0
+  selector:
+    anchor: using MyApp.Interfaces;
+- id: req_global_1
+  selector:
+    anchor: 'public class DataProcessor : IProcessor'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_008_CIRCUIT_BREAKER_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CS_008_TELEMETRY_A
+- id: no_global_3
+  selector:
+    anchor: CircuitBreaker.cs
+- id: no_global_4
+  selector:
+    anchor: TelemetryCollector.cs
+oracle:
+  required:
+  - dataprocessor_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

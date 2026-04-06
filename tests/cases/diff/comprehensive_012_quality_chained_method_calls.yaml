@@ -1,0 +1,154 @@
+name: comprehensive_012_quality_chained_method_calls
+repo:
+  initial_files:
+    src/builder.py: |
+      class QueryBuilder:
+          def __init__(self):
+              self.parts = []
+              self.params = {}
+
+          def select(self, fields):
+              self.parts.append(f"SELECT {fields}")
+              return self
+
+          def from_table(self, table):
+              self.parts.append(f"FROM {table}")
+              return self
+
+          def where(self, condition, **params):
+              self.parts.append(f"WHERE {condition}")
+              self.params.update(params)
+              return self
+
+          def order_by(self, field, direction="ASC"):
+              self.parts.append(f"ORDER BY {field} {direction}")
+              return self
+
+          def build(self):
+              return " ".join(self.parts)
+    src/main.py: |
+      query = ''
+
+      def get_default_query():
+          return "SELECT * FROM users"
+
+      def format_result(rows):
+          return [dict(row) for row in rows]
+    garbage_query_cache.py: |
+      GARBAGE_COMP_012_CACHE_BACKEND_A = "redis"
+      GARBAGE_COMP_012_INVALIDATION_B = "ttl"
+
+      class GarbageQueryCache:
+          GARBAGE_COMP_012_WARM_STRATEGY_C = True
+          def cache(self):
+              pass
+    garbage_connection_pool.py: |
+      GARBAGE_COMP_012_POOL_SIZE_D = "adaptive"
+      GARBAGE_COMP_012_IDLE_TIMEOUT_E = "reclaim"
+
+      class GarbageConnectionPool:
+          GARBAGE_COMP_012_HEALTH_CHECK_F = False
+          def acquire(self):
+              pass
+  changed_files:
+    src/builder.py: |
+      class QueryBuilder:
+          def __init__(self):
+              self.parts = []
+              self.params = {}
+
+          def select(self, fields):
+              self.parts.append(f"SELECT {fields}")
+              return self
+
+          def from_table(self, table):
+              self.parts.append(f"FROM {table}")
+              return self
+
+          def where(self, condition, **params):
+              self.parts.append(f"WHERE {condition}")
+              self.params.update(params)
+              return self
+
+          def order_by(self, field, direction="ASC"):
+              self.parts.append(f"ORDER BY {field} {direction}")
+              return self
+
+          def build(self):
+              return " ".join(self.parts)
+    src/main.py: |
+      from src.builder import QueryBuilder
+
+      query = QueryBuilder().select("*").from_table("users").where("id=1").build()
+
+      def get_default_query():
+          return QueryBuilder().select("*").from_table("users").build()
+
+      def format_result(rows):
+          return [dict(row) for row in rows]
+    garbage_query_cache.py: |
+      GARBAGE_COMP_012_CACHE_BACKEND_A = "redis"
+      GARBAGE_COMP_012_INVALIDATION_B = "ttl"
+
+      class GarbageQueryCache:
+          GARBAGE_COMP_012_WARM_STRATEGY_C = True
+          def cache(self):
+              pass
+    garbage_connection_pool.py: |
+      GARBAGE_COMP_012_POOL_SIZE_D = "adaptive"
+      GARBAGE_COMP_012_IDLE_TIMEOUT_E = "reclaim"
+
+      class GarbageConnectionPool:
+          GARBAGE_COMP_012_HEALTH_CHECK_F = False
+          def acquire(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: main_file
+  selector:
+    path: src/main.py
+- id: req_global_0
+  selector:
+    anchor: from src.builder import QueryBuilder
+- id: req_global_1
+  selector:
+    anchor: return QueryBuilder().select("*").from_table("users").build()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_012_CACHE_BACKEND_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_012_HEALTH_CHECK_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_012_IDLE_TIMEOUT_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_012_INVALIDATION_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_012_POOL_SIZE_D
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_012_WARM_STRATEGY_C
+- id: no_global_6
+  selector:
+    anchor: garbage_connection_pool.py
+- id: no_global_7
+  selector:
+    anchor: garbage_query_cache.py
+oracle:
+  required:
+  - main_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,252 @@
+name: python_030_typevar_with_bound
+repo:
+  initial_files:
+    base.py: |
+      from abc import ABC, abstractmethod
+
+      class BaseModel(ABC):
+          def __init__(self, model_id: int):
+              self._id = model_id
+              self._dirty = False
+
+          @property
+          def id(self) -> int:
+              return self._id
+
+          def validate(self) -> bool:
+              return self._id > 0
+
+          def mark_dirty(self) -> None:
+              self._dirty = True
+
+          @abstractmethod
+          def to_dict(self) -> dict:
+              pass
+
+          def is_dirty(self) -> bool:
+              return self._dirty
+
+      class UserModel(BaseModel):
+          def __init__(self, model_id: int, name: str, email: str):
+              super().__init__(model_id)
+              self.name = name
+              self.email = email
+
+          def to_dict(self) -> dict:
+              return {"id": self._id, "name": self.name, "email": self.email}
+    repository.py: |
+      def save():
+          pass
+    event_store.py: |
+      from typing import List, Dict, Any, Optional, TypeVar, Generic
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class StoredEvent:
+          event_id: str
+          event_type: str
+          payload: Dict[str, Any]
+          timestamp: datetime
+
+      class EventStore:
+          def __init__(self):
+              self._events: List[StoredEvent] = []
+
+          def append(self, event_type: str, payload: Dict[str, Any]) -> StoredEvent:
+              event = StoredEvent(
+                  event_id=f"evt_{len(self._events)}",
+                  event_type=event_type,
+                  payload=payload,
+                  timestamp=datetime.now(),
+              )
+              self._events.append(event)
+              return event
+
+          def get_by_type(self, event_type: str) -> List[StoredEvent]:
+              return [e for e in self._events if e.event_type == event_type]
+    cache_store.py: |
+      from typing import Dict, Any, Optional, TypeVar, Generic
+      from datetime import datetime, timedelta
+      from dataclasses import dataclass
+
+      T = TypeVar('T')
+
+      @dataclass
+      class CachedItem(Generic[T]):
+          value: T
+          expires_at: datetime
+
+      class CacheStore(Generic[T]):
+          def __init__(self, ttl_seconds: int = 300):
+              self._store: Dict[str, CachedItem[T]] = {}
+              self._ttl = ttl_seconds
+
+          def get(self, key: str) -> Optional[T]:
+              item = self._store.get(key)
+              if item and datetime.now() < item.expires_at:
+                  return item.value
+              return None
+
+          def set(self, key: str, value: T) -> None:
+              self._store[key] = CachedItem(
+                  value=value,
+                  expires_at=datetime.now() + timedelta(seconds=self._ttl),
+              )
+  changed_files:
+    base.py: |
+      from abc import ABC, abstractmethod
+
+      class BaseModel(ABC):
+          def __init__(self, model_id: int):
+              self._id = model_id
+              self._dirty = False
+
+          @property
+          def id(self) -> int:
+              return self._id
+
+          def validate(self) -> bool:
+              return self._id > 0
+
+          def mark_dirty(self) -> None:
+              self._dirty = True
+
+          @abstractmethod
+          def to_dict(self) -> dict:
+              pass
+
+          def is_dirty(self) -> bool:
+              return self._dirty
+
+      class UserModel(BaseModel):
+          def __init__(self, model_id: int, name: str, email: str):
+              super().__init__(model_id)
+              self.name = name
+              self.email = email
+
+          def to_dict(self) -> dict:
+              return {"id": self._id, "name": self.name, "email": self.email}
+    repository.py: |
+      from typing import TypeVar
+      from base import BaseModel
+
+      T = TypeVar('T', bound=BaseModel)
+
+      class Repository:
+          def __init__(self):
+              self._store: dict[int, BaseModel] = {}
+
+          def save(self, model: T) -> T:
+              if not model.validate():
+                  raise ValueError("Model validation failed")
+              model.mark_dirty()
+              self._store[model.id] = model
+              return model
+
+          def find_by_id(self, model_id: int) -> BaseModel | None:
+              return self._store.get(model_id)
+    event_store.py: |
+      from typing import List, Dict, Any, Optional, TypeVar, Generic
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class StoredEvent:
+          event_id: str
+          event_type: str
+          payload: Dict[str, Any]
+          timestamp: datetime
+
+      class EventStore:
+          def __init__(self):
+              self._events: List[StoredEvent] = []
+
+          def append(self, event_type: str, payload: Dict[str, Any]) -> StoredEvent:
+              event = StoredEvent(
+                  event_id=f"evt_{len(self._events)}",
+                  event_type=event_type,
+                  payload=payload,
+                  timestamp=datetime.now(),
+              )
+              self._events.append(event)
+              return event
+
+          def get_by_type(self, event_type: str) -> List[StoredEvent]:
+              return [e for e in self._events if e.event_type == event_type]
+    cache_store.py: |
+      from typing import Dict, Any, Optional, TypeVar, Generic
+      from datetime import datetime, timedelta
+      from dataclasses import dataclass
+
+      T = TypeVar('T')
+
+      @dataclass
+      class CachedItem(Generic[T]):
+          value: T
+          expires_at: datetime
+
+      class CacheStore(Generic[T]):
+          def __init__(self, ttl_seconds: int = 300):
+              self._store: Dict[str, CachedItem[T]] = {}
+              self._ttl = ttl_seconds
+
+          def get(self, key: str) -> Optional[T]:
+              item = self._store.get(key)
+              if item and datetime.now() < item.expires_at:
+                  return item.value
+              return None
+
+          def set(self, key: str, value: T) -> None:
+              self._store[key] = CachedItem(
+                  value=value,
+                  expires_at=datetime.now() + timedelta(seconds=self._ttl),
+              )
+  commit_message: Update files
+fragments:
+- id: repository
+  selector:
+    path: repository.py
+    anchor: from base import BaseModel
+- id: repository_1
+  selector:
+    path: repository.py
+    anchor: T = TypeVar('T', bound=BaseModel)
+- id: base_file
+  selector:
+    path: base.py
+- id: no_event_store
+  selector:
+    path: event_store.py
+- id: no_cache_store
+  selector:
+    path: cache_store.py
+- id: no_global_0
+  selector:
+    anchor: EventStore
+- id: no_global_1
+  selector:
+    anchor: StoredEvent
+- id: no_global_2
+  selector:
+    anchor: append
+- id: no_global_3
+  selector:
+    anchor: CacheStore
+- id: no_global_4
+  selector:
+    anchor: CachedItem
+oracle:
+  required:
+  - repository
+  - repository_1
+  - base_file
+  allowed: []
+  forbidden:
+  - no_event_store
+  - no_cache_store
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

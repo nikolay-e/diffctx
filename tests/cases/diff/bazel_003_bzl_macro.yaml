@@ -1,0 +1,234 @@
+name: bazel_003_bzl_macro
+repo:
+  initial_files:
+    macros/service.bzl: |
+      def py_service_library(name, srcs, deps = [], port = 8080, visibility = None):
+          native.py_library(
+              name = name + "_lib",
+              srcs = srcs,
+              deps = deps,
+              visibility = visibility,
+          )
+
+          native.py_binary(
+              name = name,
+              srcs = [name + "_main.py"],
+              deps = [":" + name + "_lib"],
+              args = ["--port", str(port)],
+              visibility = visibility,
+          )
+    services/api/BUILD: |
+      load("//macros:service.bzl", "py_service_library")
+
+      py_service_library(
+          name = "api",
+          srcs = ["handler.py", "routes.py"],
+          deps = [
+              "//libs/database:client",
+              "//libs/auth:middleware",
+          ],
+          port = 8080,
+          visibility = ["//visibility:public"],
+      )
+    services/api/handler.py: |
+      from libs.database.client import DatabaseClient
+
+      class RequestHandler:
+          def __init__(self):
+              self.db = DatabaseClient()
+
+          def handle(self, request):
+              return {"status": "ok"}
+    services/api/routes.py: |
+      from services.api.handler import RequestHandler
+
+      handler = RequestHandler()
+
+      ROUTES = {
+          "/health": lambda: {"healthy": True},
+          "/api/users": handler.handle,
+      }
+    macros/testing.bzl: |
+      GARBAGE_BAZEL_003_A = "noise_testing_macro"
+
+      def py_test_suite(name, srcs, deps = []):
+          for src in srcs:
+              native.py_test(
+                  name = src.replace(".py", ""),
+                  srcs = [src],
+                  deps = deps,
+              )
+    tools/BUILD: |
+      load("//macros:testing.bzl", "py_test_suite")
+
+      py_test_suite(
+          name = "tool_tests",
+          srcs = ["test_format.py"],
+          GARBAGE_BAZEL_003_B = "noise_tools_build",
+      )
+    tools/test_format.py: |
+      GARBAGE_BAZEL_003_C = "noise_test_format"
+      def test_basic():
+          assert True
+    services/worker/BUILD: |
+      py_binary(
+          name = "worker",
+          srcs = ["worker.py"],
+          GARBAGE_BAZEL_003_D = "noise_worker_build",
+      )
+    services/worker/worker.py: |
+      GARBAGE_BAZEL_003_E = "noise_worker"
+      def run_worker():
+          while True:
+              pass
+  changed_files:
+    macros/service.bzl: |
+      def py_service_library(name, srcs, deps = [], port = 8080, health_check = True, visibility = None):
+          native.py_library(
+              name = name + "_lib",
+              srcs = srcs,
+              deps = deps,
+              visibility = visibility,
+          )
+
+          args = ["--port", str(port)]
+          if health_check:
+              args.extend(["--health-check", "/healthz"])
+
+          native.py_binary(
+              name = name,
+              srcs = [name + "_main.py"],
+              deps = [":" + name + "_lib"],
+              args = args,
+              visibility = visibility,
+          )
+    services/api/BUILD: |
+      load("//macros:service.bzl", "py_service_library")
+
+      py_service_library(
+          name = "api",
+          srcs = ["handler.py", "routes.py"],
+          deps = [
+              "//libs/database:client",
+              "//libs/auth:middleware",
+          ],
+          port = 8080,
+          visibility = ["//visibility:public"],
+      )
+    services/api/handler.py: |
+      from libs.database.client import DatabaseClient
+
+      class RequestHandler:
+          def __init__(self):
+              self.db = DatabaseClient()
+
+          def handle(self, request):
+              return {"status": "ok"}
+    services/api/routes.py: |
+      from services.api.handler import RequestHandler
+
+      handler = RequestHandler()
+
+      ROUTES = {
+          "/health": lambda: {"healthy": True},
+          "/api/users": handler.handle,
+      }
+    macros/testing.bzl: |
+      GARBAGE_BAZEL_003_A = "noise_testing_macro"
+
+      def py_test_suite(name, srcs, deps = []):
+          for src in srcs:
+              native.py_test(
+                  name = src.replace(".py", ""),
+                  srcs = [src],
+                  deps = deps,
+              )
+    tools/BUILD: |
+      load("//macros:testing.bzl", "py_test_suite")
+
+      py_test_suite(
+          name = "tool_tests",
+          srcs = ["test_format.py"],
+          GARBAGE_BAZEL_003_B = "noise_tools_build",
+      )
+    tools/test_format.py: |
+      GARBAGE_BAZEL_003_C = "noise_test_format"
+      def test_basic():
+          assert True
+    services/worker/BUILD: |
+      py_binary(
+          name = "worker",
+          srcs = ["worker.py"],
+          GARBAGE_BAZEL_003_D = "noise_worker_build",
+      )
+    services/worker/worker.py: |
+      GARBAGE_BAZEL_003_E = "noise_worker"
+      def run_worker():
+          while True:
+              pass
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: macros/service.bzl
+    anchor: health_check
+- id: service_1
+  selector:
+    path: macros/service.bzl
+    anchor: --health-check
+- id: build
+  selector:
+    path: services/api/BUILD
+    anchor: py_service_library
+- id: build_1
+  selector:
+    path: services/api/BUILD
+    anchor: //macros:service.bzl
+- id: no_testing
+  selector:
+    path: macros/testing.bzl
+- id: no_build
+  selector:
+    path: tools/BUILD
+- id: no_test_format
+  selector:
+    path: tools/test_format.py
+- id: no_build_1
+  selector:
+    path: services/worker/BUILD
+- id: no_worker
+  selector:
+    path: services/worker/worker.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAZEL_003_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAZEL_003_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAZEL_003_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAZEL_003_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_BAZEL_003_E
+oracle:
+  required:
+  - service
+  - service_1
+  - build
+  - build_1
+  allowed: []
+  forbidden:
+  - no_testing
+  - no_build
+  - no_test_format
+  - no_build_1
+  - no_worker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

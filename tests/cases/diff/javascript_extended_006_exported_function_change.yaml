@@ -1,0 +1,177 @@
+name: javascript_extended_006_exported_function_change
+repo:
+  initial_files:
+    src/utils.ts: |
+      export interface FetchOptions {
+          headers?: Record<string, string>;
+          timeout?: number;
+      }
+
+      export function fetchUser(id: string) {
+          return fetch(`/api/users/${id}`);
+      }
+
+      export function fetchPosts(userId: string) {
+          return fetch(`/api/users/${userId}/posts`);
+      }
+
+      export function buildUrl(base: string, path: string): string {
+          return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+      }
+    src/consumer.ts: |
+      import { fetchUser, fetchPosts } from './utils';
+
+      export async function loadUserProfile(id: string) {
+          const userResponse = await fetchUser(id);
+          const postsResponse = await fetchPosts(id);
+          const user = await userResponse.json();
+          const posts = await postsResponse.json();
+          return { user, posts };
+      }
+    src/unrelated/theme.ts: |
+      export class ThemeManager {
+          private current = 'light';
+
+          toggle(): void {
+              this.current = this.current === 'light' ? 'dark' : 'light';
+          }
+
+          getCurrent(): string {
+              return this.current;
+          }
+      }
+
+      export function applyTheme(theme: string): void {
+          console.log('applying theme:', theme);
+      }
+    src/unrelated/clipboard.ts: |
+      interface ClipboardEntry {
+          content: string;
+          timestamp: Date;
+      }
+
+      export class ClipboardService {
+          private history: ClipboardEntry[] = [];
+
+          copy(text: string): void {
+              this.history.push({ content: text, timestamp: new Date() });
+          }
+
+          paste(): string | undefined {
+              return this.history[this.history.length - 1]?.content;
+          }
+      }
+
+      export function readClipboard(): string {
+          return 'clipboard content';
+      }
+  changed_files:
+    src/utils.ts: |
+      export interface FetchOptions {
+          headers?: Record<string, string>;
+          timeout?: number;
+      }
+
+      export function fetchUser(id: string, options?: FetchOptions) {
+          const init: RequestInit = {};
+          if (options?.headers) {
+              init.headers = options.headers;
+          }
+          return fetch(`/api/users/${id}`, init);
+      }
+
+      export function fetchPosts(userId: string, options?: FetchOptions) {
+          const init: RequestInit = {};
+          if (options?.headers) {
+              init.headers = options.headers;
+          }
+          return fetch(`/api/users/${userId}/posts`, init);
+      }
+
+      export function buildUrl(base: string, path: string): string {
+          return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+      }
+    src/consumer.ts: |
+      import { fetchUser, fetchPosts } from './utils';
+
+      export async function loadUserProfile(id: string) {
+          const userResponse = await fetchUser(id);
+          const postsResponse = await fetchPosts(id);
+          const user = await userResponse.json();
+          const posts = await postsResponse.json();
+          return { user, posts };
+      }
+    src/unrelated/theme.ts: |
+      export class ThemeManager {
+          private current = 'light';
+
+          toggle(): void {
+              this.current = this.current === 'light' ? 'dark' : 'light';
+          }
+
+          getCurrent(): string {
+              return this.current;
+          }
+      }
+
+      export function applyTheme(theme: string): void {
+          console.log('applying theme:', theme);
+      }
+    src/unrelated/clipboard.ts: |
+      interface ClipboardEntry {
+          content: string;
+          timestamp: Date;
+      }
+
+      export class ClipboardService {
+          private history: ClipboardEntry[] = [];
+
+          copy(text: string): void {
+              this.history.push({ content: text, timestamp: new Date() });
+          }
+
+          paste(): string | undefined {
+              return this.history[this.history.length - 1]?.content;
+          }
+      }
+
+      export function readClipboard(): string {
+          return 'clipboard content';
+      }
+  commit_message: Update files
+fragments:
+- id: consumer
+  selector:
+    path: src/consumer.ts
+    anchor: loadUserProfile
+- id: consumer_1
+  selector:
+    path: src/consumer.ts
+    anchor: fetchUser(id)
+- id: consumer_2
+  selector:
+    path: src/consumer.ts
+    anchor: fetchPosts(id)
+- id: no_global_0
+  selector:
+    anchor: ThemeManager
+- id: no_global_1
+  selector:
+    anchor: applyTheme
+- id: no_global_2
+  selector:
+    anchor: ClipboardService
+- id: no_global_3
+  selector:
+    anchor: readClipboard
+oracle:
+  required:
+  - consumer
+  - consumer_1
+  - consumer_2
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

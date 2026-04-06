@@ -1,0 +1,65 @@
+name: helm_024_template_configmap
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: cfg-app
+      version: 1.0.0
+    chart/values.yaml: |
+      config:
+        logLevel: info
+        maxConnections: 100
+    chart/templates/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-config
+      data: {}
+    chart/templates/falco-rules.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+      data:
+        rules: |
+    chart/docs/config-management.md: |
+      # Configuration Management
+      ## Hot Reload
+  changed_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: cfg-app
+      version: 1.0.0
+    chart/values.yaml: |
+      config:
+        logLevel: info
+        maxConnections: 100
+    chart/templates/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: {{ .Release.Name }}-config
+      data:
+        {{- toYaml .Values.config | nindent 4 }}
+    chart/templates/falco-rules.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+      data:
+        rules: |
+    chart/docs/config-management.md: |
+      # Configuration Management
+      ## Hot Reload
+  commit_message: Update files
+fragments:
+- id: configmap_file
+  selector:
+    path: chart/templates/configmap.yaml
+- id: req_global_0
+  selector:
+    anchor: 'name: {{ .Release.Name }}-config'
+oracle:
+  required:
+  - configmap_file
+  - req_global_0
+  allowed: []
+  forbidden: []

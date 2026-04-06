@@ -1,0 +1,204 @@
+name: dependencies_028_reverse_custom_signal_definition_change
+repo:
+  initial_files:
+    signals/custom.py: |
+      from django.dispatch import Signal
+
+      order_placed = Signal()
+      order_shipped = Signal()
+      order_delivered = Signal()
+    handlers/order_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_shipped
+
+      @receiver(order_placed)
+      def handle_order_placed(sender, order_id, customer_id, **kwargs):
+          print(f"Order {order_id} placed by customer {customer_id}")
+
+      @receiver(order_shipped)
+      def handle_order_shipped(sender, order_id, tracking_number, **kwargs):
+          print(f"Order {order_id} shipped with tracking {tracking_number}")
+    handlers/notification_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_delivered
+
+      @receiver(order_placed)
+      def notify_customer_order_placed(sender, order_id, customer_id, **kwargs):
+          print(f"Notifying customer {customer_id} about order {order_id}")
+
+      @receiver(order_delivered)
+      def notify_customer_order_delivered(sender, order_id, **kwargs):
+          print(f"Order {order_id} has been delivered")
+    messaging/signals.py: |
+      from django.dispatch import Signal
+      GARBAGE_DEP_028_MSG_SIGNALS_A = "messaging_signals"
+      GARBAGE_DEP_028_MSG_MODULE_B = True
+
+      order_placed = Signal()
+      order_cancelled = Signal()
+      payment_received = Signal()
+      payment_failed = Signal()
+      GARBAGE_DEP_028_MSG_EXTRA_C = "extra_signal_collision"
+    handlers/inventory_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_shipped
+      GARBAGE_DEP_028_INV_IMPORT_D = "inventory_consumer"
+      GARBAGE_DEP_028_INV_TRACK_E = "stock_update"
+
+      @receiver(order_placed)
+      def update_stock_on_order(sender, order_id, **kwargs):
+          GARBAGE_DEP_028_INV_BODY_F = True
+          print(f"Updating stock for order {order_id}")
+
+      @receiver(order_shipped)
+      def log_shipment(sender, order_id, tracking_number, **kwargs):
+          print(f"Shipment logged: {order_id} -> {tracking_number}")
+    signals/payment.py: |
+      from django.dispatch import Signal
+      GARBAGE_DEP_028_PAY_MOD_G = "payment_sibling"
+      GARBAGE_DEP_028_PAY_TYPE_H = "transaction"
+
+      payment_received = Signal()
+      payment_failed = Signal()
+      refund_issued = Signal()
+      GARBAGE_DEP_028_PAY_EXTRA_I = "payment_signal_sibling"
+  changed_files:
+    signals/custom.py: |
+      from django.dispatch import Signal
+
+      order_placed = Signal()
+      order_shipped = Signal()
+      order_delivered = Signal()
+      order_cancelled = Signal()
+
+      payment_received = Signal()
+      payment_failed = Signal()
+    handlers/order_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_shipped
+
+      @receiver(order_placed)
+      def handle_order_placed(sender, order_id, customer_id, **kwargs):
+          print(f"Order {order_id} placed by customer {customer_id}")
+
+      @receiver(order_shipped)
+      def handle_order_shipped(sender, order_id, tracking_number, **kwargs):
+          print(f"Order {order_id} shipped with tracking {tracking_number}")
+    handlers/notification_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_delivered
+
+      @receiver(order_placed)
+      def notify_customer_order_placed(sender, order_id, customer_id, **kwargs):
+          print(f"Notifying customer {customer_id} about order {order_id}")
+
+      @receiver(order_delivered)
+      def notify_customer_order_delivered(sender, order_id, **kwargs):
+          print(f"Order {order_id} has been delivered")
+    messaging/signals.py: |
+      from django.dispatch import Signal
+      GARBAGE_DEP_028_MSG_SIGNALS_A = "messaging_signals"
+      GARBAGE_DEP_028_MSG_MODULE_B = True
+
+      order_placed = Signal()
+      order_cancelled = Signal()
+      payment_received = Signal()
+      payment_failed = Signal()
+      GARBAGE_DEP_028_MSG_EXTRA_C = "extra_signal_collision"
+    handlers/inventory_handlers.py: |
+      from django.dispatch import receiver
+      from signals.custom import order_placed, order_shipped
+      GARBAGE_DEP_028_INV_IMPORT_D = "inventory_consumer"
+      GARBAGE_DEP_028_INV_TRACK_E = "stock_update"
+
+      @receiver(order_placed)
+      def update_stock_on_order(sender, order_id, **kwargs):
+          GARBAGE_DEP_028_INV_BODY_F = True
+          print(f"Updating stock for order {order_id}")
+
+      @receiver(order_shipped)
+      def log_shipment(sender, order_id, tracking_number, **kwargs):
+          print(f"Shipment logged: {order_id} -> {tracking_number}")
+    signals/payment.py: |
+      from django.dispatch import Signal
+      GARBAGE_DEP_028_PAY_MOD_G = "payment_sibling"
+      GARBAGE_DEP_028_PAY_TYPE_H = "transaction"
+
+      payment_received = Signal()
+      payment_failed = Signal()
+      refund_issued = Signal()
+      GARBAGE_DEP_028_PAY_EXTRA_I = "payment_signal_sibling"
+  commit_message: Update files
+fragments:
+- id: custom
+  selector:
+    path: signals/custom.py
+    anchor: order_cancelled = Signal()
+- id: custom_1
+  selector:
+    path: signals/custom.py
+    anchor: payment_failed = Signal()
+- id: custom_2
+  selector:
+    path: signals/custom.py
+    anchor: payment_received = Signal()
+- id: custom_3
+  selector:
+    path: signals/custom.py
+    anchor: from django.dispatch import Signal
+- id: no_signals
+  selector:
+    path: messaging/signals.py
+- id: no_inventory_handlers
+  selector:
+    path: handlers/inventory_handlers.py
+- id: no_payment
+  selector:
+    path: signals/payment.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_028_MSG_SIGNALS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_028_MSG_MODULE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_028_MSG_EXTRA_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_028_INV_IMPORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_028_INV_TRACK_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_028_INV_BODY_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_028_PAY_MOD_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_028_PAY_TYPE_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_028_PAY_EXTRA_I
+oracle:
+  required:
+  - custom
+  - custom_1
+  - custom_2
+  - custom_3
+  allowed: []
+  forbidden:
+  - no_signals
+  - no_inventory_handlers
+  - no_payment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

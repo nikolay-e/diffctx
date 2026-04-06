@@ -1,0 +1,26 @@
+name: internals_034_nested_comments_rust_style
+repo:
+  initial_files:
+    nested.rs: |
+      fn placeholder() {}
+  changed_files:
+    nested.rs: |
+      /* /* nested comment */ */
+      fn process_data() {
+          let result = calculate_value();
+          result
+      }
+  commit_message: Update files
+fragments:
+- id: nested_file
+  selector:
+    path: nested.rs
+- id: req_global_0
+  selector:
+    anchor: fn process_data() {
+oracle:
+  required:
+  - nested_file
+  - req_global_0
+  allowed: []
+  forbidden: []

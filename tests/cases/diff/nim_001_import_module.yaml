@@ -1,0 +1,249 @@
+name: nim_001_import_module
+repo:
+  initial_files:
+    src/mymodule.nim: |
+      type
+        UserProfile* = object
+          name*: string
+          age*: int
+          email*: string
+
+      proc newUserProfile*(name: string, age: int, email: string): UserProfile =
+        UserProfile(name: name, age: age, email: email)
+
+      proc isAdult*(profile: UserProfile): bool =
+        profile.age >= 18
+
+      proc displayName*(profile: UserProfile): string =
+        profile.name & " <" & profile.email & ">"
+    src/app.nim: |
+      import strutils, sequtils
+      import mymodule
+
+      proc listActiveUsers*(profiles: seq[UserProfile]): seq[string] =
+        profiles.filterIt(it.isAdult).mapIt(it.displayName)
+    src/database.nim: |
+      type
+        DbConnection* = object
+          host*: string
+          port*: int
+          dbName*: string
+
+        QueryResult* = object
+          rows*: seq[seq[string]]
+          columnCount*: int
+
+      let GARBAGE_NIM_001_A = "db_marker"
+      let GARBAGE_NIM_001_B = "query_marker"
+
+      proc connect*(host: string, port: int, dbName: string): DbConnection =
+        DbConnection(host: host, port: port, dbName: dbName)
+
+      proc execute*(conn: DbConnection, query: string): QueryResult =
+        QueryResult(rows: @[], columnCount: 0)
+    src/logging.nim: |
+      import times
+
+      type
+        LogLevel* = enum
+          llDebug, llInfo, llWarn, llError
+
+      let GARBAGE_NIM_001_C = "log_marker"
+      let GARBAGE_NIM_001_D = "level_marker"
+
+      proc log*(level: LogLevel, msg: string) =
+        echo "[" & $level & "] " & $now() & " - " & msg
+
+      proc logInfo*(msg: string) =
+        log(llInfo, msg)
+
+      proc logError*(msg: string) =
+        log(llError, msg)
+    src/config.nim: |
+      import parsecfg
+
+      type
+        AppConfig* = object
+          serverHost*: string
+          serverPort*: int
+          debug*: bool
+
+      let GARBAGE_NIM_001_E = "config_marker"
+      let GARBAGE_NIM_001_F = "env_marker"
+
+      proc loadConfig*(filename: string): AppConfig =
+        let dict = loadConfig(filename)
+        AppConfig(
+          serverHost: dict.getSectionValue("server", "host"),
+          serverPort: parseInt(dict.getSectionValue("server", "port")),
+          debug: parseBool(dict.getSectionValue("server", "debug"))
+        )
+  changed_files:
+    src/mymodule.nim: |
+      type
+        UserProfile* = object
+          name*: string
+          age*: int
+          email*: string
+
+      proc newUserProfile*(name: string, age: int, email: string): UserProfile =
+        UserProfile(name: name, age: age, email: email)
+
+      proc isAdult*(profile: UserProfile): bool =
+        profile.age >= 18
+
+      proc displayName*(profile: UserProfile): string =
+        profile.name & " <" & profile.email & ">"
+    src/app.nim: |
+      import strutils, sequtils
+      import mymodule
+
+      proc listActiveUsers*(profiles: seq[UserProfile]): seq[string] =
+        profiles.filterIt(it.isAdult).mapIt(it.displayName)
+
+      proc createDefaultProfile*(name: string): UserProfile =
+        newUserProfile(name, 0, name.toLowerAscii & "@example.com")
+
+      proc summarizeProfiles*(profiles: seq[UserProfile]): string =
+        let names = profiles.mapIt(it.name).join(", ")
+        let ages = profiles.mapIt($it.age).join(", ")
+        "Users: " & names & " | Ages: " & ages
+    src/database.nim: |
+      type
+        DbConnection* = object
+          host*: string
+          port*: int
+          dbName*: string
+
+        QueryResult* = object
+          rows*: seq[seq[string]]
+          columnCount*: int
+
+      let GARBAGE_NIM_001_A = "db_marker"
+      let GARBAGE_NIM_001_B = "query_marker"
+
+      proc connect*(host: string, port: int, dbName: string): DbConnection =
+        DbConnection(host: host, port: port, dbName: dbName)
+
+      proc execute*(conn: DbConnection, query: string): QueryResult =
+        QueryResult(rows: @[], columnCount: 0)
+    src/logging.nim: |
+      import times
+
+      type
+        LogLevel* = enum
+          llDebug, llInfo, llWarn, llError
+
+      let GARBAGE_NIM_001_C = "log_marker"
+      let GARBAGE_NIM_001_D = "level_marker"
+
+      proc log*(level: LogLevel, msg: string) =
+        echo "[" & $level & "] " & $now() & " - " & msg
+
+      proc logInfo*(msg: string) =
+        log(llInfo, msg)
+
+      proc logError*(msg: string) =
+        log(llError, msg)
+    src/config.nim: |
+      import parsecfg
+
+      type
+        AppConfig* = object
+          serverHost*: string
+          serverPort*: int
+          debug*: bool
+
+      let GARBAGE_NIM_001_E = "config_marker"
+      let GARBAGE_NIM_001_F = "env_marker"
+
+      proc loadConfig*(filename: string): AppConfig =
+        let dict = loadConfig(filename)
+        AppConfig(
+          serverHost: dict.getSectionValue("server", "host"),
+          serverPort: parseInt(dict.getSectionValue("server", "port")),
+          debug: parseBool(dict.getSectionValue("server", "debug"))
+        )
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: src/app.nim
+    anchor: 'proc createDefaultProfile*(name: string): UserProfile'
+- id: app_1
+  selector:
+    path: src/app.nim
+    anchor: newUserProfile(name, 0
+- id: app_2
+  selector:
+    path: src/app.nim
+    anchor: 'proc summarizeProfiles*(profiles: seq[UserProfile]): string'
+- id: mymodule
+  selector:
+    path: src/mymodule.nim
+    anchor: UserProfile* = object
+- id: mymodule_1
+  selector:
+    path: src/mymodule.nim
+    anchor: 'proc newUserProfile*(name: string, age: int, email: string): UserProfile'
+- id: no_database
+  selector:
+    path: src/database.nim
+- id: no_logging
+  selector:
+    path: src/logging.nim
+- id: no_config
+  selector:
+    path: src/config.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIM_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIM_001_B
+- id: no_global_2
+  selector:
+    anchor: DbConnection
+- id: no_global_3
+  selector:
+    anchor: QueryResult
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_NIM_001_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_NIM_001_D
+- id: no_global_6
+  selector:
+    anchor: LogLevel
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_NIM_001_E
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_NIM_001_F
+- id: no_global_9
+  selector:
+    anchor: AppConfig
+oracle:
+  required:
+  - app
+  - app_1
+  - app_2
+  - mymodule
+  - mymodule_1
+  allowed: []
+  forbidden:
+  - no_database
+  - no_logging
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

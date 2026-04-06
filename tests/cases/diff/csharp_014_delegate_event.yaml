@@ -1,0 +1,121 @@
+name: csharp_014_delegate_event
+repo:
+  initial_files:
+    Events/OrderEventArgs.cs: |
+      namespace MyApp.Events;
+
+      public class OrderEventArgs : EventArgs
+      {
+          public int OrderId { get; }
+          public string Status { get; }
+
+          public OrderEventArgs(int orderId, string status)
+          {
+              OrderId = orderId;
+              Status = status;
+          }
+      }
+    Services/OrderProcessor.cs: |
+      namespace MyApp.Services;
+
+      public class OrderProcessor { }
+    Unrelated/CacheInvalidator.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CacheInvalidator
+      {
+          private const string GARBAGE_CS_014_CACHE_INVALIDATOR_A = "cache_invalidator_marker";
+
+          public void Invalidate(string key) => _ = GARBAGE_CS_014_CACHE_INVALIDATOR_A + key;
+      }
+    Unrelated/BackgroundScheduler.cs: |
+      namespace MyApp.Unrelated;
+
+      public class BackgroundScheduler
+      {
+          public const string GARBAGE_CS_014_BG_SCHEDULER_B = "background_scheduler_marker";
+
+          public void Schedule(TimeSpan interval) => _ = GARBAGE_CS_014_BG_SCHEDULER_B;
+      }
+  changed_files:
+    Events/OrderEventArgs.cs: |
+      namespace MyApp.Events;
+
+      public class OrderEventArgs : EventArgs
+      {
+          public int OrderId { get; }
+          public string Status { get; }
+
+          public OrderEventArgs(int orderId, string status)
+          {
+              OrderId = orderId;
+              Status = status;
+          }
+      }
+    Services/OrderProcessor.cs: |
+      using MyApp.Events;
+
+      namespace MyApp.Services;
+
+      public class OrderProcessor
+      {
+          public event EventHandler<OrderEventArgs>? OrderProcessed;
+
+          public void ProcessOrder(int orderId)
+          {
+              OnOrderProcessed(new OrderEventArgs(orderId, "Completed"));
+          }
+
+          protected virtual void OnOrderProcessed(OrderEventArgs e)
+          {
+              OrderProcessed?.Invoke(this, e);
+          }
+      }
+    Unrelated/CacheInvalidator.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CacheInvalidator
+      {
+          private const string GARBAGE_CS_014_CACHE_INVALIDATOR_A = "cache_invalidator_marker";
+
+          public void Invalidate(string key) => _ = GARBAGE_CS_014_CACHE_INVALIDATOR_A + key;
+      }
+    Unrelated/BackgroundScheduler.cs: |
+      namespace MyApp.Unrelated;
+
+      public class BackgroundScheduler
+      {
+          public const string GARBAGE_CS_014_BG_SCHEDULER_B = "background_scheduler_marker";
+
+          public void Schedule(TimeSpan interval) => _ = GARBAGE_CS_014_BG_SCHEDULER_B;
+      }
+  commit_message: Update files
+fragments:
+- id: orderprocessor_file
+  selector:
+    path: Services/OrderProcessor.cs
+- id: req_global_0
+  selector:
+    anchor: public class OrderProcessor
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_014_BG_SCHEDULER_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_014_CACHE_INVALIDATOR_A
+- id: no_global_2
+  selector:
+    anchor: BackgroundScheduler.cs
+- id: no_global_3
+  selector:
+    anchor: CacheInvalidator.cs
+oracle:
+  required:
+  - orderprocessor_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

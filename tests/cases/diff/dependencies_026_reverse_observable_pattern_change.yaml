@@ -1,0 +1,221 @@
+name: dependencies_026_reverse_observable_pattern_change
+repo:
+  initial_files:
+    core/observable.py: |
+      from typing import Callable
+
+      class Observable:
+          def __init__(self):
+              self._observers = []
+
+          def subscribe(self, observer: Callable) -> None:
+              self._observers.append(observer)
+
+          def notify(self, value) -> None:
+              for observer in self._observers:
+                  observer(value)
+    ui/display.py: |
+      from core.observable import Observable
+
+      class DisplayComponent:
+          def __init__(self, data_source: Observable):
+              data_source.subscribe(self.on_update)
+
+          def on_update(self, value) -> None:
+              print(f"Display updated: {value}")
+    logging/logger.py: |
+      from core.observable import Observable
+
+      class LogObserver:
+          def __init__(self, observable: Observable):
+              observable.subscribe(self.log_change)
+
+          def log_change(self, value) -> None:
+              print(f"[LOG] Value changed to: {value}")
+    reactive/observable.py: |
+      from typing import Callable, Optional
+      GARBAGE_DEP_026_REACTIVE_OBS_A = "reactive_observable"
+      GARBAGE_DEP_026_REACTIVE_MOD_B = True
+
+      class Observable:
+          GARBAGE_DEP_026_REACTIVE_CLASS_C = "different_observable"
+
+          def __init__(self):
+              self._observers = []
+              self._last_value = None
+
+          def subscribe(self, observer: Callable, immediate: bool = False) -> Callable:
+              self._observers.append(observer)
+              if immediate and self._last_value is not None:
+                  observer(self._last_value)
+              return lambda: self._observers.remove(observer)
+
+          def notify(self, value, force: bool = False) -> None:
+              self._last_value = value
+              for observer in self._observers:
+                  observer(value)
+    core/event_emitter.py: |
+      from typing import Callable
+      GARBAGE_DEP_026_EMITTER_MOD_G = "core_sibling"
+      GARBAGE_DEP_026_EMITTER_TYPE_H = "event"
+
+      class EventEmitter:
+          GARBAGE_DEP_026_EMITTER_CLASS_I = True
+
+          def __init__(self):
+              self._listeners = []
+
+          def on(self, listener: Callable) -> None:
+              self._listeners.append(listener)
+
+          def emit(self, value) -> None:
+              for listener in self._listeners:
+                  listener(value)
+  changed_files:
+    core/observable.py: |
+      from typing import Callable, Optional
+
+      class Observable:
+          def __init__(self):
+              self._observers = []
+              self._last_value = None
+
+          def subscribe(self, observer: Callable, immediate: bool = False) -> Callable:
+              self._observers.append(observer)
+              if immediate and self._last_value is not None:
+                  observer(self._last_value)
+              return lambda: self._observers.remove(observer)
+
+          def notify(self, value, force: bool = False) -> None:
+              if not force and value == self._last_value:
+                  return
+              self._last_value = value
+              for observer in self._observers:
+                  observer(value)
+
+          def get_value(self) -> Optional:
+              return self._last_value
+    ui/display.py: |
+      from core.observable import Observable
+
+      class DisplayComponent:
+          def __init__(self, data_source: Observable):
+              data_source.subscribe(self.on_update)
+
+          def on_update(self, value) -> None:
+              print(f"Display updated: {value}")
+    logging/logger.py: |
+      from core.observable import Observable
+
+      class LogObserver:
+          def __init__(self, observable: Observable):
+              observable.subscribe(self.log_change)
+
+          def log_change(self, value) -> None:
+              print(f"[LOG] Value changed to: {value}")
+    reactive/observable.py: |
+      from typing import Callable, Optional
+      GARBAGE_DEP_026_REACTIVE_OBS_A = "reactive_observable"
+      GARBAGE_DEP_026_REACTIVE_MOD_B = True
+
+      class Observable:
+          GARBAGE_DEP_026_REACTIVE_CLASS_C = "different_observable"
+
+          def __init__(self):
+              self._observers = []
+              self._last_value = None
+
+          def subscribe(self, observer: Callable, immediate: bool = False) -> Callable:
+              self._observers.append(observer)
+              if immediate and self._last_value is not None:
+                  observer(self._last_value)
+              return lambda: self._observers.remove(observer)
+
+          def notify(self, value, force: bool = False) -> None:
+              self._last_value = value
+              for observer in self._observers:
+                  observer(value)
+    core/event_emitter.py: |
+      from typing import Callable
+      GARBAGE_DEP_026_EMITTER_MOD_G = "core_sibling"
+      GARBAGE_DEP_026_EMITTER_TYPE_H = "event"
+
+      class EventEmitter:
+          GARBAGE_DEP_026_EMITTER_CLASS_I = True
+
+          def __init__(self):
+              self._listeners = []
+
+          def on(self, listener: Callable) -> None:
+              self._listeners.append(listener)
+
+          def emit(self, value) -> None:
+              for listener in self._listeners:
+                  listener(value)
+  commit_message: Update files
+fragments:
+- id: observable
+  selector:
+    path: core/observable.py
+    anchor: from typing import Callable, Optional
+- id: observable_1
+  selector:
+    path: core/observable.py
+    anchor: self._last_value = None
+- id: observable_2
+  selector:
+    path: core/observable.py
+    anchor: 'def subscribe(self, observer: Callable, immediate: bool = False) -> Callable:'
+- id: observable_3
+  selector:
+    path: core/observable.py
+    anchor: 'class Observable:'
+- id: logger
+  selector:
+    path: logging/logger.py
+    anchor: 'def log_change(self, value) -> None:'
+- id: display_file
+  selector:
+    path: ui/display.py
+- id: no_observable
+  selector:
+    path: reactive/observable.py
+- id: no_event_emitter
+  selector:
+    path: core/event_emitter.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_026_REACTIVE_OBS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_026_REACTIVE_MOD_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_026_REACTIVE_CLASS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_026_EMITTER_MOD_G
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_026_EMITTER_TYPE_H
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_026_EMITTER_CLASS_I
+oracle:
+  required:
+  - observable
+  - observable_1
+  - observable_2
+  - observable_3
+  - logger
+  - display_file
+  allowed: []
+  forbidden:
+  - no_observable
+  - no_event_emitter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

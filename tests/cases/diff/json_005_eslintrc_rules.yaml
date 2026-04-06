@@ -1,0 +1,179 @@
+name: json_005_eslintrc_rules
+repo:
+  initial_files:
+    .eslintrc.json: |
+      {
+        "env": {
+          "browser": true,
+          "es2021": true,
+          "node": true
+        },
+        "extends": ["eslint:recommended"],
+        "parserOptions": {
+          "ecmaVersion": "latest",
+          "sourceType": "module"
+        },
+        "rules": {
+          "semi": "error",
+          "quotes": ["error", "double"],
+          "indent": ["error", 2]
+        }
+      }
+    src/main.js: |
+      function hello() {
+          console.log("Hello");
+      }
+
+      function calculateTotal(items) {
+          let total = 0;
+          for (const item of items) {
+              total += item.price * item.quantity;
+          }
+          return total;
+      }
+
+      function formatCurrency(amount, currency) {
+          const formatter = new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency: currency || "USD",
+          });
+          return formatter.format(amount);
+      }
+
+      function generateInvoice(items, taxRate) {
+          const subtotal = calculateTotal(items);
+          const tax = subtotal * taxRate;
+          const total = subtotal + tax;
+          return {
+              items,
+              subtotal: formatCurrency(subtotal),
+              tax: formatCurrency(tax),
+              total: formatCurrency(total),
+          };
+      }
+
+      export { hello, calculateTotal, formatCurrency, generateInvoice };
+    src/utils.js: |
+      import { formatCurrency } from "./main";
+
+      function roundToDecimals(value, decimals) {
+          const factor = Math.pow(10, decimals);
+          return Math.round(value * factor) / factor;
+      }
+
+      function formatPrice(price) {
+          const rounded = roundToDecimals(price, 2);
+          return formatCurrency(rounded);
+      }
+
+      export { roundToDecimals, formatPrice };
+    .prettierrc: |
+      {
+        "semi": true,
+        "singleQuote": false,
+        "tabWidth": 2,
+        "trailingComma": "es5"
+      }
+    package.json: |
+      {
+        "name": "lint-app",
+        "version": "1.0.0",
+        "scripts": {
+          "lint": "eslint src/",
+          "lint:fix": "eslint src/ --fix"
+        },
+        "devDependencies": {
+          "eslint": "^8.45.0"
+        }
+      }
+    tests/main.test.js: |
+      import { calculateTotal, formatCurrency, generateInvoice } from "../src/main";
+
+      test("calculateTotal sums items", () => {
+          const items = [{ price: 10, quantity: 2 }, { price: 5, quantity: 3 }];
+          expect(calculateTotal(items)).toBe(35);
+      });
+
+      test("formatCurrency formats USD", () => {
+          expect(formatCurrency(42.5)).toMatch(/\$42\.50/);
+      });
+  changed_files:
+    .eslintrc.json: |
+      {
+        "env": {
+          "browser": true,
+          "es2021": true,
+          "node": true
+        },
+        "extends": ["eslint:recommended"],
+        "parserOptions": {
+          "ecmaVersion": "latest",
+          "sourceType": "module"
+        },
+        "rules": {
+          "semi": "error",
+          "quotes": ["error", "single"],
+          "no-unused-vars": "error",
+          "indent": ["error", 2]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: eslintrc
+  selector:
+    path: .eslintrc.json
+    anchor: '"quotes": ["error", "single"]'
+- id: eslintrc_1
+  selector:
+    path: .eslintrc.json
+    anchor: '"no-unused-vars": "error"'
+- id: no_prettierrc
+  selector:
+    path: .prettierrc
+- id: no_package
+  selector:
+    path: package.json
+- id: no_main_test
+  selector:
+    path: tests/main.test.js
+- id: no_global_0
+  selector:
+    anchor: singleQuote
+- id: no_global_1
+  selector:
+    anchor: trailingComma
+- id: no_global_2
+  selector:
+    anchor: '"tabWidth": 2'
+- id: no_global_3
+  selector:
+    anchor: lint:fix
+- id: no_global_4
+  selector:
+    anchor: eslint src/ --fix
+- id: no_global_5
+  selector:
+    anchor: lint-app
+- id: no_global_6
+  selector:
+    anchor: calculateTotal sums items
+- id: no_global_7
+  selector:
+    anchor: formatCurrency formats USD
+oracle:
+  required:
+  - eslintrc
+  - eslintrc_1
+  allowed: []
+  forbidden:
+  - no_prettierrc
+  - no_package
+  - no_main_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,194 @@
+name: javascript_016_type_import_resolves_definition
+repo:
+  initial_files:
+    types.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export type UserRole = 'admin' | 'user' | 'guest';
+    service.ts: |
+      console.log('initial');
+    user-repository.ts: |
+      import type { User } from './types';
+
+      export class UserRepository {
+          private users: Map<string, User> = new Map();
+
+          findById(id: string): User | undefined {
+              return this.users.get(id);
+          }
+
+          findByEmail(email: string): User | undefined {
+              return [...this.users.values()].find(u => u.email === email);
+          }
+
+          save(user: User): void {
+              this.users.set(user.id, user);
+          }
+
+          deleteById(id: string): boolean {
+              return this.users.delete(id);
+          }
+      }
+    role-guard.ts: |
+      import type { UserRole } from './types';
+
+      export class RoleGuard {
+          private allowedRoles: Set<UserRole>;
+
+          constructor(roles: UserRole[]) {
+              this.allowedRoles = new Set(roles);
+          }
+
+          canAccess(role: UserRole): boolean {
+              return this.allowedRoles.has(role);
+          }
+
+          requireAdmin(role: UserRole): void {
+              if (role !== 'admin') {
+                  throw new Error('Admin access required');
+              }
+          }
+      }
+  changed_files:
+    types.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export type UserRole = 'admin' | 'user' | 'guest';
+    service.ts: |
+      import type { User, UserRole } from './types';
+
+      function getUser(id: string): User {
+          return { id, name: 'Test', email: 'test@example.com' };
+      }
+
+      function checkRole(role: UserRole): boolean {
+          return role === 'admin';
+      }
+    user-repository.ts: |
+      import type { User } from './types';
+
+      export class UserRepository {
+          private users: Map<string, User> = new Map();
+
+          findById(id: string): User | undefined {
+              return this.users.get(id);
+          }
+
+          findByEmail(email: string): User | undefined {
+              return [...this.users.values()].find(u => u.email === email);
+          }
+
+          save(user: User): void {
+              this.users.set(user.id, user);
+          }
+
+          deleteById(id: string): boolean {
+              return this.users.delete(id);
+          }
+      }
+    role-guard.ts: |
+      import type { UserRole } from './types';
+
+      export class RoleGuard {
+          private allowedRoles: Set<UserRole>;
+
+          constructor(roles: UserRole[]) {
+              this.allowedRoles = new Set(roles);
+          }
+
+          canAccess(role: UserRole): boolean {
+              return this.allowedRoles.has(role);
+          }
+
+          requireAdmin(role: UserRole): void {
+              if (role !== 'admin') {
+                  throw new Error('Admin access required');
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.ts
+    anchor: import type { User, UserRole } from './types'
+- id: service_1
+  selector:
+    path: service.ts
+    anchor: 'function getUser(id: string): User'
+- id: service_2
+  selector:
+    path: service.ts
+    anchor: 'function checkRole(role: UserRole): boolean'
+- id: types
+  selector:
+    path: types.ts
+    anchor: interface User
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'id: string'
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: 'name: string'
+- id: types_3
+  selector:
+    path: types.ts
+    anchor: 'email: string'
+- id: types_4
+  selector:
+    path: types.ts
+    anchor: '''admin'' | ''user'' | ''guest'''
+- id: no_user_repository
+  selector:
+    path: user-repository.ts
+- id: no_role_guard
+  selector:
+    path: role-guard.ts
+- id: no_global_0
+  selector:
+    anchor: UserRepository
+- id: no_global_1
+  selector:
+    anchor: findById
+- id: no_global_2
+  selector:
+    anchor: findByEmail
+- id: no_global_3
+  selector:
+    anchor: RoleGuard
+- id: no_global_4
+  selector:
+    anchor: canAccess
+- id: no_global_5
+  selector:
+    anchor: requireAdmin
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - types
+  - types_1
+  - types_2
+  - types_3
+  - types_4
+  allowed: []
+  forbidden:
+  - no_user_repository
+  - no_role_guard
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

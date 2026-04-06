@@ -1,0 +1,23 @@
+name: internals_036_binary_escape_preserved
+repo:
+  initial_files:
+    binary_escape.py: |
+      x = 0
+  changed_files:
+    binary_escape.py: |
+      binary = b"\x00\x01\x02"
+      valid_name = "test"
+  commit_message: Update files
+fragments:
+- id: binary_escape_file
+  selector:
+    path: binary_escape.py
+- id: req_global_0
+  selector:
+    anchor: binary = b"\x00\x01\x02"
+oracle:
+  required:
+  - binary_escape_file
+  - req_global_0
+  allowed: []
+  forbidden: []

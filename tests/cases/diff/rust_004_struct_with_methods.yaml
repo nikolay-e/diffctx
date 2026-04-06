@@ -1,0 +1,331 @@
+name: rust_004_struct_with_methods
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod counter;
+      pub mod timer;
+      pub mod rate_limiter;
+    src/counter.rs: |
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub struct Counter {
+          value: i32,
+          name: String,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Self {
+                  value: 0,
+                  name: String::from("default"),
+              }
+          }
+
+          pub fn with_name(name: &str) -> Self {
+              Self {
+                  value: 0,
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+
+      impl Default for Counter {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+
+      impl fmt::Display for Counter {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "Counter({}): {}", self.name, self.value)
+          }
+      }
+    src/timer.rs: |
+      use std::time::{Duration, Instant};
+
+      pub struct CountdownTimer {
+          duration: Duration,
+          started_at: Option<Instant>,
+      }
+
+      impl CountdownTimer {
+          pub fn new(seconds: u64) -> Self {
+              Self {
+                  duration: Duration::from_secs(seconds),
+                  started_at: None,
+              }
+          }
+
+          pub fn start(&mut self) {
+              self.started_at = Some(Instant::now());
+          }
+
+          pub fn remaining(&self) -> Duration {
+              match self.started_at {
+                  Some(start) => {
+                      let elapsed = start.elapsed();
+                      if elapsed >= self.duration {
+                          Duration::ZERO
+                      } else {
+                          self.duration - elapsed
+                      }
+                  }
+                  None => self.duration,
+              }
+          }
+
+          pub fn is_expired(&self) -> bool {
+              self.remaining() == Duration::ZERO
+          }
+      }
+    src/rate_limiter.rs: |
+      use std::time::{Duration, Instant};
+
+      pub struct TokenBucket {
+          capacity: u32,
+          tokens: u32,
+          refill_rate: u32,
+          last_refill: Instant,
+      }
+
+      impl TokenBucket {
+          pub fn new(capacity: u32, refill_rate: u32) -> Self {
+              Self {
+                  capacity,
+                  tokens: capacity,
+                  refill_rate,
+                  last_refill: Instant::now(),
+              }
+          }
+
+          pub fn try_consume(&mut self) -> bool {
+              self.refill();
+              if self.tokens > 0 {
+                  self.tokens -= 1;
+                  true
+              } else {
+                  false
+              }
+          }
+
+          fn refill(&mut self) {
+              let elapsed = self.last_refill.elapsed();
+              let new_tokens = (elapsed.as_secs() as u32) * self.refill_rate;
+              self.tokens = (self.tokens + new_tokens).min(self.capacity);
+              self.last_refill = Instant::now();
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod counter;
+      pub mod timer;
+      pub mod rate_limiter;
+    src/counter.rs: |
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub struct Counter {
+          value: i32,
+          name: String,
+          step: i32,
+      }
+
+      impl Counter {
+          pub fn new() -> Self {
+              Self {
+                  value: 0,
+                  name: String::from("default"),
+                  step: 1,
+              }
+          }
+
+          pub fn with_name(name: &str) -> Self {
+              Self {
+                  value: 0,
+                  name: name.to_string(),
+                  step: 1,
+              }
+          }
+
+          pub fn with_step(name: &str, step: i32) -> Self {
+              Self {
+                  value: 0,
+                  name: name.to_string(),
+                  step,
+              }
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn increment(&mut self) {
+              self.value += self.step;
+          }
+
+          pub fn decrement(&mut self) {
+              self.value -= self.step;
+          }
+
+          pub fn get(&self) -> i32 {
+              self.value
+          }
+
+          pub fn reset(&mut self) {
+              self.value = 0;
+          }
+
+          pub fn set_step(&mut self, step: i32) {
+              self.step = step;
+          }
+      }
+
+      impl Default for Counter {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+
+      impl fmt::Display for Counter {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "Counter({}): {} (step: {})", self.name, self.value, self.step)
+          }
+      }
+    src/timer.rs: |
+      use std::time::{Duration, Instant};
+
+      pub struct CountdownTimer {
+          duration: Duration,
+          started_at: Option<Instant>,
+      }
+
+      impl CountdownTimer {
+          pub fn new(seconds: u64) -> Self {
+              Self {
+                  duration: Duration::from_secs(seconds),
+                  started_at: None,
+              }
+          }
+
+          pub fn start(&mut self) {
+              self.started_at = Some(Instant::now());
+          }
+
+          pub fn remaining(&self) -> Duration {
+              match self.started_at {
+                  Some(start) => {
+                      let elapsed = start.elapsed();
+                      if elapsed >= self.duration {
+                          Duration::ZERO
+                      } else {
+                          self.duration - elapsed
+                      }
+                  }
+                  None => self.duration,
+              }
+          }
+
+          pub fn is_expired(&self) -> bool {
+              self.remaining() == Duration::ZERO
+          }
+      }
+    src/rate_limiter.rs: |
+      use std::time::{Duration, Instant};
+
+      pub struct TokenBucket {
+          capacity: u32,
+          tokens: u32,
+          refill_rate: u32,
+          last_refill: Instant,
+      }
+
+      impl TokenBucket {
+          pub fn new(capacity: u32, refill_rate: u32) -> Self {
+              Self {
+                  capacity,
+                  tokens: capacity,
+                  refill_rate,
+                  last_refill: Instant::now(),
+              }
+          }
+
+          pub fn try_consume(&mut self) -> bool {
+              self.refill();
+              if self.tokens > 0 {
+                  self.tokens -= 1;
+                  true
+              } else {
+                  false
+              }
+          }
+
+          fn refill(&mut self) {
+              let elapsed = self.last_refill.elapsed();
+              let new_tokens = (elapsed.as_secs() as u32) * self.refill_rate;
+              self.tokens = (self.tokens + new_tokens).min(self.capacity);
+              self.last_refill = Instant::now();
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: counter
+  selector:
+    path: src/counter.rs
+    anchor: 'pub fn with_step(name: &str, step: i32) -> Self {'
+- id: counter_1
+  selector:
+    path: src/counter.rs
+    anchor: pub fn increment(&mut self)
+- id: counter_2
+  selector:
+    path: src/counter.rs
+    anchor: pub fn decrement(&mut self)
+- id: counter_3
+  selector:
+    path: src/counter.rs
+    anchor: self.value += self.step
+- id: no_timer
+  selector:
+    path: src/timer.rs
+- id: no_rate_limiter
+  selector:
+    path: src/rate_limiter.rs
+- id: no_global_0
+  selector:
+    anchor: CountdownTimer
+- id: no_global_1
+  selector:
+    anchor: is_expired
+- id: no_global_2
+  selector:
+    anchor: remaining
+- id: no_global_3
+  selector:
+    anchor: TokenBucket
+- id: no_global_4
+  selector:
+    anchor: try_consume
+- id: no_global_5
+  selector:
+    anchor: refill_rate
+oracle:
+  required:
+  - counter
+  - counter_1
+  - counter_2
+  - counter_3
+  allowed: []
+  forbidden:
+  - no_timer
+  - no_rate_limiter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

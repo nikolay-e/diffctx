@@ -1,0 +1,281 @@
+name: selection_007_forward_dependency
+repo:
+  initial_files:
+    lib.py: |
+      def helper_function():
+          return 42
+
+      def lib_util_alpha():
+          return "lib_alpha_result"
+
+      def lib_util_beta():
+          return "lib_beta_result"
+
+      def lib_util_gamma():
+          return "lib_gamma_result"
+    app.py: |
+      from lib import helper_function
+
+      def main():
+          return helper_function()
+
+      def app_secondary():
+          return "app_secondary_result"
+
+      def app_tertiary():
+          return "app_tertiary_result"
+    file_io.py: |
+      import os
+
+      def read_lines(path):
+          with open(path, "r") as fh:
+              return fh.readlines()
+
+      def write_lines(path, lines):
+          with open(path, "w") as fh:
+              fh.writelines(lines)
+
+      def file_exists(path):
+          return os.path.isfile(path)
+
+      def ensure_directory(path):
+          os.makedirs(path, exist_ok=True)
+    config_loader.py: |
+      import json
+
+      class ConfigLoader:
+          def __init__(self, config_path):
+              self.config_path = config_path
+              self._cache = None
+
+          def load(self):
+              if self._cache is None:
+                  with open(self.config_path) as fh:
+                      self._cache = json.load(fh)
+              return self._cache
+
+          def get(self, key, default=None):
+              config = self.load()
+              return config.get(key, default)
+
+          def reload(self):
+              self._cache = None
+              return self.load()
+    transform.py: |
+      from lib import helper_function
+
+      def doubled_value():
+          return helper_function() * 2
+
+      def stringified_value():
+          return str(helper_function())
+
+      def negated_value():
+          return -helper_function()
+
+      def value_plus_offset(offset):
+          return helper_function() + offset
+    math_utils.py: |
+      import math
+
+      def add(a, b):
+          return a + b
+
+      def multiply(a, b):
+          return a * b
+
+      def clamp(value, low, high):
+          return max(low, min(high, value))
+
+      def round_to(value, decimals=2):
+          return round(value, decimals)
+
+      def is_positive(value):
+          return value > 0
+    test_app.py: |
+      from app import main, app_secondary
+
+      def test_main_returns_value():
+          result = main()
+          assert result is not None
+
+      def test_main_returns_correct_type():
+          result = main()
+          assert isinstance(result, int)
+
+      def test_secondary():
+          assert app_secondary() == "app_secondary_result"
+
+      def test_main_positive():
+          assert main() > 0
+    constants.py: |
+      DEFAULT_VALUE = 42
+      MAX_RETRIES = 3
+      TIMEOUT_SECONDS = 30
+      BUFFER_SIZE = 4096
+
+      def get_constant(name):
+          return globals().get(name)
+
+      def all_constants():
+          return {k: v for k, v in globals().items()
+                  if k.isupper() and not k.startswith('_')}
+  changed_files:
+    lib.py: |
+      def helper_function():
+          return 42
+
+      def lib_util_alpha():
+          return "lib_alpha_result"
+
+      def lib_util_beta():
+          return "lib_beta_result"
+
+      def lib_util_gamma():
+          return "lib_gamma_result"
+    app.py: |
+      from lib import helper_function
+
+      def main():
+          x = helper_function()
+          return x + 1
+
+      def app_secondary():
+          return "app_secondary_result"
+
+      def app_tertiary():
+          return "app_tertiary_result"
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.py
+    anchor: from lib import helper_function
+- id: app_1
+  selector:
+    path: app.py
+    anchor: x = helper_function()
+- id: lib
+  selector:
+    path: lib.py
+    anchor: def helper_function()
+- id: lib_1
+  selector:
+    path: lib.py
+    anchor: return 42
+- id: no_file_io
+  selector:
+    path: file_io.py
+- id: no_config_loader
+  selector:
+    path: config_loader.py
+- id: no_transform
+  selector:
+    path: transform.py
+- id: no_math_utils
+  selector:
+    path: math_utils.py
+- id: no_test_app
+  selector:
+    path: test_app.py
+- id: no_constants
+  selector:
+    path: constants.py
+- id: no_global_0
+  selector:
+    anchor: read_lines
+- id: no_global_1
+  selector:
+    anchor: write_lines
+- id: no_global_2
+  selector:
+    anchor: file_exists
+- id: no_global_3
+  selector:
+    anchor: ensure_directory
+- id: no_global_4
+  selector:
+    anchor: ConfigLoader
+- id: no_global_5
+  selector:
+    anchor: reload
+- id: no_global_6
+  selector:
+    anchor: doubled_value
+- id: no_global_7
+  selector:
+    anchor: stringified_value
+- id: no_global_8
+  selector:
+    anchor: negated_value
+- id: no_global_9
+  selector:
+    anchor: value_plus_offset
+- id: no_global_10
+  selector:
+    anchor: multiply
+- id: no_global_11
+  selector:
+    anchor: clamp
+- id: no_global_12
+  selector:
+    anchor: round_to
+- id: no_global_13
+  selector:
+    anchor: is_positive
+- id: no_global_14
+  selector:
+    anchor: test_main_returns_value
+- id: no_global_15
+  selector:
+    anchor: test_main_returns_correct_type
+- id: no_global_16
+  selector:
+    anchor: test_main_positive
+- id: no_global_17
+  selector:
+    anchor: DEFAULT_VALUE
+- id: no_global_18
+  selector:
+    anchor: MAX_RETRIES
+- id: no_global_19
+  selector:
+    anchor: TIMEOUT_SECONDS
+- id: no_global_20
+  selector:
+    anchor: all_constants
+oracle:
+  required:
+  - app
+  - app_1
+  - lib
+  - lib_1
+  allowed: []
+  forbidden:
+  - no_file_io
+  - no_config_loader
+  - no_transform
+  - no_math_utils
+  - no_test_app
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

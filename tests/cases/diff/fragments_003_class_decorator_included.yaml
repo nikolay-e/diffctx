@@ -1,0 +1,85 @@
+name: fragments_003_class_decorator_included
+repo:
+  initial_files:
+    decorated_class.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      def standalone_function_before():
+
+      class UnrelatedClassBefore:
+
+          def unrelated_method_before(self):
+
+      @dataclass
+      class MyClass:
+          value: int
+
+      def standalone_function_after():
+
+      class UnrelatedClassAfter:
+
+          def unrelated_method_after(self):
+
+          @staticmethod
+          def static_garbage():
+    models_garbage_003.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class GarbageModel:
+          garbage_field: str = "GARBAGE_FRAG_model003"
+
+      class AnotherGarbageClass:
+          CONSTANT = "GARBAGE_FRAG_anotherclass003"
+  changed_files:
+    decorated_class.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      def standalone_function_before():
+
+      class UnrelatedClassBefore:
+
+          def unrelated_method_before(self):
+
+      @dataclass
+      class MyClass:
+          value: int
+          name: str
+
+      def standalone_function_after():
+
+      class UnrelatedClassAfter:
+
+          def unrelated_method_after(self):
+
+          @staticmethod
+          def static_garbage():
+    models_garbage_003.py: |
+      from dataclasses import dataclass
+
+      @dataclass
+      class GarbageModel:
+          garbage_field: str = "GARBAGE_FRAG_model003"
+
+      class AnotherGarbageClass:
+          CONSTANT = "GARBAGE_FRAG_anotherclass003"
+  commit_message: Update files
+fragments:
+- id: decorated_class_file
+  selector:
+    path: decorated_class.py
+- id: req_global_0
+  selector:
+    anchor: 'name: str'
+- id: no_global_0
+  selector:
+    anchor: models_garbage_003.py
+oracle:
+  required:
+  - decorated_class_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

@@ -1,0 +1,252 @@
+name: javascript_085_define_emits
+repo:
+  initial_files:
+    events.ts: |
+      export interface FormEvents {
+          submit: [data: { name: string; email: string }];
+          cancel: [];
+      }
+    ContactForm.vue: |
+      <template><div>initial</div></template>
+    src/components/ContactList.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      import ContactForm from './ContactForm.vue';
+
+      const contacts = ref<{ name: string; email: string }[]>([]);
+      const showForm = ref(false);
+
+      function handleSubmit(data: { name: string; email: string }) {
+          contacts.value.push(data);
+          showForm.value = false;
+      }
+
+      function handleCancel() {
+          showForm.value = false;
+      }
+      </script>
+
+      <template>
+          <div>
+              <button @click="showForm = true">Add Contact</button>
+              <ContactForm v-if="showForm" @submit="handleSubmit" @cancel="handleCancel" />
+              <ul>
+                  <li v-for="c in contacts" :key="c.email">{{ c.name }} ({{ c.email }})</li>
+              </ul>
+          </div>
+      </template>
+    src/composables/useForm.ts: |
+      import { ref, reactive } from 'vue';
+
+      export function useForm<T extends Record<string, unknown>>(initial: T) {
+          const values = reactive({ ...initial });
+          const errors = ref<Record<string, string>>({});
+
+          function reset() {
+              Object.assign(values, initial);
+              errors.value = {};
+          }
+
+          function validate(): boolean {
+              errors.value = {};
+              for (const [key, val] of Object.entries(values)) {
+                  if (val === '' || val === null || val === undefined) {
+                      errors.value[key] = `${key} is required`;
+                  }
+              }
+              return Object.keys(errors.value).length === 0;
+          }
+
+          return { values, errors, reset, validate };
+      }
+    src/types/formValidation.ts: |
+      export interface ValidationRule {
+          name: string;
+          validate: (value: string) => boolean;
+          message: string;
+      }
+
+      export const emailRule: ValidationRule = {
+          name: 'email',
+          validate: (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+          message: 'Invalid email format',
+      };
+
+      export const requiredRule: ValidationRule = {
+          name: 'required',
+          validate: (v: string) => v.trim().length > 0,
+          message: 'This field is required',
+      };
+  changed_files:
+    events.ts: |
+      export interface FormEvents {
+          submit: [data: { name: string; email: string }];
+          cancel: [];
+      }
+    ContactForm.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      import type { FormEvents } from './events';
+
+      const name = ref('');
+      const email = ref('');
+
+      const emit = defineEmits<FormEvents>();
+
+      function handleSubmit() {
+          emit('submit', { name: name.value, email: email.value });
+      }
+      </script>
+
+      <template>
+          <form @submit.prevent="handleSubmit">
+              <input v-model="name" />
+              <input v-model="email" />
+              <button type="submit">Submit</button>
+              <button type="button" @click="emit('cancel')">Cancel</button>
+          </form>
+      </template>
+    src/components/ContactList.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      import ContactForm from './ContactForm.vue';
+
+      const contacts = ref<{ name: string; email: string }[]>([]);
+      const showForm = ref(false);
+
+      function handleSubmit(data: { name: string; email: string }) {
+          contacts.value.push(data);
+          showForm.value = false;
+      }
+
+      function handleCancel() {
+          showForm.value = false;
+      }
+      </script>
+
+      <template>
+          <div>
+              <button @click="showForm = true">Add Contact</button>
+              <ContactForm v-if="showForm" @submit="handleSubmit" @cancel="handleCancel" />
+              <ul>
+                  <li v-for="c in contacts" :key="c.email">{{ c.name }} ({{ c.email }})</li>
+              </ul>
+          </div>
+      </template>
+    src/composables/useForm.ts: |
+      import { ref, reactive } from 'vue';
+
+      export function useForm<T extends Record<string, unknown>>(initial: T) {
+          const values = reactive({ ...initial });
+          const errors = ref<Record<string, string>>({});
+
+          function reset() {
+              Object.assign(values, initial);
+              errors.value = {};
+          }
+
+          function validate(): boolean {
+              errors.value = {};
+              for (const [key, val] of Object.entries(values)) {
+                  if (val === '' || val === null || val === undefined) {
+                      errors.value[key] = `${key} is required`;
+                  }
+              }
+              return Object.keys(errors.value).length === 0;
+          }
+
+          return { values, errors, reset, validate };
+      }
+    src/types/formValidation.ts: |
+      export interface ValidationRule {
+          name: string;
+          validate: (value: string) => boolean;
+          message: string;
+      }
+
+      export const emailRule: ValidationRule = {
+          name: 'email',
+          validate: (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+          message: 'Invalid email format',
+      };
+
+      export const requiredRule: ValidationRule = {
+          name: 'required',
+          validate: (v: string) => v.trim().length > 0,
+          message: 'This field is required',
+      };
+  commit_message: Update files
+fragments:
+- id: contactform
+  selector:
+    path: ContactForm.vue
+    anchor: <script setup lang="ts">
+- id: contactform_1
+  selector:
+    path: ContactForm.vue
+    anchor: defineEmits<FormEvents>()
+- id: events
+  selector:
+    path: events.ts
+    anchor: interface FormEvents
+- id: events_1
+  selector:
+    path: events.ts
+    anchor: 'submit:'
+- id: events_2
+  selector:
+    path: events.ts
+    anchor: 'cancel: []'
+- id: no_contactlist
+  selector:
+    path: src/components/ContactList.vue
+- id: no_useform
+  selector:
+    path: src/composables/useForm.ts
+- id: no_formvalidation
+  selector:
+    path: src/types/formValidation.ts
+- id: no_global_0
+  selector:
+    anchor: ContactList
+- id: no_global_1
+  selector:
+    anchor: handleCancel
+- id: no_global_2
+  selector:
+    anchor: contacts.value.push
+- id: no_global_3
+  selector:
+    anchor: useForm
+- id: no_global_4
+  selector:
+    anchor: reactive({ ...initial })
+- id: no_global_5
+  selector:
+    anchor: ValidationRule
+- id: no_global_6
+  selector:
+    anchor: emailRule
+- id: no_global_7
+  selector:
+    anchor: requiredRule
+oracle:
+  required:
+  - contactform
+  - contactform_1
+  - events
+  - events_1
+  - events_2
+  allowed: []
+  forbidden:
+  - no_contactlist
+  - no_useform
+  - no_formvalidation
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

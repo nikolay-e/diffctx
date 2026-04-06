@@ -1,0 +1,276 @@
+name: scripting_012_constructor_promotion
+repo:
+  initial_files:
+    src/Config.php: |
+      <?php
+      class Config {
+          public function __construct(
+              private string $host,
+              private int $port,
+              private bool $debug = false
+          ) {}
+
+          public function getHost(): string {
+              return $this->host;
+          }
+
+          public function getPort(): int {
+              return $this->port;
+          }
+
+          public function isDebug(): bool {
+              return $this->debug;
+          }
+
+          public function getAddress(): string {
+              return $this->host . ':' . $this->port;
+          }
+      }
+    src/app.php: |
+      <?php
+      echo "Hello";
+    src/EnvLoader.php: |
+      <?php
+      class EnvLoader {
+          private string $envFile;
+
+          public function __construct(string $envFile = '.env') {
+              $this->envFile = $envFile;
+          }
+
+          public function load(): array {
+              $vars = [];
+              if (file_exists($this->envFile)) {
+                  $lines = file($this->envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                  foreach ($lines as $line) {
+                      if (str_starts_with($line, '#')) continue;
+                      [$key, $value] = explode('=', $line, 2);
+                      $vars[trim($key)] = trim($value);
+                  }
+              }
+              return $vars;
+          }
+
+          public function get(string $key, string $default = ''): string {
+              return $this->load()[$key] ?? $default;
+          }
+      }
+    src/Logger.php: |
+      <?php
+      class Logger {
+          private string $logFile;
+
+          public function __construct(string $logFile = 'app.log') {
+              $this->logFile = $logFile;
+          }
+
+          public function info(string $message): void {
+              $this->write('INFO', $message);
+          }
+
+          public function error(string $message): void {
+              $this->write('ERROR', $message);
+          }
+
+          public function debug(string $message): void {
+              $this->write('DEBUG', $message);
+          }
+
+          private function write(string $level, string $message): void {
+              $entry = sprintf("[%s] %s: %s\n", date('Y-m-d H:i:s'), $level, $message);
+              file_put_contents($this->logFile, $entry, FILE_APPEND);
+          }
+      }
+    src/DatabaseConfig.php: |
+      <?php
+      class DatabaseConfig {
+          public function __construct(
+              private string $host,
+              private int $port,
+              private string $database,
+              private string $username = 'root',
+              private string $password = ''
+          ) {}
+
+          public function getHost(): string {
+              return $this->host;
+          }
+
+          public function getPort(): int {
+              return $this->port;
+          }
+
+          public function getDsn(): string {
+              return "mysql:host={$this->host};port={$this->port};dbname={$this->database}";
+          }
+      }
+    src/AppBootstrap.php: |
+      <?php
+      require_once 'Config.php';
+      require_once 'Logger.php';
+
+      class AppBootstrap {
+          private Config $config;
+          private Logger $logger;
+
+          public function __construct(Config $config) {
+              $this->config = $config;
+              $logFile = $config->isDebug() ? 'debug.log' : 'app.log';
+              $this->logger = new Logger($logFile);
+          }
+
+          public function run(): void {
+              $address = $this->config->getHost() . ':' . $this->config->getPort();
+              $this->logger->info("Starting server on $address");
+              if ($this->config->isDebug()) {
+                  $this->logger->debug("Debug mode enabled");
+              }
+          }
+      }
+    src/lib/ConfigValidator.php: |
+      <?php
+      class ConfigValidator {
+          public function validate(object $config): array {
+              $errors = [];
+              if (method_exists($config, 'getHost') && empty($config->getHost())) {
+                  $errors[] = 'Host cannot be empty';
+              }
+              if (method_exists($config, 'getPort')) {
+                  $port = $config->getPort();
+                  if ($port < 1 || $port > 65535) {
+                      $errors[] = 'Port must be between 1 and 65535';
+                  }
+              }
+              return $errors;
+          }
+      }
+  changed_files:
+    src/Config.php: |
+      <?php
+      class Config {
+          public function __construct(
+              private string $host,
+              private int $port,
+              private bool $debug = false
+          ) {}
+
+          public function getHost(): string {
+              return $this->host;
+          }
+
+          public function getPort(): int {
+              return $this->port;
+          }
+
+          public function isDebug(): bool {
+              return $this->debug;
+          }
+
+          public function getAddress(): string {
+              return $this->host . ':' . $this->port;
+          }
+      }
+    src/app.php: |
+      <?php
+      require_once 'Config.php';
+
+      $config = new Config('localhost', 8080, true);
+      echo $config->getHost() . ':' . $config->getPort();
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/Config.php
+    anchor: private string $host
+- id: config_1
+  selector:
+    path: src/Config.php
+    anchor: 'public function getHost(): string'
+- id: config_2
+  selector:
+    path: src/Config.php
+    anchor: 'public function getPort(): int'
+- id: app
+  selector:
+    path: src/app.php
+    anchor: new Config('localhost', 8080, true)
+- id: no_envloader
+  selector:
+    path: src/EnvLoader.php
+- id: no_logger
+  selector:
+    path: src/Logger.php
+- id: no_databaseconfig
+  selector:
+    path: src/DatabaseConfig.php
+- id: no_appbootstrap
+  selector:
+    path: src/AppBootstrap.php
+- id: no_configvalidator
+  selector:
+    path: src/lib/ConfigValidator.php
+- id: no_global_0
+  selector:
+    anchor: EnvLoader
+- id: no_global_1
+  selector:
+    anchor: $this->envFile
+- id: no_global_2
+  selector:
+    anchor: file_put_contents
+- id: no_global_3
+  selector:
+    anchor: $this->logFile
+- id: no_global_4
+  selector:
+    anchor: DatabaseConfig
+- id: no_global_5
+  selector:
+    anchor: getDsn
+- id: no_global_6
+  selector:
+    anchor: $this->database
+- id: no_global_7
+  selector:
+    anchor: AppBootstrap
+- id: no_global_8
+  selector:
+    anchor: Starting server
+- id: no_global_9
+  selector:
+    anchor: Debug mode enabled
+- id: no_global_10
+  selector:
+    anchor: ConfigValidator
+- id: no_global_11
+  selector:
+    anchor: Host cannot be empty
+- id: no_global_12
+  selector:
+    anchor: Port must be between
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - app
+  allowed: []
+  forbidden:
+  - no_envloader
+  - no_logger
+  - no_databaseconfig
+  - no_appbootstrap
+  - no_configvalidator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

@@ -1,0 +1,171 @@
+name: jvm_and_compiled_061_swift_codable
+repo:
+  initial_files:
+    User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    APIResponse.swift: |
+      struct APIResponse<T: Codable>: Decodable {
+          let data: T
+          let status: String
+          let timestamp: Date
+      }
+    APIClient.swift: |
+      // Initial
+      class APIClient {}
+    LocalStorage.swift: |
+      import Foundation
+
+      class LocalStorage {
+          private let defaults = UserDefaults.standard
+
+          func save<T: Codable>(_ value: T, forKey key: String) {
+              if let data = try? JSONEncoder().encode(value) {
+                  defaults.set(data, forKey: key)
+              }
+          }
+
+          func load<T: Codable>(forKey key: String, as type: T.Type) -> T? {
+              guard let data = defaults.data(forKey: key) else { return nil }
+              return try? JSONDecoder().decode(type, from: data)
+          }
+
+          func remove(forKey key: String) {
+              defaults.removeObject(forKey: key)
+          }
+      }
+    DateFormatterExtensions.swift: |
+      import Foundation
+
+      extension DateFormatter {
+          static let iso8601Full: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+              return formatter
+          }()
+
+          static let shortDate: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateStyle = .short
+              return formatter
+          }()
+      }
+  changed_files:
+    User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    APIResponse.swift: |
+      struct APIResponse<T: Codable>: Decodable {
+          let data: T
+          let status: String
+          let timestamp: Date
+      }
+    APIClient.swift: |
+      import Foundation
+
+      class APIClient {
+          func fetchUsers(completion: @escaping (Result<APIResponse<[User]>, Error>) -> Void) {
+              let url = URL(string: "https://api.example.com/users")!
+              URLSession.shared.dataTask(with: url) { data, _, error in
+                  if let error = error {
+                      completion(.failure(error))
+                      return
+                  }
+                  guard let data = data else { return }
+                  do {
+                      let decoder = JSONDecoder()
+                      decoder.dateDecodingStrategy = .iso8601
+                      let response = try decoder.decode(APIResponse<[User]>.self, from: data)
+                      completion(.success(response))
+                  } catch {
+                      completion(.failure(error))
+                  }
+              }.resume()
+          }
+      }
+    LocalStorage.swift: |
+      import Foundation
+
+      class LocalStorage {
+          private let defaults = UserDefaults.standard
+
+          func save<T: Codable>(_ value: T, forKey key: String) {
+              if let data = try? JSONEncoder().encode(value) {
+                  defaults.set(data, forKey: key)
+              }
+          }
+
+          func load<T: Codable>(forKey key: String, as type: T.Type) -> T? {
+              guard let data = defaults.data(forKey: key) else { return nil }
+              return try? JSONDecoder().decode(type, from: data)
+          }
+
+          func remove(forKey key: String) {
+              defaults.removeObject(forKey: key)
+          }
+      }
+    DateFormatterExtensions.swift: |
+      import Foundation
+
+      extension DateFormatter {
+          static let iso8601Full: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+              return formatter
+          }()
+
+          static let shortDate: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateStyle = .short
+              return formatter
+          }()
+      }
+  commit_message: Update files
+fragments:
+- id: apiclient
+  selector:
+    path: APIClient.swift
+    anchor: import Foundation
+- id: no_localstorage
+  selector:
+    path: LocalStorage.swift
+- id: no_dateformatterextensions
+  selector:
+    path: DateFormatterExtensions.swift
+- id: no_global_0
+  selector:
+    anchor: LocalStorage
+- id: no_global_1
+  selector:
+    anchor: UserDefaults
+- id: no_global_2
+  selector:
+    anchor: removeObject
+- id: no_global_3
+  selector:
+    anchor: DateFormatterExtensions
+- id: no_global_4
+  selector:
+    anchor: iso8601Full
+- id: no_global_5
+  selector:
+    anchor: shortDate
+oracle:
+  required:
+  - apiclient
+  allowed: []
+  forbidden:
+  - no_localstorage
+  - no_dateformatterextensions
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

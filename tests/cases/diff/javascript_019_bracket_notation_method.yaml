@@ -1,0 +1,170 @@
+name: javascript_019_bracket_notation_method
+repo:
+  initial_files:
+    handler.ts: |
+      export const handlers = {
+          onClick: () => console.log('clicked'),
+          onHover: () => console.log('hovered'),
+          onFocus: () => console.log('focused'),
+      };
+    main.ts: |
+      console.log('initial');
+    event-dispatcher.ts: |
+      type EventCallback = (...args: unknown[]) => void;
+
+      export class EventDispatcher {
+          private listeners = new Map<string, Set<EventCallback>>();
+
+          addEventListener(event: string, callback: EventCallback): void {
+              if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+              this.listeners.get(event)!.add(callback);
+          }
+
+          removeEventListener(event: string, callback: EventCallback): void {
+              this.listeners.get(event)?.delete(callback);
+          }
+
+          dispatch(event: string, ...args: unknown[]): void {
+              this.listeners.get(event)?.forEach(cb => cb(...args));
+          }
+      }
+    handler.test.ts: |
+      import { handlers } from './handler';
+
+      describe('handlers', () => {
+          it('should have onClick handler', () => {
+              const spy = jest.spyOn(console, 'log');
+              handlers.onClick();
+              expect(spy).toHaveBeenCalledWith('clicked');
+              spy.mockRestore();
+          });
+
+          it('should have onHover handler', () => {
+              const spy = jest.spyOn(console, 'log');
+              handlers.onHover();
+              expect(spy).toHaveBeenCalledWith('hovered');
+              spy.mockRestore();
+          });
+      });
+  changed_files:
+    handler.ts: |
+      export const handlers = {
+          onClick: () => console.log('clicked'),
+          onHover: () => console.log('hovered'),
+          onFocus: () => console.log('focused'),
+      };
+    main.ts: |
+      import { handlers } from './handler';
+
+      function callHandler(name: string) {
+          const method = handlers[name as keyof typeof handlers];
+          if (method) {
+              method();
+          }
+      }
+
+      callHandler('onClick');
+    event-dispatcher.ts: |
+      type EventCallback = (...args: unknown[]) => void;
+
+      export class EventDispatcher {
+          private listeners = new Map<string, Set<EventCallback>>();
+
+          addEventListener(event: string, callback: EventCallback): void {
+              if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+              this.listeners.get(event)!.add(callback);
+          }
+
+          removeEventListener(event: string, callback: EventCallback): void {
+              this.listeners.get(event)?.delete(callback);
+          }
+
+          dispatch(event: string, ...args: unknown[]): void {
+              this.listeners.get(event)?.forEach(cb => cb(...args));
+          }
+      }
+    handler.test.ts: |
+      import { handlers } from './handler';
+
+      describe('handlers', () => {
+          it('should have onClick handler', () => {
+              const spy = jest.spyOn(console, 'log');
+              handlers.onClick();
+              expect(spy).toHaveBeenCalledWith('clicked');
+              spy.mockRestore();
+          });
+
+          it('should have onHover handler', () => {
+              const spy = jest.spyOn(console, 'log');
+              handlers.onHover();
+              expect(spy).toHaveBeenCalledWith('hovered');
+              spy.mockRestore();
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { handlers } from './handler'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: handlers[name as keyof typeof handlers]
+- id: handler
+  selector:
+    path: handler.ts
+    anchor: 'onClick: () =>'
+- id: handler_1
+  selector:
+    path: handler.ts
+    anchor: 'onHover: () =>'
+- id: handler_2
+  selector:
+    path: handler.ts
+    anchor: 'onFocus: () =>'
+- id: no_event_dispatcher
+  selector:
+    path: event-dispatcher.ts
+- id: no_handler_test
+  selector:
+    path: handler.test.ts
+- id: no_global_0
+  selector:
+    anchor: EventDispatcher
+- id: no_global_1
+  selector:
+    anchor: addEventListener
+- id: no_global_2
+  selector:
+    anchor: removeEventListener
+- id: no_global_3
+  selector:
+    anchor: dispatch(event
+- id: no_global_4
+  selector:
+    anchor: describe('handlers'
+- id: no_global_5
+  selector:
+    anchor: jest.spyOn
+- id: no_global_6
+  selector:
+    anchor: toHaveBeenCalledWith
+oracle:
+  required:
+  - main
+  - main_1
+  - handler
+  - handler_1
+  - handler_2
+  allowed: []
+  forbidden:
+  - no_event_dispatcher
+  - no_handler_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

@@ -1,0 +1,40 @@
+name: comprehensive_026_structural_method_changed_include_class
+repo:
+  initial_files:
+    service.py: |
+      class PaymentService:
+          def __init__(self):
+              self.payments = []
+
+          def process_payment(self):
+              return "processed"
+  changed_files:
+    service.py: |
+      class PaymentService:
+          def __init__(self):
+              self.payments = []
+
+          def process_payment(self):
+              self.validate()
+              return "processed with validation"
+
+          def validate(self):
+              return True
+  commit_message: Update files
+fragments:
+- id: service_file
+  selector:
+    path: service.py
+- id: req_global_0
+  selector:
+    anchor: self.validate()
+- id: req_global_1
+  selector:
+    anchor: 'def validate(self):'
+oracle:
+  required:
+  - service_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

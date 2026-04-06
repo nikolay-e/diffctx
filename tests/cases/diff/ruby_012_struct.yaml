@@ -1,0 +1,276 @@
+name: ruby_012_struct
+repo:
+  initial_files:
+    lib/types.rb: |
+      Point = Struct.new(:x, :y) do
+        def distance_from_origin
+          Math.sqrt(x**2 + y**2)
+        end
+
+        def to_s
+          "(#{x}, #{y})"
+        end
+      end
+
+      Rectangle = Struct.new(:width, :height) do
+        def area
+          width * height
+        end
+
+        def perimeter
+          2 * (width + height)
+        end
+      end
+
+      Circle = Struct.new(:radius) do
+        def area
+          Math::PI * radius**2
+        end
+
+        def circumference
+          2 * Math::PI * radius
+        end
+      end
+    lib/geometry.rb: |
+      module Geometry
+        def self.hello
+          "geometry"
+        end
+      end
+    lib/vector_math.rb: |
+      class Vector2D
+        attr_reader :x, :y
+
+        def initialize(x, y)
+          @x = x
+          @y = y
+        end
+
+        def magnitude
+          Math.sqrt(@x**2 + @y**2)
+        end
+
+        def dot(other)
+          @x * other.x + @y * other.y
+        end
+
+        def add(other)
+          Vector2D.new(@x + other.x, @y + other.y)
+        end
+
+        def scale(factor)
+          Vector2D.new(@x * factor, @y * factor)
+        end
+
+        def normalize
+          mag = magnitude
+          return Vector2D.new(0, 0) if mag.zero?
+          Vector2D.new(@x / mag, @y / mag)
+        end
+      end
+    lib/shape_renderer.rb: |
+      class ShapeRenderer
+        def initialize(canvas_width, canvas_height)
+          @width = canvas_width
+          @height = canvas_height
+          @shapes = []
+        end
+
+        def add_circle(cx, cy, radius, color: 'black')
+          @shapes << { type: :circle, cx: cx, cy: cy, r: radius, color: color }
+        end
+
+        def add_rectangle(x, y, width, height, color: 'black')
+          @shapes << { type: :rect, x: x, y: y, w: width, h: height, color: color }
+        end
+
+        def to_svg
+          elements = @shapes.map { |s| render_shape(s) }.join("\n  ")
+          "<svg width=\"#{@width}\" height=\"#{@height}\">\n  #{elements}\n</svg>"
+        end
+
+        private
+
+        def render_shape(shape)
+          case shape[:type]
+          when :circle
+            "<circle cx=\"#{shape[:cx]}\" cy=\"#{shape[:cy]}\" r=\"#{shape[:r]}\" fill=\"#{shape[:color]}\" />"
+          when :rect
+            "<rect x=\"#{shape[:x]}\" y=\"#{shape[:y]}\" width=\"#{shape[:w]}\" height=\"#{shape[:h]}\" fill=\"#{shape[:color]}\" />"
+          end
+        end
+      end
+  changed_files:
+    lib/types.rb: |
+      Point = Struct.new(:x, :y) do
+        def distance_from_origin
+          Math.sqrt(x**2 + y**2)
+        end
+
+        def to_s
+          "(#{x}, #{y})"
+        end
+      end
+
+      Rectangle = Struct.new(:width, :height) do
+        def area
+          width * height
+        end
+
+        def perimeter
+          2 * (width + height)
+        end
+      end
+
+      Circle = Struct.new(:radius) do
+        def area
+          Math::PI * radius**2
+        end
+
+        def circumference
+          2 * Math::PI * radius
+        end
+      end
+    lib/geometry.rb: |
+      require_relative 'types'
+
+      module Geometry
+        def self.create_point(x, y)
+          Point.new(x, y)
+        end
+
+        def self.create_rectangle(w, h)
+          Rectangle.new(w, h)
+        end
+
+        def self.bounding_box(points)
+          xs = points.map(&:x)
+          ys = points.map(&:y)
+          Rectangle.new(xs.max - xs.min, ys.max - ys.min)
+        end
+
+        def self.circle_from_diameter(d)
+          Circle.new(d / 2.0)
+        end
+      end
+    lib/vector_math.rb: |
+      class Vector2D
+        attr_reader :x, :y
+
+        def initialize(x, y)
+          @x = x
+          @y = y
+        end
+
+        def magnitude
+          Math.sqrt(@x**2 + @y**2)
+        end
+
+        def dot(other)
+          @x * other.x + @y * other.y
+        end
+
+        def add(other)
+          Vector2D.new(@x + other.x, @y + other.y)
+        end
+
+        def scale(factor)
+          Vector2D.new(@x * factor, @y * factor)
+        end
+
+        def normalize
+          mag = magnitude
+          return Vector2D.new(0, 0) if mag.zero?
+          Vector2D.new(@x / mag, @y / mag)
+        end
+      end
+    lib/shape_renderer.rb: |
+      class ShapeRenderer
+        def initialize(canvas_width, canvas_height)
+          @width = canvas_width
+          @height = canvas_height
+          @shapes = []
+        end
+
+        def add_circle(cx, cy, radius, color: 'black')
+          @shapes << { type: :circle, cx: cx, cy: cy, r: radius, color: color }
+        end
+
+        def add_rectangle(x, y, width, height, color: 'black')
+          @shapes << { type: :rect, x: x, y: y, w: width, h: height, color: color }
+        end
+
+        def to_svg
+          elements = @shapes.map { |s| render_shape(s) }.join("\n  ")
+          "<svg width=\"#{@width}\" height=\"#{@height}\">\n  #{elements}\n</svg>"
+        end
+
+        private
+
+        def render_shape(shape)
+          case shape[:type]
+          when :circle
+            "<circle cx=\"#{shape[:cx]}\" cy=\"#{shape[:cy]}\" r=\"#{shape[:r]}\" fill=\"#{shape[:color]}\" />"
+          when :rect
+            "<rect x=\"#{shape[:x]}\" y=\"#{shape[:y]}\" width=\"#{shape[:w]}\" height=\"#{shape[:h]}\" fill=\"#{shape[:color]}\" />"
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: geometry
+  selector:
+    path: lib/geometry.rb
+    anchor: Point.new(x, y)
+- id: geometry_1
+  selector:
+    path: lib/geometry.rb
+    anchor: Rectangle.new(xs.max - xs.min, ys.max - ys.min)
+- id: types
+  selector:
+    path: lib/types.rb
+    anchor: Point = Struct.new(:x, :y)
+- id: types_1
+  selector:
+    path: lib/types.rb
+    anchor: Rectangle = Struct.new(:width, :height)
+- id: no_vector_math
+  selector:
+    path: lib/vector_math.rb
+- id: no_shape_renderer
+  selector:
+    path: lib/shape_renderer.rb
+- id: no_global_0
+  selector:
+    anchor: Vector2D
+- id: no_global_1
+  selector:
+    anchor: magnitude
+- id: no_global_2
+  selector:
+    anchor: dot
+- id: no_global_3
+  selector:
+    anchor: ShapeRenderer
+- id: no_global_4
+  selector:
+    anchor: to_svg
+- id: no_global_5
+  selector:
+    anchor: render_shape
+oracle:
+  required:
+  - geometry
+  - geometry_1
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_vector_math
+  - no_shape_renderer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

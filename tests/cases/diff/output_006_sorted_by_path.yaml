@@ -1,0 +1,124 @@
+name: output_006_sorted_by_path
+repo:
+  initial_files:
+    z_module.py: |
+      def z_func():
+          pass
+    a_module.py: |
+      def a_func():
+          pass
+    utils/cron_scheduler.py: |
+      CRON_DEFAULT_TIMEZONE = "UTC"
+      MAX_CONCURRENT_JOBS = 10
+
+      class CronScheduler:
+          def __init__(self):
+              self._jobs: list[dict] = []
+
+          def schedule(self, expression: str, task: str) -> None:
+              self._jobs.append({"cron": expression, "task": task})
+
+          def get_next_run(self, expression: str) -> float:
+              return 0.0
+    utils/task_queue.py: |
+      from collections import deque
+
+      QUEUE_MAX_SIZE = 1024
+      TASK_TIMEOUT_SECONDS = 300
+
+      class TaskQueue:
+          def __init__(self):
+              self._queue: deque = deque(maxlen=QUEUE_MAX_SIZE)
+
+          def enqueue(self, task_id: str, payload: dict) -> bool:
+              self._queue.append({"id": task_id, "payload": payload})
+              return True
+
+          def dequeue(self) -> dict | None:
+              return self._queue.popleft() if self._queue else None
+  changed_files:
+    z_module.py: |
+      def z_func():
+          return 1
+    a_module.py: |
+      def a_func():
+          return 1
+    utils/cron_scheduler.py: |
+      CRON_DEFAULT_TIMEZONE = "UTC"
+      MAX_CONCURRENT_JOBS = 10
+
+      class CronScheduler:
+          def __init__(self):
+              self._jobs: list[dict] = []
+
+          def schedule(self, expression: str, task: str) -> None:
+              self._jobs.append({"cron": expression, "task": task})
+
+          def get_next_run(self, expression: str) -> float:
+              return 0.0
+    utils/task_queue.py: |
+      from collections import deque
+
+      QUEUE_MAX_SIZE = 1024
+      TASK_TIMEOUT_SECONDS = 300
+
+      class TaskQueue:
+          def __init__(self):
+              self._queue: deque = deque(maxlen=QUEUE_MAX_SIZE)
+
+          def enqueue(self, task_id: str, payload: dict) -> bool:
+              self._queue.append({"id": task_id, "payload": payload})
+              return True
+
+          def dequeue(self) -> dict | None:
+              return self._queue.popleft() if self._queue else None
+  commit_message: Update files
+fragments:
+- id: a_module_file
+  selector:
+    path: a_module.py
+- id: z_module_file
+  selector:
+    path: z_module.py
+- id: req_global_0
+  selector:
+    anchor: '    return 1'
+- id: no_cron_scheduler
+  selector:
+    path: utils/cron_scheduler.py
+- id: no_task_queue
+  selector:
+    path: utils/task_queue.py
+- id: no_global_0
+  selector:
+    anchor: CronScheduler
+- id: no_global_1
+  selector:
+    anchor: CRON_DEFAULT_TIMEZONE
+- id: no_global_2
+  selector:
+    anchor: MAX_CONCURRENT_JOBS
+- id: no_global_3
+  selector:
+    anchor: TaskQueue
+- id: no_global_4
+  selector:
+    anchor: QUEUE_MAX_SIZE
+- id: no_global_5
+  selector:
+    anchor: TASK_TIMEOUT_SECONDS
+oracle:
+  required:
+  - a_module_file
+  - z_module_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_cron_scheduler
+  - no_task_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

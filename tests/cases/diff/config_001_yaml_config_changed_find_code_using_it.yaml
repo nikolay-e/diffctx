@@ -1,0 +1,401 @@
+name: config_001_yaml_config_changed_find_code_using_it
+repo:
+  initial_files:
+    config.yaml: |
+      server:
+        host: 0.0.0.0
+        port: 8080
+        workers: 4
+
+      database:
+        host: localhost
+        port: 5432
+        name: myapp_production
+        pool_size: 5
+        timeout: 30
+        ssl_mode: prefer
+
+      redis:
+        host: localhost
+        port: 6379
+        db: 0
+
+      logging:
+        level: INFO
+        format: json
+    database/connection.py: |
+      import yaml
+      from contextlib import contextmanager
+      from typing import Any
+
+
+      def load_config(path: str = "config.yaml") -> dict[str, Any]:
+          with open(path) as f:
+              return yaml.safe_load(f)
+
+
+      def create_pool(size: int, timeout: int, host: str, port: int, name: str):
+          return {
+              "size": size,
+              "timeout": timeout,
+              "dsn": f"postgresql://{host}:{port}/{name}",
+          }
+
+
+      def get_pool():
+          config = load_config()
+          db = config["database"]
+          pool_size = db["pool_size"]
+          timeout = db["timeout"]
+          return create_pool(pool_size, timeout, db["host"], db["port"], db["name"])
+
+
+      @contextmanager
+      def get_connection():
+          pool = get_pool()
+          conn = pool
+          try:
+              yield conn
+          finally:
+              pass
+    database/queries.py: |
+      from database.connection import get_connection
+
+
+      def fetch_users(limit: int = 100):
+          with get_connection() as conn:
+              return conn
+
+
+      def fetch_user_by_id(user_id: int):
+          with get_connection() as conn:
+              return conn
+    cache/redis_pool.py: |
+      import yaml
+      GARBAGE_CFG_001_REDIS_POOL_F = "redis_init"
+
+      def create_redis_pool():
+          config = load_config()
+          redis = config["redis"]
+          pool_size = redis.get("pool_size", 10)
+          timeout = redis.get("timeout", 5)
+          GARBAGE_CFG_001_REDIS_CONN_G = "connected"
+          return {"host": redis["host"], "port": redis["port"], "pool_size": pool_size, "timeout": timeout}
+
+      def load_config(path="config.yaml"):
+          GARBAGE_CFG_001_REDIS_LOAD_H = True
+          with open(path) as f:
+              return yaml.safe_load(f)
+    config.staging.yaml: |
+      # GARBAGE_CFG_001_STAGING_MARKER_I
+      server:
+        host: 0.0.0.0
+        port: 8080
+        workers: 2
+
+      database:
+        host: staging-db.internal
+        port: 5432
+        name: myapp_staging
+        pool_size: 3
+        timeout: 15
+        ssl_mode: require
+        max_overflow: 2
+        # GARBAGE_CFG_001_STAGING_DB_J
+
+      redis:
+        host: staging-redis.internal
+        port: 6379
+        db: 1
+    scripts/migrate_db.py: |
+      GARBAGE_CFG_001_MIGRATE_MARKER_K = "migration_v2"
+
+      def run_migration(pool_size=5, ssl_mode="prefer"):
+          GARBAGE_CFG_001_MIGRATE_RUN_L = True
+          print(f"Migrating with pool_size={pool_size}, ssl_mode={ssl_mode}")
+          if ssl_mode == "require":
+              print("SSL required for migration")
+          return True
+
+      def rollback_migration():
+          GARBAGE_CFG_001_MIGRATE_ROLLBACK_M = "safe"
+          pass
+    unrelated/email_templates.py: |
+      GARBAGE_CFG_001_MARKER_A = "unrelated"
+      GARBAGE_CFG_001_TEMPLATE_B = "unrelated-email-template"
+
+      def render_welcome_email(username: str) -> str:
+          return f"Welcome, {username}!"
+
+      GARBAGE_CFG_001_FOOTER_C = "unrelated-footer-config"
+    unrelated/analytics.py: |
+      GARBAGE_CFG_001_MARKER_D = "unrelated"
+      GARBAGE_CFG_001_TRACKER_E = "unrelated-analytics-tracker"
+
+      class AnalyticsCollector:
+          def __init__(self):
+              self.events = []
+
+          def track(self, event_name: str, payload: dict):
+              self.events.append({"name": event_name, "data": payload})
+  changed_files:
+    config.yaml: |
+      server:
+        host: 0.0.0.0
+        port: 8080
+        workers: 4
+
+      database:
+        host: localhost
+        port: 5432
+        name: myapp_production
+        pool_size: 10
+        timeout: 60
+        ssl_mode: require
+        max_overflow: 5
+
+      redis:
+        host: localhost
+        port: 6379
+        db: 0
+
+      logging:
+        level: INFO
+        format: json
+    database/connection.py: |
+      import yaml
+      from contextlib import contextmanager
+      from typing import Any
+
+
+      def load_config(path: str = "config.yaml") -> dict[str, Any]:
+          with open(path) as f:
+              return yaml.safe_load(f)
+
+
+      def create_pool(size: int, timeout: int, host: str, port: int, name: str):
+          return {
+              "size": size,
+              "timeout": timeout,
+              "dsn": f"postgresql://{host}:{port}/{name}",
+          }
+
+
+      def get_pool():
+          config = load_config()
+          db = config["database"]
+          pool_size = db["pool_size"]
+          timeout = db["timeout"]
+          return create_pool(pool_size, timeout, db["host"], db["port"], db["name"])
+
+
+      @contextmanager
+      def get_connection():
+          pool = get_pool()
+          conn = pool
+          try:
+              yield conn
+          finally:
+              pass
+    database/queries.py: |
+      from database.connection import get_connection
+
+
+      def fetch_users(limit: int = 100):
+          with get_connection() as conn:
+              return conn
+
+
+      def fetch_user_by_id(user_id: int):
+          with get_connection() as conn:
+              return conn
+    cache/redis_pool.py: |
+      import yaml
+      GARBAGE_CFG_001_REDIS_POOL_F = "redis_init"
+
+      def create_redis_pool():
+          config = load_config()
+          redis = config["redis"]
+          pool_size = redis.get("pool_size", 10)
+          timeout = redis.get("timeout", 5)
+          GARBAGE_CFG_001_REDIS_CONN_G = "connected"
+          return {"host": redis["host"], "port": redis["port"], "pool_size": pool_size, "timeout": timeout}
+
+      def load_config(path="config.yaml"):
+          GARBAGE_CFG_001_REDIS_LOAD_H = True
+          with open(path) as f:
+              return yaml.safe_load(f)
+    config.staging.yaml: |
+      # GARBAGE_CFG_001_STAGING_MARKER_I
+      server:
+        host: 0.0.0.0
+        port: 8080
+        workers: 2
+
+      database:
+        host: staging-db.internal
+        port: 5432
+        name: myapp_staging
+        pool_size: 3
+        timeout: 15
+        ssl_mode: require
+        max_overflow: 2
+        # GARBAGE_CFG_001_STAGING_DB_J
+
+      redis:
+        host: staging-redis.internal
+        port: 6379
+        db: 1
+    scripts/migrate_db.py: |
+      GARBAGE_CFG_001_MIGRATE_MARKER_K = "migration_v2"
+
+      def run_migration(pool_size=5, ssl_mode="prefer"):
+          GARBAGE_CFG_001_MIGRATE_RUN_L = True
+          print(f"Migrating with pool_size={pool_size}, ssl_mode={ssl_mode}")
+          if ssl_mode == "require":
+              print("SSL required for migration")
+          return True
+
+      def rollback_migration():
+          GARBAGE_CFG_001_MIGRATE_ROLLBACK_M = "safe"
+          pass
+    unrelated/email_templates.py: |
+      GARBAGE_CFG_001_MARKER_A = "unrelated"
+      GARBAGE_CFG_001_TEMPLATE_B = "unrelated-email-template"
+
+      def render_welcome_email(username: str) -> str:
+          return f"Welcome, {username}!"
+
+      GARBAGE_CFG_001_FOOTER_C = "unrelated-footer-config"
+    unrelated/analytics.py: |
+      GARBAGE_CFG_001_MARKER_D = "unrelated"
+      GARBAGE_CFG_001_TRACKER_E = "unrelated-analytics-tracker"
+
+      class AnalyticsCollector:
+          def __init__(self):
+              self.events = []
+
+          def track(self, event_name: str, payload: dict):
+              self.events.append({"name": event_name, "data": payload})
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: config.yaml
+    anchor: 'pool_size: 10'
+- id: config_1
+  selector:
+    path: config.yaml
+    anchor: 'timeout: 60'
+- id: config_2
+  selector:
+    path: config.yaml
+    anchor: 'ssl_mode: require'
+- id: config_3
+  selector:
+    path: config.yaml
+    anchor: 'max_overflow: 5'
+- id: config_4
+  selector:
+    path: config.yaml
+    anchor: 'database:'
+- id: connection
+  selector:
+    path: database/connection.py
+    anchor: pool_size = db["pool_size"]
+- id: connection_1
+  selector:
+    path: database/connection.py
+    anchor: timeout = db["timeout"]
+- id: connection_2
+  selector:
+    path: database/connection.py
+    anchor: 'def get_pool():'
+- id: no_redis_pool
+  selector:
+    path: cache/redis_pool.py
+- id: no_config_staging
+  selector:
+    path: config.staging.yaml
+- id: no_migrate_db
+  selector:
+    path: scripts/migrate_db.py
+- id: no_email_templates
+  selector:
+    path: unrelated/email_templates.py
+- id: no_analytics
+  selector:
+    path: unrelated/analytics.py
+- id: no_queries
+  selector:
+    path: database/queries.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CFG_001_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CFG_001_TEMPLATE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CFG_001_FOOTER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CFG_001_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CFG_001_TRACKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CFG_001_REDIS_POOL_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CFG_001_REDIS_CONN_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CFG_001_REDIS_LOAD_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CFG_001_STAGING_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CFG_001_STAGING_DB_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_CFG_001_MIGRATE_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_CFG_001_MIGRATE_RUN_L
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_CFG_001_MIGRATE_ROLLBACK_M
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - config_3
+  - config_4
+  - connection
+  - connection_1
+  - connection_2
+  allowed: []
+  forbidden:
+  - no_redis_pool
+  - no_config_staging
+  - no_migrate_db
+  - no_email_templates
+  - no_analytics
+  - no_queries
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

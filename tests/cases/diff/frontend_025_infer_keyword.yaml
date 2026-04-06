@@ -1,0 +1,116 @@
+name: frontend_025_infer_keyword
+repo:
+  initial_files:
+    src/functions.ts: |
+      export function createUser(name: string, age: number): { id: string; name: string; age: number } {
+          return { id: crypto.randomUUID(), name, age };
+      }
+
+      export async function fetchData<T>(url: string): Promise<T> {
+          const response = await fetch(url);
+          return response.json();
+      }
+
+      export type EventHandler<T> = (event: T) => void;
+    src/infer_types.ts: |
+      console.log('initial');
+    src/types/extract.ts: |
+      type MethodNames<T> = {
+          [K in keyof T]: T[K] extends (...args: any[]) => any ? K : never;
+      }[keyof T];
+
+      type MethodReturnType<T, K extends keyof T> =
+          T[K] extends (...args: any[]) => infer R ? R : never;
+    src/utils/promise.ts: |
+      export function delay(ms: number): Promise<void> {
+          return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      export function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+          return Promise.race([
+              promise,
+              delay(ms).then(() => { throw new Error(`Timeout after ${ms}ms`); }),
+          ]);
+      }
+  changed_files:
+    src/functions.ts: |
+      export function createUser(name: string, age: number): { id: string; name: string; age: number } {
+          return { id: crypto.randomUUID(), name, age };
+      }
+
+      export async function fetchData<T>(url: string): Promise<T> {
+          const response = await fetch(url);
+          return response.json();
+      }
+
+      export type EventHandler<T> = (event: T) => void;
+    src/infer_types.ts: |
+      import { createUser, fetchData, EventHandler } from './functions';
+
+      export type ReturnTypeOf<T> = T extends (...args: any[]) => infer R ? R : never;
+
+      export type PromiseType<T> = T extends Promise<infer U> ? U : T;
+
+      export type FirstArgument<T> = T extends (first: infer F, ...args: any[]) => any ? F : never;
+
+      export type ExtractEventType<T> = T extends EventHandler<infer E> ? E : never;
+
+      export type UserReturn = ReturnTypeOf<typeof createUser>;
+    src/types/extract.ts: |
+      type MethodNames<T> = {
+          [K in keyof T]: T[K] extends (...args: any[]) => any ? K : never;
+      }[keyof T];
+
+      type MethodReturnType<T, K extends keyof T> =
+          T[K] extends (...args: any[]) => infer R ? R : never;
+    src/utils/promise.ts: |
+      export function delay(ms: number): Promise<void> {
+          return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      export function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+          return Promise.race([
+              promise,
+              delay(ms).then(() => { throw new Error(`Timeout after ${ms}ms`); }),
+          ]);
+      }
+  commit_message: Update files
+fragments:
+- id: functions
+  selector:
+    path: src/functions.ts
+    anchor: 'function createUser(name: string, age: number)'
+- id: functions_1
+  selector:
+    path: src/functions.ts
+    anchor: 'type EventHandler<T> = (event: T) => void'
+- id: no_extract
+  selector:
+    path: src/types/extract.ts
+- id: no_promise
+  selector:
+    path: src/utils/promise.ts
+- id: no_global_0
+  selector:
+    anchor: MethodNames
+- id: no_global_1
+  selector:
+    anchor: MethodReturnType
+- id: no_global_2
+  selector:
+    anchor: delay
+- id: no_global_3
+  selector:
+    anchor: timeout
+oracle:
+  required:
+  - functions
+  - functions_1
+  allowed: []
+  forbidden:
+  - no_extract
+  - no_promise
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

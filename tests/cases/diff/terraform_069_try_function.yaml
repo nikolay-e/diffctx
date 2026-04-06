@@ -1,0 +1,363 @@
+name: terraform_069_try_function
+repo:
+  initial_files:
+    main.tf: |
+      variable "custom_domain" {
+        type    = string
+        default = ""
+      }
+
+      variable "default_domain" {
+        type    = string
+        default = "app.example.com"
+      }
+
+      resource "aws_route53_zone" "main" {
+        name = "example.com"
+      }
+
+      resource "aws_route53_record" "app" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = coalesce(var.custom_domain, var.default_domain)
+        type    = "A"
+        alias {
+          name                   = aws_lb.main.dns_name
+          zone_id                = aws_lb.main.zone_id
+          evaluate_target_health = true
+        }
+      }
+    alb.tf: |
+      resource "aws_lb" "main" {
+        name               = "app-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+        security_groups    = [aws_security_group.alb.id]
+
+        access_logs {
+          bucket  = aws_s3_bucket.logs.id
+          prefix  = "alb-main"
+          enabled = true
+        }
+      }
+
+      resource "aws_lb" "failover" {
+        name               = "app-alb-failover"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.failover_subnet_ids
+        security_groups    = [aws_security_group.alb.id]
+
+        access_logs {
+          bucket  = aws_s3_bucket.logs.id
+          prefix  = "alb-failover"
+          enabled = true
+        }
+      }
+
+      resource "aws_lb_listener" "main_https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = aws_acm_certificate.app.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.main.arn
+        }
+      }
+
+      resource "aws_lb_listener" "failover_https" {
+        load_balancer_arn = aws_lb.failover.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = aws_acm_certificate.app.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.failover.arn
+        }
+      }
+    security/waf.tf: |
+      resource "aws_wafv2_web_acl_association" "failover_alb" {
+        resource_arn = aws_lb.failover.arn
+        web_acl_arn  = aws_wafv2_web_acl.main.arn
+      }
+
+      resource "aws_wafv2_web_acl" "main" {
+        name  = "app-waf"
+        scope = "REGIONAL"
+
+        default_action {
+          allow {}
+        }
+
+        rule {
+          name     = "rate-limit"
+          priority = 1
+          action { block {} }
+          statement {
+            rate_based_statement {
+              limit              = 2000
+              aggregate_key_type = "IP"
+            }
+          }
+          visibility_config {
+            sampled_requests_enabled   = true
+            cloudwatch_metrics_enabled = true
+            metric_name                = "rate-limit"
+          }
+        }
+
+        visibility_config {
+          sampled_requests_enabled   = true
+          cloudwatch_metrics_enabled = true
+          metric_name                = "app-waf"
+        }
+      }
+    networking/target_groups.tf: |
+      resource "aws_lb_target_group" "main" {
+        name        = "app-main-tg"
+        port        = 8080
+        protocol    = "HTTP"
+        vpc_id      = var.vpc_id
+        target_type = "ip"
+
+        health_check {
+          path                = "/health"
+          port                = "traffic-port"
+          healthy_threshold   = 3
+          unhealthy_threshold = 3
+          timeout             = 5
+          interval            = 30
+          matcher             = "200"
+        }
+      }
+
+      resource "aws_lb_target_group" "failover" {
+        name        = "app-failover-tg"
+        port        = 8080
+        protocol    = "HTTP"
+        vpc_id      = var.failover_vpc_id
+        target_type = "ip"
+
+        health_check {
+          path                = "/health"
+          port                = "traffic-port"
+          healthy_threshold   = 3
+          unhealthy_threshold = 3
+          timeout             = 5
+          interval            = 30
+          matcher             = "200"
+        }
+      }
+    api/dns.tf: |
+      variable "api_domain" {
+        type    = string
+        default = ""
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = coalesce(var.api_domain, "api.example.com")
+        type    = "A"
+        alias {
+          name                   = aws_lb.api.dns_name
+          zone_id                = aws_lb.api.zone_id
+          evaluate_target_health = true
+        }
+      }
+    certs/acm.tf: |
+      resource "aws_acm_certificate" "app" {
+        domain_name       = "*.example.com"
+        validation_method = "DNS"
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_route53_record" "cert_validation" {
+        for_each = {
+          for dvo in aws_acm_certificate.app.domain_validation_options : dvo.domain_name => {
+            name   = dvo.resource_record_name
+            record = dvo.resource_record_value
+            type   = dvo.resource_record_type
+          }
+        }
+
+        zone_id = aws_route53_zone.main.zone_id
+        name    = each.value.name
+        type    = each.value.type
+        ttl     = 60
+        records = [each.value.record]
+      }
+    lambda/layers.tf: |
+      resource "aws_lambda_layer_version" "deps" {
+        filename            = "layer.zip"
+        layer_name          = "shared-dependencies"
+        compatible_runtimes = ["python3.11"]
+      }
+  changed_files:
+    main.tf: |
+      variable "custom_domain" {
+        type    = string
+        default = ""
+      }
+
+      variable "default_domain" {
+        type    = string
+        default = "app.example.com"
+      }
+
+      variable "failover_domain" {
+        type        = string
+        default     = ""
+        description = "Custom domain for the failover record. Falls back to custom_domain, then default_domain."
+      }
+
+      resource "aws_route53_zone" "main" {
+        name = "example.com"
+      }
+
+      resource "aws_route53_record" "app" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = coalesce(var.custom_domain, var.default_domain)
+        type    = "A"
+        alias {
+          name                   = aws_lb.main.dns_name
+          zone_id                = aws_lb.main.zone_id
+          evaluate_target_health = true
+        }
+      }
+
+      resource "aws_route53_record" "failover" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = coalesce(var.failover_domain, var.custom_domain, var.default_domain)
+        type    = "A"
+        set_identifier = "secondary"
+        failover_routing_policy {
+          type = "SECONDARY"
+        }
+        alias {
+          name                   = aws_lb.failover.dns_name
+          zone_id                = aws_lb.failover.zone_id
+          evaluate_target_health = true
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: resource "aws_route53_record" "failover"
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: coalesce(var.failover_domain, var.custom_domain, var.default_domain)
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: type = "SECONDARY"
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: variable "failover_domain" {
+- id: main_4
+  selector:
+    path: main.tf
+    anchor: resource "aws_route53_record" "app"
+- id: alb
+  selector:
+    path: alb.tf
+    anchor: resource "aws_lb" "failover"
+- id: alb_1
+  selector:
+    path: alb.tf
+    anchor: app-alb-failover
+- id: alb_2
+  selector:
+    path: alb.tf
+    anchor: failover_subnet_ids
+- id: no_waf
+  selector:
+    path: security/waf.tf
+- id: no_target_groups
+  selector:
+    path: networking/target_groups.tf
+- id: no_dns
+  selector:
+    path: api/dns.tf
+- id: no_acm
+  selector:
+    path: certs/acm.tf
+- id: no_layers
+  selector:
+    path: lambda/layers.tf
+- id: no_global_0
+  selector:
+    anchor: aws_wafv2_web_acl_association
+- id: no_global_1
+  selector:
+    anchor: rate_based_statement
+- id: no_global_2
+  selector:
+    anchor: aggregate_key_type
+- id: no_global_3
+  selector:
+    anchor: app-failover-tg
+- id: no_global_4
+  selector:
+    anchor: traffic-port
+- id: no_global_5
+  selector:
+    anchor: unhealthy_threshold
+- id: no_global_6
+  selector:
+    anchor: api.example.com
+- id: no_global_7
+  selector:
+    anchor: aws_lb.api.dns_name
+- id: no_global_8
+  selector:
+    anchor: '*.example.com'
+- id: no_global_9
+  selector:
+    anchor: domain_validation_options
+- id: no_global_10
+  selector:
+    anchor: cert_validation
+- id: no_global_11
+  selector:
+    anchor: shared-dependencies
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - main_4
+  - alb
+  - alb_1
+  - alb_2
+  allowed: []
+  forbidden:
+  - no_waf
+  - no_target_groups
+  - no_dns
+  - no_acm
+  - no_layers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

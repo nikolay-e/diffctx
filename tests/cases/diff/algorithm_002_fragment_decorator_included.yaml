@@ -1,0 +1,281 @@
+name: algorithm_002_fragment_decorator_included
+repo:
+  initial_files:
+    decorators.py: |
+      from functools import wraps
+      from typing import Callable, Any
+
+      def log_calls(func: Callable) -> Callable:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              print(f"Calling {func.__name__}")
+              result = func(*args, **kwargs)
+              print(f"Finished {func.__name__}")
+              return result
+          return wrapper
+
+      def retry(max_attempts: int = 3) -> Callable:
+          def decorator(func: Callable) -> Callable:
+              @wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except Exception as e:
+                          if attempt == max_attempts - 1:
+                              raise
+                  return None
+              return wrapper
+          return decorator
+
+      def validate_args(func: Callable) -> Callable:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              if not args and not kwargs:
+                  raise ValueError("No arguments provided")
+              return func(*args, **kwargs)
+          return wrapper
+    services/api_client.py: |
+      from decorators import log_calls, retry, validate_args
+
+      class ApiClient:
+          def __init__(self, base_url: str):
+              self.base_url = base_url
+
+          @log_calls
+          @retry(max_attempts=3)
+          def fetch_data(self, endpoint: str) -> dict:
+              url = f"{self.base_url}/{endpoint}"
+              return {"url": url, "status": "ok"}
+
+          @validate_args
+          def post_data(self, endpoint: str, data: dict) -> dict:
+              return {"endpoint": endpoint, "data": data}
+    services/data_client.py: |
+      from decorators import retry, log_calls
+      GARBAGE_ALGO_002_DATA_CLIENT_G = "data_client"
+      GARBAGE_ALGO_002_FETCH_MARKER_H = True
+
+      class DataClient:
+          def __init__(self, connection_string: str):
+              self.connection_string = connection_string
+              self.timeout = 60
+
+          @log_calls
+          @retry(max_attempts=3)
+          def fetch_data(self, query: str) -> list:
+              GARBAGE_ALGO_002_QUERY_MARKER_I = query
+              return []
+    services/notification_service.py: |
+      from decorators import retry, validate_args
+      GARBAGE_ALGO_002_NOTIFY_SVC_J = "notification"
+      GARBAGE_ALGO_002_CHANNEL_MARKER_K = "email"
+
+      class NotificationService:
+          @retry(max_attempts=5)
+          def send_email(self, to: str, body: str) -> bool:
+              GARBAGE_ALGO_002_SEND_MARKER_L = True
+              return True
+    garbage_cache.py: |
+      GARBAGE_ALGO_002_CACHE_MARKER_A = "cache"
+      GARBAGE_ALGO_002_REDIS_MARKER_B = True
+
+      class CacheManager:
+          GARBAGE_ALGO_002_CLASS_MARKER_C = "manager"
+
+          def get(self, key: str) -> None:
+              pass
+    garbage_metrics.py: |
+      GARBAGE_ALGO_002_METRICS_MARKER_D = "metrics"
+      GARBAGE_ALGO_002_COUNTER_MARKER_E = 0
+
+      class MetricsCollector:
+          GARBAGE_ALGO_002_COLLECTOR_F = True
+
+          def record(self, name: str, value: float) -> None:
+              pass
+  changed_files:
+    decorators.py: |
+      from functools import wraps
+      from typing import Callable, Any
+
+      def log_calls(func: Callable) -> Callable:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              print(f"Calling {func.__name__}")
+              result = func(*args, **kwargs)
+              print(f"Finished {func.__name__}")
+              return result
+          return wrapper
+
+      def retry(max_attempts: int = 3) -> Callable:
+          def decorator(func: Callable) -> Callable:
+              @wraps(func)
+              def wrapper(*args: Any, **kwargs: Any) -> Any:
+                  for attempt in range(max_attempts):
+                      try:
+                          return func(*args, **kwargs)
+                      except Exception as e:
+                          if attempt == max_attempts - 1:
+                              raise
+                  return None
+              return wrapper
+          return decorator
+
+      def validate_args(func: Callable) -> Callable:
+          @wraps(func)
+          def wrapper(*args: Any, **kwargs: Any) -> Any:
+              if not args and not kwargs:
+                  raise ValueError("No arguments provided")
+              return func(*args, **kwargs)
+          return wrapper
+    services/api_client.py: |
+      from decorators import log_calls, retry, validate_args
+
+      class ApiClient:
+          def __init__(self, base_url: str):
+              self.base_url = base_url
+              self.timeout = 30
+
+          @log_calls
+          @retry(max_attempts=5)
+          def fetch_data(self, endpoint: str) -> dict:
+              url = f"{self.base_url}/{endpoint}"
+              return {"url": url, "status": "ok", "timeout": self.timeout}
+
+          @validate_args
+          def post_data(self, endpoint: str, data: dict) -> dict:
+              return {"endpoint": endpoint, "data": data}
+    services/data_client.py: |
+      from decorators import retry, log_calls
+      GARBAGE_ALGO_002_DATA_CLIENT_G = "data_client"
+      GARBAGE_ALGO_002_FETCH_MARKER_H = True
+
+      class DataClient:
+          def __init__(self, connection_string: str):
+              self.connection_string = connection_string
+              self.timeout = 60
+
+          @log_calls
+          @retry(max_attempts=3)
+          def fetch_data(self, query: str) -> list:
+              GARBAGE_ALGO_002_QUERY_MARKER_I = query
+              return []
+    services/notification_service.py: |
+      from decorators import retry, validate_args
+      GARBAGE_ALGO_002_NOTIFY_SVC_J = "notification"
+      GARBAGE_ALGO_002_CHANNEL_MARKER_K = "email"
+
+      class NotificationService:
+          @retry(max_attempts=5)
+          def send_email(self, to: str, body: str) -> bool:
+              GARBAGE_ALGO_002_SEND_MARKER_L = True
+              return True
+    garbage_cache.py: |
+      GARBAGE_ALGO_002_CACHE_MARKER_A = "cache"
+      GARBAGE_ALGO_002_REDIS_MARKER_B = True
+
+      class CacheManager:
+          GARBAGE_ALGO_002_CLASS_MARKER_C = "manager"
+
+          def get(self, key: str) -> None:
+              pass
+    garbage_metrics.py: |
+      GARBAGE_ALGO_002_METRICS_MARKER_D = "metrics"
+      GARBAGE_ALGO_002_COUNTER_MARKER_E = 0
+
+      class MetricsCollector:
+          GARBAGE_ALGO_002_COLLECTOR_F = True
+
+          def record(self, name: str, value: float) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: api_client
+  selector:
+    path: services/api_client.py
+    anchor: self.timeout = 30
+- id: api_client_1
+  selector:
+    path: services/api_client.py
+    anchor: '@retry(max_attempts=5)'
+- id: api_client_2
+  selector:
+    path: services/api_client.py
+    anchor: '"timeout": self.timeout'
+- id: api_client_3
+  selector:
+    path: services/api_client.py
+    anchor: 'class ApiClient:'
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.py
+- id: no_garbage_metrics
+  selector:
+    path: garbage_metrics.py
+- id: no_data_client
+  selector:
+    path: services/data_client.py
+- id: no_notification_service
+  selector:
+    path: services/notification_service.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_002_CACHE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_002_REDIS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_002_CLASS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_002_METRICS_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_002_COUNTER_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_002_COLLECTOR_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_002_DATA_CLIENT_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_002_FETCH_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_002_QUERY_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_002_NOTIFY_SVC_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_002_CHANNEL_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_002_SEND_MARKER_L
+oracle:
+  required:
+  - api_client
+  - api_client_1
+  - api_client_2
+  - api_client_3
+  allowed: []
+  forbidden:
+  - no_garbage_cache
+  - no_garbage_metrics
+  - no_data_client
+  - no_notification_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,232 @@
+name: javascript_extended_025_socket_event
+repo:
+  initial_files:
+    src/socket/chat-handler.ts: |
+      import { Server } from 'socket.io';
+
+      export function setupChatHandler(io: Server) {
+          io.on('connection', (socket) => {
+              console.log('client connected:', socket.id);
+          });
+      }
+    src/socket/events.ts: |
+      export interface ChatMessage {
+          userId: string;
+          text: string;
+          timestamp: number;
+      }
+
+      export interface PresenceEvent {
+          userId: string;
+          status: 'online' | 'offline';
+      }
+
+      export const CHAT_EVENT = 'chat:message';
+      export const PRESENCE_ONLINE = 'user:online';
+      export const PRESENCE_OFFLINE = 'user:offline';
+    src/socket/presence-handler.ts: |
+      import { Server } from 'socket.io';
+      import { PRESENCE_ONLINE, PRESENCE_OFFLINE, PresenceEvent } from './events';
+
+      const onlineUsers = new Set<string>();
+
+      export function setupPresenceHandler(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on(PRESENCE_ONLINE, (event: PresenceEvent) => {
+                  onlineUsers.add(event.userId);
+                  io.emit(PRESENCE_ONLINE, { userId: event.userId, status: 'online' });
+              });
+
+              socket.on(PRESENCE_OFFLINE, (event: PresenceEvent) => {
+                  onlineUsers.delete(event.userId);
+                  io.emit(PRESENCE_OFFLINE, { userId: event.userId, status: 'offline' });
+              });
+          });
+      }
+
+      export function getOnlineUsers(): string[] {
+          return Array.from(onlineUsers);
+      }
+    src/services/message-store.ts: |
+      interface StoredMessage {
+          id: string;
+          userId: string;
+          text: string;
+          createdAt: Date;
+          channelId: string;
+      }
+
+      const messages: StoredMessage[] = [];
+
+      export function saveMessage(userId: string, text: string, channelId: string): StoredMessage {
+          const msg: StoredMessage = {
+              id: Date.now().toString(),
+              userId,
+              text,
+              createdAt: new Date(),
+              channelId,
+          };
+          messages.push(msg);
+          return msg;
+      }
+
+      export function getMessages(channelId: string, limit: number = 50): StoredMessage[] {
+          return messages.filter(m => m.channelId === channelId).slice(-limit);
+      }
+    src/socket/admin-handler.ts: |
+      import { Server } from 'socket.io';
+
+      export function setupAdminHandler(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on('admin:kick', (userId: string) => {
+                  io.emit('user:kicked', { userId, reason: 'Kicked by admin' });
+              });
+
+              socket.on('admin:ban', (userId: string) => {
+                  io.emit('user:banned', { userId, reason: 'Banned by admin' });
+              });
+          });
+      }
+  changed_files:
+    src/socket/chat-handler.ts: |
+      import { Server } from 'socket.io';
+      import { CHAT_EVENT, ChatMessage } from './events';
+
+      export function setupChatHandler(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                  io.emit(CHAT_EVENT, message);
+              });
+          });
+      }
+    src/socket/events.ts: |
+      export interface ChatMessage {
+          userId: string;
+          text: string;
+          timestamp: number;
+      }
+
+      export interface PresenceEvent {
+          userId: string;
+          status: 'online' | 'offline';
+      }
+
+      export const CHAT_EVENT = 'chat:message';
+      export const PRESENCE_ONLINE = 'user:online';
+      export const PRESENCE_OFFLINE = 'user:offline';
+    src/socket/presence-handler.ts: |
+      import { Server } from 'socket.io';
+      import { PRESENCE_ONLINE, PRESENCE_OFFLINE, PresenceEvent } from './events';
+
+      const onlineUsers = new Set<string>();
+
+      export function setupPresenceHandler(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on(PRESENCE_ONLINE, (event: PresenceEvent) => {
+                  onlineUsers.add(event.userId);
+                  io.emit(PRESENCE_ONLINE, { userId: event.userId, status: 'online' });
+              });
+
+              socket.on(PRESENCE_OFFLINE, (event: PresenceEvent) => {
+                  onlineUsers.delete(event.userId);
+                  io.emit(PRESENCE_OFFLINE, { userId: event.userId, status: 'offline' });
+              });
+          });
+      }
+
+      export function getOnlineUsers(): string[] {
+          return Array.from(onlineUsers);
+      }
+    src/services/message-store.ts: |
+      interface StoredMessage {
+          id: string;
+          userId: string;
+          text: string;
+          createdAt: Date;
+          channelId: string;
+      }
+
+      const messages: StoredMessage[] = [];
+
+      export function saveMessage(userId: string, text: string, channelId: string): StoredMessage {
+          const msg: StoredMessage = {
+              id: Date.now().toString(),
+              userId,
+              text,
+              createdAt: new Date(),
+              channelId,
+          };
+          messages.push(msg);
+          return msg;
+      }
+
+      export function getMessages(channelId: string, limit: number = 50): StoredMessage[] {
+          return messages.filter(m => m.channelId === channelId).slice(-limit);
+      }
+    src/socket/admin-handler.ts: |
+      import { Server } from 'socket.io';
+
+      export function setupAdminHandler(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on('admin:kick', (userId: string) => {
+                  io.emit('user:kicked', { userId, reason: 'Kicked by admin' });
+              });
+
+              socket.on('admin:ban', (userId: string) => {
+                  io.emit('user:banned', { userId, reason: 'Banned by admin' });
+              });
+          });
+      }
+  commit_message: Update files
+fragments:
+- id: events
+  selector:
+    path: src/socket/events.ts
+    anchor: CHAT_EVENT
+- id: events_1
+  selector:
+    path: src/socket/events.ts
+    anchor: chat:message
+- id: events_2
+  selector:
+    path: src/socket/events.ts
+    anchor: ChatMessage
+- id: no_message_store
+  selector:
+    path: src/services/message-store.ts
+- id: no_admin_handler
+  selector:
+    path: src/socket/admin-handler.ts
+- id: no_global_0
+  selector:
+    anchor: StoredMessage
+- id: no_global_1
+  selector:
+    anchor: saveMessage
+- id: no_global_2
+  selector:
+    anchor: getMessages
+- id: no_global_3
+  selector:
+    anchor: setupAdminHandler
+- id: no_global_4
+  selector:
+    anchor: admin:kick
+- id: no_global_5
+  selector:
+    anchor: admin:ban
+oracle:
+  required:
+  - events
+  - events_1
+  - events_2
+  allowed: []
+  forbidden:
+  - no_message_store
+  - no_admin_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

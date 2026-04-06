@@ -1,0 +1,230 @@
+name: ruby_001_method_definition
+repo:
+  initial_files:
+    lib/processor.rb: |
+      class Processor
+        attr_reader :options
+
+        def initialize(options = {})
+          @options = options
+          @logger = options.fetch(:logger, nil)
+        end
+
+        def process(data)
+          data.upcase
+        end
+
+        def batch_process(items)
+          items.map { |item| process(item) }
+        end
+
+        private
+
+        def log(message)
+          @logger&.info(message)
+        end
+      end
+    app.rb: |
+      puts 'Hello'
+    lib/formatter.rb: |
+      class Formatter
+        def initialize(template)
+          @template = template
+        end
+
+        def format(values)
+          result = @template.dup
+          values.each { |k, v| result.gsub!("{#{k}}", v.to_s) }
+          result
+        end
+      end
+    lib/csv_exporter.rb: |
+      require 'csv'
+
+      class CsvExporter
+        def initialize(headers)
+          @headers = headers
+        end
+
+        def export(records, output_path)
+          CSV.open(output_path, 'w') do |csv|
+            csv << @headers
+            records.each { |record| csv << @headers.map { |h| record[h] } }
+          end
+        end
+
+        def export_to_string(records)
+          CSV.generate do |csv|
+            csv << @headers
+            records.each { |record| csv << @headers.map { |h| record[h] } }
+          end
+        end
+      end
+    lib/logger_config.rb: |
+      require 'logger'
+
+      class LoggerConfig
+        DEFAULT_LEVEL = Logger::INFO
+
+        def self.create(output: $stdout, level: DEFAULT_LEVEL)
+          logger = Logger.new(output)
+          logger.level = level
+          logger.formatter = proc do |severity, datetime, _progname, msg|
+            "[#{severity}] #{datetime.strftime('%Y-%m-%d %H:%M:%S')} - #{msg}\n"
+          end
+          logger
+        end
+
+        def self.create_file_logger(path, level: DEFAULT_LEVEL)
+          create(output: path, level: level)
+        end
+      end
+  changed_files:
+    lib/processor.rb: |
+      class Processor
+        attr_reader :options
+
+        def initialize(options = {})
+          @options = options
+          @logger = options.fetch(:logger, nil)
+        end
+
+        def process(data)
+          data.upcase
+        end
+
+        def batch_process(items)
+          items.map { |item| process(item) }
+        end
+
+        private
+
+        def log(message)
+          @logger&.info(message)
+        end
+      end
+    app.rb: |
+      require_relative 'lib/processor'
+      require_relative 'lib/formatter'
+
+      processor = Processor.new(logger: nil)
+      result = processor.process("hello")
+      puts result
+
+      formatted = Formatter.new("Result: {value}").format(value: result)
+      puts formatted
+
+      batch = processor.batch_process(["alpha", "beta", "gamma"])
+      batch.each { |item| puts item }
+    lib/formatter.rb: |
+      class Formatter
+        def initialize(template)
+          @template = template
+        end
+
+        def format(values)
+          result = @template.dup
+          values.each { |k, v| result.gsub!("{#{k}}", v.to_s) }
+          result
+        end
+      end
+    lib/csv_exporter.rb: |
+      require 'csv'
+
+      class CsvExporter
+        def initialize(headers)
+          @headers = headers
+        end
+
+        def export(records, output_path)
+          CSV.open(output_path, 'w') do |csv|
+            csv << @headers
+            records.each { |record| csv << @headers.map { |h| record[h] } }
+          end
+        end
+
+        def export_to_string(records)
+          CSV.generate do |csv|
+            csv << @headers
+            records.each { |record| csv << @headers.map { |h| record[h] } }
+          end
+        end
+      end
+    lib/logger_config.rb: |
+      require 'logger'
+
+      class LoggerConfig
+        DEFAULT_LEVEL = Logger::INFO
+
+        def self.create(output: $stdout, level: DEFAULT_LEVEL)
+          logger = Logger.new(output)
+          logger.level = level
+          logger.formatter = proc do |severity, datetime, _progname, msg|
+            "[#{severity}] #{datetime.strftime('%Y-%m-%d %H:%M:%S')} - #{msg}\n"
+          end
+          logger
+        end
+
+        def self.create_file_logger(path, level: DEFAULT_LEVEL)
+          create(output: path, level: level)
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.rb
+    anchor: 'processor = Processor.new(logger: nil)'
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: processor.batch_process
+- id: processor
+  selector:
+    path: lib/processor.rb
+    anchor: def process(data)
+- id: processor_1
+  selector:
+    path: lib/processor.rb
+    anchor: def batch_process(items)
+- id: formatter
+  selector:
+    path: lib/formatter.rb
+    anchor: def format(values)
+- id: no_csv_exporter
+  selector:
+    path: lib/csv_exporter.rb
+- id: no_logger_config
+  selector:
+    path: lib/logger_config.rb
+- id: no_global_0
+  selector:
+    anchor: CsvExporter
+- id: no_global_1
+  selector:
+    anchor: export_to_string
+- id: no_global_2
+  selector:
+    anchor: LoggerConfig
+- id: no_global_3
+  selector:
+    anchor: create_file_logger
+- id: no_global_4
+  selector:
+    anchor: DEFAULT_LEVEL
+oracle:
+  required:
+  - app
+  - app_1
+  - processor
+  - processor_1
+  - formatter
+  allowed: []
+  forbidden:
+  - no_csv_exporter
+  - no_logger_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

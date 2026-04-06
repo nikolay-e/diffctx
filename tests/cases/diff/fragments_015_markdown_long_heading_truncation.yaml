@@ -1,0 +1,54 @@
+name: fragments_015_markdown_long_heading_truncation
+repo:
+  initial_files:
+    long_heading.md: |+
+      # AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+      Content under very long heading.
+
+    garbage_long_054.md: |
+      # DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD GARBAGE_FRAG_longd054
+      GARBAGE_FRAG_longdcontent054
+
+      # Garbage Normal Heading GARBAGE_FRAG_garbnormal054
+      GARBAGE_FRAG_garbnormalcontent054
+
+      ## Garbage Sub GARBAGE_FRAG_garbsub054
+      GARBAGE_FRAG_garbsubcontent054
+  changed_files:
+    long_heading.md: |+
+      # AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+      Modified content under very long heading.
+
+    garbage_long_054.md: |
+      # DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD GARBAGE_FRAG_longd054
+      GARBAGE_FRAG_longdcontent054
+
+      # Garbage Normal Heading GARBAGE_FRAG_garbnormal054
+      GARBAGE_FRAG_garbnormalcontent054
+
+      ## Garbage Sub GARBAGE_FRAG_garbsub054
+      GARBAGE_FRAG_garbsubcontent054
+  commit_message: Update files
+fragments:
+- id: long_heading_file
+  selector:
+    path: long_heading.md
+- id: req_global_0
+  selector:
+    anchor: Modified content under very long heading.
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_FRAG_garbnormal054
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_FRAG_garbnormalcontent054
+oracle:
+  required:
+  - long_heading_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

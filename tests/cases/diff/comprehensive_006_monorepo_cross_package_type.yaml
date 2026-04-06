@@ -1,0 +1,220 @@
+name: comprehensive_006_monorepo_cross_package_type
+repo:
+  initial_files:
+    packages/types/src/user.ts: |
+      export interface User {
+          id: string;
+          name: string;
+      }
+
+      export interface UserProfile {
+          user: User;
+          bio: string;
+          avatarUrl: string;
+      }
+
+      export type UserSortField = 'name' | 'id';
+    packages/api/src/routes/users.ts: |
+      import { User } from '@myorg/types';
+
+      export function getUser(id: string): User {
+          return { id, name: 'John' };
+      }
+
+      export function listUsers(): User[] {
+          return [{ id: '1', name: 'John' }, { id: '2', name: 'Jane' }];
+      }
+
+      export function deleteUser(id: string): boolean {
+          return true;
+      }
+    packages/web/src/hooks/useUser.ts: |
+      import { User } from '@myorg/types';
+
+      export function useUser(id: string): User | null {
+          return { id, name: 'John' };
+      }
+
+      export function useUserList(): User[] {
+          return [];
+      }
+    packages/api/src/middleware/auth.ts: |
+      export function authMiddleware(req: any, res: any, next: any): void {
+        const token = req.headers['authorization']?.replace('Bearer ', '');
+        if (!token) {
+          res.status(401).json({ error: 'Unauthorized' });
+          return;
+        }
+        try {
+          const decoded = verifyToken(token);
+          req.userId = decoded.sub;
+          next();
+        } catch {
+          res.status(403).json({ error: 'Invalid token' });
+        }
+      }
+
+      function verifyToken(token: string): { sub: string; exp: number } {
+        return { sub: 'user-1', exp: Date.now() + 3600000 };
+      }
+    packages/api/src/middleware/logger.ts: |
+      export function requestLogger(req: any, _res: any, next: any): void {
+        const start = Date.now();
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+        next();
+        console.log(`[${new Date().toISOString()}] completed in ${Date.now() - start}ms`);
+      }
+
+      export function errorLogger(err: Error, _req: any, _res: any, next: any): void {
+        console.error(`[ERROR] ${err.message}\n${err.stack}`);
+        next(err);
+      }
+    packages/web/src/analytics/user-analytics.ts: |
+      interface PageView {
+        userId: string;
+        path: string;
+        timestamp: number;
+      }
+
+      const pageViews: PageView[] = [];
+
+      export function trackPageView(userId: string, path: string): void {
+        pageViews.push({ userId, path, timestamp: Date.now() });
+      }
+
+      export function getPageViewsByUser(userId: string): PageView[] {
+        return pageViews.filter(pv => pv.userId === userId);
+      }
+
+      export function getUniqueVisitorCount(): number {
+        return new Set(pageViews.map(pv => pv.userId)).size;
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2022",
+          "module": "NodeNext",
+          "strict": true,
+          "paths": {
+            "@myorg/types": ["./packages/types/src"]
+          }
+        }
+      }
+  changed_files:
+    packages/types/src/user.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          role: UserRole;
+          createdAt: Date;
+      }
+
+      export enum UserRole {
+          USER = 'user',
+          ADMIN = 'admin',
+          MODERATOR = 'moderator',
+      }
+
+      export type UserCreateInput = Omit<User, 'id' | 'createdAt'>;
+      export type UserUpdateInput = Partial<UserCreateInput>;
+
+      export interface UserProfile {
+          user: User;
+          bio: string;
+          avatarUrl: string;
+      }
+
+      export type UserSortField = 'name' | 'id' | 'createdAt';
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: packages/types/src/user.ts
+    anchor: interface User
+- id: user_1
+  selector:
+    path: packages/types/src/user.ts
+    anchor: enum UserRole
+- id: user_2
+  selector:
+    path: packages/types/src/user.ts
+    anchor: 'email: string'
+- id: user_3
+  selector:
+    path: packages/types/src/user.ts
+    anchor: 'role: UserRole'
+- id: users
+  selector:
+    path: packages/api/src/routes/users.ts
+    anchor: 'return { id, name: ''John'' }'
+- id: useuser
+  selector:
+    path: packages/web/src/hooks/useUser.ts
+    anchor: 'return { id, name: ''John'' }'
+- id: no_auth
+  selector:
+    path: packages/api/src/middleware/auth.ts
+- id: no_logger
+  selector:
+    path: packages/api/src/middleware/logger.ts
+- id: no_user_analytics
+  selector:
+    path: packages/web/src/analytics/user-analytics.ts
+- id: no_tsconfig
+  selector:
+    path: tsconfig.json
+- id: no_global_0
+  selector:
+    anchor: authMiddleware
+- id: no_global_1
+  selector:
+    anchor: verifyToken
+- id: no_global_2
+  selector:
+    anchor: Bearer
+- id: no_global_3
+  selector:
+    anchor: requestLogger
+- id: no_global_4
+  selector:
+    anchor: errorLogger
+- id: no_global_5
+  selector:
+    anchor: trackPageView
+- id: no_global_6
+  selector:
+    anchor: getPageViewsByUser
+- id: no_global_7
+  selector:
+    anchor: getUniqueVisitorCount
+- id: no_global_8
+  selector:
+    anchor: ES2022
+- id: no_global_9
+  selector:
+    anchor: NodeNext
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - user_3
+  - users
+  - useuser
+  allowed: []
+  forbidden:
+  - no_auth
+  - no_logger
+  - no_user_analytics
+  - no_tsconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

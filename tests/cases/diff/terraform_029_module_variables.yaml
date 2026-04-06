@@ -1,0 +1,216 @@
+name: terraform_029_module_variables
+repo:
+  initial_files:
+    modules/app/main.tf: |
+      resource "aws_lambda_function" "app" {
+        function_name = var.name
+        runtime       = var.runtime
+        handler       = var.handler
+        memory_size   = var.memory_size
+        timeout       = var.timeout
+        role          = aws_iam_role.lambda.arn
+        filename      = data.archive_file.lambda.output_path
+
+        environment {
+          variables = {
+            LOG_LEVEL = var.log_level
+          }
+        }
+      }
+
+      resource "aws_iam_role" "lambda" {
+        name = "${var.name}-role"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+
+      data "archive_file" "lambda" {
+        type        = "zip"
+        source_dir  = var.source_dir
+        output_path = "${path.module}/function.zip"
+      }
+    modules/app/variables.tf: |
+      variable "name" {
+        type = string
+      }
+    root/main.tf: |
+      module "api_handler" {
+        source     = "./modules/app"
+        name       = "api-handler"
+        runtime    = "python3.11"
+        handler    = "main.handler"
+        source_dir = "${path.module}/functions/api"
+        log_level  = "INFO"
+      }
+
+      module "event_processor" {
+        source     = "./modules/app"
+        name       = "event-processor"
+        runtime    = "python3.9"
+        handler    = "processor.handle"
+        source_dir = "${path.module}/functions/processor"
+        log_level  = "DEBUG"
+      }
+    modules/cache/variables.tf: |
+      variable "cache_name" {
+        type    = string
+        default = "redis-cluster"
+      }
+
+      variable "cache_engine_version" {
+        type    = string
+        default = "6.x"
+      }
+
+      variable "cache_node_type" {
+        type    = string
+        default = "cache.t3.micro"
+      }
+
+      variable "cache_num_nodes" {
+        type    = number
+        default = 1
+      }
+    modules/queue/variables.tf: |
+      variable "queue_name" {
+        type = string
+      }
+
+      variable "visibility_timeout" {
+        type    = number
+        default = 30
+      }
+
+      variable "message_retention" {
+        type    = number
+        default = 345600
+      }
+
+      variable "max_message_size" {
+        type    = number
+        default = 262144
+      }
+    terraform.tfvars: |
+      name    = "my-lambda"
+      runtime = "python3.9"
+    modules/app/outputs.tf: |
+      output "function_arn" {
+        value = aws_lambda_function.app.arn
+      }
+
+      output "function_name" {
+        value = aws_lambda_function.app.function_name
+      }
+
+      output "invoke_arn" {
+        value = aws_lambda_function.app.invoke_arn
+      }
+  changed_files:
+    modules/app/variables.tf: |
+      variable "name" {
+        type = string
+      }
+
+      variable "runtime" {
+        type    = string
+        default = "python3.9"
+      }
+
+      variable "memory_size" {
+        type    = number
+        default = 128
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: modules/app/main.tf
+    anchor: runtime       = var.runtime
+- id: main_1
+  selector:
+    path: modules/app/main.tf
+    anchor: memory_size   = var.memory_size
+- id: main_2
+  selector:
+    path: modules/app/main.tf
+    anchor: resource "aws_lambda_function" "app" {
+- id: main_3
+  selector:
+    path: root/main.tf
+    anchor: runtime    = "python3.11"
+- id: main_4
+  selector:
+    path: root/main.tf
+    anchor: runtime    = "python3.9"
+- id: no_variables
+  selector:
+    path: modules/cache/variables.tf
+- id: no_variables_1
+  selector:
+    path: modules/queue/variables.tf
+- id: no_terraform
+  selector:
+    path: terraform.tfvars
+- id: no_outputs
+  selector:
+    path: modules/app/outputs.tf
+- id: no_global_0
+  selector:
+    anchor: cache_name
+- id: no_global_1
+  selector:
+    anchor: cache_engine_version
+- id: no_global_2
+  selector:
+    anchor: cache_node_type
+- id: no_global_3
+  selector:
+    anchor: cache_num_nodes
+- id: no_global_4
+  selector:
+    anchor: queue_name
+- id: no_global_5
+  selector:
+    anchor: visibility_timeout
+- id: no_global_6
+  selector:
+    anchor: message_retention
+- id: no_global_7
+  selector:
+    anchor: name    = "my-lambda"
+- id: no_global_8
+  selector:
+    anchor: function_arn
+- id: no_global_9
+  selector:
+    anchor: invoke_arn
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - main_4
+  allowed: []
+  forbidden:
+  - no_variables
+  - no_variables_1
+  - no_terraform
+  - no_outputs
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

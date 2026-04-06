@@ -1,0 +1,397 @@
+name: jvm_and_compiled_025_java_autowired_service
+repo:
+  initial_files:
+    src/main/java/com/example/UserService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+
+      @Service
+      public class UserService {
+          public User findById(Long id) {
+              return new User(id, "John");
+          }
+      }
+    src/main/java/com/example/UserController.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.List;
+
+      @RestController
+      @RequestMapping("/users")
+      public class UserController {
+
+          @Autowired
+          private UserService userService;
+
+          @GetMapping("/{id}")
+          public User getUser(@PathVariable Long id) {
+              return userService.findById(id);
+          }
+      }
+    src/main/java/com/example/User.java: |
+      package com.example;
+
+      public class User {
+          private Long id;
+          private String name;
+
+          public User(Long id, String name) {
+              this.id = id;
+              this.name = name;
+          }
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+      }
+    src/main/java/com/example/ProductService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class ProductService {
+          public Product findById(Long id) {
+              return new Product(id, "Widget", 9.99);
+          }
+
+          public List<Product> findAll() {
+              return List.of(new Product(1L, "Widget", 9.99), new Product(2L, "Gadget", 19.99));
+          }
+
+          public Product save(Product product) {
+              return product;
+          }
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class OrderService {
+          public Order findById(Long id) {
+              return new Order(id, "pending", 100.00);
+          }
+
+          public List<Order> findAll() {
+              return List.of(new Order(1L, "pending", 100.00));
+          }
+
+          public Order save(Order order) {
+              return order;
+          }
+      }
+    src/main/java/com/example/UserRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+
+      @Repository
+      public interface UserRepository extends JpaRepository<User, Long> {
+          List<User> findByName(String name);
+          boolean existsByName(String name);
+      }
+    src/test/java/com/example/UserServiceTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class UserServiceTest {
+          private final UserService service = new UserService();
+
+          @Test
+          void findByIdReturnsUser() {
+              User user = service.findById(1L);
+              assertNotNull(user);
+              assertEquals("John", user.getName());
+          }
+      }
+    src/main/java/com/example/ProductController.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.List;
+
+      @RestController
+      @RequestMapping("/products")
+      public class ProductController {
+
+          @Autowired
+          private ProductService productService;
+
+          @GetMapping("/{id}")
+          public Product getProduct(@PathVariable Long id) {
+              return productService.findById(id);
+          }
+
+          @GetMapping
+          public List<Product> getAllProducts() {
+              return productService.findAll();
+          }
+      }
+  changed_files:
+    src/main/java/com/example/UserService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class UserService {
+          public User findById(Long id) {
+              return new User(id, "John");
+          }
+
+          public List<User> findAll() {
+              return List.of(new User(1L, "John"), new User(2L, "Jane"));
+          }
+
+          public User save(User user) {
+              return user;
+          }
+      }
+    src/main/java/com/example/UserController.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.List;
+
+      @RestController
+      @RequestMapping("/users")
+      public class UserController {
+
+          @Autowired
+          private UserService userService;
+
+          @GetMapping("/{id}")
+          public User getUser(@PathVariable Long id) {
+              return userService.findById(id);
+          }
+      }
+    src/main/java/com/example/User.java: |
+      package com.example;
+
+      public class User {
+          private Long id;
+          private String name;
+
+          public User(Long id, String name) {
+              this.id = id;
+              this.name = name;
+          }
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+      }
+    src/main/java/com/example/ProductService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class ProductService {
+          public Product findById(Long id) {
+              return new Product(id, "Widget", 9.99);
+          }
+
+          public List<Product> findAll() {
+              return List.of(new Product(1L, "Widget", 9.99), new Product(2L, "Gadget", 19.99));
+          }
+
+          public Product save(Product product) {
+              return product;
+          }
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class OrderService {
+          public Order findById(Long id) {
+              return new Order(id, "pending", 100.00);
+          }
+
+          public List<Order> findAll() {
+              return List.of(new Order(1L, "pending", 100.00));
+          }
+
+          public Order save(Order order) {
+              return order;
+          }
+      }
+    src/main/java/com/example/UserRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+
+      @Repository
+      public interface UserRepository extends JpaRepository<User, Long> {
+          List<User> findByName(String name);
+          boolean existsByName(String name);
+      }
+    src/test/java/com/example/UserServiceTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class UserServiceTest {
+          private final UserService service = new UserService();
+
+          @Test
+          void findByIdReturnsUser() {
+              User user = service.findById(1L);
+              assertNotNull(user);
+              assertEquals("John", user.getName());
+          }
+      }
+    src/main/java/com/example/ProductController.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.List;
+
+      @RestController
+      @RequestMapping("/products")
+      public class ProductController {
+
+          @Autowired
+          private ProductService productService;
+
+          @GetMapping("/{id}")
+          public Product getProduct(@PathVariable Long id) {
+              return productService.findById(id);
+          }
+
+          @GetMapping
+          public List<Product> getAllProducts() {
+              return productService.findAll();
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: src/main/java/com/example/UserService.java
+    anchor: public List<User> findAll()
+- id: userservice_1
+  selector:
+    path: src/main/java/com/example/UserService.java
+    anchor: public User save(User user)
+- id: userservice_2
+  selector:
+    path: src/main/java/com/example/UserService.java
+    anchor: import java.util.List
+- id: usercontroller
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: '@Autowired'
+- id: usercontroller_1
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: private UserService userService
+- id: usercontroller_2
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: userService.findById(id)
+- id: no_productservice
+  selector:
+    path: src/main/java/com/example/ProductService.java
+- id: no_orderservice
+  selector:
+    path: src/main/java/com/example/OrderService.java
+- id: no_userrepository
+  selector:
+    path: src/main/java/com/example/UserRepository.java
+- id: no_userservicetest
+  selector:
+    path: src/test/java/com/example/UserServiceTest.java
+- id: no_productcontroller
+  selector:
+    path: src/main/java/com/example/ProductController.java
+- id: no_global_0
+  selector:
+    anchor: ProductService
+- id: no_global_1
+  selector:
+    anchor: Widget
+- id: no_global_2
+  selector:
+    anchor: Gadget
+- id: no_global_3
+  selector:
+    anchor: OrderService
+- id: no_global_4
+  selector:
+    anchor: pending
+- id: no_global_5
+  selector:
+    anchor: UserRepository
+- id: no_global_6
+  selector:
+    anchor: JpaRepository
+- id: no_global_7
+  selector:
+    anchor: findByName
+- id: no_global_8
+  selector:
+    anchor: UserServiceTest
+- id: no_global_9
+  selector:
+    anchor: assertNotNull
+- id: no_global_10
+  selector:
+    anchor: assertEquals
+- id: no_global_11
+  selector:
+    anchor: ProductController
+- id: no_global_12
+  selector:
+    anchor: productService
+- id: no_global_13
+  selector:
+    anchor: getAllProducts
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - usercontroller
+  - usercontroller_1
+  - usercontroller_2
+  allowed: []
+  forbidden:
+  - no_productservice
+  - no_orderservice
+  - no_userrepository
+  - no_userservicetest
+  - no_productcontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

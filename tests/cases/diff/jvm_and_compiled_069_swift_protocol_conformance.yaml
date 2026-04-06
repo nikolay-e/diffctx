@@ -1,0 +1,146 @@
+name: jvm_and_compiled_069_swift_protocol_conformance
+repo:
+  initial_files:
+    User.swift: |
+      struct User: Codable, Equatable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    UserService.swift: |
+      class UserService {}
+    LoggerService.swift: |
+      import Foundation
+
+      class LoggerService {
+          enum Level: String {
+              case debug, info, warning, error
+          }
+
+          private let dateFormatter: DateFormatter
+
+          init() {
+              dateFormatter = DateFormatter()
+              dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+          }
+
+          func log(_ message: String, level: Level = .info) {
+              let timestamp = dateFormatter.string(from: Date())
+              print("[\(timestamp)] [\(level.rawValue.uppercased())] \(message)")
+          }
+      }
+    DateFormatHelper.swift: |
+      import Foundation
+
+      struct DateFormatHelper {
+          static let iso8601: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+              formatter.locale = Locale(identifier: "en_US_POSIX")
+              return formatter
+          }()
+
+          static func format(_ date: Date, style: DateFormatter.Style = .medium) -> String {
+              let formatter = DateFormatter()
+              formatter.dateStyle = style
+              return formatter.string(from: date)
+          }
+      }
+  changed_files:
+    User.swift: |
+      struct User: Codable, Equatable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    UserService.swift: |
+      import Foundation
+
+      class UserService {
+          func encode(user: User) throws -> Data {
+              let encoder = JSONEncoder()
+              return try encoder.encode(user)
+          }
+
+          func decode(data: Data) throws -> User {
+              let decoder = JSONDecoder()
+              return try decoder.decode(User.self, from: data)
+          }
+      }
+    LoggerService.swift: |
+      import Foundation
+
+      class LoggerService {
+          enum Level: String {
+              case debug, info, warning, error
+          }
+
+          private let dateFormatter: DateFormatter
+
+          init() {
+              dateFormatter = DateFormatter()
+              dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+          }
+
+          func log(_ message: String, level: Level = .info) {
+              let timestamp = dateFormatter.string(from: Date())
+              print("[\(timestamp)] [\(level.rawValue.uppercased())] \(message)")
+          }
+      }
+    DateFormatHelper.swift: |
+      import Foundation
+
+      struct DateFormatHelper {
+          static let iso8601: DateFormatter = {
+              let formatter = DateFormatter()
+              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+              formatter.locale = Locale(identifier: "en_US_POSIX")
+              return formatter
+          }()
+
+          static func format(_ date: Date, style: DateFormatter.Style = .medium) -> String {
+              let formatter = DateFormatter()
+              formatter.dateStyle = style
+              return formatter.string(from: date)
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: UserService.swift
+    anchor: 'func encode(user: User) throws -> Data'
+- id: userservice_1
+  selector:
+    path: UserService.swift
+    anchor: 'try decoder.decode(User.self, from: data)'
+- id: no_loggerservice
+  selector:
+    path: LoggerService.swift
+- id: no_dateformathelper
+  selector:
+    path: DateFormatHelper.swift
+- id: no_global_0
+  selector:
+    anchor: LoggerService
+- id: no_global_1
+  selector:
+    anchor: DateFormatHelper
+- id: no_global_2
+  selector:
+    anchor: iso8601
+- id: no_global_3
+  selector:
+    anchor: dateFormatter
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  allowed: []
+  forbidden:
+  - no_loggerservice
+  - no_dateformathelper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

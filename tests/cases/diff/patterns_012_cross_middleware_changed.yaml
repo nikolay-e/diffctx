@@ -1,0 +1,487 @@
+name: patterns_012_cross_middleware_changed
+repo:
+  initial_files:
+    middleware/auth.py: |
+      class AuthMiddleware:
+          def __init__(self, secret_key: str = "default-secret"):
+              self.secret_key = secret_key
+
+          def process_request(self, request):
+              if not request.get("token"):
+                  raise ValueError("Unauthorized: missing token")
+              return request
+    settings.py: |
+      MIDDLEWARE = [
+          "middleware.rate_limit.RateLimitMiddleware",
+          "middleware.auth.AuthMiddleware",
+          "middleware.logging_mw.LoggingMiddleware",
+      ]
+
+      AUTH_SECRET_KEY = "production-secret-key"
+      RATE_LIMIT_PER_MINUTE = 60
+      LOG_REQUESTS = True
+
+      INSTALLED_APPS = [
+          "services.user_service",
+          "services.order_service",
+          "services.payment_service",
+      ]
+    middleware/rate_limit.py: |
+      import time
+      from collections import defaultdict
+
+      WINDOW_SECONDS = 60
+      DEFAULT_LIMIT = 100
+
+      class RateLimitMiddleware:
+          def __init__(self, limit: int = DEFAULT_LIMIT):
+              self.limit = limit
+              self._requests: dict[str, list[float]] = defaultdict(list)
+
+          def process_request(self, request):
+              client_ip = request.get("client_ip", "unknown")
+              now = time.time()
+              window = [t for t in self._requests[client_ip] if now - t < WINDOW_SECONDS]
+              self._requests[client_ip] = window
+              if len(window) >= self.limit:
+                  raise ValueError("Rate limit exceeded")
+              self._requests[client_ip].append(now)
+              request["rate_limit_remaining"] = self.limit - len(window) - 1
+              return request
+    middleware/logging_mw.py: |
+      import logging
+
+      logger = logging.getLogger("middleware.logging")
+
+      class LoggingMiddleware:
+          def __init__(self, log_body: bool = False):
+              self.log_body = log_body
+
+          def process_request(self, request):
+              path = request.get("path", "/")
+              method = request.get("method", "GET")
+              logger.info(f"{method} {path}")
+              if self.log_body and request.get("body"):
+                  logger.debug(f"Body: {request['body']}")
+              return request
+    middleware/cors.py: |
+      ALLOWED_ORIGINS = ["https://example.com", "https://app.example.com"]
+      ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+      ALLOWED_HEADERS = ["Content-Type", "Authorization", "X-Request-ID"]
+
+      class CorsMiddleware:
+          def __init__(self, origins: list[str] = None):
+              self.origins = origins or ALLOWED_ORIGINS
+
+          def process_request(self, request):
+              origin = request.get("origin", "")
+              if origin in self.origins:
+                  request["cors_allowed"] = True
+              else:
+                  request["cors_allowed"] = False
+              return request
+
+          def process_response(self, request, response):
+              if request.get("cors_allowed"):
+                  response["headers"] = response.get("headers", {})
+                  response["headers"]["Access-Control-Allow-Origin"] = request["origin"]
+                  response["headers"]["Access-Control-Allow-Methods"] = ", ".join(ALLOWED_METHODS)
+              return response
+    services/auth_service.py: |
+      import hashlib
+      import time
+
+      TOKEN_EXPIRY_SECONDS = 3600
+      TOKEN_ALGORITHM = "sha256"
+
+      class AuthService:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def generate_token(self, user_id: str) -> str:
+              payload = f"{user_id}:{time.time()}:{self.secret_key}"
+              return hashlib.sha256(payload.encode()).hexdigest()
+
+          def verify_token(self, token: str, user_id: str) -> bool:
+              expected = self.generate_token(user_id)
+              return hashlib.sha256(token.encode()).hexdigest() == hashlib.sha256(expected.encode()).hexdigest()
+
+          def is_expired(self, issued_at: float) -> bool:
+              return time.time() - issued_at > TOKEN_EXPIRY_SECONDS
+    tests/test_auth_middleware.py: |
+      import pytest
+      from middleware.auth import AuthMiddleware
+
+      def test_auth_middleware_passes_with_token():
+          mw = AuthMiddleware()
+          request = {"token": "Bearer valid-token-123", "path": "/api/users"}
+          result = mw.process_request(request)
+          assert result is not None
+
+      def test_auth_middleware_rejects_missing_token():
+          mw = AuthMiddleware()
+          request = {"path": "/api/users"}
+          with pytest.raises(ValueError, match="Unauthorized"):
+              mw.process_request(request)
+
+      def test_auth_middleware_rejects_empty_token():
+          mw = AuthMiddleware()
+          request = {"token": "", "path": "/api/users"}
+          with pytest.raises(ValueError, match="Unauthorized"):
+              mw.process_request(request)
+    config/security.py: |
+      TOKEN_EXPIRY_SECONDS = 3600
+      MAX_TOKEN_LENGTH = 512
+      ALLOWED_TOKEN_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+      BCRYPT_ROUNDS = 12
+      SESSION_COOKIE_NAME = "session_id"
+      SESSION_COOKIE_HTTPONLY = True
+      CSRF_ENABLED = True
+
+      class SecurityConfig:
+          def __init__(self):
+              self.token_expiry = TOKEN_EXPIRY_SECONDS
+              self.max_token_length = MAX_TOKEN_LENGTH
+              self.bcrypt_rounds = BCRYPT_ROUNDS
+
+          def is_valid_token_length(self, token: str) -> bool:
+              return len(token) <= self.max_token_length
+    middleware/session.py: |
+      import uuid
+      import time
+
+      SESSION_COOKIE_NAME = "session_id"
+      SESSION_TTL_SECONDS = 86400
+
+      class SessionMiddleware:
+          def __init__(self):
+              self._sessions: dict[str, dict] = {}
+
+          def process_request(self, request):
+              session_id = request.get("cookies", {}).get(SESSION_COOKIE_NAME)
+              if session_id and session_id in self._sessions:
+                  request["session"] = self._sessions[session_id]
+                  request["session_id"] = session_id
+              else:
+                  session_id = str(uuid.uuid4())
+                  self._sessions[session_id] = {"created_at": time.time()}
+                  request["session"] = self._sessions[session_id]
+                  request["session_id"] = session_id
+              return request
+
+          def process_response(self, request, response):
+              response["cookies"] = response.get("cookies", {})
+              response["cookies"][SESSION_COOKIE_NAME] = request.get("session_id", "")
+              return response
+  changed_files:
+    middleware/auth.py: |
+      import time
+      import re
+
+      TOKEN_PATTERN = re.compile(r"^Bearer [A-Za-z0-9._-]+$")
+
+      class AuthMiddleware:
+          def __init__(self, secret_key: str = "default-secret"):
+              self.secret_key = secret_key
+
+          def process_request(self, request):
+              if not request.get("token"):
+                  raise ValueError("Unauthorized: missing token")
+              self._validate_token_format(request["token"])
+              request["authenticated_at"] = time.time()
+              return request
+
+          def _validate_token_format(self, token: str):
+              if not TOKEN_PATTERN.match(token):
+                  raise ValueError("Unauthorized: invalid token format")
+    settings.py: |
+      MIDDLEWARE = [
+          "middleware.rate_limit.RateLimitMiddleware",
+          "middleware.auth.AuthMiddleware",
+          "middleware.logging_mw.LoggingMiddleware",
+      ]
+
+      AUTH_SECRET_KEY = "production-secret-key"
+      RATE_LIMIT_PER_MINUTE = 60
+      LOG_REQUESTS = True
+
+      INSTALLED_APPS = [
+          "services.user_service",
+          "services.order_service",
+          "services.payment_service",
+      ]
+    middleware/rate_limit.py: |
+      import time
+      from collections import defaultdict
+
+      WINDOW_SECONDS = 60
+      DEFAULT_LIMIT = 100
+
+      class RateLimitMiddleware:
+          def __init__(self, limit: int = DEFAULT_LIMIT):
+              self.limit = limit
+              self._requests: dict[str, list[float]] = defaultdict(list)
+
+          def process_request(self, request):
+              client_ip = request.get("client_ip", "unknown")
+              now = time.time()
+              window = [t for t in self._requests[client_ip] if now - t < WINDOW_SECONDS]
+              self._requests[client_ip] = window
+              if len(window) >= self.limit:
+                  raise ValueError("Rate limit exceeded")
+              self._requests[client_ip].append(now)
+              request["rate_limit_remaining"] = self.limit - len(window) - 1
+              return request
+    middleware/logging_mw.py: |
+      import logging
+
+      logger = logging.getLogger("middleware.logging")
+
+      class LoggingMiddleware:
+          def __init__(self, log_body: bool = False):
+              self.log_body = log_body
+
+          def process_request(self, request):
+              path = request.get("path", "/")
+              method = request.get("method", "GET")
+              logger.info(f"{method} {path}")
+              if self.log_body and request.get("body"):
+                  logger.debug(f"Body: {request['body']}")
+              return request
+    middleware/cors.py: |
+      ALLOWED_ORIGINS = ["https://example.com", "https://app.example.com"]
+      ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+      ALLOWED_HEADERS = ["Content-Type", "Authorization", "X-Request-ID"]
+
+      class CorsMiddleware:
+          def __init__(self, origins: list[str] = None):
+              self.origins = origins or ALLOWED_ORIGINS
+
+          def process_request(self, request):
+              origin = request.get("origin", "")
+              if origin in self.origins:
+                  request["cors_allowed"] = True
+              else:
+                  request["cors_allowed"] = False
+              return request
+
+          def process_response(self, request, response):
+              if request.get("cors_allowed"):
+                  response["headers"] = response.get("headers", {})
+                  response["headers"]["Access-Control-Allow-Origin"] = request["origin"]
+                  response["headers"]["Access-Control-Allow-Methods"] = ", ".join(ALLOWED_METHODS)
+              return response
+    services/auth_service.py: |
+      import hashlib
+      import time
+
+      TOKEN_EXPIRY_SECONDS = 3600
+      TOKEN_ALGORITHM = "sha256"
+
+      class AuthService:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def generate_token(self, user_id: str) -> str:
+              payload = f"{user_id}:{time.time()}:{self.secret_key}"
+              return hashlib.sha256(payload.encode()).hexdigest()
+
+          def verify_token(self, token: str, user_id: str) -> bool:
+              expected = self.generate_token(user_id)
+              return hashlib.sha256(token.encode()).hexdigest() == hashlib.sha256(expected.encode()).hexdigest()
+
+          def is_expired(self, issued_at: float) -> bool:
+              return time.time() - issued_at > TOKEN_EXPIRY_SECONDS
+    tests/test_auth_middleware.py: |
+      import pytest
+      from middleware.auth import AuthMiddleware
+
+      def test_auth_middleware_passes_with_token():
+          mw = AuthMiddleware()
+          request = {"token": "Bearer valid-token-123", "path": "/api/users"}
+          result = mw.process_request(request)
+          assert result is not None
+
+      def test_auth_middleware_rejects_missing_token():
+          mw = AuthMiddleware()
+          request = {"path": "/api/users"}
+          with pytest.raises(ValueError, match="Unauthorized"):
+              mw.process_request(request)
+
+      def test_auth_middleware_rejects_empty_token():
+          mw = AuthMiddleware()
+          request = {"token": "", "path": "/api/users"}
+          with pytest.raises(ValueError, match="Unauthorized"):
+              mw.process_request(request)
+    config/security.py: |
+      TOKEN_EXPIRY_SECONDS = 3600
+      MAX_TOKEN_LENGTH = 512
+      ALLOWED_TOKEN_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+      BCRYPT_ROUNDS = 12
+      SESSION_COOKIE_NAME = "session_id"
+      SESSION_COOKIE_HTTPONLY = True
+      CSRF_ENABLED = True
+
+      class SecurityConfig:
+          def __init__(self):
+              self.token_expiry = TOKEN_EXPIRY_SECONDS
+              self.max_token_length = MAX_TOKEN_LENGTH
+              self.bcrypt_rounds = BCRYPT_ROUNDS
+
+          def is_valid_token_length(self, token: str) -> bool:
+              return len(token) <= self.max_token_length
+    middleware/session.py: |
+      import uuid
+      import time
+
+      SESSION_COOKIE_NAME = "session_id"
+      SESSION_TTL_SECONDS = 86400
+
+      class SessionMiddleware:
+          def __init__(self):
+              self._sessions: dict[str, dict] = {}
+
+          def process_request(self, request):
+              session_id = request.get("cookies", {}).get(SESSION_COOKIE_NAME)
+              if session_id and session_id in self._sessions:
+                  request["session"] = self._sessions[session_id]
+                  request["session_id"] = session_id
+              else:
+                  session_id = str(uuid.uuid4())
+                  self._sessions[session_id] = {"created_at": time.time()}
+                  request["session"] = self._sessions[session_id]
+                  request["session_id"] = session_id
+              return request
+
+          def process_response(self, request, response):
+              response["cookies"] = response.get("cookies", {})
+              response["cookies"][SESSION_COOKIE_NAME] = request.get("session_id", "")
+              return response
+  commit_message: Update files
+fragments:
+- id: auth
+  selector:
+    path: middleware/auth.py
+    anchor: request["authenticated_at"] = time.time()
+- id: auth_1
+  selector:
+    path: middleware/auth.py
+    anchor: TOKEN_PATTERN = re.compile
+- id: auth_2
+  selector:
+    path: middleware/auth.py
+    anchor: 'def _validate_token_format(self, token: str):'
+- id: settings
+  selector:
+    path: settings.py
+    anchor: middleware.rate_limit.RateLimitMiddleware
+- id: settings_1
+  selector:
+    path: settings.py
+    anchor: middleware.auth.AuthMiddleware
+- id: settings_2
+  selector:
+    path: settings.py
+    anchor: middleware.logging_mw.LoggingMiddleware
+- id: no_cors
+  selector:
+    path: middleware/cors.py
+- id: no_auth_service
+  selector:
+    path: services/auth_service.py
+- id: no_test_auth_middleware
+  selector:
+    path: tests/test_auth_middleware.py
+- id: no_security
+  selector:
+    path: config/security.py
+- id: no_session
+  selector:
+    path: middleware/session.py
+- id: no_global_0
+  selector:
+    anchor: CorsMiddleware
+- id: no_global_1
+  selector:
+    anchor: ALLOWED_ORIGINS
+- id: no_global_2
+  selector:
+    anchor: ALLOWED_METHODS
+- id: no_global_3
+  selector:
+    anchor: process_response
+- id: no_global_4
+  selector:
+    anchor: AuthService
+- id: no_global_5
+  selector:
+    anchor: generate_token
+- id: no_global_6
+  selector:
+    anchor: verify_token
+- id: no_global_7
+  selector:
+    anchor: TOKEN_ALGORITHM
+- id: no_global_8
+  selector:
+    anchor: test_auth_middleware_passes_with_token
+- id: no_global_9
+  selector:
+    anchor: test_auth_middleware_rejects_missing_token
+- id: no_global_10
+  selector:
+    anchor: test_auth_middleware_rejects_empty_token
+- id: no_global_11
+  selector:
+    anchor: SecurityConfig
+- id: no_global_12
+  selector:
+    anchor: MAX_TOKEN_LENGTH
+- id: no_global_13
+  selector:
+    anchor: BCRYPT_ROUNDS
+- id: no_global_14
+  selector:
+    anchor: CSRF_ENABLED
+- id: no_global_15
+  selector:
+    anchor: SessionMiddleware
+- id: no_global_16
+  selector:
+    anchor: SESSION_COOKIE_NAME
+- id: no_global_17
+  selector:
+    anchor: SESSION_TTL_SECONDS
+oracle:
+  required:
+  - auth
+  - auth_1
+  - auth_2
+  - settings
+  - settings_1
+  - settings_2
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_auth_service
+  - no_test_auth_middleware
+  - no_security
+  - no_session
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

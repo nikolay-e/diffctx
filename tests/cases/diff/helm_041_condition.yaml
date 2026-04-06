@@ -1,0 +1,184 @@
+name: helm_041_condition
+repo:
+  initial_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      dependencies:
+        - name: backend
+          version: 1.0.0
+        - name: frontend
+          version: 1.0.0
+    values.yaml: |
+      backend:
+        enabled: true
+        replicaCount: 3
+        image:
+          repository: backend-api
+          tag: "1.0.0"
+      frontend:
+        enabled: true
+        replicaCount: 2
+    values-production.yaml: |
+      backend:
+        enabled: true
+        replicaCount: 5
+        image:
+          tag: "1.2.0"
+      frontend:
+        replicaCount: 4
+    charts/backend/Chart.yaml: |
+      apiVersion: v2
+      name: backend
+      version: 1.0.0
+      description: Backend API service
+    charts/backend/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: backend-api
+        tag: "latest"
+    charts/backend/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "backend.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: backend
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    charts/frontend/Chart.yaml: |
+      apiVersion: v2
+      name: frontend
+      version: 1.0.0
+      description: Frontend web application
+  changed_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      dependencies:
+        - name: backend
+          version: 1.0.0
+          condition: backend.enabled
+        - name: frontend
+          version: 1.0.0
+    values.yaml: |
+      backend:
+        enabled: true
+        replicaCount: 3
+        image:
+          repository: backend-api
+          tag: "1.0.0"
+      frontend:
+        enabled: true
+        replicaCount: 2
+    values-production.yaml: |
+      backend:
+        enabled: true
+        replicaCount: 5
+        image:
+          tag: "1.2.0"
+      frontend:
+        replicaCount: 4
+    charts/backend/Chart.yaml: |
+      apiVersion: v2
+      name: backend
+      version: 1.0.0
+      description: Backend API service
+    charts/backend/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: backend-api
+        tag: "latest"
+    charts/backend/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "backend.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: backend
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    charts/frontend/Chart.yaml: |
+      apiVersion: v2
+      name: frontend
+      version: 1.0.0
+      description: Frontend web application
+  commit_message: Update files
+fragments:
+- id: chart
+  selector:
+    path: Chart.yaml
+    anchor: 'condition: backend.enabled'
+- id: values
+  selector:
+    path: values.yaml
+    anchor: 'enabled: true'
+- id: values_1
+  selector:
+    path: values.yaml
+    anchor: 'backend:'
+- id: no_values_production
+  selector:
+    path: values-production.yaml
+- id: no_chart
+  selector:
+    path: charts/backend/Chart.yaml
+- id: no_values
+  selector:
+    path: charts/backend/values.yaml
+- id: no_deployment
+  selector:
+    path: charts/backend/templates/deployment.yaml
+- id: no_chart_1
+  selector:
+    path: charts/frontend/Chart.yaml
+- id: no_global_0
+  selector:
+    anchor: values-production
+- id: no_global_1
+  selector:
+    anchor: 'replicaCount: 5'
+- id: no_global_2
+  selector:
+    anchor: 'tag: "1.2.0"'
+- id: no_global_3
+  selector:
+    anchor: Backend API service
+- id: no_global_4
+  selector:
+    anchor: backend.fullname
+- id: no_global_5
+  selector:
+    anchor: '{{ .Values.image.repository }}'
+- id: no_global_6
+  selector:
+    anchor: 'tag: "latest"'
+- id: no_global_7
+  selector:
+    anchor: Frontend web application
+oracle:
+  required:
+  - chart
+  - values
+  - values_1
+  allowed: []
+  forbidden:
+  - no_values_production
+  - no_chart
+  - no_values
+  - no_deployment
+  - no_chart_1
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

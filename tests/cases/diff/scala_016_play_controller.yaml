@@ -1,0 +1,176 @@
+name: scala_016_play_controller
+repo:
+  initial_files:
+    routes: |
+      GET     /users/:id        controllers.UserController.getUser(id: Long)
+      POST    /users            controllers.UserController.createUser()
+      DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+    UserController.scala: |
+      class UserController {}
+    ProductController.scala: |
+      import play.api.mvc._
+      import play.api.libs.json._
+      import scala.concurrent.{ExecutionContext, Future}
+
+      case class Product(id: Long, name: String, price: Double)
+
+      class ProductController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+          extends AbstractController(cc) {
+
+        implicit val productFormat: Format[Product] = Json.format[Product]
+
+        def getProduct(id: Long): Action[AnyContent] = Action.async {
+          Future.successful(Ok(Json.toJson(Product(id, "Widget", 9.99))))
+        }
+
+        def listProducts(): Action[AnyContent] = Action.async {
+          Future.successful(Ok(Json.toJson(List(Product(1, "A", 1.0), Product(2, "B", 2.0)))))
+        }
+      }
+    UserForm.scala: |
+      import play.api.data._
+      import play.api.data.Forms._
+
+      case class UserFormData(name: String, email: String)
+
+      object UserForm {
+        val form: Form[UserFormData] = Form(
+          mapping(
+            "name" -> nonEmptyText(minLength = 2, maxLength = 100),
+            "email" -> email
+          )(UserFormData.apply)(UserFormData.unapply)
+        )
+
+        def validate(data: UserFormData): Either[String, UserFormData] = {
+          if (data.name.trim.isEmpty) Left("Name required")
+          else Right(data)
+        }
+      }
+  changed_files:
+    routes: |
+      GET     /users/:id        controllers.UserController.getUser(id: Long)
+      POST    /users            controllers.UserController.createUser()
+      DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+    UserController.scala: |
+      import play.api.mvc._
+      import play.api.libs.json._
+      import scala.concurrent.{ExecutionContext, Future}
+
+      case class User(id: Long, name: String)
+
+      class UserController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+          extends AbstractController(cc) {
+
+        implicit val userFormat: Format[User] = Json.format[User]
+
+        def getUser(id: Long): Action[AnyContent] = Action.async {
+          Future.successful(Ok(Json.toJson(User(id, "John"))))
+        }
+
+        def createUser(): Action[JsValue] = Action.async(parse.json) { request =>
+          request.body.validate[User].fold(
+            errors => Future.successful(BadRequest(Json.obj("error" -> "Invalid JSON"))),
+            user => Future.successful(Created(Json.toJson(user)))
+          )
+        }
+
+        def deleteUser(id: Long): Action[AnyContent] = Action.async {
+          Future.successful(NoContent)
+        }
+      }
+    ProductController.scala: |
+      import play.api.mvc._
+      import play.api.libs.json._
+      import scala.concurrent.{ExecutionContext, Future}
+
+      case class Product(id: Long, name: String, price: Double)
+
+      class ProductController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+          extends AbstractController(cc) {
+
+        implicit val productFormat: Format[Product] = Json.format[Product]
+
+        def getProduct(id: Long): Action[AnyContent] = Action.async {
+          Future.successful(Ok(Json.toJson(Product(id, "Widget", 9.99))))
+        }
+
+        def listProducts(): Action[AnyContent] = Action.async {
+          Future.successful(Ok(Json.toJson(List(Product(1, "A", 1.0), Product(2, "B", 2.0)))))
+        }
+      }
+    UserForm.scala: |
+      import play.api.data._
+      import play.api.data.Forms._
+
+      case class UserFormData(name: String, email: String)
+
+      object UserForm {
+        val form: Form[UserFormData] = Form(
+          mapping(
+            "name" -> nonEmptyText(minLength = 2, maxLength = 100),
+            "email" -> email
+          )(UserFormData.apply)(UserFormData.unapply)
+        )
+
+        def validate(data: UserFormData): Either[String, UserFormData] = {
+          if (data.name.trim.isEmpty) Left("Name required")
+          else Right(data)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: usercontroller
+  selector:
+    path: UserController.scala
+    anchor: import play.api.mvc._
+- id: usercontroller_1
+  selector:
+    path: UserController.scala
+    anchor: 'def getUser(id: Long): Action[AnyContent]'
+- id: routes
+  selector:
+    path: routes
+    anchor: controllers.UserController.getUser
+- id: no_productcontroller
+  selector:
+    path: ProductController.scala
+- id: no_userform
+  selector:
+    path: UserForm.scala
+- id: no_global_0
+  selector:
+    anchor: ProductController
+- id: no_global_1
+  selector:
+    anchor: getProduct
+- id: no_global_2
+  selector:
+    anchor: listProducts
+- id: no_global_3
+  selector:
+    anchor: productFormat
+- id: no_global_4
+  selector:
+    anchor: UserForm
+- id: no_global_5
+  selector:
+    anchor: UserFormData
+- id: no_global_6
+  selector:
+    anchor: nonEmptyText
+oracle:
+  required:
+  - usercontroller
+  - usercontroller_1
+  - routes
+  allowed: []
+  forbidden:
+  - no_productcontroller
+  - no_userform
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

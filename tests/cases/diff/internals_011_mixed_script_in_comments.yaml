@@ -1,0 +1,26 @@
+name: internals_011_mixed_script_in_comments
+repo:
+  initial_files:
+    mixed_script.py: |
+      def placeholder():
+          pass
+  changed_files:
+    mixed_script.py: |
+      # This function handles データ処理
+      def process_data():
+          # Возвращает результат
+          return {"status": "ok"}
+  commit_message: Update files
+fragments:
+- id: mixed_script_file
+  selector:
+    path: mixed_script.py
+- id: req_global_0
+  selector:
+    anchor: 'def process_data():'
+oracle:
+  required:
+  - mixed_script_file
+  - req_global_0
+  allowed: []
+  forbidden: []

@@ -1,0 +1,314 @@
+name: java_026_kotlin_sealed_class
+repo:
+  initial_files:
+    src/main/kotlin/com/example/network/result/NetworkResult.kt: |
+      package com.example.network.result
+
+      sealed class NetworkResult<out T> {
+          data class Success<T>(val data: T) : NetworkResult<T>()
+          data class Error(val message: String) : NetworkResult<Nothing>()
+      }
+    src/main/kotlin/com/example/network/handler/ResultHandler.kt: |
+      package com.example.network.handler
+
+      import com.example.network.result.NetworkResult
+
+      class ResultHandler {
+          fun <T> handle(result: NetworkResult<T>, onSuccess: (T) -> Unit, onError: (String) -> Unit) {
+              when (result) {
+                  is NetworkResult.Success -> onSuccess(result.data)
+                  is NetworkResult.Error -> onError(result.message)
+              }
+          }
+
+          fun <T> unwrapOrNull(result: NetworkResult<T>): T? {
+              return when (result) {
+                  is NetworkResult.Success -> result.data
+                  is NetworkResult.Error -> null
+              }
+          }
+
+          fun <T> unwrapOrThrow(result: NetworkResult<T>): T {
+              return when (result) {
+                  is NetworkResult.Success -> result.data
+                  is NetworkResult.Error -> throw RuntimeException(result.message)
+              }
+          }
+      }
+    src/main/kotlin/com/example/network/client/ApiClient.kt: |
+      package com.example.network.client
+
+      import com.example.network.result.NetworkResult
+
+      class ApiClient(private val baseUrl: String) {
+          fun <T> get(endpoint: String, parser: (String) -> T): NetworkResult<T> {
+              return try {
+                  val response = fetchData("$baseUrl$endpoint")
+                  NetworkResult.Success(parser(response))
+              } catch (e: Exception) {
+                  NetworkResult.Error(e.message ?: "Unknown error")
+              }
+          }
+
+          private fun fetchData(url: String): String {
+              return "{}"
+          }
+      }
+    src/main/kotlin/com/example/network/cache/CachePolicy.kt: |
+      package com.example.network.cache
+
+      import java.time.Duration
+      import java.time.Instant
+
+      class CachePolicy(
+          private val maxAge: Duration = Duration.ofMinutes(5),
+          private val maxRetries: Int = 3
+      ) {
+          private val cache = mutableMapOf<String, CacheEntry>()
+
+          fun get(key: String): String? {
+              val entry = cache[key] ?: return null
+              if (Duration.between(entry.storedAt, Instant.now()) > maxAge) {
+                  cache.remove(key)
+                  return null
+              }
+              return entry.value
+          }
+
+          fun put(key: String, value: String) {
+              cache[key] = CacheEntry(value, Instant.now())
+          }
+
+          fun invalidate(key: String) {
+              cache.remove(key)
+          }
+
+          private data class CacheEntry(val value: String, val storedAt: Instant)
+      }
+    src/main/kotlin/com/example/network/logging/NetworkLogger.kt: |
+      package com.example.network.logging
+
+      import java.time.Instant
+
+      class NetworkLogger {
+          private val logs = mutableListOf<LogEntry>()
+
+          fun logRequest(method: String, url: String) {
+              logs.add(LogEntry("REQUEST", "$method $url", Instant.now()))
+          }
+
+          fun logResponse(statusCode: Int, body: String) {
+              logs.add(LogEntry("RESPONSE", "$statusCode: ${body.take(200)}", Instant.now()))
+          }
+
+          fun getRecentLogs(count: Int): List<LogEntry> {
+              return logs.takeLast(count)
+          }
+
+          data class LogEntry(val type: String, val message: String, val timestamp: Instant)
+      }
+  changed_files:
+    src/main/kotlin/com/example/network/result/NetworkResult.kt: |
+      package com.example.network.result
+
+      sealed class NetworkResult<out T> {
+          data class Success<T>(val data: T) : NetworkResult<T>()
+          data class Error(val message: String, val cause: Throwable? = null) : NetworkResult<Nothing>()
+          data object Loading : NetworkResult<Nothing>()
+          data object Empty : NetworkResult<Nothing>()
+
+          val isSuccess: Boolean get() = this is Success
+          val isError: Boolean get() = this is Error
+          val isLoading: Boolean get() = this is Loading
+      }
+    src/main/kotlin/com/example/network/handler/ResultHandler.kt: |
+      package com.example.network.handler
+
+      import com.example.network.result.NetworkResult
+
+      class ResultHandler {
+          fun <T> handle(result: NetworkResult<T>, onSuccess: (T) -> Unit, onError: (String) -> Unit) {
+              when (result) {
+                  is NetworkResult.Success -> onSuccess(result.data)
+                  is NetworkResult.Error -> onError(result.message)
+                  is NetworkResult.Loading -> {}
+                  is NetworkResult.Empty -> {}
+              }
+          }
+
+          fun <T> unwrapOrNull(result: NetworkResult<T>): T? {
+              return when (result) {
+                  is NetworkResult.Success -> result.data
+                  else -> null
+              }
+          }
+
+          fun <T> unwrapOrThrow(result: NetworkResult<T>): T {
+              return when (result) {
+                  is NetworkResult.Success -> result.data
+                  is NetworkResult.Error -> throw RuntimeException(result.message)
+                  else -> throw IllegalStateException("Cannot unwrap $result")
+              }
+          }
+      }
+    src/main/kotlin/com/example/network/client/ApiClient.kt: |
+      package com.example.network.client
+
+      import com.example.network.result.NetworkResult
+
+      class ApiClient(private val baseUrl: String) {
+          fun <T> get(endpoint: String, parser: (String) -> T): NetworkResult<T> {
+              return try {
+                  val response = fetchData("$baseUrl$endpoint")
+                  NetworkResult.Success(parser(response))
+              } catch (e: Exception) {
+                  NetworkResult.Error(e.message ?: "Unknown error")
+              }
+          }
+
+          private fun fetchData(url: String): String {
+              return "{}"
+          }
+      }
+    src/main/kotlin/com/example/network/cache/CachePolicy.kt: |
+      package com.example.network.cache
+
+      import java.time.Duration
+      import java.time.Instant
+
+      class CachePolicy(
+          private val maxAge: Duration = Duration.ofMinutes(5),
+          private val maxRetries: Int = 3
+      ) {
+          private val cache = mutableMapOf<String, CacheEntry>()
+
+          fun get(key: String): String? {
+              val entry = cache[key] ?: return null
+              if (Duration.between(entry.storedAt, Instant.now()) > maxAge) {
+                  cache.remove(key)
+                  return null
+              }
+              return entry.value
+          }
+
+          fun put(key: String, value: String) {
+              cache[key] = CacheEntry(value, Instant.now())
+          }
+
+          fun invalidate(key: String) {
+              cache.remove(key)
+          }
+
+          private data class CacheEntry(val value: String, val storedAt: Instant)
+      }
+    src/main/kotlin/com/example/network/logging/NetworkLogger.kt: |
+      package com.example.network.logging
+
+      import java.time.Instant
+
+      class NetworkLogger {
+          private val logs = mutableListOf<LogEntry>()
+
+          fun logRequest(method: String, url: String) {
+              logs.add(LogEntry("REQUEST", "$method $url", Instant.now()))
+          }
+
+          fun logResponse(statusCode: Int, body: String) {
+              logs.add(LogEntry("RESPONSE", "$statusCode: ${body.take(200)}", Instant.now()))
+          }
+
+          fun getRecentLogs(count: Int): List<LogEntry> {
+              return logs.takeLast(count)
+          }
+
+          data class LogEntry(val type: String, val message: String, val timestamp: Instant)
+      }
+  commit_message: Update files
+fragments:
+- id: networkresult
+  selector:
+    path: src/main/kotlin/com/example/network/result/NetworkResult.kt
+    anchor: data object Loading
+- id: networkresult_1
+  selector:
+    path: src/main/kotlin/com/example/network/result/NetworkResult.kt
+    anchor: data object Empty
+- id: networkresult_2
+  selector:
+    path: src/main/kotlin/com/example/network/result/NetworkResult.kt
+    anchor: 'val cause: Throwable?'
+- id: networkresult_3
+  selector:
+    path: src/main/kotlin/com/example/network/result/NetworkResult.kt
+    anchor: 'val isSuccess: Boolean'
+- id: resulthandler
+  selector:
+    path: src/main/kotlin/com/example/network/handler/ResultHandler.kt
+    anchor: is NetworkResult.Loading -> {}
+- id: resulthandler_1
+  selector:
+    path: src/main/kotlin/com/example/network/handler/ResultHandler.kt
+    anchor: is NetworkResult.Empty -> {}
+- id: resulthandler_2
+  selector:
+    path: src/main/kotlin/com/example/network/handler/ResultHandler.kt
+    anchor: throw IllegalStateException
+- id: no_apiclient
+  selector:
+    path: src/main/kotlin/com/example/network/client/ApiClient.kt
+- id: no_cachepolicy
+  selector:
+    path: src/main/kotlin/com/example/network/cache/CachePolicy.kt
+- id: no_networklogger
+  selector:
+    path: src/main/kotlin/com/example/network/logging/NetworkLogger.kt
+- id: no_global_0
+  selector:
+    anchor: ApiClient
+- id: no_global_1
+  selector:
+    anchor: fetchData
+- id: no_global_2
+  selector:
+    anchor: CachePolicy
+- id: no_global_3
+  selector:
+    anchor: maxAge
+- id: no_global_4
+  selector:
+    anchor: CacheEntry
+- id: no_global_5
+  selector:
+    anchor: NetworkLogger
+- id: no_global_6
+  selector:
+    anchor: logRequest
+- id: no_global_7
+  selector:
+    anchor: logResponse
+- id: no_global_8
+  selector:
+    anchor: LogEntry
+oracle:
+  required:
+  - networkresult
+  - networkresult_1
+  - networkresult_2
+  - networkresult_3
+  - resulthandler
+  - resulthandler_1
+  - resulthandler_2
+  allowed: []
+  forbidden:
+  - no_apiclient
+  - no_cachepolicy
+  - no_networklogger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

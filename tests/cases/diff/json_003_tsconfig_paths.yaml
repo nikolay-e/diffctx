@@ -1,0 +1,178 @@
+name: json_003_tsconfig_paths
+repo:
+  initial_files:
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "baseUrl": ".",
+          "paths": {
+            "@utils/*": ["src/utils/*"]
+          },
+          "outDir": "dist",
+          "rootDir": "src",
+          "strict": true,
+          "esModuleInterop": true,
+          "skipLibCheck": true
+        },
+        "include": ["src/**/*"]
+      }
+    src/utils/helpers.ts: |
+      export function formatDate(date: Date): string {
+          return date.toISOString().split('T')[0];
+      }
+
+      export function formatTime(date: Date): string {
+          return date.toISOString().split('T')[1].slice(0, 8);
+      }
+
+      export function formatDateTime(date: Date): string {
+          return `${formatDate(date)} ${formatTime(date)}`;
+      }
+
+      export function parseDate(dateStr: string): Date {
+          const parsed = new Date(dateStr);
+          if (isNaN(parsed.getTime())) {
+              throw new Error(`Invalid date string: ${dateStr}`);
+          }
+          return parsed;
+      }
+
+      export function daysBetween(start: Date, end: Date): number {
+          const msPerDay = 1000 * 60 * 60 * 24;
+          return Math.floor((end.getTime() - start.getTime()) / msPerDay);
+      }
+    src/app.ts: |
+      import { formatDateTime, parseDate } from '@utils/helpers';
+
+      interface AppConfig {
+          timezone: string;
+          locale: string;
+      }
+
+      function initializeApp(config: AppConfig): void {
+          const now = new Date();
+          const formatted = formatDateTime(now);
+          console.log(`App started at ${formatted} in ${config.timezone}`);
+      }
+
+      function processDateInput(input: string): string {
+          const date = parseDate(input);
+          return formatDateTime(date);
+      }
+
+      export { initializeApp, processDateInput };
+    jest.config.json: |
+      {
+        "preset": "ts-jest",
+        "testEnvironment": "node",
+        "moduleNameMapper": {
+          "^@utils/(.*)$": "<rootDir>/src/utils/$1"
+        }
+      }
+    webpack.config.js: |
+      const path = require('path');
+
+      module.exports = {
+          entry: './src/app.ts',
+          output: {
+              filename: 'bundle.js',
+              path: path.resolve(__dirname, 'dist'),
+          },
+          resolve: {
+              alias: {
+                  '@utils': path.resolve(__dirname, 'src/utils'),
+              },
+              extensions: ['.ts', '.js'],
+          },
+          module: {
+              rules: [
+                  { test: /\.ts$/, use: 'ts-loader', exclude: /node_modules/ },
+              ],
+          },
+      };
+    package.json: |
+      {
+        "name": "path-alias-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "dev": "ts-node src/app.ts"
+        },
+        "devDependencies": {
+          "typescript": "^5.2.0",
+          "ts-node": "^10.9.0"
+        }
+      }
+  changed_files:
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "baseUrl": ".",
+          "paths": {
+            "@utils/*": ["src/utils/*"],
+            "@components/*": ["src/components/*"]
+          },
+          "outDir": "dist",
+          "rootDir": "src",
+          "strict": true,
+          "esModuleInterop": true,
+          "skipLibCheck": true
+        },
+        "include": ["src/**/*"]
+      }
+  commit_message: Update files
+fragments:
+- id: tsconfig
+  selector:
+    path: tsconfig.json
+    anchor: '"@utils/*": ["src/utils/*"]'
+- id: tsconfig_1
+  selector:
+    path: tsconfig.json
+    anchor: '"@components/*": ["src/components/*"]'
+- id: no_jest_config
+  selector:
+    path: jest.config.json
+- id: no_webpack_config
+  selector:
+    path: webpack.config.js
+- id: no_package
+  selector:
+    path: package.json
+- id: no_global_0
+  selector:
+    anchor: moduleNameMapper
+- id: no_global_1
+  selector:
+    anchor: ts-jest
+- id: no_global_2
+  selector:
+    anchor: resolve
+- id: no_global_3
+  selector:
+    anchor: ts-loader
+- id: no_global_4
+  selector:
+    anchor: bundle.js
+- id: no_global_5
+  selector:
+    anchor: ts-node
+oracle:
+  required:
+  - tsconfig
+  - tsconfig_1
+  allowed: []
+  forbidden:
+  - no_jest_config
+  - no_webpack_config
+  - no_package
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

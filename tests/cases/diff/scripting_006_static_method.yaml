@@ -1,0 +1,293 @@
+name: scripting_006_static_method
+repo:
+  initial_files:
+    src/app.php: |
+      <?php
+      echo "Hello World";
+    src/Models/Invoice.php: |
+      <?php
+      namespace App\Models;
+
+      class Invoice {
+          private static array $invoices = [];
+          public int $number;
+          public string $client;
+          public float $totalAmount;
+
+          public function __construct(int $number, string $client, float $totalAmount) {
+              $this->number = $number;
+              $this->client = $client;
+              $this->totalAmount = $totalAmount;
+          }
+
+          public static function lookupByNumber(int $number): ?self {
+              return self::$invoices[$number] ?? null;
+          }
+
+          public static function generateDraft(string $client, float $totalAmount): self {
+              $number = count(self::$invoices) + 1;
+              $invoice = new self($number, $client, $totalAmount);
+              self::$invoices[$number] = $invoice;
+              return $invoice;
+          }
+
+          public static function allInvoices(): array {
+              return array_values(self::$invoices);
+          }
+      }
+    src/Models/Receipt.php: |
+      <?php
+      namespace App\Models;
+
+      class Receipt {
+          private static array $receipts = [];
+          public int $id;
+          public string $buyer;
+          public float $paidAmount;
+          public string $currency;
+
+          public function __construct(int $id, string $buyer, float $paidAmount, string $currency = 'USD') {
+              $this->id = $id;
+              $this->buyer = $buyer;
+              $this->paidAmount = $paidAmount;
+              $this->currency = $currency;
+          }
+
+          public static function issueReceipt(string $buyer, float $paidAmount): self {
+              $id = count(self::$receipts) + 1;
+              $receipt = new self($id, $buyer, $paidAmount);
+              self::$receipts[$id] = $receipt;
+              return $receipt;
+          }
+
+          public static function findReceipt(int $id): ?self {
+              return self::$receipts[$id] ?? null;
+          }
+
+          public static function allReceipts(): array {
+              return array_values(self::$receipts);
+          }
+      }
+    src/Models/Payment.php: |
+      <?php
+      namespace App\Models;
+
+      class Payment {
+          private static array $payments = [];
+          public string $transactionId;
+          public float $amount;
+          public string $status;
+
+          public function __construct(string $transactionId, float $amount, string $status = 'pending') {
+              $this->transactionId = $transactionId;
+              $this->amount = $amount;
+              $this->status = $status;
+          }
+
+          public static function createPayment(float $amount): self {
+              $txId = 'txn_' . count(self::$payments) + 1;
+              $payment = new self($txId, $amount);
+              self::$payments[$txId] = $payment;
+              return $payment;
+          }
+
+          public static function findByTransactionId(string $txId): ?self {
+              return self::$payments[$txId] ?? null;
+          }
+      }
+    src/Database/Connection.php: |
+      <?php
+      namespace App\Database;
+
+      class Connection {
+          private static ?self $instance = null;
+          private string $dsn;
+
+          private function __construct(string $dsn) {
+              $this->dsn = $dsn;
+          }
+
+          public static function getInstance(string $dsn = 'sqlite::memory:'): self {
+              if (self::$instance === null) {
+                  self::$instance = new self($dsn);
+              }
+              return self::$instance;
+          }
+
+          public function getDsn(): string {
+              return $this->dsn;
+          }
+      }
+    src/Services/InvoiceService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Models\Invoice;
+
+      class InvoiceService {
+          public function createInvoice(string $client, float $amount): Invoice {
+              $invoice = Invoice::generateDraft($client, $amount);
+              return $invoice;
+          }
+
+          public function getInvoice(int $number): ?Invoice {
+              return Invoice::lookupByNumber($number);
+          }
+
+          public function listAll(): array {
+              return Invoice::allInvoices();
+          }
+      }
+    tests/InvoiceTest.php: |
+      <?php
+      namespace Tests;
+
+      use App\Models\Invoice;
+      use PHPUnit\Framework\TestCase;
+
+      class InvoiceTest extends TestCase {
+          public function testGenerateDraft(): void {
+              $invoice = Invoice::generateDraft('Test Corp', 500.00);
+              $this->assertInstanceOf(Invoice::class, $invoice);
+              $this->assertEquals('Test Corp', $invoice->client);
+              $this->assertEquals(500.00, $invoice->totalAmount);
+          }
+
+          public function testLookupByNumber(): void {
+              $invoice = Invoice::generateDraft('Lookup Corp', 750.00);
+              $found = Invoice::lookupByNumber($invoice->number);
+              $this->assertNotNull($found);
+              $this->assertEquals('Lookup Corp', $found->client);
+          }
+      }
+    src/Formatters/InvoiceFormatter.php: |
+      <?php
+      namespace App\Formatters;
+
+      use App\Models\Invoice;
+
+      class InvoiceFormatter {
+          public function format(Invoice $invoice): string {
+              return sprintf(
+                  "Invoice #%d: %s - $%.2f",
+                  $invoice->number,
+                  $invoice->client,
+                  $invoice->totalAmount
+              );
+          }
+
+          public function formatShort(Invoice $invoice): string {
+              return sprintf("#%d: $%.2f", $invoice->number, $invoice->totalAmount);
+          }
+      }
+  changed_files:
+    src/app.php: |
+      <?php
+      require_once 'Models/Invoice.php';
+
+      use App\Models\Invoice;
+
+      $invoice = Invoice::generateDraft('Acme Corp', 1500.00);
+      $found = Invoice::lookupByNumber($invoice->number);
+      echo $found->client . ": $" . $found->totalAmount . "\n";
+  commit_message: Update files
+fragments:
+- id: invoice
+  selector:
+    path: src/Models/Invoice.php
+    anchor: 'public static function generateDraft(string $client, float $totalAmount): self'
+- id: invoice_1
+  selector:
+    path: src/Models/Invoice.php
+    anchor: 'public static function lookupByNumber(int $number): ?self'
+- id: invoice_2
+  selector:
+    path: src/Models/Invoice.php
+    anchor: self::$invoices[$number] ?? null
+- id: no_receipt
+  selector:
+    path: src/Models/Receipt.php
+- id: no_payment
+  selector:
+    path: src/Models/Payment.php
+- id: no_connection
+  selector:
+    path: src/Database/Connection.php
+- id: no_invoiceservice
+  selector:
+    path: src/Services/InvoiceService.php
+- id: no_invoicetest
+  selector:
+    path: tests/InvoiceTest.php
+- id: no_invoiceformatter
+  selector:
+    path: src/Formatters/InvoiceFormatter.php
+- id: no_global_0
+  selector:
+    anchor: class Receipt
+- id: no_global_1
+  selector:
+    anchor: issueReceipt
+- id: no_global_2
+  selector:
+    anchor: findReceipt
+- id: no_global_3
+  selector:
+    anchor: class Payment
+- id: no_global_4
+  selector:
+    anchor: createPayment
+- id: no_global_5
+  selector:
+    anchor: findByTransactionId
+- id: no_global_6
+  selector:
+    anchor: class Connection
+- id: no_global_7
+  selector:
+    anchor: getInstance
+- id: no_global_8
+  selector:
+    anchor: class InvoiceService
+- id: no_global_9
+  selector:
+    anchor: createInvoice
+- id: no_global_10
+  selector:
+    anchor: class InvoiceTest
+- id: no_global_11
+  selector:
+    anchor: testGenerateDraft
+- id: no_global_12
+  selector:
+    anchor: class InvoiceFormatter
+- id: no_global_13
+  selector:
+    anchor: formatShort
+oracle:
+  required:
+  - invoice
+  - invoice_1
+  - invoice_2
+  allowed: []
+  forbidden:
+  - no_receipt
+  - no_payment
+  - no_connection
+  - no_invoiceservice
+  - no_invoicetest
+  - no_invoiceformatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

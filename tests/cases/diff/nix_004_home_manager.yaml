@@ -1,0 +1,300 @@
+name: nix_004_home_manager
+repo:
+  initial_files:
+    home.nix: |
+      { config, pkgs, ... }:
+
+      {
+        home.username = "nikolay";
+        home.homeDirectory = "/home/nikolay";
+        home.stateVersion = "23.11";
+
+        imports = [
+          ./programs/git.nix
+          ./programs/vim.nix
+          ./programs/zsh.nix
+        ];
+
+        home.packages = with pkgs; [
+          ripgrep
+          fd
+          jq
+          htop
+        ];
+
+        programs.home-manager.enable = true;
+      }
+    programs/git.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_A = "noise_git_program";
+
+        programs.git = {
+          enable = true;
+          userName = "Nikolay";
+          userEmail = "nikolay@example.com";
+          extraConfig = {
+            init.defaultBranch = "main";
+            pull.rebase = true;
+            core.editor = "vim";
+          };
+          delta.enable = true;
+        };
+      }
+    programs/vim.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_B = "noise_vim_program";
+
+        programs.neovim = {
+          enable = true;
+          defaultEditor = true;
+          viAlias = true;
+          vimAlias = true;
+          plugins = with pkgs.vimPlugins; [
+            telescope-nvim
+            nvim-treesitter
+            nvim-lspconfig
+          ];
+        };
+      }
+    programs/zsh.nix: |
+      { pkgs, ... }:
+
+      {
+        programs.zsh = {
+          enable = true;
+          autosuggestion.enable = true;
+          syntaxHighlighting.enable = true;
+          shellAliases = {
+            ll = "ls -la";
+            gs = "git status";
+            gc = "git commit";
+          };
+          oh-my-zsh = {
+            enable = true;
+            plugins = [ "git" "docker" "kubectl" ];
+            theme = "robbyrussell";
+          };
+        };
+      }
+    services/syncthing.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_C = "noise_syncthing_service";
+
+        services.syncthing = {
+          enable = true;
+          user = "nikolay";
+          dataDir = "/home/nikolay/Sync";
+          configDir = "/home/nikolay/.config/syncthing";
+        };
+      }
+    services/gpg-agent.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_D = "noise_gpg_service";
+
+        services.gpg-agent = {
+          enable = true;
+          enableSshSupport = true;
+          pinentryFlavor = "curses";
+        };
+      }
+  changed_files:
+    home.nix: |
+      { config, pkgs, ... }:
+
+      {
+        home.username = "nikolay";
+        home.homeDirectory = "/home/nikolay";
+        home.stateVersion = "23.11";
+
+        imports = [
+          ./programs/git.nix
+          ./programs/vim.nix
+          ./programs/zsh.nix
+          ./programs/tmux.nix
+        ];
+
+        home.packages = with pkgs; [
+          ripgrep
+          fd
+          jq
+          htop
+        ];
+
+        programs.home-manager.enable = true;
+      }
+    programs/tmux.nix: |
+      { pkgs, ... }:
+
+      {
+        programs.tmux = {
+          enable = true;
+          clock24 = true;
+          baseIndex = 1;
+          terminal = "tmux-256color";
+          escapeTime = 10;
+          historyLimit = 50000;
+
+          plugins = with pkgs.tmuxPlugins; [
+            sensible
+            yank
+            resurrect
+            continuum
+          ];
+
+          extraConfig = ''
+            set -g mouse on
+            set -g status-style 'bg=#333333 fg=#5eacd3'
+            bind-key -T copy-mode-vi v send-keys -X begin-selection
+            bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "xclip"
+            bind | split-window -h -c "#{pane_current_path}"
+            bind - split-window -v -c "#{pane_current_path}"
+          '';
+        };
+      }
+    programs/git.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_A = "noise_git_program";
+
+        programs.git = {
+          enable = true;
+          userName = "Nikolay";
+          userEmail = "nikolay@example.com";
+          extraConfig = {
+            init.defaultBranch = "main";
+            pull.rebase = true;
+            core.editor = "vim";
+          };
+          delta.enable = true;
+        };
+      }
+    programs/vim.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_B = "noise_vim_program";
+
+        programs.neovim = {
+          enable = true;
+          defaultEditor = true;
+          viAlias = true;
+          vimAlias = true;
+          plugins = with pkgs.vimPlugins; [
+            telescope-nvim
+            nvim-treesitter
+            nvim-lspconfig
+          ];
+        };
+      }
+    programs/zsh.nix: |
+      { pkgs, ... }:
+
+      {
+        programs.zsh = {
+          enable = true;
+          autosuggestion.enable = true;
+          syntaxHighlighting.enable = true;
+          shellAliases = {
+            ll = "ls -la";
+            gs = "git status";
+            gc = "git commit";
+          };
+          oh-my-zsh = {
+            enable = true;
+            plugins = [ "git" "docker" "kubectl" ];
+            theme = "robbyrussell";
+          };
+        };
+      }
+    services/syncthing.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_C = "noise_syncthing_service";
+
+        services.syncthing = {
+          enable = true;
+          user = "nikolay";
+          dataDir = "/home/nikolay/Sync";
+          configDir = "/home/nikolay/.config/syncthing";
+        };
+      }
+    services/gpg-agent.nix: |
+      { pkgs, ... }:
+
+      {
+        GARBAGE_NIX_004_D = "noise_gpg_service";
+
+        services.gpg-agent = {
+          enable = true;
+          enableSshSupport = true;
+          pinentryFlavor = "curses";
+        };
+      }
+  commit_message: Update files
+fragments:
+- id: home
+  selector:
+    path: home.nix
+    anchor: ./programs/tmux.nix
+- id: tmux
+  selector:
+    path: programs/tmux.nix
+    anchor: programs.tmux
+- id: tmux_1
+  selector:
+    path: programs/tmux.nix
+    anchor: resurrect
+- id: tmux_2
+  selector:
+    path: programs/tmux.nix
+    anchor: continuum
+- id: no_git
+  selector:
+    path: programs/git.nix
+- id: no_vim
+  selector:
+    path: programs/vim.nix
+- id: no_syncthing
+  selector:
+    path: services/syncthing.nix
+- id: no_gpg_agent
+  selector:
+    path: services/gpg-agent.nix
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIX_004_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIX_004_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_NIX_004_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_NIX_004_D
+oracle:
+  required:
+  - home
+  - tmux
+  - tmux_1
+  - tmux_2
+  allowed: []
+  forbidden:
+  - no_git
+  - no_vim
+  - no_syncthing
+  - no_gpg_agent
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

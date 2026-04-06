@@ -1,0 +1,127 @@
+name: patterns_030_intra_helper_functions_same_file
+repo:
+  initial_files:
+    processor.py: |
+      def helper_validate(data):
+          return data is not None and len(data) > 0
+
+      def helper_transform(data):
+          return data.strip().lower()
+
+      def helper_format(data):
+          return f"[{data}]"
+
+      def main_function(data):
+          if not helper_validate(data):
+              return None
+          transformed = helper_transform(data)
+          return helper_format(transformed)
+    sanitizer.py: |
+      def helper_validate(html):
+          return html is not None and '<' in html
+
+      def helper_clean(html):
+          import re
+          return re.sub(r'<script.*?</script>', '', html)
+
+      def sanitize(html):
+          if not helper_validate(html):
+              return ''
+          return helper_clean(html)
+    encoder.py: |
+      def format_output(data, encoding='utf-8'):
+          return data.encode(encoding)
+
+      def decode_input(raw, encoding='utf-8'):
+          return raw.decode(encoding)
+
+      def process_text(text):
+          encoded = format_output(text)
+          return decode_input(encoded)
+  changed_files:
+    processor.py: |
+      def helper_validate(data):
+          return data is not None and len(data) > 0
+
+      def helper_transform(data):
+          return data.strip().lower()
+
+      def helper_format(data):
+          return f"[{data}]"
+
+      def main_function(data):
+          if not helper_validate(data):
+              return None
+          transformed = helper_transform(data)
+          formatted = helper_format(transformed)
+          return f"Result: {formatted}"
+    sanitizer.py: |
+      def helper_validate(html):
+          return html is not None and '<' in html
+
+      def helper_clean(html):
+          import re
+          return re.sub(r'<script.*?</script>', '', html)
+
+      def sanitize(html):
+          if not helper_validate(html):
+              return ''
+          return helper_clean(html)
+    encoder.py: |
+      def format_output(data, encoding='utf-8'):
+          return data.encode(encoding)
+
+      def decode_input(raw, encoding='utf-8'):
+          return raw.decode(encoding)
+
+      def process_text(text):
+          encoded = format_output(text)
+          return decode_input(encoded)
+  commit_message: Update files
+fragments:
+- id: processor
+  selector:
+    path: processor.py
+    anchor: formatted = helper_format(transformed)
+- id: processor_1
+  selector:
+    path: processor.py
+    anchor: 'return f"Result: {formatted}"'
+- id: no_sanitizer
+  selector:
+    path: sanitizer.py
+- id: no_encoder
+  selector:
+    path: encoder.py
+- id: no_global_0
+  selector:
+    anchor: helper_clean
+- id: no_global_1
+  selector:
+    anchor: sanitize(html)
+- id: no_global_2
+  selector:
+    anchor: <script
+- id: no_global_3
+  selector:
+    anchor: format_output
+- id: no_global_4
+  selector:
+    anchor: decode_input
+- id: no_global_5
+  selector:
+    anchor: process_text
+oracle:
+  required:
+  - processor
+  - processor_1
+  allowed: []
+  forbidden:
+  - no_sanitizer
+  - no_encoder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

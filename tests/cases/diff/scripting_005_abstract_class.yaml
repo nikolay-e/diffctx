@@ -1,0 +1,244 @@
+name: scripting_005_abstract_class
+repo:
+  initial_files:
+    src/Controllers/UserController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class UserController {
+      }
+    src/Controllers/BaseController.php: |
+      <?php
+      namespace App\Controllers;
+
+      abstract class BaseController {
+          abstract protected function getModel(): string;
+
+          public function index(): array {
+              return ['model' => $this->getModel()];
+          }
+
+          protected function respond(array $data): void {
+              header('Content-Type: application/json');
+              echo json_encode($data);
+          }
+
+          protected function respondError(string $message, int $code = 400): void {
+              http_response_code($code);
+              $this->respond(['error' => $message, 'code' => $code]);
+          }
+      }
+    src/Controllers/ProductController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class ProductController extends BaseController {
+          protected function getModel(): string {
+              return 'Product';
+          }
+
+          public function show(int $id): void {
+              $this->respond(['id' => $id, 'model' => $this->getModel()]);
+          }
+
+          public function list(): void {
+              $this->respond(['model' => $this->getModel(), 'items' => []]);
+          }
+      }
+    src/Controllers/OrderController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class OrderController extends BaseController {
+          protected function getModel(): string {
+              return 'Order';
+          }
+
+          public function show(int $id): void {
+              $this->respond(['id' => $id, 'model' => $this->getModel()]);
+          }
+
+          public function cancel(int $id): void {
+              $this->respond(['id' => $id, 'status' => 'cancelled']);
+          }
+      }
+    src/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User {
+          public int $id;
+          public string $name;
+          public string $email;
+
+          public function __construct(int $id, string $name, string $email) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->email = $email;
+          }
+
+          public function toArray(): array {
+              return ['id' => $this->id, 'name' => $this->name, 'email' => $this->email];
+          }
+      }
+    src/Middleware/RateLimiter.php: |
+      <?php
+      namespace App\Middleware;
+
+      class RateLimiter {
+          private int $maxRequests;
+          private int $windowSeconds;
+
+          public function __construct(int $maxRequests = 60, int $windowSeconds = 60) {
+              $this->maxRequests = $maxRequests;
+              $this->windowSeconds = $windowSeconds;
+          }
+
+          public function check(string $clientIp): bool {
+              return true;
+          }
+
+          public function getLimit(): int {
+              return $this->maxRequests;
+          }
+      }
+    src/Routes/web.php: |
+      <?php
+      use App\Controllers\UserController;
+      use App\Controllers\ProductController;
+
+      $router->get('/users/{id}', [UserController::class, 'show']);
+      $router->get('/users', [UserController::class, 'index']);
+      $router->get('/products/{id}', [ProductController::class, 'show']);
+      $router->get('/products', [ProductController::class, 'list']);
+    tests/UserControllerTest.php: |
+      <?php
+      namespace Tests;
+
+      use App\Controllers\UserController;
+      use PHPUnit\Framework\TestCase;
+
+      class UserControllerTest extends TestCase {
+          private UserController $controller;
+
+          protected function setUp(): void {
+              $this->controller = new UserController();
+          }
+
+          public function testIndex(): void {
+              $result = $this->controller->index();
+              $this->assertEquals(['model' => 'User'], $result);
+          }
+
+          public function testGetModelReturnsUser(): void {
+              $result = $this->controller->index();
+              $this->assertArrayHasKey('model', $result);
+          }
+      }
+  changed_files:
+    src/Controllers/UserController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class UserController extends BaseController {
+          protected function getModel(): string {
+              return 'User';
+          }
+
+          public function show(int $id): void {
+              $this->respond(['id' => $id, 'model' => $this->getModel()]);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: basecontroller
+  selector:
+    path: src/Controllers/BaseController.php
+    anchor: 'abstract protected function getModel(): string'
+- id: basecontroller_1
+  selector:
+    path: src/Controllers/BaseController.php
+    anchor: 'protected function respond(array $data): void'
+- id: basecontroller_2
+  selector:
+    path: src/Controllers/BaseController.php
+    anchor: return ['model' => $this->getModel()]
+- id: no_productcontroller
+  selector:
+    path: src/Controllers/ProductController.php
+- id: no_ordercontroller
+  selector:
+    path: src/Controllers/OrderController.php
+- id: no_user
+  selector:
+    path: src/Models/User.php
+- id: no_ratelimiter
+  selector:
+    path: src/Middleware/RateLimiter.php
+- id: no_web
+  selector:
+    path: src/Routes/web.php
+- id: no_usercontrollertest
+  selector:
+    path: tests/UserControllerTest.php
+- id: no_global_0
+  selector:
+    anchor: class ProductController
+- id: no_global_1
+  selector:
+    anchor: return 'Product'
+- id: no_global_2
+  selector:
+    anchor: class OrderController
+- id: no_global_3
+  selector:
+    anchor: return 'Order'
+- id: no_global_4
+  selector:
+    anchor: namespace App\Models
+- id: no_global_5
+  selector:
+    anchor: public function toArray
+- id: no_global_6
+  selector:
+    anchor: class RateLimiter
+- id: no_global_7
+  selector:
+    anchor: maxRequests
+- id: no_global_8
+  selector:
+    anchor: $router->get
+- id: no_global_9
+  selector:
+    anchor: UserController::class
+- id: no_global_10
+  selector:
+    anchor: class UserControllerTest
+- id: no_global_11
+  selector:
+    anchor: testIndex
+oracle:
+  required:
+  - basecontroller
+  - basecontroller_1
+  - basecontroller_2
+  allowed: []
+  forbidden:
+  - no_productcontroller
+  - no_ordercontroller
+  - no_user
+  - no_ratelimiter
+  - no_web
+  - no_usercontrollertest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,310 @@
+name: scripting_017_block_yield
+repo:
+  initial_files:
+    lib/retry_helper.rb: |
+      module RetryHelper
+        def with_retry(max_attempts: 3)
+          attempts = 0
+          begin
+            attempts += 1
+            yield
+          rescue StandardError => e
+            retry if attempts < max_attempts
+            raise e
+          end
+        end
+
+        def retryable?(error)
+          error.is_a?(StandardError) && !error.is_a?(ArgumentError)
+        end
+      end
+    lib/service.rb: |
+      class Service
+      end
+    lib/circuit_breaker.rb: |
+      class CircuitBreaker
+        CLOSED = :closed
+        OPEN = :open
+        HALF_OPEN = :half_open
+
+        def initialize(threshold: 5, timeout: 30)
+          @threshold = threshold
+          @timeout = timeout
+          @failure_count = 0
+          @state = CLOSED
+          @last_failure_time = nil
+        end
+
+        def call(&block)
+          case @state
+          when CLOSED
+            begin
+              result = block.call
+              reset
+              result
+            rescue StandardError
+              record_failure
+              raise
+            end
+          when OPEN
+            if Time.now - @last_failure_time > @timeout
+              @state = HALF_OPEN
+              call(&block)
+            else
+              raise "Circuit is open"
+            end
+          when HALF_OPEN
+            begin
+              result = block.call
+              reset
+              result
+            rescue StandardError
+              @state = OPEN
+              @last_failure_time = Time.now
+              raise
+            end
+          end
+        end
+
+        private
+
+        def record_failure
+          @failure_count += 1
+          if @failure_count >= @threshold
+            @state = OPEN
+            @last_failure_time = Time.now
+          end
+        end
+
+        def reset
+          @failure_count = 0
+          @state = CLOSED
+        end
+      end
+    lib/timeout_helper.rb: |
+      module TimeoutHelper
+        def with_timeout(seconds: 10)
+          Timeout.timeout(seconds) do
+            yield
+          end
+        rescue Timeout::Error
+          raise "Operation timed out after #{seconds} seconds"
+        end
+
+        def safe_timeout(seconds: 10, fallback: nil)
+          with_timeout(seconds: seconds) { yield }
+        rescue
+          fallback
+        end
+      end
+    lib/api_client.rb: |
+      require_relative 'retry_helper'
+
+      class ApiClient
+        include RetryHelper
+
+        def initialize(base_url)
+          @base_url = base_url
+        end
+
+        def get(path)
+          with_retry(max_attempts: 3) do
+            uri = URI("#{@base_url}#{path}")
+            Net::HTTP.get_response(uri)
+          end
+        end
+
+        def post(path, body)
+          with_retry(max_attempts: 2) do
+            uri = URI("#{@base_url}#{path}")
+            Net::HTTP.post(uri, body.to_json)
+          end
+        end
+      end
+    lib/backoff_strategy.rb: |
+      class BackoffStrategy
+        def initialize(base_delay: 1.0, max_delay: 60.0, multiplier: 2.0)
+          @base_delay = base_delay
+          @max_delay = max_delay
+          @multiplier = multiplier
+        end
+
+        def execute(max_retries: 3)
+          retries = 0
+          begin
+            yield
+          rescue StandardError => e
+            retries += 1
+            raise e if retries >= max_retries
+            sleep(delay_for(retries))
+            retry
+          end
+        end
+
+        private
+
+        def delay_for(attempt)
+          [@base_delay * (@multiplier ** (attempt - 1)), @max_delay].min
+        end
+      end
+    lib/error_handler.rb: |
+      module ErrorHandler
+        def handle_errors
+          yield
+        rescue ArgumentError => e
+          { error: :invalid_argument, message: e.message }
+        rescue StandardError => e
+          { error: :internal, message: e.message }
+        end
+
+        def safe_execute(fallback: nil)
+          yield
+        rescue StandardError
+          fallback
+        end
+      end
+  changed_files:
+    lib/retry_helper.rb: |
+      module RetryHelper
+        def with_retry(max_attempts: 3)
+          attempts = 0
+          begin
+            attempts += 1
+            yield
+          rescue StandardError => e
+            retry if attempts < max_attempts
+            raise e
+          end
+        end
+
+        def retryable?(error)
+          error.is_a?(StandardError) && !error.is_a?(ArgumentError)
+        end
+      end
+    lib/service.rb: |
+      require_relative 'retry_helper'
+
+      class Service
+        include RetryHelper
+
+        def fetch_data
+          with_retry(max_attempts: 5) do
+            raise "Error" if rand < 0.5
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: retry_helper
+  selector:
+    path: lib/retry_helper.rb
+    anchor: module RetryHelper
+- id: retry_helper_1
+  selector:
+    path: lib/retry_helper.rb
+    anchor: 'def with_retry(max_attempts: 3)'
+- id: retry_helper_2
+  selector:
+    path: lib/retry_helper.rb
+    anchor: yield
+- id: service
+  selector:
+    path: lib/service.rb
+    anchor: include RetryHelper
+- id: service_1
+  selector:
+    path: lib/service.rb
+    anchor: 'with_retry(max_attempts: 5)'
+- id: no_circuit_breaker
+  selector:
+    path: lib/circuit_breaker.rb
+- id: no_timeout_helper
+  selector:
+    path: lib/timeout_helper.rb
+- id: no_api_client
+  selector:
+    path: lib/api_client.rb
+- id: no_backoff_strategy
+  selector:
+    path: lib/backoff_strategy.rb
+- id: no_error_handler
+  selector:
+    path: lib/error_handler.rb
+- id: no_global_0
+  selector:
+    anchor: CircuitBreaker
+- id: no_global_1
+  selector:
+    anchor: HALF_OPEN
+- id: no_global_2
+  selector:
+    anchor: record_failure
+- id: no_global_3
+  selector:
+    anchor: reset
+- id: no_global_4
+  selector:
+    anchor: TimeoutHelper
+- id: no_global_5
+  selector:
+    anchor: with_timeout
+- id: no_global_6
+  selector:
+    anchor: safe_timeout
+- id: no_global_7
+  selector:
+    anchor: ApiClient
+- id: no_global_8
+  selector:
+    anchor: '@base_url'
+- id: no_global_9
+  selector:
+    anchor: Net::HTTP
+- id: no_global_10
+  selector:
+    anchor: BackoffStrategy
+- id: no_global_11
+  selector:
+    anchor: delay_for
+- id: no_global_12
+  selector:
+    anchor: max_delay
+- id: no_global_13
+  selector:
+    anchor: ErrorHandler
+- id: no_global_14
+  selector:
+    anchor: handle_errors
+- id: no_global_15
+  selector:
+    anchor: safe_execute
+oracle:
+  required:
+  - retry_helper
+  - retry_helper_1
+  - retry_helper_2
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_circuit_breaker
+  - no_timeout_helper
+  - no_api_client
+  - no_backoff_strategy
+  - no_error_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

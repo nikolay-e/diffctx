@@ -1,0 +1,23 @@
+name: internals_029_thai_comments_no_merge
+repo:
+  initial_files:
+    thai_comments.py: |
+      x = 0
+  changed_files:
+    thai_comments.py: |
+      # นี่คือความคิดเห็น
+      result = calculate(value)
+  commit_message: Update files
+fragments:
+- id: thai_comments_file
+  selector:
+    path: thai_comments.py
+- id: req_global_0
+  selector:
+    anchor: result = calculate(value)
+oracle:
+  required:
+  - thai_comments_file
+  - req_global_0
+  allowed: []
+  forbidden: []

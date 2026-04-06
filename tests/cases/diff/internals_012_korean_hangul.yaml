@@ -1,0 +1,25 @@
+name: internals_012_korean_hangul
+repo:
+  initial_files:
+    korean.py: |
+      def placeholder():
+          pass
+  changed_files:
+    korean.py: |
+      def handler():
+          message = "안녕하세요"
+          return message
+  commit_message: Update files
+fragments:
+- id: korean_file
+  selector:
+    path: korean.py
+- id: req_global_0
+  selector:
+    anchor: 'def handler():'
+oracle:
+  required:
+  - korean_file
+  - req_global_0
+  allowed: []
+  forbidden: []

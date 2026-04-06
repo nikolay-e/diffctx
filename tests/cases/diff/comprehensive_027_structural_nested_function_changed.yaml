@@ -1,0 +1,47 @@
+name: comprehensive_027_structural_nested_function_changed
+repo:
+  initial_files:
+    decorators.py: |
+      def retry(max_attempts):
+          def decorator(func):
+              def wrapper(*args):
+                  for i in range(max_attempts):
+                      try:
+                          return func(*args)
+                      except Exception:
+                          if i == max_attempts - 1:
+                              raise
+                  return None
+              return wrapper
+          return decorator
+  changed_files:
+    decorators.py: |
+      import time
+
+      def retry(max_attempts):
+          def decorator(func):
+              def wrapper(*args):
+                  for i in range(max_attempts):
+                      try:
+                          return func(*args)
+                      except Exception:
+                          if i == max_attempts - 1:
+                              raise
+                          time.sleep(0.1 * (i + 1))
+                  return None
+              return wrapper
+          return decorator
+  commit_message: Update files
+fragments:
+- id: decorators_file
+  selector:
+    path: decorators.py
+- id: req_global_0
+  selector:
+    anchor: time.sleep(0.1 * (i + 1))
+oracle:
+  required:
+  - decorators_file
+  - req_global_0
+  allowed: []
+  forbidden: []

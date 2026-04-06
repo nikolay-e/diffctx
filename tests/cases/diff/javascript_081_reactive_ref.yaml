@@ -1,0 +1,216 @@
+name: javascript_081_reactive_ref
+repo:
+  initial_files:
+    Counter.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+
+      const count = ref(0);
+
+      function increment() {
+          count.value++;
+      }
+      </script>
+
+      <template>
+          <button @click="increment">{{ count }}</button>
+      </template>
+    App.vue: |
+      <template><div>initial</div></template>
+    Timer.vue: |
+      <script setup lang="ts">
+      import { ref, onMounted, onUnmounted } from 'vue';
+
+      const seconds = ref(0);
+      let intervalId: number;
+
+      onMounted(() => {
+          intervalId = setInterval(() => { seconds.value++; }, 1000);
+      });
+
+      onUnmounted(() => {
+          clearInterval(intervalId);
+      });
+      </script>
+
+      <template>
+          <span>{{ seconds }}s</span>
+      </template>
+    counter-store.ts: |
+      import { ref } from 'vue';
+
+      const globalCount = ref(0);
+
+      export function useCounterStore() {
+          function increment() { globalCount.value++; }
+          function decrement() { globalCount.value--; }
+          function reset() { globalCount.value = 0; }
+          return { count: globalCount, increment, decrement, reset };
+      }
+    App.test.ts: |
+      import { mount } from '@vue/test-utils';
+      import App from './App.vue';
+      import Counter from './Counter.vue';
+
+      describe('App', () => {
+          it('renders Counter component', () => {
+              const wrapper = mount(App);
+              expect(wrapper.findComponent(Counter).exists()).toBe(true);
+          });
+
+          it('displays heading', () => {
+              const wrapper = mount(App);
+              expect(wrapper.find('h1').text()).toBe('App');
+          });
+      });
+  changed_files:
+    Counter.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+
+      const count = ref(0);
+
+      function increment() {
+          count.value++;
+      }
+      </script>
+
+      <template>
+          <button @click="increment">{{ count }}</button>
+      </template>
+    App.vue: |
+      <script setup lang="ts">
+      import Counter from './Counter.vue';
+      </script>
+
+      <template>
+          <div>
+              <h1>App</h1>
+              <Counter />
+          </div>
+      </template>
+    Timer.vue: |
+      <script setup lang="ts">
+      import { ref, onMounted, onUnmounted } from 'vue';
+
+      const seconds = ref(0);
+      let intervalId: number;
+
+      onMounted(() => {
+          intervalId = setInterval(() => { seconds.value++; }, 1000);
+      });
+
+      onUnmounted(() => {
+          clearInterval(intervalId);
+      });
+      </script>
+
+      <template>
+          <span>{{ seconds }}s</span>
+      </template>
+    counter-store.ts: |
+      import { ref } from 'vue';
+
+      const globalCount = ref(0);
+
+      export function useCounterStore() {
+          function increment() { globalCount.value++; }
+          function decrement() { globalCount.value--; }
+          function reset() { globalCount.value = 0; }
+          return { count: globalCount, increment, decrement, reset };
+      }
+    App.test.ts: |
+      import { mount } from '@vue/test-utils';
+      import App from './App.vue';
+      import Counter from './Counter.vue';
+
+      describe('App', () => {
+          it('renders Counter component', () => {
+              const wrapper = mount(App);
+              expect(wrapper.findComponent(Counter).exists()).toBe(true);
+          });
+
+          it('displays heading', () => {
+              const wrapper = mount(App);
+              expect(wrapper.find('h1').text()).toBe('App');
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: App.vue
+    anchor: import Counter from './Counter.vue'
+- id: app_1
+  selector:
+    path: App.vue
+    anchor: <Counter />
+- id: counter
+  selector:
+    path: Counter.vue
+    anchor: const count = ref(0)
+- id: counter_1
+  selector:
+    path: Counter.vue
+    anchor: function increment()
+- id: counter_2
+  selector:
+    path: Counter.vue
+    anchor: '@click="increment"'
+- id: no_timer
+  selector:
+    path: Timer.vue
+- id: no_counter_store
+  selector:
+    path: counter-store.ts
+- id: no_app_test
+  selector:
+    path: App.test.ts
+- id: no_global_0
+  selector:
+    anchor: Timer
+- id: no_global_1
+  selector:
+    anchor: seconds
+- id: no_global_2
+  selector:
+    anchor: setInterval
+- id: no_global_3
+  selector:
+    anchor: clearInterval
+- id: no_global_4
+  selector:
+    anchor: useCounterStore
+- id: no_global_5
+  selector:
+    anchor: globalCount
+- id: no_global_6
+  selector:
+    anchor: decrement
+- id: no_global_7
+  selector:
+    anchor: findComponent
+- id: no_global_8
+  selector:
+    anchor: '@vue/test-utils'
+oracle:
+  required:
+  - app
+  - app_1
+  - counter
+  - counter_1
+  - counter_2
+  allowed: []
+  forbidden:
+  - no_timer
+  - no_counter_store
+  - no_app_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

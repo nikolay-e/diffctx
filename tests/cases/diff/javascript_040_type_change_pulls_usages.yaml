@@ -1,0 +1,171 @@
+name: javascript_040_type_change_pulls_usages
+repo:
+  initial_files:
+    types.ts: |
+      export type Config = {
+          apiUrl: string;
+          timeout: number;
+      };
+    app.ts: |
+      import { Config } from './types';
+
+      function init(config: Config) {
+          console.log(`Connecting to ${config.apiUrl}`);
+      }
+    config-factory.ts: |
+      import { Config } from './types';
+
+      export function createDefaultConfig(): Config {
+          return { apiUrl: 'http://localhost:3000', timeout: 5000 };
+      }
+
+      export function createConfig(apiUrl: string, timeout: number): Config {
+          return { apiUrl, timeout };
+      }
+    env-config.ts: |
+      export interface EnvConfig {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug: boolean;
+      }
+
+      export function loadFromEnv(): EnvConfig {
+          return {
+              apiUrl: process.env.API_URL ?? 'http://localhost:3000',
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+              retries: parseInt(process.env.RETRIES ?? '3', 10),
+              debug: process.env.DEBUG === 'true',
+          };
+      }
+    config.test.ts: |
+      import { Config } from './types';
+
+      describe('Config', () => {
+          it('should have required fields', () => {
+              const config: Config = { apiUrl: 'http://test.com', timeout: 1000 };
+              expect(config.apiUrl).toBe('http://test.com');
+              expect(config.timeout).toBe(1000);
+          });
+      });
+  changed_files:
+    types.ts: |
+      export type Config = {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug?: boolean;
+      };
+    app.ts: |
+      import { Config } from './types';
+
+      function init(config: Config) {
+          console.log(`Connecting to ${config.apiUrl}`);
+      }
+    config-factory.ts: |
+      import { Config } from './types';
+
+      export function createDefaultConfig(): Config {
+          return { apiUrl: 'http://localhost:3000', timeout: 5000 };
+      }
+
+      export function createConfig(apiUrl: string, timeout: number): Config {
+          return { apiUrl, timeout };
+      }
+    env-config.ts: |
+      export interface EnvConfig {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug: boolean;
+      }
+
+      export function loadFromEnv(): EnvConfig {
+          return {
+              apiUrl: process.env.API_URL ?? 'http://localhost:3000',
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+              retries: parseInt(process.env.RETRIES ?? '3', 10),
+              debug: process.env.DEBUG === 'true',
+          };
+      }
+    config.test.ts: |
+      import { Config } from './types';
+
+      describe('Config', () => {
+          it('should have required fields', () => {
+              const config: Config = { apiUrl: 'http://test.com', timeout: 1000 };
+              expect(config.apiUrl).toBe('http://test.com');
+              expect(config.timeout).toBe(1000);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.ts
+    anchor: type Config = {
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'retries: number'
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: 'debug?: boolean'
+- id: app
+  selector:
+    path: app.ts
+    anchor: import { Config } from './types'
+- id: app_1
+  selector:
+    path: app.ts
+    anchor: config.apiUrl
+- id: no_config_factory
+  selector:
+    path: config-factory.ts
+- id: no_env_config
+  selector:
+    path: env-config.ts
+- id: no_config_test
+  selector:
+    path: config.test.ts
+- id: no_global_0
+  selector:
+    anchor: createDefaultConfig
+- id: no_global_1
+  selector:
+    anchor: createConfig
+- id: no_global_2
+  selector:
+    anchor: EnvConfig
+- id: no_global_3
+  selector:
+    anchor: loadFromEnv
+- id: no_global_4
+  selector:
+    anchor: process.env
+- id: no_global_5
+  selector:
+    anchor: should have required fields
+- id: no_global_6
+  selector:
+    anchor: http://test.com
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_config_factory
+  - no_env_config
+  - no_config_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

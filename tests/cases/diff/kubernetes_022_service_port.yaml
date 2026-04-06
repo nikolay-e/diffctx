@@ -1,0 +1,216 @@
+name: kubernetes_022_service_port
+repo:
+  initial_files:
+    k8s/apps/backend/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-api
+        namespace: production
+        labels:
+          app: backend-api
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-api
+        template:
+          metadata:
+            labels:
+              app: backend-api
+          spec:
+            containers:
+            - name: api
+              image: backend-api:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: metrics
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/apps/backend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-api
+        namespace: production
+      spec:
+        selector:
+          app: backend-api
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+          protocol: TCP
+    k8s/monitoring/service-monitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: backend-api-metrics
+        namespace: monitoring
+      spec:
+        selector:
+          matchLabels:
+            app: backend-api
+        endpoints:
+        - port: metrics
+          interval: 15s
+          path: /metrics
+    k8s/apps/frontend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend
+        namespace: production
+      spec:
+        selector:
+          app: frontend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+        - name: https
+          port: 443
+          targetPort: 3000
+  changed_files:
+    k8s/apps/backend/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-api
+        namespace: production
+        labels:
+          app: backend-api
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-api
+        template:
+          metadata:
+            labels:
+              app: backend-api
+          spec:
+            containers:
+            - name: api
+              image: backend-api:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 9090
+                name: metrics
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/apps/backend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-api
+        namespace: production
+        labels:
+          app: backend-api
+      spec:
+        selector:
+          app: backend-api
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+          protocol: TCP
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+          protocol: TCP
+    k8s/monitoring/service-monitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: backend-api-metrics
+        namespace: monitoring
+      spec:
+        selector:
+          matchLabels:
+            app: backend-api
+        endpoints:
+        - port: metrics
+          interval: 15s
+          path: /metrics
+    k8s/apps/frontend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend
+        namespace: production
+      spec:
+        selector:
+          app: frontend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+        - name: https
+          port: 443
+          targetPort: 3000
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: k8s/apps/backend/service.yaml
+    anchor: 'targetPort: 8080'
+- id: service_1
+  selector:
+    path: k8s/apps/backend/service.yaml
+    anchor: 'targetPort: 9090'
+- id: deployment
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: 'containerPort: 8080'
+- id: deployment_1
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: 'containerPort: 9090'
+- id: no_service_monitor
+  selector:
+    path: k8s/monitoring/service-monitor.yaml
+- id: no_service
+  selector:
+    path: k8s/apps/frontend/service.yaml
+- id: no_global_0
+  selector:
+    anchor: backend-api-metrics
+- id: no_global_1
+  selector:
+    anchor: ServiceMonitor
+- id: no_global_2
+  selector:
+    anchor: 'interval: 15s'
+- id: no_global_3
+  selector:
+    anchor: /metrics
+- id: no_global_4
+  selector:
+    anchor: 'name: frontend'
+- id: no_global_5
+  selector:
+    anchor: 'port: 443'
+oracle:
+  required:
+  - service
+  - service_1
+  - deployment
+  - deployment_1
+  allowed: []
+  forbidden:
+  - no_service_monitor
+  - no_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

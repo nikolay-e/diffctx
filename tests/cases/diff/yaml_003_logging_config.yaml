@@ -1,0 +1,276 @@
+name: yaml_003_logging_config
+repo:
+  initial_files:
+    logging.yaml: |
+      logging:
+        level: INFO
+        handlers:
+          - console
+          - file
+        format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        file_path: /var/log/app/application.log
+    src/logger.py: |
+      import logging
+
+      def setup_logging(level: str = "INFO", file_path: str = None):
+          logging.basicConfig(
+              level=getattr(logging, level),
+              format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+          )
+          logger = logging.getLogger(__name__)
+          if file_path:
+              handler = logging.FileHandler(file_path)
+              handler.setLevel(getattr(logging, level))
+              logger.addHandler(handler)
+          return logger
+
+      def get_logger(name: str) -> logging.Logger:
+          return logging.getLogger(name)
+    src/app.py: |
+      from src.logger import setup_logging
+      from src.config_loader import load_config
+      import yaml
+
+      def create_app():
+          with open("logging.yaml") as f:
+              config = yaml.safe_load(f)
+          log_config = config.get("logging", {})
+          logger = setup_logging(
+              level=log_config.get("level", "INFO"),
+              file_path=log_config.get("file_path"),
+          )
+          logger.info("Application started")
+          return App(logger=logger)
+
+      class App:
+          def __init__(self, logger):
+              self.logger = logger
+    config/alerts.yaml: |
+      alerts:
+        channels:
+          - type: slack
+            webhook_url: https://hooks.slack.com/services/xxx
+          - type: email
+            recipients:
+              - ops@example.com
+        rules:
+          - name: high_error_rate
+            threshold: 100
+            window_minutes: 5
+          - name: slow_response
+            threshold: 2000
+            window_minutes: 10
+    src/audit.py: |
+      import logging
+      from datetime import datetime
+
+      logger = logging.getLogger("audit")
+
+      class AuditLog:
+          def __init__(self, db_connection):
+              self.db = db_connection
+
+          def record(self, user_id: str, action: str, resource: str):
+              logger.info(f"Audit: user={user_id} action={action} resource={resource}")
+              self.db.insert("audit_log", {
+                  "user_id": user_id,
+                  "action": action,
+                  "resource": resource,
+                  "timestamp": datetime.utcnow(),
+              })
+
+          def get_recent(self, limit: int = 100):
+              return self.db.query(
+                  "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT %s", [limit]
+              )
+    src/metrics.py: |
+      import logging
+      from collections import defaultdict
+
+      logger = logging.getLogger("metrics")
+
+      class MetricsCollector:
+          def __init__(self):
+              self.counters = defaultdict(int)
+              self.gauges = defaultdict(float)
+
+          def increment(self, name: str, value: int = 1):
+              self.counters[name] += value
+              logger.debug(f"Counter {name}: {self.counters[name]}")
+
+          def set_gauge(self, name: str, value: float):
+              self.gauges[name] = value
+              logger.debug(f"Gauge {name}: {value}")
+
+          def report(self) -> dict:
+              return {"counters": dict(self.counters), "gauges": dict(self.gauges)}
+    config/monitoring.yaml: |
+      monitoring:
+        prometheus:
+          scrape_interval: 15s
+          endpoints:
+            - path: /metrics
+              port: 9090
+        healthcheck:
+          path: /health
+          interval: 30s
+    tests/test_logger.py: |
+      import logging
+      from src.logger import setup_logging, get_logger
+
+      class TestLogger:
+          def test_setup_logging_default_level(self):
+              logger = setup_logging()
+              assert logger.level == logging.INFO
+
+          def test_setup_logging_debug_level(self):
+              logger = setup_logging(level="DEBUG")
+              assert logger.level == logging.DEBUG
+
+          def test_get_logger_returns_named(self):
+              logger = get_logger("test.module")
+              assert logger.name == "test.module"
+  changed_files:
+    logging.yaml: |
+      logging:
+        level: DEBUG
+        handlers:
+          - console
+          - file
+          - syslog
+        format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        file_path: /var/log/app/application.log
+    src/logger.py: |
+      import logging
+
+      def setup_logging(level: str = "INFO", file_path: str = None):
+          logging.basicConfig(
+              level=getattr(logging, level),
+              format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+          )
+          logger = logging.getLogger(__name__)
+          if file_path:
+              handler = logging.FileHandler(file_path)
+              handler.setLevel(getattr(logging, level))
+              logger.addHandler(handler)
+          return logger
+
+      def get_logger(name: str) -> logging.Logger:
+          return logging.getLogger(name)
+    src/app.py: |
+      from src.logger import setup_logging
+      from src.config_loader import load_config
+      import yaml
+
+      def create_app():
+          with open("logging.yaml") as f:
+              config = yaml.safe_load(f)
+          log_config = config.get("logging", {})
+          logger = setup_logging(
+              level=log_config.get("level", "INFO"),
+              file_path=log_config.get("file_path"),
+          )
+          logger.info("Application started")
+          return App(logger=logger)
+
+      class App:
+          def __init__(self, logger):
+              self.logger = logger
+  commit_message: Update files
+fragments:
+- id: logger
+  selector:
+    path: src/logger.py
+    anchor: logging.basicConfig(
+- id: logger_1
+  selector:
+    path: src/logger.py
+    anchor: 'level: str = "INFO"'
+- id: app
+  selector:
+    path: src/app.py
+    anchor: level=log_config.get("level", "INFO")
+- id: app_1
+  selector:
+    path: src/app.py
+    anchor: setup_logging(
+- id: no_alerts
+  selector:
+    path: config/alerts.yaml
+- id: no_audit
+  selector:
+    path: src/audit.py
+- id: no_metrics
+  selector:
+    path: src/metrics.py
+- id: no_monitoring
+  selector:
+    path: config/monitoring.yaml
+- id: no_test_logger
+  selector:
+    path: tests/test_logger.py
+- id: no_global_0
+  selector:
+    anchor: webhook_url
+- id: no_global_1
+  selector:
+    anchor: high_error_rate
+- id: no_global_2
+  selector:
+    anchor: window_minutes
+- id: no_global_3
+  selector:
+    anchor: AuditLog
+- id: no_global_4
+  selector:
+    anchor: get_recent
+- id: no_global_5
+  selector:
+    anchor: audit_log
+- id: no_global_6
+  selector:
+    anchor: MetricsCollector
+- id: no_global_7
+  selector:
+    anchor: increment
+- id: no_global_8
+  selector:
+    anchor: set_gauge
+- id: no_global_9
+  selector:
+    anchor: scrape_interval
+- id: no_global_10
+  selector:
+    anchor: prometheus
+- id: no_global_11
+  selector:
+    anchor: test_setup_logging_default_level
+- id: no_global_12
+  selector:
+    anchor: test_setup_logging_debug_level
+oracle:
+  required:
+  - logger
+  - logger_1
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_alerts
+  - no_audit
+  - no_metrics
+  - no_monitoring
+  - no_test_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

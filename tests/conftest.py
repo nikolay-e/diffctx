@@ -15,7 +15,7 @@ from tests.framework.pygit2_backend import Pygit2Repo
 DIFF_CONTEXT_MAX_BUDGET = int(os.environ.get("DIFF_CONTEXT_MAX_BUDGET", "0"))
 
 
-VERIFY_NO_GARBAGE = os.environ.get("VERIFY_NO_GARBAGE", "0") == "1"
+VERIFY_NO_GARBAGE = os.environ.get("VERIFY_NO_GARBAGE", "1") == "1"
 
 
 @pytest.fixture(autouse=True)

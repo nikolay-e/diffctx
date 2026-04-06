@@ -1,0 +1,104 @@
+name: terraform_072_api_gateway
+repo:
+  initial_files:
+    api.tf: |
+      resource "aws_api_gateway_rest_api" "main" {
+        name = "my-api"
+      }
+
+      resource "aws_api_gateway_resource" "users" {
+        rest_api_id = aws_api_gateway_rest_api.main.id
+        parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+        path_part   = "users"
+      }
+    lambda.tf: |
+      resource "aws_lambda_function" "users_handler" {
+        function_name = "users-api-handler"
+        runtime       = "python3.11"
+        handler       = "handlers.users.get_users"
+        role          = aws_iam_role.lambda.arn
+        filename      = "lambda.zip"
+      }
+    methods.tf: |
+      resource "aws_api_gateway_method" "users_get" {
+        rest_api_id   = aws_api_gateway_rest_api.main.id
+        resource_id   = aws_api_gateway_resource.users.id
+        http_method   = "GET"
+        authorization = "NONE"
+      }
+
+      resource "aws_api_gateway_integration" "users_get" {
+        rest_api_id             = aws_api_gateway_rest_api.main.id
+        resource_id             = aws_api_gateway_resource.users.id
+        http_method             = aws_api_gateway_method.users_get.http_method
+        integration_http_method = "POST"
+        type                    = "AWS_PROXY"
+        uri                     = aws_lambda_function.users_handler.invoke_arn
+      }
+    src/handlers/users.py: |
+      def get_users(event, context):
+          return {"statusCode": 200, "body": "[]"}
+    admin/api.tf: |
+      resource "aws_api_gateway_rest_api" "admin" {
+        name = "admin-api"
+      }
+
+      resource "aws_api_gateway_resource" "admin_users" {
+        rest_api_id = aws_api_gateway_rest_api.admin.id
+        parent_id   = aws_api_gateway_rest_api.admin.root_resource_id
+        path_part   = "admin-users"
+      }
+  changed_files:
+    api.tf: |
+      resource "aws_api_gateway_rest_api" "main" {
+        name = "my-api-v2"
+      }
+
+      resource "aws_api_gateway_resource" "users" {
+        rest_api_id = aws_api_gateway_rest_api.main.id
+        parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+        path_part   = "v2/users"
+      }
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: api.tf
+    anchor: name = "my-api-v2"
+- id: api_1
+  selector:
+    path: api.tf
+    anchor: path_part   = "v2/users"
+- id: methods
+  selector:
+    path: methods.tf
+    anchor: resource "aws_api_gateway_method" "users_get" {
+- id: methods_1
+  selector:
+    path: methods.tf
+    anchor: aws_api_gateway_resource.users.id
+- id: lambda
+  selector:
+    path: lambda.tf
+    anchor: resource "aws_lambda_function" "users_handler" {
+- id: no_api
+  selector:
+    path: admin/api.tf
+- id: no_global_0
+  selector:
+    anchor: admin-api
+- id: no_global_1
+  selector:
+    anchor: admin-users
+oracle:
+  required:
+  - api
+  - api_1
+  - methods
+  - methods_1
+  - lambda
+  allowed: []
+  forbidden:
+  - no_api
+  - no_global_0
+  - no_global_1

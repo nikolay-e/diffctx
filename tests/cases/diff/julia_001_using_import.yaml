@@ -1,0 +1,328 @@
+name: julia_001_using_import
+repo:
+  initial_files:
+    src/DataProcessor.jl: |
+      module DataProcessor
+
+      export transform, validate, normalize
+
+      function transform(data::Vector{Float64}, scale::Float64)::Vector{Float64}
+          return data .* scale
+      end
+
+      function validate(data::Vector{Float64})::Bool
+          return all(isfinite, data) && length(data) > 0
+      end
+
+      function normalize(data::Vector{Float64})::Vector{Float64}
+          min_val = minimum(data)
+          max_val = maximum(data)
+          range = max_val - min_val
+          if range == 0.0
+              return zeros(length(data))
+          end
+          return (data .- min_val) ./ range
+      end
+
+      function describe(data::Vector{Float64})::String
+          return "Vector(n=$(length(data)), mean=$(sum(data)/length(data)))"
+      end
+
+      end # module
+    src/pipeline.jl: |
+      using DataProcessor: transform, validate
+
+      function run_pipeline(raw_data::Vector{Float64}, scale::Float64)
+          if !validate(raw_data)
+              error("Invalid data")
+          end
+          return transform(raw_data, scale)
+      end
+    src/Visualizer.jl: |
+      module Visualizer
+
+      export plot_data, plot_histogram
+
+      GARBAGE_JULIA_001_A = "viz_marker"
+      GARBAGE_JULIA_001_B = "plot_marker"
+
+      function plot_data(data::Vector{Float64}, title::String)
+          println("Plotting: $title with $(length(data)) points")
+      end
+
+      function plot_histogram(data::Vector{Float64}, bins::Int)
+          println("Histogram: $(bins) bins for $(length(data)) values")
+      end
+
+      function save_plot(filename::String)
+          println("Saving plot to $filename")
+      end
+
+      end # module
+    src/IOHelper.jl: |
+      module IOHelper
+
+      export read_csv, write_csv
+
+      GARBAGE_JULIA_001_C = "io_marker"
+      GARBAGE_JULIA_001_D = "file_marker"
+
+      function read_csv(path::String)::Vector{Float64}
+          return Float64[]
+      end
+
+      function write_csv(path::String, data::Vector{Float64})
+          open(path, "w") do f
+              for val in data
+                  println(f, val)
+              end
+          end
+      end
+
+      end # module
+    src/Statistics.jl: |
+      module Statistics
+
+      export mean, stddev, standardize
+
+      GARBAGE_JULIA_001_E = "stats_marker"
+      GARBAGE_JULIA_001_F = "math_marker"
+
+      function mean(data::Vector{Float64})::Float64
+          return sum(data) / length(data)
+      end
+
+      function stddev(data::Vector{Float64})::Float64
+          m = mean(data)
+          return sqrt(sum((data .- m) .^ 2) / (length(data) - 1))
+      end
+
+      function standardize(data::Vector{Float64})::Vector{Float64}
+          m = mean(data)
+          s = stddev(data)
+          if s == 0.0
+              return zeros(length(data))
+          end
+          return (data .- m) ./ s
+      end
+
+      end # module
+  changed_files:
+    src/DataProcessor.jl: |
+      module DataProcessor
+
+      export transform, validate, normalize
+
+      function transform(data::Vector{Float64}, scale::Float64)::Vector{Float64}
+          return data .* scale
+      end
+
+      function validate(data::Vector{Float64})::Bool
+          return all(isfinite, data) && length(data) > 0
+      end
+
+      function normalize(data::Vector{Float64})::Vector{Float64}
+          min_val = minimum(data)
+          max_val = maximum(data)
+          range = max_val - min_val
+          if range == 0.0
+              return zeros(length(data))
+          end
+          return (data .- min_val) ./ range
+      end
+
+      function describe(data::Vector{Float64})::String
+          return "Vector(n=$(length(data)), mean=$(sum(data)/length(data)))"
+      end
+
+      end # module
+    src/pipeline.jl: |
+      using DataProcessor: transform, validate, normalize
+
+      function run_pipeline(raw_data::Vector{Float64}, scale::Float64)
+          if !validate(raw_data)
+              error("Invalid data")
+          end
+          return transform(raw_data, scale)
+      end
+
+      function run_full_pipeline(raw_data::Vector{Float64}, scale::Float64)
+          if !validate(raw_data)
+              error("Invalid data")
+          end
+          normalized = normalize(raw_data)
+          return transform(normalized, scale)
+      end
+
+      function run_batch_pipeline(datasets::Vector{Vector{Float64}}, scale::Float64)
+          return [run_full_pipeline(d, scale) for d in datasets if validate(d)]
+      end
+    src/Visualizer.jl: |
+      module Visualizer
+
+      export plot_data, plot_histogram
+
+      GARBAGE_JULIA_001_A = "viz_marker"
+      GARBAGE_JULIA_001_B = "plot_marker"
+
+      function plot_data(data::Vector{Float64}, title::String)
+          println("Plotting: $title with $(length(data)) points")
+      end
+
+      function plot_histogram(data::Vector{Float64}, bins::Int)
+          println("Histogram: $(bins) bins for $(length(data)) values")
+      end
+
+      function save_plot(filename::String)
+          println("Saving plot to $filename")
+      end
+
+      end # module
+    src/IOHelper.jl: |
+      module IOHelper
+
+      export read_csv, write_csv
+
+      GARBAGE_JULIA_001_C = "io_marker"
+      GARBAGE_JULIA_001_D = "file_marker"
+
+      function read_csv(path::String)::Vector{Float64}
+          return Float64[]
+      end
+
+      function write_csv(path::String, data::Vector{Float64})
+          open(path, "w") do f
+              for val in data
+                  println(f, val)
+              end
+          end
+      end
+
+      end # module
+    src/Statistics.jl: |
+      module Statistics
+
+      export mean, stddev, standardize
+
+      GARBAGE_JULIA_001_E = "stats_marker"
+      GARBAGE_JULIA_001_F = "math_marker"
+
+      function mean(data::Vector{Float64})::Float64
+          return sum(data) / length(data)
+      end
+
+      function stddev(data::Vector{Float64})::Float64
+          m = mean(data)
+          return sqrt(sum((data .- m) .^ 2) / (length(data) - 1))
+      end
+
+      function standardize(data::Vector{Float64})::Vector{Float64}
+          m = mean(data)
+          s = stddev(data)
+          if s == 0.0
+              return zeros(length(data))
+          end
+          return (data .- m) ./ s
+      end
+
+      end # module
+  commit_message: Update files
+fragments:
+- id: pipeline
+  selector:
+    path: src/pipeline.jl
+    anchor: 'using DataProcessor: transform, validate, normalize'
+- id: pipeline_1
+  selector:
+    path: src/pipeline.jl
+    anchor: function run_full_pipeline
+- id: pipeline_2
+  selector:
+    path: src/pipeline.jl
+    anchor: normalized = normalize(raw_data)
+- id: dataprocessor
+  selector:
+    path: src/DataProcessor.jl
+    anchor: function normalize(data::Vector{Float64})::Vector{Float64}
+- id: dataprocessor_1
+  selector:
+    path: src/DataProcessor.jl
+    anchor: min_val = minimum(data)
+- id: dataprocessor_2
+  selector:
+    path: src/DataProcessor.jl
+    anchor: max_val = maximum(data)
+- id: no_visualizer
+  selector:
+    path: src/Visualizer.jl
+- id: no_iohelper
+  selector:
+    path: src/IOHelper.jl
+- id: no_statistics
+  selector:
+    path: src/Statistics.jl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_JULIA_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_JULIA_001_B
+- id: no_global_2
+  selector:
+    anchor: plot_data
+- id: no_global_3
+  selector:
+    anchor: plot_histogram
+- id: no_global_4
+  selector:
+    anchor: save_plot
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_JULIA_001_C
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_JULIA_001_D
+- id: no_global_7
+  selector:
+    anchor: read_csv
+- id: no_global_8
+  selector:
+    anchor: write_csv
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_JULIA_001_E
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_JULIA_001_F
+- id: no_global_11
+  selector:
+    anchor: standardize
+- id: no_global_12
+  selector:
+    anchor: stddev
+oracle:
+  required:
+  - pipeline
+  - pipeline_1
+  - pipeline_2
+  - dataprocessor
+  - dataprocessor_1
+  - dataprocessor_2
+  allowed: []
+  forbidden:
+  - no_visualizer
+  - no_iohelper
+  - no_statistics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

@@ -1,0 +1,153 @@
+name: javascript_017_dynamic_import_includes_module
+repo:
+  initial_files:
+    lazy.ts: |
+      export function heavyComputation(): number {
+          let result = 0;
+          for (let i = 0; i < 1000000; i++) {
+              result += i;
+          }
+          return result;
+      }
+    main.ts: |
+      console.log('initial');
+    heavy-computation.worker.ts: |
+      import { heavyComputation } from './lazy';
+
+      self.onmessage = (event: MessageEvent) => {
+          const result = heavyComputation();
+          self.postMessage({ type: 'result', data: result });
+      };
+
+      self.onerror = (error: ErrorEvent) => {
+          self.postMessage({ type: 'error', message: error.message });
+      };
+    module-loader.ts: |
+      type ModuleMap = Record<string, () => Promise<unknown>>;
+
+      export class ModuleLoader {
+          private cache = new Map<string, unknown>();
+          private loaders: ModuleMap;
+
+          constructor(loaders: ModuleMap) {
+              this.loaders = loaders;
+          }
+
+          async load<T>(name: string): Promise<T> {
+              if (this.cache.has(name)) return this.cache.get(name) as T;
+              const loader = this.loaders[name];
+              if (!loader) throw new Error(`Unknown module: ${name}`);
+              const mod = await loader();
+              this.cache.set(name, mod);
+              return mod as T;
+          }
+
+          preload(names: string[]): Promise<unknown[]> {
+              return Promise.all(names.map(name => this.load(name)));
+          }
+      }
+  changed_files:
+    lazy.ts: |
+      export function heavyComputation(): number {
+          let result = 0;
+          for (let i = 0; i < 1000000; i++) {
+              result += i;
+          }
+          return result;
+      }
+    main.ts: |
+      async function loadModule() {
+          const lazy = await import('./lazy');
+          const result = lazy.heavyComputation();
+          console.log(result);
+      }
+
+      loadModule();
+    heavy-computation.worker.ts: |
+      import { heavyComputation } from './lazy';
+
+      self.onmessage = (event: MessageEvent) => {
+          const result = heavyComputation();
+          self.postMessage({ type: 'result', data: result });
+      };
+
+      self.onerror = (error: ErrorEvent) => {
+          self.postMessage({ type: 'error', message: error.message });
+      };
+    module-loader.ts: |
+      type ModuleMap = Record<string, () => Promise<unknown>>;
+
+      export class ModuleLoader {
+          private cache = new Map<string, unknown>();
+          private loaders: ModuleMap;
+
+          constructor(loaders: ModuleMap) {
+              this.loaders = loaders;
+          }
+
+          async load<T>(name: string): Promise<T> {
+              if (this.cache.has(name)) return this.cache.get(name) as T;
+              const loader = this.loaders[name];
+              if (!loader) throw new Error(`Unknown module: ${name}`);
+              const mod = await loader();
+              this.cache.set(name, mod);
+              return mod as T;
+          }
+
+          preload(names: string[]): Promise<unknown[]> {
+              return Promise.all(names.map(name => this.load(name)));
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: await import('./lazy')
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: lazy.heavyComputation()
+- id: lazy
+  selector:
+    path: lazy.ts
+    anchor: 'export function heavyComputation(): number'
+- id: no_heavy_computation_worker
+  selector:
+    path: heavy-computation.worker.ts
+- id: no_module_loader
+  selector:
+    path: module-loader.ts
+- id: no_global_0
+  selector:
+    anchor: self.onmessage
+- id: no_global_1
+  selector:
+    anchor: self.postMessage
+- id: no_global_2
+  selector:
+    anchor: self.onerror
+- id: no_global_3
+  selector:
+    anchor: ModuleLoader
+- id: no_global_4
+  selector:
+    anchor: await loader()
+- id: no_global_5
+  selector:
+    anchor: preload
+oracle:
+  required:
+  - main
+  - main_1
+  - lazy
+  allowed: []
+  forbidden:
+  - no_heavy_computation_worker
+  - no_module_loader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

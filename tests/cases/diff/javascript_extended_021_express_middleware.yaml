@@ -1,0 +1,184 @@
+name: javascript_extended_021_express_middleware
+repo:
+  initial_files:
+    src/app.ts: |
+      import express from 'express';
+
+      const app = express();
+      app.get('/status', (req, res) => {
+          res.json({ status: 'ok' });
+      });
+
+      export default app;
+    src/middleware/auth.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) {
+              return res.status(401).json({ error: 'Unauthorized' });
+          }
+          if (!token.startsWith('Bearer ')) {
+              return res.status(401).json({ error: 'Invalid token format' });
+          }
+          next();
+      }
+    src/routes/health.ts: |
+      import { Router } from 'express';
+
+      export const healthRouter = Router();
+
+      healthRouter.get('/health', (req, res) => {
+          res.json({ status: 'healthy', uptime: process.uptime() });
+      });
+    src/middleware/rate-limiter.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+      export function rateLimiter(windowMs: number, maxRequests: number) {
+          return (req: Request, res: Response, next: NextFunction) => {
+              const ip = req.ip ?? 'unknown';
+              const entry = requestCounts.get(ip);
+              const now = Date.now();
+              if (!entry || entry.resetAt < now) {
+                  requestCounts.set(ip, { count: 1, resetAt: now + windowMs });
+                  return next();
+              }
+              if (entry.count >= maxRequests) {
+                  return res.status(429).json({ error: 'Too many requests' });
+              }
+              entry.count++;
+              next();
+          };
+      }
+    src/config/server.ts: |
+      export interface ServerConfig {
+          port: number;
+          host: string;
+          corsOrigin: string;
+      }
+
+      export function loadServerConfig(): ServerConfig {
+          return {
+              port: parseInt(process.env.PORT ?? '3000', 10),
+              host: process.env.HOST ?? '0.0.0.0',
+              corsOrigin: process.env.CORS_ORIGIN ?? '*',
+          };
+      }
+  changed_files:
+    src/app.ts: |
+      import express from 'express';
+      import { authMiddleware } from './middleware/auth';
+      import { healthRouter } from './routes/health';
+
+      const app = express();
+      app.use(express.json());
+      app.use(authMiddleware);
+      app.use(healthRouter);
+
+      app.get('/protected', (req, res) => {
+          res.json({ message: 'Protected content' });
+      });
+
+      export default app;
+    src/middleware/auth.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) {
+              return res.status(401).json({ error: 'Unauthorized' });
+          }
+          if (!token.startsWith('Bearer ')) {
+              return res.status(401).json({ error: 'Invalid token format' });
+          }
+          next();
+      }
+    src/routes/health.ts: |
+      import { Router } from 'express';
+
+      export const healthRouter = Router();
+
+      healthRouter.get('/health', (req, res) => {
+          res.json({ status: 'healthy', uptime: process.uptime() });
+      });
+    src/middleware/rate-limiter.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+      export function rateLimiter(windowMs: number, maxRequests: number) {
+          return (req: Request, res: Response, next: NextFunction) => {
+              const ip = req.ip ?? 'unknown';
+              const entry = requestCounts.get(ip);
+              const now = Date.now();
+              if (!entry || entry.resetAt < now) {
+                  requestCounts.set(ip, { count: 1, resetAt: now + windowMs });
+                  return next();
+              }
+              if (entry.count >= maxRequests) {
+                  return res.status(429).json({ error: 'Too many requests' });
+              }
+              entry.count++;
+              next();
+          };
+      }
+    src/config/server.ts: |
+      export interface ServerConfig {
+          port: number;
+          host: string;
+          corsOrigin: string;
+      }
+
+      export function loadServerConfig(): ServerConfig {
+          return {
+              port: parseInt(process.env.PORT ?? '3000', 10),
+              host: process.env.HOST ?? '0.0.0.0',
+              corsOrigin: process.env.CORS_ORIGIN ?? '*',
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: auth
+  selector:
+    path: src/middleware/auth.ts
+    anchor: authMiddleware
+- id: health
+  selector:
+    path: src/routes/health.ts
+    anchor: healthRouter
+- id: no_rate_limiter
+  selector:
+    path: src/middleware/rate-limiter.ts
+- id: no_server
+  selector:
+    path: src/config/server.ts
+- id: no_global_0
+  selector:
+    anchor: rateLimiter
+- id: no_global_1
+  selector:
+    anchor: requestCounts
+- id: no_global_2
+  selector:
+    anchor: ServerConfig
+- id: no_global_3
+  selector:
+    anchor: loadServerConfig
+- id: no_global_4
+  selector:
+    anchor: CORS_ORIGIN
+oracle:
+  required:
+  - auth
+  - health
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_server
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

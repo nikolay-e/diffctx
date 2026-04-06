@@ -1,0 +1,153 @@
+name: ppr_025_alpha_zero_pure_personalization
+repo:
+  initial_files:
+    primary.py: |
+      SHARED = "shared"
+
+      def primary_func():
+          return SHARED
+    secondary.py: |
+      SHARED = "shared"
+
+      def secondary_func():
+          return SHARED
+    garbage_shared_config.py: |
+      GARBAGE_PPR025_SHARED_CFG_A = "config"
+      GARBAGE_PPR025_SHARED_VAL_B = 99
+
+      SHARED = "shared"
+
+      def shared_config_loader():
+          return SHARED
+
+      class SharedRegistry:
+          GARBAGE_PPR025_REGISTRY_C = True
+
+          def get_shared(self):
+              return SHARED
+    garbage_primary_mirror.py: |
+      GARBAGE_PPR025_MIRROR_FUNC_D = "mirror"
+      GARBAGE_PPR025_MIRROR_FLAG_E = False
+
+      def primary_func():
+          return "unrelated_primary"
+
+      def primary_helper():
+          GARBAGE_PPR025_HELPER_F = 42
+          return primary_func()
+    garbage_tertiary.py: |
+      GARBAGE_PPR025_TERTIARY_G = "tertiary"
+      GARBAGE_PPR025_TERTIARY_H = 0
+
+      SHARED = "shared"
+
+      def tertiary_func():
+          return SHARED + "_tertiary"
+  changed_files:
+    primary.py: |
+      SHARED = "shared"
+
+      def primary_func():
+          return SHARED + "_modified"
+    secondary.py: |
+      SHARED = "shared"
+
+      def secondary_func():
+          return SHARED
+    garbage_shared_config.py: |
+      GARBAGE_PPR025_SHARED_CFG_A = "config"
+      GARBAGE_PPR025_SHARED_VAL_B = 99
+
+      SHARED = "shared"
+
+      def shared_config_loader():
+          return SHARED
+
+      class SharedRegistry:
+          GARBAGE_PPR025_REGISTRY_C = True
+
+          def get_shared(self):
+              return SHARED
+    garbage_primary_mirror.py: |
+      GARBAGE_PPR025_MIRROR_FUNC_D = "mirror"
+      GARBAGE_PPR025_MIRROR_FLAG_E = False
+
+      def primary_func():
+          return "unrelated_primary"
+
+      def primary_helper():
+          GARBAGE_PPR025_HELPER_F = 42
+          return primary_func()
+    garbage_tertiary.py: |
+      GARBAGE_PPR025_TERTIARY_G = "tertiary"
+      GARBAGE_PPR025_TERTIARY_H = 0
+
+      SHARED = "shared"
+
+      def tertiary_func():
+          return SHARED + "_tertiary"
+  commit_message: Update files
+fragments:
+- id: primary
+  selector:
+    path: primary.py
+    anchor: 'def primary_func():'
+- id: primary_1
+  selector:
+    path: primary.py
+    anchor: return SHARED + "_modified"
+- id: primary_2
+  selector:
+    path: primary.py
+    anchor: SHARED
+- id: no_garbage_shared_config
+  selector:
+    path: garbage_shared_config.py
+- id: no_garbage_primary_mirror
+  selector:
+    path: garbage_primary_mirror.py
+- id: no_garbage_tertiary
+  selector:
+    path: garbage_tertiary.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR025_SHARED_CFG_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR025_SHARED_VAL_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR025_REGISTRY_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR025_MIRROR_FUNC_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR025_MIRROR_FLAG_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR025_HELPER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR025_TERTIARY_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR025_TERTIARY_H
+oracle:
+  required:
+  - primary
+  - primary_1
+  - primary_2
+  allowed: []
+  forbidden:
+  - no_garbage_shared_config
+  - no_garbage_primary_mirror
+  - no_garbage_tertiary
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

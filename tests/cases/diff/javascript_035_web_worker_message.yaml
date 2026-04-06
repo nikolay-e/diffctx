@@ -1,0 +1,118 @@
+name: javascript_035_web_worker_message
+repo:
+  initial_files:
+    worker.ts: |
+      self.onmessage = function(e: MessageEvent) {
+          const result = e.data * 2;
+          self.postMessage(result);
+      };
+    main.ts: |
+      console.log('initial');
+    shared-worker.ts: |
+      const connections: MessagePort[] = [];
+
+      self.onconnect = function(e: MessageEvent) {
+          const port = (e as any).ports[0];
+          connections.push(port);
+          port.onmessage = function(msg: MessageEvent) {
+              connections.forEach(p => p.postMessage(msg.data));
+          };
+      };
+    thread-pool.ts: |
+      export class WorkerPool {
+          private workers: Worker[] = [];
+          private taskQueue: Array<{ data: unknown; resolve: (v: unknown) => void }> = [];
+
+          constructor(private size: number, private workerPath: string) {
+              for (let i = 0; i < size; i++) {
+                  this.workers.push(new Worker(workerPath));
+              }
+          }
+
+          execute(data: unknown): Promise<unknown> {
+              return new Promise(resolve => {
+                  this.taskQueue.push({ data, resolve });
+              });
+          }
+      }
+  changed_files:
+    worker.ts: |
+      self.onmessage = function(e: MessageEvent) {
+          const result = e.data * 2;
+          self.postMessage(result);
+      };
+    main.ts: |
+      const worker = new Worker('./worker.ts');
+
+      worker.onmessage = function(e: MessageEvent) {
+          console.log('Result:', e.data);
+      };
+
+      worker.postMessage(21);
+    shared-worker.ts: |
+      const connections: MessagePort[] = [];
+
+      self.onconnect = function(e: MessageEvent) {
+          const port = (e as any).ports[0];
+          connections.push(port);
+          port.onmessage = function(msg: MessageEvent) {
+              connections.forEach(p => p.postMessage(msg.data));
+          };
+      };
+    thread-pool.ts: |
+      export class WorkerPool {
+          private workers: Worker[] = [];
+          private taskQueue: Array<{ data: unknown; resolve: (v: unknown) => void }> = [];
+
+          constructor(private size: number, private workerPath: string) {
+              for (let i = 0; i < size; i++) {
+                  this.workers.push(new Worker(workerPath));
+              }
+          }
+
+          execute(data: unknown): Promise<unknown> {
+              return new Promise(resolve => {
+                  this.taskQueue.push({ data, resolve });
+              });
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: worker
+  selector:
+    path: worker.ts
+    anchor: self.onmessage
+- id: worker_1
+  selector:
+    path: worker.ts
+    anchor: e.data * 2
+- id: no_shared_worker
+  selector:
+    path: shared-worker.ts
+- id: no_thread_pool
+  selector:
+    path: thread-pool.ts
+- id: no_global_0
+  selector:
+    anchor: onconnect
+- id: no_global_1
+  selector:
+    anchor: connections
+- id: no_global_2
+  selector:
+    anchor: WorkerPool
+- id: no_global_3
+  selector:
+    anchor: taskQueue
+oracle:
+  required:
+  - worker
+  - worker_1
+  allowed: []
+  forbidden:
+  - no_shared_worker
+  - no_thread_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

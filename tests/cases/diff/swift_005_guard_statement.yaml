@@ -1,0 +1,372 @@
+name: swift_005_guard_statement
+repo:
+  initial_files:
+    Sources/Models/Response.swift: |
+      import Foundation
+
+      struct Response {
+          let data: Data?
+          let error: Error?
+          let statusCode: Int
+          let headers: [String: String]
+
+          var isSuccess: Bool {
+              (200..<300).contains(statusCode) && error == nil
+          }
+      }
+    Sources/Network/NetworkHandler.swift: |
+      struct NetworkHandler {
+          func placeholder() {}
+      }
+    Sources/Models/Endpoint.swift: |
+      enum HTTPMethod: String {
+          case get = "GET"
+          case post = "POST"
+          case put = "PUT"
+          case delete = "DELETE"
+      }
+
+      struct Endpoint {
+          let path: String
+          let method: HTTPMethod
+          let headers: [String: String]
+          let queryItems: [String: String]
+
+          func fullURL(baseURL: String) -> String {
+              return baseURL + path
+          }
+      }
+    Sources/Logging/RequestLogger.swift: |
+      import Foundation
+
+      class RequestLogger {
+          private var entries: [(Date, String)] = []
+
+          func logRequest(url: String, method: String, timestamp: Date) {
+              entries.append((timestamp, "\(method) \(url)"))
+              print("[\(timestamp)] \(method) \(url)")
+          }
+
+          func logLatency(url: String, durationMs: Int) {
+              print("\(url): \(durationMs)ms")
+          }
+
+          func exportLog() -> String {
+              entries.map { "\($0.0): \($0.1)" }.joined(separator: "\n")
+          }
+      }
+    Sources/Network/APIClient.swift: |
+      import Foundation
+
+      class APIClient {
+          private let handler = NetworkHandler()
+          private let baseURL: String
+
+          init(baseURL: String) {
+              self.baseURL = baseURL
+          }
+
+          func execute(endpoint: Endpoint) async throws -> Data? {
+              let url = URL(string: endpoint.fullURL(baseURL: baseURL))!
+              let (data, urlResponse) = try await URLSession.shared.data(from: url)
+              let httpResponse = urlResponse as! HTTPURLResponse
+              let response = Response(
+                  data: data,
+                  error: nil,
+                  statusCode: httpResponse.statusCode,
+                  headers: [:]
+              )
+              return handler.handleResponse(response)
+          }
+      }
+    Sources/Models/APIError.swift: |
+      import Foundation
+
+      enum APIError: LocalizedError {
+          case invalidURL
+          case decodingFailed(Error)
+          case serverError(statusCode: Int)
+          case noData
+          case timeout
+
+          var errorDescription: String? {
+              switch self {
+              case .invalidURL: return "Invalid URL"
+              case .decodingFailed(let error): return "Decoding: \(error.localizedDescription)"
+              case .serverError(let code): return "Server error: \(code)"
+              case .noData: return "No data received"
+              case .timeout: return "Request timed out"
+              }
+          }
+      }
+    Sources/Network/ResponseParser.swift: |
+      import Foundation
+
+      struct ResponseParser {
+          func parseJSON<T: Decodable>(_ response: Response, as type: T.Type) throws -> T {
+              guard let data = response.data else {
+                  throw APIError.noData
+              }
+              return try JSONDecoder().decode(T.self, from: data)
+          }
+
+          func parseString(_ response: Response) -> String? {
+              guard let data = response.data else { return nil }
+              return String(data: data, encoding: .utf8)
+          }
+      }
+  changed_files:
+    Sources/Models/Response.swift: |
+      import Foundation
+
+      struct Response {
+          let data: Data?
+          let error: Error?
+          let statusCode: Int
+          let headers: [String: String]
+
+          var isSuccess: Bool {
+              (200..<300).contains(statusCode) && error == nil
+          }
+      }
+    Sources/Network/NetworkHandler.swift: |
+      import Foundation
+
+      struct NetworkHandler {
+          func handleResponse(_ response: Response) -> Data? {
+              guard response.error == nil else {
+                  print("Error: \(response.error!)")
+                  return nil
+              }
+
+              guard response.statusCode == 200 else {
+                  print("Invalid status: \(response.statusCode)")
+                  return nil
+              }
+
+              guard let data = response.data else {
+                  print("No data")
+                  return nil
+              }
+
+              return data
+          }
+      }
+    Sources/Models/Endpoint.swift: |
+      enum HTTPMethod: String {
+          case get = "GET"
+          case post = "POST"
+          case put = "PUT"
+          case delete = "DELETE"
+      }
+
+      struct Endpoint {
+          let path: String
+          let method: HTTPMethod
+          let headers: [String: String]
+          let queryItems: [String: String]
+
+          func fullURL(baseURL: String) -> String {
+              return baseURL + path
+          }
+      }
+    Sources/Logging/RequestLogger.swift: |
+      import Foundation
+
+      class RequestLogger {
+          private var entries: [(Date, String)] = []
+
+          func logRequest(url: String, method: String, timestamp: Date) {
+              entries.append((timestamp, "\(method) \(url)"))
+              print("[\(timestamp)] \(method) \(url)")
+          }
+
+          func logLatency(url: String, durationMs: Int) {
+              print("\(url): \(durationMs)ms")
+          }
+
+          func exportLog() -> String {
+              entries.map { "\($0.0): \($0.1)" }.joined(separator: "\n")
+          }
+      }
+    Sources/Network/APIClient.swift: |
+      import Foundation
+
+      class APIClient {
+          private let handler = NetworkHandler()
+          private let baseURL: String
+
+          init(baseURL: String) {
+              self.baseURL = baseURL
+          }
+
+          func execute(endpoint: Endpoint) async throws -> Data? {
+              let url = URL(string: endpoint.fullURL(baseURL: baseURL))!
+              let (data, urlResponse) = try await URLSession.shared.data(from: url)
+              let httpResponse = urlResponse as! HTTPURLResponse
+              let response = Response(
+                  data: data,
+                  error: nil,
+                  statusCode: httpResponse.statusCode,
+                  headers: [:]
+              )
+              return handler.handleResponse(response)
+          }
+      }
+    Sources/Models/APIError.swift: |
+      import Foundation
+
+      enum APIError: LocalizedError {
+          case invalidURL
+          case decodingFailed(Error)
+          case serverError(statusCode: Int)
+          case noData
+          case timeout
+
+          var errorDescription: String? {
+              switch self {
+              case .invalidURL: return "Invalid URL"
+              case .decodingFailed(let error): return "Decoding: \(error.localizedDescription)"
+              case .serverError(let code): return "Server error: \(code)"
+              case .noData: return "No data received"
+              case .timeout: return "Request timed out"
+              }
+          }
+      }
+    Sources/Network/ResponseParser.swift: |
+      import Foundation
+
+      struct ResponseParser {
+          func parseJSON<T: Decodable>(_ response: Response, as type: T.Type) throws -> T {
+              guard let data = response.data else {
+                  throw APIError.noData
+              }
+              return try JSONDecoder().decode(T.self, from: data)
+          }
+
+          func parseString(_ response: Response) -> String? {
+              guard let data = response.data else { return nil }
+              return String(data: data, encoding: .utf8)
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: networkhandler
+  selector:
+    path: Sources/Network/NetworkHandler.swift
+    anchor: guard response.error == nil
+- id: networkhandler_1
+  selector:
+    path: Sources/Network/NetworkHandler.swift
+    anchor: guard let data = response.data
+- id: networkhandler_2
+  selector:
+    path: Sources/Network/NetworkHandler.swift
+    anchor: guard response.statusCode == 200
+- id: response
+  selector:
+    path: Sources/Models/Response.swift
+    anchor: struct Response
+- id: response_1
+  selector:
+    path: Sources/Models/Response.swift
+    anchor: 'let data: Data?'
+- id: response_2
+  selector:
+    path: Sources/Models/Response.swift
+    anchor: 'let error: Error?'
+- id: response_3
+  selector:
+    path: Sources/Models/Response.swift
+    anchor: 'let statusCode: Int'
+- id: no_endpoint
+  selector:
+    path: Sources/Models/Endpoint.swift
+- id: no_requestlogger
+  selector:
+    path: Sources/Logging/RequestLogger.swift
+- id: no_apiclient
+  selector:
+    path: Sources/Network/APIClient.swift
+- id: no_apierror
+  selector:
+    path: Sources/Models/APIError.swift
+- id: no_responseparser
+  selector:
+    path: Sources/Network/ResponseParser.swift
+- id: no_global_0
+  selector:
+    anchor: Endpoint
+- id: no_global_1
+  selector:
+    anchor: HTTPMethod
+- id: no_global_2
+  selector:
+    anchor: fullURL
+- id: no_global_3
+  selector:
+    anchor: RequestLogger
+- id: no_global_4
+  selector:
+    anchor: logLatency
+- id: no_global_5
+  selector:
+    anchor: exportLog
+- id: no_global_6
+  selector:
+    anchor: APIClient
+- id: no_global_7
+  selector:
+    anchor: handler.handleResponse
+- id: no_global_8
+  selector:
+    anchor: execute(endpoint
+- id: no_global_9
+  selector:
+    anchor: APIError
+- id: no_global_10
+  selector:
+    anchor: decodingFailed
+- id: no_global_11
+  selector:
+    anchor: Request timed out
+- id: no_global_12
+  selector:
+    anchor: ResponseParser
+- id: no_global_13
+  selector:
+    anchor: parseJSON
+- id: no_global_14
+  selector:
+    anchor: parseString
+oracle:
+  required:
+  - networkhandler
+  - networkhandler_1
+  - networkhandler_2
+  - response
+  - response_1
+  - response_2
+  - response_3
+  allowed: []
+  forbidden:
+  - no_endpoint
+  - no_requestlogger
+  - no_apiclient
+  - no_apierror
+  - no_responseparser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

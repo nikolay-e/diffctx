@@ -1,0 +1,102 @@
+name: internals_006_arabic_rtl_mixed_direction
+repo:
+  initial_files:
+    src/content/renderer.py: |
+      from src.content.sanitizer import sanitize_html
+      def render_page(title: str, body: str) -> str:
+          clean_body = sanitize_html(body)
+          return "<h1>" + title + "</h1><div>" + clean_body + "</div>"
+      def process_content(text: str) -> str:
+          return text.strip()
+    src/content/sanitizer.py: |
+      ALLOWED_TAGS = ["b", "i", "p", "br"]
+      def sanitize_html(html: str) -> str:
+          return html
+      def escape_special_chars(text: str) -> str:
+          return text.replace("&", "&amp;").replace("<", "&lt;")
+    garbage_content_indexer.py: |
+      GARBAGE_INT_006_INDEX_MARKER_A = "cidx"
+      GARBAGE_INT_006_SEARCH_MARKER_B = "fts"
+
+      class GarbageContentIndexer:
+          def noop(self):
+              pass
+    garbage_render_cache.py: |
+      GARBAGE_INT_006_RENDER_MARKER_C = "html"
+      GARBAGE_INT_006_PURGE_MARKER_D = "inval"
+
+      class GarbageRenderCache:
+          def noop(self):
+              pass
+  changed_files:
+    src/content/renderer.py: |
+      from src/content/sanitizer import sanitize_html
+      def render_page(title: str, body: str) -> str:
+          clean_body = sanitize_html(body)
+          return "<h1>" + title + "</h1><div>" + clean_body + "</div>"
+      def process_content(text: str) -> str:
+          text = "Hello مرحبا World"
+          result = render_page("Mixed", text)
+          return result
+    src/content/sanitizer.py: |
+      ALLOWED_TAGS = ["b", "i", "p", "br"]
+      def sanitize_html(html: str) -> str:
+          return html
+      def escape_special_chars(text: str) -> str:
+          return text.replace("&", "&amp;").replace("<", "&lt;")
+    garbage_content_indexer.py: |
+      GARBAGE_INT_006_INDEX_MARKER_A = "cidx"
+      GARBAGE_INT_006_SEARCH_MARKER_B = "fts"
+
+      class GarbageContentIndexer:
+          def noop(self):
+              pass
+    garbage_render_cache.py: |
+      GARBAGE_INT_006_RENDER_MARKER_C = "html"
+      GARBAGE_INT_006_PURGE_MARKER_D = "inval"
+
+      class GarbageRenderCache:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: renderer_file
+  selector:
+    path: src/content/renderer.py
+- id: req_global_0
+  selector:
+    anchor: from src/content/sanitizer import sanitize_html
+- id: req_global_1
+  selector:
+    anchor: text = "Hello مرحبا World"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_006_INDEX_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_006_PURGE_MARKER_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_006_RENDER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_006_SEARCH_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: garbage_content_indexer.py
+- id: no_global_5
+  selector:
+    anchor: garbage_render_cache.py
+oracle:
+  required:
+  - renderer_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,104 @@
+name: patterns_021_edge_many_small_hunks
+repo:
+  initial_files:
+    utils.py: |
+      def func1():
+          pass
+
+      def func2():
+          pass
+    helpers.py: |
+      def func1():
+          return "helper_one"
+
+      def func2():
+          return "helper_two"
+
+      class HelperRegistry:
+          def get(self, name):
+              return {"func1": func1, "func2": func2}.get(name)
+    operations.py: |
+      def operation_a():
+          return 10
+
+      def operation_b():
+          return 20
+
+      def run_all():
+          return operation_a() + operation_b()
+  changed_files:
+    utils.py: |
+      def func1():
+          return 1
+
+      def func2():
+          return 2
+    helpers.py: |
+      def func1():
+          return "helper_one"
+
+      def func2():
+          return "helper_two"
+
+      class HelperRegistry:
+          def get(self, name):
+              return {"func1": func1, "func2": func2}.get(name)
+    operations.py: |
+      def operation_a():
+          return 10
+
+      def operation_b():
+          return 20
+
+      def run_all():
+          return operation_a() + operation_b()
+  commit_message: Update files
+fragments:
+- id: utils_file
+  selector:
+    path: utils.py
+- id: req_global_0
+  selector:
+    anchor: return 1
+- id: req_global_1
+  selector:
+    anchor: return 2
+- id: no_helpers
+  selector:
+    path: helpers.py
+- id: no_operations
+  selector:
+    path: operations.py
+- id: no_global_0
+  selector:
+    anchor: helper_one
+- id: no_global_1
+  selector:
+    anchor: helper_two
+- id: no_global_2
+  selector:
+    anchor: HelperRegistry
+- id: no_global_3
+  selector:
+    anchor: operation_a
+- id: no_global_4
+  selector:
+    anchor: operation_b
+- id: no_global_5
+  selector:
+    anchor: run_all
+oracle:
+  required:
+  - utils_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_helpers
+  - no_operations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

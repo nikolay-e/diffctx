@@ -1,0 +1,288 @@
+name: javascript_extended_047_return_type
+repo:
+  initial_files:
+    src/factory.ts: |
+      export function createUser(name: string, age: number) {
+          return {
+              id: Date.now().toString(),
+              name,
+              age,
+              createdAt: new Date(),
+              active: true,
+          };
+      }
+
+      export function createProduct(title: string, price: number) {
+          return {
+              sku: `SKU-${Date.now()}`,
+              title,
+              price,
+              inStock: true,
+          };
+      }
+    src/types.ts: |
+      console.log('initial');
+    src/services/user-service.ts: |
+      import { createUser } from '../factory';
+
+      export class UserService {
+          private users: ReturnType<typeof createUser>[] = [];
+
+          register(name: string, age: number) {
+              const user = createUser(name, age);
+              this.users.push(user);
+              return user;
+          }
+
+          deactivate(userId: string) {
+              const user = this.users.find(u => u.id === userId);
+              if (user) user.active = false;
+          }
+
+          findByName(name: string) {
+              return this.users.filter(u => u.name === name && u.active);
+          }
+      }
+    src/services/product-service.ts: |
+      import { createProduct } from '../factory';
+
+      export class ProductService {
+          private catalog: ReturnType<typeof createProduct>[] = [];
+
+          addProduct(title: string, price: number) {
+              const product = createProduct(title, price);
+              this.catalog.push(product);
+              return product;
+          }
+
+          findBySku(sku: string) {
+              return this.catalog.find(p => p.sku === sku);
+          }
+
+          getInStock() {
+              return this.catalog.filter(p => p.inStock);
+          }
+      }
+    src/validators/user-validator.ts: |
+      interface UserInput {
+          name: string;
+          age: number;
+          email: string;
+      }
+
+      export function validateUserInput(input: unknown): input is UserInput {
+          if (typeof input !== 'object' || input === null) return false;
+          const obj = input as Record<string, unknown>;
+          if (typeof obj.name !== 'string' || obj.name.length === 0) return false;
+          if (typeof obj.age !== 'number' || obj.age < 0 || obj.age > 150) return false;
+          if (typeof obj.email !== 'string' || !obj.email.includes('@')) return false;
+          return true;
+      }
+
+      export function sanitizeUserInput(input: UserInput): UserInput {
+          return {
+              name: input.name.trim(),
+              age: Math.floor(input.age),
+              email: input.email.toLowerCase().trim(),
+          };
+      }
+    src/formatters/currency.ts: |
+      const LOCALE_MAP: Record<string, string> = {
+          USD: 'en-US',
+          EUR: 'de-DE',
+          GBP: 'en-GB',
+          JPY: 'ja-JP',
+      };
+
+      export function formatPrice(amount: number, currency: string = 'USD'): string {
+          const locale = LOCALE_MAP[currency] || 'en-US';
+          return new Intl.NumberFormat(locale, {
+              style: 'currency',
+              currency,
+          }).format(amount);
+      }
+
+      export function formatDiscount(original: number, discounted: number): string {
+          const pct = ((original - discounted) / original * 100).toFixed(0);
+          return `${pct}% off`;
+      }
+    src/models/order.ts: |
+      export interface OrderItem {
+          sku: string;
+          quantity: number;
+          unitPrice: number;
+      }
+
+      export interface Order {
+          orderId: string;
+          userId: string;
+          items: OrderItem[];
+          total: number;
+          status: 'pending' | 'confirmed' | 'shipped';
+          createdAt: Date;
+      }
+
+      export function calculateTotal(items: OrderItem[]): number {
+          return items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      }
+  changed_files:
+    src/factory.ts: |
+      export function createUser(name: string, age: number) {
+          return {
+              id: Date.now().toString(),
+              name,
+              age,
+              createdAt: new Date(),
+              active: true,
+          };
+      }
+
+      export function createProduct(title: string, price: number) {
+          return {
+              sku: `SKU-${Date.now()}`,
+              title,
+              price,
+              inStock: true,
+          };
+      }
+    src/types.ts: |
+      import { createUser, createProduct } from './factory';
+
+      type User = ReturnType<typeof createUser>;
+      type Product = ReturnType<typeof createProduct>;
+
+      function processUser(user: User): string {
+          return `${user.name} (age ${user.age}), created: ${user.createdAt.toISOString()}`;
+      }
+
+      function formatProduct(product: Product): string {
+          return `${product.title}: $${product.price.toFixed(2)} [${product.sku}]`;
+      }
+
+      export { User, Product, processUser, formatProduct };
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: type User = ReturnType<typeof createUser>
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: type Product = ReturnType<typeof createProduct>
+- id: types_2
+  selector:
+    path: src/types.ts
+    anchor: user.createdAt.toISOString()
+- id: types_3
+  selector:
+    path: src/types.ts
+    anchor: product.price.toFixed(2)
+- id: factory
+  selector:
+    path: src/factory.ts
+    anchor: 'export function createUser(name: string, age: number)'
+- id: factory_1
+  selector:
+    path: src/factory.ts
+    anchor: 'createdAt: new Date()'
+- id: factory_2
+  selector:
+    path: src/factory.ts
+    anchor: 'export function createProduct(title: string, price: number)'
+- id: factory_3
+  selector:
+    path: src/factory.ts
+    anchor: 'sku: `SKU-${Date.now()}`'
+- id: no_user_service
+  selector:
+    path: src/services/user-service.ts
+- id: no_product_service
+  selector:
+    path: src/services/product-service.ts
+- id: no_user_validator
+  selector:
+    path: src/validators/user-validator.ts
+- id: no_currency
+  selector:
+    path: src/formatters/currency.ts
+- id: no_order
+  selector:
+    path: src/models/order.ts
+- id: no_global_0
+  selector:
+    anchor: UserService
+- id: no_global_1
+  selector:
+    anchor: deactivate(userId
+- id: no_global_2
+  selector:
+    anchor: findByName
+- id: no_global_3
+  selector:
+    anchor: ProductService
+- id: no_global_4
+  selector:
+    anchor: findBySku
+- id: no_global_5
+  selector:
+    anchor: getInStock
+- id: no_global_6
+  selector:
+    anchor: validateUserInput
+- id: no_global_7
+  selector:
+    anchor: sanitizeUserInput
+- id: no_global_8
+  selector:
+    anchor: obj.email
+- id: no_global_9
+  selector:
+    anchor: formatPrice
+- id: no_global_10
+  selector:
+    anchor: formatDiscount
+- id: no_global_11
+  selector:
+    anchor: LOCALE_MAP
+- id: no_global_12
+  selector:
+    anchor: OrderItem
+- id: no_global_13
+  selector:
+    anchor: calculateTotal
+- id: no_global_14
+  selector:
+    anchor: '''pending'' | ''confirmed'' | ''shipped'''
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - types_3
+  - factory
+  - factory_1
+  - factory_2
+  - factory_3
+  allowed: []
+  forbidden:
+  - no_user_service
+  - no_product_service
+  - no_user_validator
+  - no_currency
+  - no_order
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

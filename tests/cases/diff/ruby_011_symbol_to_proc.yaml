@@ -1,0 +1,214 @@
+name: ruby_011_symbol_to_proc
+repo:
+  initial_files:
+    lib/user.rb: |
+      class User
+        attr_reader :name, :email, :age, :active
+
+        def initialize(name:, email:, age:, active: true)
+          @name = name
+          @email = email
+          @age = age
+          @active = active
+        end
+
+        def to_s
+          "#{@name} <#{@email}>"
+        end
+
+        def adult?
+          @age >= 18
+        end
+      end
+    lib/report.rb: |
+      class Report
+        def generate
+          "empty"
+        end
+      end
+    lib/csv_report.rb: |
+      require 'csv'
+
+      class CsvReport
+        def initialize(headers, rows)
+          @headers = headers
+          @rows = rows
+        end
+
+        def generate
+          CSV.generate do |csv|
+            csv << @headers
+            @rows.each { |row| csv << row }
+          end
+        end
+
+        def save(file_path)
+          File.write(file_path, generate)
+        end
+      end
+    lib/user_stats.rb: |
+      class UserStats
+        def initialize(users)
+          @users = users
+        end
+
+        def average_age
+          return 0 if @users.empty?
+          @users.sum { |u| u.age } / @users.size.to_f
+        end
+
+        def active_percentage
+          return 0 if @users.empty?
+          active_count = @users.count { |u| u.active }
+          (active_count.to_f / @users.size * 100).round(1)
+        end
+
+        def age_distribution
+          @users.group_by { |u| (u.age / 10) * 10 }
+                .transform_values(&:size)
+        end
+      end
+  changed_files:
+    lib/user.rb: |
+      class User
+        attr_reader :name, :email, :age, :active
+
+        def initialize(name:, email:, age:, active: true)
+          @name = name
+          @email = email
+          @age = age
+          @active = active
+        end
+
+        def to_s
+          "#{@name} <#{@email}>"
+        end
+
+        def adult?
+          @age >= 18
+        end
+      end
+    lib/report.rb: |
+      require_relative 'user'
+
+      class Report
+        def initialize(users)
+          @users = users
+        end
+
+        def names
+          @users.map(&:name)
+        end
+
+        def emails
+          @users.map(&:email)
+        end
+
+        def total_age
+          @users.map(&:age).sum
+        end
+
+        def active_adults
+          @users.select(&:active).select(&:adult?)
+        end
+
+        def summary
+          @users.map(&:to_s).join(", ")
+        end
+      end
+    lib/csv_report.rb: |
+      require 'csv'
+
+      class CsvReport
+        def initialize(headers, rows)
+          @headers = headers
+          @rows = rows
+        end
+
+        def generate
+          CSV.generate do |csv|
+            csv << @headers
+            @rows.each { |row| csv << row }
+          end
+        end
+
+        def save(file_path)
+          File.write(file_path, generate)
+        end
+      end
+    lib/user_stats.rb: |
+      class UserStats
+        def initialize(users)
+          @users = users
+        end
+
+        def average_age
+          return 0 if @users.empty?
+          @users.sum { |u| u.age } / @users.size.to_f
+        end
+
+        def active_percentage
+          return 0 if @users.empty?
+          active_count = @users.count { |u| u.active }
+          (active_count.to_f / @users.size * 100).round(1)
+        end
+
+        def age_distribution
+          @users.group_by { |u| (u.age / 10) * 10 }
+                .transform_values(&:size)
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: report
+  selector:
+    path: lib/report.rb
+    anchor: '@users.map(&:name)'
+- id: report_1
+  selector:
+    path: lib/report.rb
+    anchor: '@users.select(&:active).select(&:adult?)'
+- id: user
+  selector:
+    path: lib/user.rb
+    anchor: attr_reader :name, :email, :age, :active
+- id: user_1
+  selector:
+    path: lib/user.rb
+    anchor: def adult?
+- id: no_csv_report
+  selector:
+    path: lib/csv_report.rb
+- id: no_user_stats
+  selector:
+    path: lib/user_stats.rb
+- id: no_global_0
+  selector:
+    anchor: CsvReport
+- id: no_global_1
+  selector:
+    anchor: CSV.generate
+- id: no_global_2
+  selector:
+    anchor: UserStats
+- id: no_global_3
+  selector:
+    anchor: average_age
+- id: no_global_4
+  selector:
+    anchor: age_distribution
+oracle:
+  required:
+  - report
+  - report_1
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_csv_report
+  - no_user_stats
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

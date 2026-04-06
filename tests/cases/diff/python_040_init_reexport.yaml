@@ -1,0 +1,176 @@
+name: python_040_init_reexport
+repo:
+  initial_files:
+    mypackage/helpers.py: |
+      class HelperClass:
+          def __init__(self, config: dict):
+              self._config = config
+
+          def help(self) -> str:
+              return f"helping with {len(self._config)} settings"
+
+          def get_config_value(self, key: str, default=None):
+              return self._config.get(key, default)
+
+          def validate_config(self) -> bool:
+              required_keys = ["name", "version"]
+              return all(k in self._config for k in required_keys)
+    mypackage/formatters.py: |
+      class TextFormatter:
+          def format_title(self, text: str) -> str:
+              return text.strip().title()
+
+          def format_slug(self, text: str) -> str:
+              return text.lower().replace(" ", "-")
+    mypackage/__init__.py: |
+      from .helpers import HelperClass
+      from .formatters import TextFormatter
+
+      __all__ = ["HelperClass", "TextFormatter"]
+    app.py: |
+      def run():
+          pass
+    plugins/webhook_handler.py: |
+      from typing import Any
+
+      class WebhookHandler:
+          def __init__(self, secret: str, config: dict):
+              self._secret = secret
+              self._config = config
+
+          def verify_signature(self, payload: bytes, signature: str) -> bool:
+              return True
+
+          def process_event(self, event_type: str, data: dict) -> dict:
+              return {"type": event_type, "processed": True}
+
+          def validate_config(self) -> bool:
+              return "endpoint" in self._config and "secret" in self._config
+    monitoring/health_endpoint.py: |
+      from datetime import datetime
+
+      class HealthEndpoint:
+          def __init__(self):
+              self._checks: list[dict] = []
+              self._start_time = datetime.utcnow()
+
+          def add_check(self, name: str, check_fn) -> None:
+              self._checks.append({"name": name, "fn": check_fn})
+
+          def run_all(self) -> dict:
+              results = {c["name"]: c["fn"]() for c in self._checks}
+              return {"status": "healthy", "checks": results}
+  changed_files:
+    mypackage/helpers.py: |
+      class HelperClass:
+          def __init__(self, config: dict):
+              self._config = config
+
+          def help(self) -> str:
+              return f"helping with {len(self._config)} settings"
+
+          def get_config_value(self, key: str, default=None):
+              return self._config.get(key, default)
+
+          def validate_config(self) -> bool:
+              required_keys = ["name", "version"]
+              return all(k in self._config for k in required_keys)
+    mypackage/formatters.py: |
+      class TextFormatter:
+          def format_title(self, text: str) -> str:
+              return text.strip().title()
+
+          def format_slug(self, text: str) -> str:
+              return text.lower().replace(" ", "-")
+    mypackage/__init__.py: |
+      from .helpers import HelperClass
+      from .formatters import TextFormatter
+
+      __all__ = ["HelperClass", "TextFormatter"]
+    app.py: |
+      from mypackage import HelperClass, TextFormatter
+
+      def run():
+          config = {"name": "myapp", "version": "1.0"}
+          helper = HelperClass(config)
+          if helper.validate_config():
+              formatter = TextFormatter()
+              title = formatter.format_title(helper.help())
+              return title
+          return None
+    plugins/webhook_handler.py: |
+      from typing import Any
+
+      class WebhookHandler:
+          def __init__(self, secret: str, config: dict):
+              self._secret = secret
+              self._config = config
+
+          def verify_signature(self, payload: bytes, signature: str) -> bool:
+              return True
+
+          def process_event(self, event_type: str, data: dict) -> dict:
+              return {"type": event_type, "processed": True}
+
+          def validate_config(self) -> bool:
+              return "endpoint" in self._config and "secret" in self._config
+    monitoring/health_endpoint.py: |
+      from datetime import datetime
+
+      class HealthEndpoint:
+          def __init__(self):
+              self._checks: list[dict] = []
+              self._start_time = datetime.utcnow()
+
+          def add_check(self, name: str, check_fn) -> None:
+              self._checks.append({"name": name, "fn": check_fn})
+
+          def run_all(self) -> dict:
+              results = {c["name"]: c["fn"]() for c in self._checks}
+              return {"status": "healthy", "checks": results}
+  commit_message: Update files
+fragments:
+- id: app_file
+  selector:
+    path: app.py
+- id: req_global_0
+  selector:
+    anchor: from mypackage import HelperClass, TextFormatter
+- id: req_global_1
+  selector:
+    anchor: 'config = {"name": "myapp", "version": "1.0"}'
+- id: no_webhook_handler
+  selector:
+    path: plugins/webhook_handler.py
+- id: no_health_endpoint
+  selector:
+    path: monitoring/health_endpoint.py
+- id: no_global_0
+  selector:
+    anchor: WebhookHandler
+- id: no_global_1
+  selector:
+    anchor: verify_signature
+- id: no_global_2
+  selector:
+    anchor: HealthEndpoint
+- id: no_global_3
+  selector:
+    anchor: run_all
+- id: no_global_4
+  selector:
+    anchor: process_event
+oracle:
+  required:
+  - app_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_webhook_handler
+  - no_health_endpoint
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

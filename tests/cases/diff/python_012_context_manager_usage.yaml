@@ -1,0 +1,425 @@
+name: python_012_context_manager_usage
+repo:
+  initial_files:
+    db.py: |
+      from typing import Optional, Any, Dict, List
+      from dataclasses import dataclass
+      import logging
+      import time
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class QueryResult:
+          rows: List[Dict[str, Any]]
+          affected_rows: int
+          execution_time_ms: float
+
+      class DatabaseError(Exception):
+          pass
+
+      class ConnectionError(DatabaseError):
+          pass
+
+      class QueryError(DatabaseError):
+          pass
+
+      class ConnectionStats:
+          def __init__(self):
+              self.queries_executed = 0
+              self.total_execution_time = 0.0
+              self.errors = 0
+
+      class DatabaseConnection:
+          def __init__(self, url: str, timeout: int = 30):
+              self.url = url
+              self.timeout = timeout
+              self.conn: Optional[Dict[str, Any]] = None
+              self._in_transaction = False
+              self._stats = ConnectionStats()
+              self._isolation_level = "READ COMMITTED"
+
+          def __enter__(self) -> "DatabaseConnection":
+              logger.info(f"Connecting to {self.url}")
+              self.conn = self._connect()
+              return self
+
+          def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+              if self.conn:
+                  if exc_type is not None:
+                      logger.error(f"Exception during connection: {exc_val}")
+                      if self._in_transaction:
+                          self.rollback()
+                  self._close()
+              return False
+
+          def _connect(self) -> Dict[str, Any]:
+              return {"url": self.url, "connected": True, "timeout": self.timeout}
+
+          def _close(self) -> None:
+              if self.conn:
+                  logger.info("Closing connection")
+                  self.conn["connected"] = False
+                  self.conn = None
+
+          def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> QueryResult:
+              if not self.conn or not self.conn.get("connected"):
+                  raise ConnectionError("Not connected to database")
+              start_time = time.time()
+              try:
+                  self._stats.queries_executed += 1
+                  execution_time = (time.time() - start_time) * 1000
+                  self._stats.total_execution_time += execution_time
+                  return QueryResult(rows=[], affected_rows=0, execution_time_ms=execution_time)
+              except Exception as e:
+                  self._stats.errors += 1
+                  raise QueryError(f"Query failed: {e}") from e
+
+          def begin_transaction(self) -> None:
+              self._in_transaction = True
+
+          def commit(self) -> None:
+              self._in_transaction = False
+
+          def rollback(self) -> None:
+              self._in_transaction = False
+
+          def set_isolation_level(self, level: str) -> None:
+              valid_levels = ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"]
+              if level not in valid_levels:
+                  raise ValueError(f"Invalid isolation level: {level}")
+              self._isolation_level = level
+
+          def get_stats(self) -> ConnectionStats:
+              return self._stats
+    service.py: |
+      from typing import Any, Dict, List, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class ServiceConfig:
+          db_url: str
+          timeout: int = 30
+
+      class DataService:
+          def __init__(self, config: ServiceConfig):
+              self.config = config
+
+          def run_query(self) -> List[Dict[str, Any]]:
+              return []
+    db_migration.py: |
+      from typing import List, Optional, Dict
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Migration:
+          version: str
+          name: str
+          sql_up: str
+          sql_down: str
+          applied_at: Optional[datetime] = None
+
+      class MigrationManager:
+          def __init__(self, migrations_dir: str = "migrations"):
+              self._migrations_dir = migrations_dir
+              self._applied: List[Migration] = []
+
+          def get_pending(self) -> List[Migration]:
+              return []
+
+          def apply(self, migration: Migration) -> bool:
+              self._applied.append(migration)
+              return True
+
+          def rollback_last(self) -> Optional[Migration]:
+              if self._applied:
+                  return self._applied.pop()
+              return None
+
+          def get_current_version(self) -> Optional[str]:
+              return self._applied[-1].version if self._applied else None
+    connection_pool.py: |
+      import threading
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass
+
+      @dataclass
+      class PoolConfig:
+          max_size: int = 10
+          min_size: int = 2
+          timeout: int = 30
+
+      class ConnectionPool:
+          def __init__(self, config: PoolConfig):
+              self._config = config
+              self._available: List[Dict[str, Any]] = []
+              self._in_use: List[Dict[str, Any]] = []
+              self._lock = threading.Lock()
+
+          def acquire(self) -> Optional[Dict[str, Any]]:
+              with self._lock:
+                  if self._available:
+                      conn = self._available.pop()
+                      self._in_use.append(conn)
+                      return conn
+                  if len(self._in_use) < self._config.max_size:
+                      conn = {"id": len(self._in_use), "active": True}
+                      self._in_use.append(conn)
+                      return conn
+              return None
+
+          def release(self, conn: Dict[str, Any]) -> None:
+              with self._lock:
+                  if conn in self._in_use:
+                      self._in_use.remove(conn)
+                      self._available.append(conn)
+
+          def get_pool_size(self) -> int:
+              return len(self._available) + len(self._in_use)
+  changed_files:
+    db.py: |
+      from typing import Optional, Any, Dict, List
+      from dataclasses import dataclass
+      import logging
+      import time
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class QueryResult:
+          rows: List[Dict[str, Any]]
+          affected_rows: int
+          execution_time_ms: float
+
+      class DatabaseError(Exception):
+          pass
+
+      class ConnectionError(DatabaseError):
+          pass
+
+      class QueryError(DatabaseError):
+          pass
+
+      class ConnectionStats:
+          def __init__(self):
+              self.queries_executed = 0
+              self.total_execution_time = 0.0
+              self.errors = 0
+
+      class DatabaseConnection:
+          def __init__(self, url: str, timeout: int = 30):
+              self.url = url
+              self.timeout = timeout
+              self.conn: Optional[Dict[str, Any]] = None
+              self._in_transaction = False
+              self._stats = ConnectionStats()
+              self._isolation_level = "READ COMMITTED"
+
+          def __enter__(self) -> "DatabaseConnection":
+              logger.info(f"Connecting to {self.url}")
+              self.conn = self._connect()
+              return self
+
+          def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+              if self.conn:
+                  if exc_type is not None:
+                      logger.error(f"Exception during connection: {exc_val}")
+                      if self._in_transaction:
+                          self.rollback()
+                  self._close()
+              return False
+
+          def _connect(self) -> Dict[str, Any]:
+              return {"url": self.url, "connected": True, "timeout": self.timeout}
+
+          def _close(self) -> None:
+              if self.conn:
+                  logger.info("Closing connection")
+                  self.conn["connected"] = False
+                  self.conn = None
+
+          def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> QueryResult:
+              if not self.conn or not self.conn.get("connected"):
+                  raise ConnectionError("Not connected to database")
+              start_time = time.time()
+              try:
+                  self._stats.queries_executed += 1
+                  execution_time = (time.time() - start_time) * 1000
+                  self._stats.total_execution_time += execution_time
+                  return QueryResult(rows=[], affected_rows=0, execution_time_ms=execution_time)
+              except Exception as e:
+                  self._stats.errors += 1
+                  raise QueryError(f"Query failed: {e}") from e
+
+          def begin_transaction(self) -> None:
+              self._in_transaction = True
+
+          def commit(self) -> None:
+              self._in_transaction = False
+
+          def rollback(self) -> None:
+              self._in_transaction = False
+
+          def set_isolation_level(self, level: str) -> None:
+              valid_levels = ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"]
+              if level not in valid_levels:
+                  raise ValueError(f"Invalid isolation level: {level}")
+              self._isolation_level = level
+
+          def get_stats(self) -> ConnectionStats:
+              return self._stats
+    service.py: |
+      from typing import Any, Dict, List, Optional
+      from dataclasses import dataclass
+      from db import DatabaseConnection, QueryResult, QueryError
+
+      @dataclass
+      class ServiceConfig:
+          db_url: str
+          timeout: int = 30
+
+      class DataService:
+          def __init__(self, config: ServiceConfig):
+              self.config = config
+
+          def run_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+              with DatabaseConnection(self.config.db_url, self.config.timeout) as db:
+                  result = db.execute(query, params)
+                  return result.rows
+
+          def run_transaction(self, queries: List[str]) -> int:
+              total_affected = 0
+              with DatabaseConnection(self.config.db_url, self.config.timeout) as db:
+                  db.begin_transaction()
+                  try:
+                      for query in queries:
+                          result = db.execute(query)
+                          total_affected += result.affected_rows
+                      db.commit()
+                  except QueryError:
+                      db.rollback()
+                      raise
+              return total_affected
+    db_migration.py: |
+      from typing import List, Optional, Dict
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Migration:
+          version: str
+          name: str
+          sql_up: str
+          sql_down: str
+          applied_at: Optional[datetime] = None
+
+      class MigrationManager:
+          def __init__(self, migrations_dir: str = "migrations"):
+              self._migrations_dir = migrations_dir
+              self._applied: List[Migration] = []
+
+          def get_pending(self) -> List[Migration]:
+              return []
+
+          def apply(self, migration: Migration) -> bool:
+              self._applied.append(migration)
+              return True
+
+          def rollback_last(self) -> Optional[Migration]:
+              if self._applied:
+                  return self._applied.pop()
+              return None
+
+          def get_current_version(self) -> Optional[str]:
+              return self._applied[-1].version if self._applied else None
+    connection_pool.py: |
+      import threading
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass
+
+      @dataclass
+      class PoolConfig:
+          max_size: int = 10
+          min_size: int = 2
+          timeout: int = 30
+
+      class ConnectionPool:
+          def __init__(self, config: PoolConfig):
+              self._config = config
+              self._available: List[Dict[str, Any]] = []
+              self._in_use: List[Dict[str, Any]] = []
+              self._lock = threading.Lock()
+
+          def acquire(self) -> Optional[Dict[str, Any]]:
+              with self._lock:
+                  if self._available:
+                      conn = self._available.pop()
+                      self._in_use.append(conn)
+                      return conn
+                  if len(self._in_use) < self._config.max_size:
+                      conn = {"id": len(self._in_use), "active": True}
+                      self._in_use.append(conn)
+                      return conn
+              return None
+
+          def release(self, conn: Dict[str, Any]) -> None:
+              with self._lock:
+                  if conn in self._in_use:
+                      self._in_use.remove(conn)
+                      self._available.append(conn)
+
+          def get_pool_size(self) -> int:
+              return len(self._available) + len(self._in_use)
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: from db import DatabaseConnection, QueryResult, QueryError
+- id: service_1
+  selector:
+    path: service.py
+    anchor: 'def run_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:'
+- id: db_file
+  selector:
+    path: db.py
+- id: no_db_migration
+  selector:
+    path: db_migration.py
+- id: no_connection_pool
+  selector:
+    path: connection_pool.py
+- id: no_global_0
+  selector:
+    anchor: MigrationManager
+- id: no_global_1
+  selector:
+    anchor: Migration
+- id: no_global_2
+  selector:
+    anchor: rollback_last
+- id: no_global_3
+  selector:
+    anchor: ConnectionPool
+- id: no_global_4
+  selector:
+    anchor: PoolConfig
+- id: no_global_5
+  selector:
+    anchor: get_pool_size
+oracle:
+  required:
+  - service
+  - service_1
+  - db_file
+  allowed: []
+  forbidden:
+  - no_db_migration
+  - no_connection_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

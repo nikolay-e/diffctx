@@ -1,0 +1,360 @@
+name: cicd_and_docs_001_gha_workflow_trigger
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+    src/index.ts: |
+      import { Application } from './app';
+      import { Config } from './config';
+      import { Logger } from './utils/logger';
+
+      const logger = new Logger('main');
+
+      async function main(): Promise<void> {
+        const config = Config.load();
+        const app = new Application(config);
+
+        await app.initialize();
+        await app.start();
+
+        logger.info(`Application started on port ${config.port}`);
+
+        process.on('SIGTERM', async () => {
+          logger.info('Shutting down...');
+          await app.stop();
+          process.exit(0);
+        });
+      }
+
+      main().catch((error) => {
+        logger.error('Failed to start', error);
+        process.exit(1);
+      });
+    src/app.ts: |
+      import express, { Express } from 'express';
+      import { Config } from './config';
+      import { setupRoutes } from './routes';
+
+      export class Application {
+        private app: Express;
+        private server: any;
+
+        constructor(private config: Config) {
+          this.app = express();
+          this.app.use(express.json());
+          setupRoutes(this.app);
+        }
+
+        async initialize(): Promise<void> {
+          // Initialize database, cache, etc.
+        }
+
+        async start(): Promise<void> {
+          return new Promise((resolve) => {
+            this.server = this.app.listen(this.config.port, resolve);
+          });
+        }
+
+        async stop(): Promise<void> {
+          return new Promise((resolve) => {
+            this.server?.close(resolve);
+          });
+        }
+      }
+    .github/workflows/release.yml: |
+      name: Release
+      GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G: true
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+            - run: npm ci
+            - run: npm run build
+            - name: GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+              run: npm publish
+    .github/branch-protection.json: |
+      {
+        "GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I": "branch_rules",
+        "branches": {
+          "main": {
+            "required_reviews": 2,
+            "require_ci": true,
+            "GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J": true
+          },
+          "develop": {
+            "required_reviews": 1,
+            "require_ci": true
+          }
+        }
+      }
+    garbage_scheduler.ts: |
+      const GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A = "cron";
+      const GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B = 3600;
+
+      class GarbageTaskScheduler {
+        static GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C = "default";
+
+        schedule(): void {}
+      }
+
+      export { GarbageTaskScheduler };
+    garbage_webhook.ts: |
+      const GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D = "github";
+      const GARBAGE_CICD_DOCS_001_SECRET_MARKER_E = "sha256";
+
+      class GarbageWebhookHandler {
+        static GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F = true;
+
+        handle(): void {}
+      }
+
+      export { GarbageWebhookHandler };
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+            - run: npm ci
+            - run: npm run build
+            - run: npm test
+    src/index.ts: |
+      import { Application } from './app';
+      import { Config } from './config';
+      import { Logger } from './utils/logger';
+
+      const logger = new Logger('main');
+
+      async function main(): Promise<void> {
+        const config = Config.load();
+        const app = new Application(config);
+
+        await app.initialize();
+        await app.start();
+
+        logger.info(`Application started on port ${config.port}`);
+
+        process.on('SIGTERM', async () => {
+          logger.info('Shutting down...');
+          await app.stop();
+          process.exit(0);
+        });
+      }
+
+      main().catch((error) => {
+        logger.error('Failed to start', error);
+        process.exit(1);
+      });
+    src/app.ts: |
+      import express, { Express } from 'express';
+      import { Config } from './config';
+      import { setupRoutes } from './routes';
+
+      export class Application {
+        private app: Express;
+        private server: any;
+
+        constructor(private config: Config) {
+          this.app = express();
+          this.app.use(express.json());
+          setupRoutes(this.app);
+        }
+
+        async initialize(): Promise<void> {
+          // Initialize database, cache, etc.
+        }
+
+        async start(): Promise<void> {
+          return new Promise((resolve) => {
+            this.server = this.app.listen(this.config.port, resolve);
+          });
+        }
+
+        async stop(): Promise<void> {
+          return new Promise((resolve) => {
+            this.server?.close(resolve);
+          });
+        }
+      }
+    .github/workflows/release.yml: |
+      name: Release
+      GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G: true
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+            - run: npm ci
+            - run: npm run build
+            - name: GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+              run: npm publish
+    .github/branch-protection.json: |
+      {
+        "GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I": "branch_rules",
+        "branches": {
+          "main": {
+            "required_reviews": 2,
+            "require_ci": true,
+            "GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J": true
+          },
+          "develop": {
+            "required_reviews": 1,
+            "require_ci": true
+          }
+        }
+      }
+    garbage_scheduler.ts: |
+      const GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A = "cron";
+      const GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B = 3600;
+
+      class GarbageTaskScheduler {
+        static GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C = "default";
+
+        schedule(): void {}
+      }
+
+      export { GarbageTaskScheduler };
+    garbage_webhook.ts: |
+      const GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D = "github";
+      const GARBAGE_CICD_DOCS_001_SECRET_MARKER_E = "sha256";
+
+      class GarbageWebhookHandler {
+        static GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F = true;
+
+        handle(): void {}
+      }
+
+      export { GarbageWebhookHandler };
+  commit_message: Update files
+fragments:
+- id: ci
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: 'branches: [main, develop]'
+- id: ci_1
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: 'pull_request:'
+- id: ci_2
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: 'branches: [main]'
+- id: ci_3
+  selector:
+    path: .github/workflows/ci.yml
+    anchor: 'name: CI'
+- id: no_release
+  selector:
+    path: .github/workflows/release.yml
+- id: no_branch_protection
+  selector:
+    path: .github/branch-protection.json
+- id: no_garbage_scheduler
+  selector:
+    path: garbage_scheduler.ts
+- id: no_garbage_webhook
+  selector:
+    path: garbage_webhook.ts
+- id: no_index
+  selector:
+    path: src/index.ts
+- id: no_app
+  selector:
+    path: src/app.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_SECRET_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J
+oracle:
+  required:
+  - ci
+  - ci_1
+  - ci_2
+  - ci_3
+  allowed: []
+  forbidden:
+  - no_release
+  - no_branch_protection
+  - no_garbage_scheduler
+  - no_garbage_webhook
+  - no_index
+  - no_app
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

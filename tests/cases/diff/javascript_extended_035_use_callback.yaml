@@ -1,0 +1,181 @@
+name: javascript_extended_035_use_callback
+repo:
+  initial_files:
+    src/handlers.ts: |
+      export function createClickHandler(id: string) {
+          return () => console.log('Clicked:', id);
+      }
+
+      export function createSubmitHandler(formId: string) {
+          return (data: Record<string, string>) => {
+              console.log(`Submitting form ${formId}:`, data);
+          };
+      }
+
+      export function createDeleteHandler(resourceId: string) {
+          return () => {
+              console.log(`Deleting resource: ${resourceId}`);
+          };
+      }
+    src/components/ActionButton.tsx: |
+      console.log('initial');
+    src/db/migrations.ts: |
+      interface Migration {
+          version: number;
+          up: () => Promise<void>;
+          down: () => Promise<void>;
+      }
+
+      const migrations: Migration[] = [];
+
+      export function registerMigration(migration: Migration): void {
+          migrations.push(migration);
+      }
+
+      export async function runMigrations(): Promise<void> {
+          for (const m of migrations) {
+              await m.up();
+          }
+      }
+
+      export async function rollbackMigration(): Promise<void> {
+          const last = migrations.pop();
+          if (last) await last.down();
+      }
+    src/config/routes.ts: |
+      interface RouteConfig {
+          path: string;
+          component: string;
+          exact?: boolean;
+      }
+
+      export const routes: RouteConfig[] = [
+          { path: '/', component: 'Home', exact: true },
+          { path: '/about', component: 'About' },
+          { path: '/contact', component: 'Contact' },
+      ];
+
+      export function findRoute(path: string): RouteConfig | undefined {
+          return routes.find(r => r.exact ? r.path === path : path.startsWith(r.path));
+      }
+  changed_files:
+    src/handlers.ts: |
+      export function createClickHandler(id: string) {
+          return () => console.log('Clicked:', id);
+      }
+
+      export function createSubmitHandler(formId: string) {
+          return (data: Record<string, string>) => {
+              console.log(`Submitting form ${formId}:`, data);
+          };
+      }
+
+      export function createDeleteHandler(resourceId: string) {
+          return () => {
+              console.log(`Deleting resource: ${resourceId}`);
+          };
+      }
+    src/components/ActionButton.tsx: |
+      import { useCallback } from 'react';
+      import { createClickHandler, createDeleteHandler } from '../handlers';
+
+      interface ActionButtonProps {
+          id: string;
+          label: string;
+          variant: 'click' | 'delete';
+      }
+
+      export function ActionButton({ id, label, variant }: ActionButtonProps) {
+          const handleClick = useCallback(() => {
+              if (variant === 'delete') {
+                  createDeleteHandler(id)();
+              } else {
+                  createClickHandler(id)();
+              }
+          }, [id, variant]);
+
+          return <button onClick={handleClick}>{label}</button>;
+      }
+    src/db/migrations.ts: |
+      interface Migration {
+          version: number;
+          up: () => Promise<void>;
+          down: () => Promise<void>;
+      }
+
+      const migrations: Migration[] = [];
+
+      export function registerMigration(migration: Migration): void {
+          migrations.push(migration);
+      }
+
+      export async function runMigrations(): Promise<void> {
+          for (const m of migrations) {
+              await m.up();
+          }
+      }
+
+      export async function rollbackMigration(): Promise<void> {
+          const last = migrations.pop();
+          if (last) await last.down();
+      }
+    src/config/routes.ts: |
+      interface RouteConfig {
+          path: string;
+          component: string;
+          exact?: boolean;
+      }
+
+      export const routes: RouteConfig[] = [
+          { path: '/', component: 'Home', exact: true },
+          { path: '/about', component: 'About' },
+          { path: '/contact', component: 'Contact' },
+      ];
+
+      export function findRoute(path: string): RouteConfig | undefined {
+          return routes.find(r => r.exact ? r.path === path : path.startsWith(r.path));
+      }
+  commit_message: Update files
+fragments:
+- id: handlers
+  selector:
+    path: src/handlers.ts
+    anchor: createClickHandler
+- id: handlers_1
+  selector:
+    path: src/handlers.ts
+    anchor: createDeleteHandler
+- id: no_migrations
+  selector:
+    path: src/db/migrations.ts
+- id: no_routes
+  selector:
+    path: src/config/routes.ts
+- id: no_global_0
+  selector:
+    anchor: registerMigration
+- id: no_global_1
+  selector:
+    anchor: runMigrations
+- id: no_global_2
+  selector:
+    anchor: rollbackMigration
+- id: no_global_3
+  selector:
+    anchor: RouteConfig
+- id: no_global_4
+  selector:
+    anchor: findRoute
+oracle:
+  required:
+  - handlers
+  - handlers_1
+  allowed: []
+  forbidden:
+  - no_migrations
+  - no_routes
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

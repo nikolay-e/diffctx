@@ -1,0 +1,280 @@
+name: scripting_026_symbol_to_proc
+repo:
+  initial_files:
+    user.rb: |
+      class User
+        attr_reader :name, :email, :age, :department
+
+        def initialize(name:, email:, age:, department: nil)
+          @name = name
+          @email = email
+          @age = age
+          @department = department
+        end
+
+        def adult?
+          age >= 18
+        end
+      end
+    report.rb: |
+      class Report
+      end
+    csv_exporter.rb: |
+      module CsvExporter
+        def self.generate(rows, headers:)
+          lines = [headers.join(',')]
+          rows.each do |row|
+            values = headers.map { |h| row[h].to_s }
+            lines << values.join(',')
+          end
+          lines.join("\n")
+        end
+
+        def self.parse(csv_string)
+          lines = csv_string.split("\n")
+          headers = lines.first.split(',')
+          lines[1..].map do |line|
+            values = line.split(',')
+            headers.zip(values).to_h
+          end
+        end
+
+        def self.write_file(path, rows, headers:)
+          File.write(path, generate(rows, headers: headers))
+        end
+      end
+    statistics.rb: |
+      module Statistics
+        def self.mean(numbers)
+          return 0 if numbers.empty?
+          numbers.sum.to_f / numbers.size
+        end
+
+        def self.median(numbers)
+          sorted = numbers.sort
+          mid = sorted.size / 2
+          sorted.size.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+        end
+
+        def self.standard_deviation(numbers)
+          avg = mean(numbers)
+          variance = numbers.map { |n| (n - avg) ** 2 }.sum / numbers.size
+          Math.sqrt(variance)
+        end
+
+        def self.percentile(numbers, pct)
+          sorted = numbers.sort
+          idx = (pct / 100.0 * (sorted.size - 1)).round
+          sorted[idx]
+        end
+      end
+    user_filter.rb: |
+      require_relative 'user'
+
+      class UserFilter
+        def initialize(users)
+          @users = users
+        end
+
+        def unique_emails
+          @users.map(&:email).uniq
+        end
+
+        def adults_only
+          @users.select(&:adult?)
+        end
+
+        def by_department(dept)
+          @users.select { |u| u.department == dept }
+        end
+
+        def names_sorted
+          @users.map(&:name).sort
+        end
+      end
+    team.rb: |
+      Team = Struct.new(:name, :lead, :members) do
+        def member_names
+          members.map(&:name)
+        end
+
+        def size
+          members.size
+        end
+
+        def find_by_email(email)
+          members.find { |m| m.email == email }
+        end
+      end
+    lib/collection_utils.rb: |
+      module CollectionUtils
+        def self.pluck(collection, attribute)
+          collection.map(&attribute)
+        end
+
+        def self.group_by_attribute(collection, attribute)
+          collection.group_by(&attribute)
+        end
+
+        def self.unique_values(collection, attribute)
+          collection.map(&attribute).uniq
+        end
+
+        def self.sort_by_attribute(collection, attribute)
+          collection.sort_by(&attribute)
+        end
+      end
+  changed_files:
+    user.rb: |
+      class User
+        attr_reader :name, :email, :age, :department
+
+        def initialize(name:, email:, age:, department: nil)
+          @name = name
+          @email = email
+          @age = age
+          @department = department
+        end
+
+        def adult?
+          age >= 18
+        end
+      end
+    report.rb: |
+      require_relative 'user'
+
+      class Report
+        def initialize(users)
+          @users = users
+        end
+
+        def names
+          @users.map(&:name)
+        end
+
+        def emails
+          @users.map(&:email)
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: user.rb
+    anchor: attr_reader :name, :email, :age
+- id: user_1
+  selector:
+    path: user.rb
+    anchor: 'def initialize(name:, email:, age:'
+- id: report
+  selector:
+    path: report.rb
+    anchor: map(&:name)
+- id: report_1
+  selector:
+    path: report.rb
+    anchor: map(&:email)
+- id: no_csv_exporter
+  selector:
+    path: csv_exporter.rb
+- id: no_statistics
+  selector:
+    path: statistics.rb
+- id: no_user_filter
+  selector:
+    path: user_filter.rb
+- id: no_team
+  selector:
+    path: team.rb
+- id: no_collection_utils
+  selector:
+    path: lib/collection_utils.rb
+- id: no_global_0
+  selector:
+    anchor: CsvExporter
+- id: no_global_1
+  selector:
+    anchor: generate
+- id: no_global_2
+  selector:
+    anchor: parse
+- id: no_global_3
+  selector:
+    anchor: write_file
+- id: no_global_4
+  selector:
+    anchor: Statistics
+- id: no_global_5
+  selector:
+    anchor: standard_deviation
+- id: no_global_6
+  selector:
+    anchor: median
+- id: no_global_7
+  selector:
+    anchor: percentile
+- id: no_global_8
+  selector:
+    anchor: UserFilter
+- id: no_global_9
+  selector:
+    anchor: unique_emails
+- id: no_global_10
+  selector:
+    anchor: adults_only
+- id: no_global_11
+  selector:
+    anchor: by_department
+- id: no_global_12
+  selector:
+    anchor: names_sorted
+- id: no_global_13
+  selector:
+    anchor: Team =
+- id: no_global_14
+  selector:
+    anchor: member_names
+- id: no_global_15
+  selector:
+    anchor: find_by_email
+- id: no_global_16
+  selector:
+    anchor: CollectionUtils
+- id: no_global_17
+  selector:
+    anchor: pluck
+- id: no_global_18
+  selector:
+    anchor: group_by_attribute
+oracle:
+  required:
+  - user
+  - user_1
+  - report
+  - report_1
+  allowed: []
+  forbidden:
+  - no_csv_exporter
+  - no_statistics
+  - no_user_filter
+  - no_team
+  - no_collection_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

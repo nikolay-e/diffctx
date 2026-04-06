@@ -1,0 +1,247 @@
+name: terraform_010_iam_policy
+repo:
+  initial_files:
+    modules/iam_role/main.tf: |
+      resource "aws_iam_role" "this" {
+        name               = var.role_name
+        assume_role_policy = var.assume_role_policy
+        tags               = var.tags
+      }
+
+      resource "aws_iam_role_policy_attachment" "managed" {
+        count      = length(var.managed_policy_arns)
+        role       = aws_iam_role.this.name
+        policy_arn = var.managed_policy_arns[count.index]
+      }
+
+      resource "aws_iam_role_policy" "inline" {
+        count  = var.inline_policy != null ? 1 : 0
+        name   = "${var.role_name}-inline-policy"
+        role   = aws_iam_role.this.id
+        policy = var.inline_policy
+      }
+    modules/iam_role/variables.tf: |
+      variable "role_name" {
+        type = string
+      }
+
+      variable "assume_role_policy" {
+        type = string
+      }
+
+      variable "managed_policy_arns" {
+        type    = list(string)
+        default = []
+      }
+
+      variable "inline_policy" {
+        type    = string
+        default = null
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/iam.tf: |
+      module "lambda_role" {
+        source             = "./modules/iam_role"
+        role_name          = "lambda-exec-role-${var.environment}"
+        assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+
+        managed_policy_arns = [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ]
+
+        tags = local.common_tags
+      }
+    infrastructure/iam_readonly.tf: |
+      module "readonly_role" {
+        source             = "./modules/iam_role"
+        role_name          = "readonly-role-${var.environment}"
+        assume_role_policy = data.aws_iam_policy_document.readonly_assume_role.json
+        tags               = local.common_tags
+      }
+
+      resource "aws_iam_policy" "readonly_s3" {
+        name = "readonly-s3-${var.environment}"
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["s3:GetObject", "s3:ListBucket"]
+            Resource = [
+              "arn:aws:s3:::audit-bucket-${var.environment}",
+              "arn:aws:s3:::audit-bucket-${var.environment}/*"
+            ]
+          }]
+        })
+      }
+    infrastructure/cognito.tf: |
+      resource "aws_cognito_user_pool" "main" {
+        name = "${var.environment}-users"
+
+        password_policy {
+          minimum_length = 8
+        }
+      }
+  changed_files:
+    modules/iam_role/main.tf: |
+      resource "aws_iam_role" "this" {
+        name               = var.role_name
+        assume_role_policy = var.assume_role_policy
+        tags               = var.tags
+      }
+
+      resource "aws_iam_role_policy_attachment" "managed" {
+        count      = length(var.managed_policy_arns)
+        role       = aws_iam_role.this.name
+        policy_arn = var.managed_policy_arns[count.index]
+      }
+
+      resource "aws_iam_role_policy" "inline" {
+        count  = var.inline_policy != null ? 1 : 0
+        name   = "${var.role_name}-inline-policy"
+        role   = aws_iam_role.this.id
+        policy = var.inline_policy
+      }
+    modules/iam_role/variables.tf: |
+      variable "role_name" {
+        type = string
+      }
+
+      variable "assume_role_policy" {
+        type = string
+      }
+
+      variable "managed_policy_arns" {
+        type    = list(string)
+        default = []
+      }
+
+      variable "inline_policy" {
+        type    = string
+        default = null
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/iam.tf: |
+      module "lambda_role" {
+        source             = "./modules/iam_role"
+        role_name          = "lambda-exec-role-${var.environment}"
+        assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+
+        managed_policy_arns = [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+        ]
+
+        inline_policy = data.aws_iam_policy_document.lambda_permissions.json
+
+        tags = local.common_tags
+      }
+
+      data "aws_iam_policy_document" "lambda_permissions" {
+        statement {
+          sid     = "S3Access"
+          effect  = "Allow"
+          actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+          resources = ["${module.data_bucket.bucket_arn}/*"]
+        }
+
+        statement {
+          sid     = "DynamoDBAccess"
+          effect  = "Allow"
+          actions = [
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:Query"
+          ]
+          resources = [module.users_table.table_arn]
+        }
+
+        statement {
+          sid     = "SQSAccess"
+          effect  = "Allow"
+          actions = ["sqs:SendMessage", "sqs:ReceiveMessage"]
+          resources = [aws_sqs_queue.processing.arn]
+        }
+
+        statement {
+          sid     = "KMSDecrypt"
+          effect  = "Allow"
+          actions = ["kms:Decrypt", "kms:GenerateDataKey"]
+          resources = [aws_kms_key.data.arn]
+        }
+      }
+    infrastructure/iam_readonly.tf: |
+      module "readonly_role" {
+        source             = "./modules/iam_role"
+        role_name          = "readonly-role-${var.environment}"
+        assume_role_policy = data.aws_iam_policy_document.readonly_assume_role.json
+        tags               = local.common_tags
+      }
+
+      resource "aws_iam_policy" "readonly_s3" {
+        name = "readonly-s3-${var.environment}"
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["s3:GetObject", "s3:ListBucket"]
+            Resource = [
+              "arn:aws:s3:::audit-bucket-${var.environment}",
+              "arn:aws:s3:::audit-bucket-${var.environment}/*"
+            ]
+          }]
+        })
+      }
+    infrastructure/cognito.tf: |
+      resource "aws_cognito_user_pool" "main" {
+        name = "${var.environment}-users"
+
+        password_policy {
+          minimum_length = 8
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: modules/iam_role/main.tf
+    anchor: resource "aws_iam_role_policy" "inline" {
+- id: main_1
+  selector:
+    path: modules/iam_role/main.tf
+    anchor: policy = var.inline_policy
+- id: no_iam_readonly
+  selector:
+    path: infrastructure/iam_readonly.tf
+- id: no_cognito
+  selector:
+    path: infrastructure/cognito.tf
+- id: no_global_0
+  selector:
+    anchor: audit-bucket
+- id: no_global_1
+  selector:
+    anchor: readonly-role
+- id: no_global_2
+  selector:
+    anchor: aws_cognito_user_pool
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_iam_readonly
+  - no_cognito
+  - no_global_0
+  - no_global_1
+  - no_global_2

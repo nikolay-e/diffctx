@@ -1,0 +1,122 @@
+name: terraform_062_templatefile
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = "t3.micro"
+        user_data     = templatefile("${path.module}/templates/init.sh", {
+          app_name = "myapp"
+          port     = 8080
+        })
+      }
+    templates/init.sh: |
+      #!/bin/bash
+      echo "Starting ${app_name} on port ${port}"
+      systemctl start ${app_name}
+    garbage_ci_runner.tf: |
+      GARBAGE_TF_062_CI_MARKER_A = "ci-runner-instance"
+      GARBAGE_TF_062_CI_MARKER_B = "build-agent"
+
+      resource "aws_instance" "ci_runner" {
+        ami           = "ami-55667788"
+        instance_type = "c5.xlarge"
+        user_data     = templatefile("${path.module}/templates/ci.sh", {
+          runner_token = var.runner_token
+        })
+      }
+    garbage_dns.tf: |
+      GARBAGE_TF_062_DNS_MARKER_C = "route53-zone"
+      GARBAGE_TF_062_DNS_MARKER_D = "dns-records"
+
+      resource "aws_route53_zone" "primary" {
+        name = "example.com"
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = "t3.small"
+        user_data     = templatefile("${path.module}/templates/init.sh", {
+          app_name    = "myapp"
+          port        = 8080
+          environment = "production"
+          log_level   = "info"
+        })
+      }
+    templates/init.sh: |
+      #!/bin/bash
+      echo "Starting ${app_name} on port ${port}"
+      systemctl start ${app_name}
+    garbage_ci_runner.tf: |
+      GARBAGE_TF_062_CI_MARKER_A = "ci-runner-instance"
+      GARBAGE_TF_062_CI_MARKER_B = "build-agent"
+
+      resource "aws_instance" "ci_runner" {
+        ami           = "ami-55667788"
+        instance_type = "c5.xlarge"
+        user_data     = templatefile("${path.module}/templates/ci.sh", {
+          runner_token = var.runner_token
+        })
+      }
+    garbage_dns.tf: |
+      GARBAGE_TF_062_DNS_MARKER_C = "route53-zone"
+      GARBAGE_TF_062_DNS_MARKER_D = "dns-records"
+
+      resource "aws_route53_zone" "primary" {
+        name = "example.com"
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: environment = "production"
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: log_level   = "info"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: instance_type = "t3.small"
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: resource "aws_instance" "app"
+- id: no_garbage_ci_runner
+  selector:
+    path: garbage_ci_runner.tf
+- id: no_garbage_dns
+  selector:
+    path: garbage_dns.tf
+- id: no_init
+  selector:
+    path: templates/init.sh
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TF_062_CI_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TF_062_CI_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TF_062_DNS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TF_062_DNS_MARKER_D
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  allowed: []
+  forbidden:
+  - no_garbage_ci_runner
+  - no_garbage_dns
+  - no_init
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

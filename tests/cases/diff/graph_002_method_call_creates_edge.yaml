@@ -1,0 +1,412 @@
+name: graph_002_method_call_creates_edge
+repo:
+  initial_files:
+    caller.py: |
+      def use_service():
+          svc = ServiceFactory.create()
+          result = svc.process()
+          svc.validate(result)
+          return svc.finalize()
+
+      def complex_workflow():
+          handler = RequestHandler()
+          handler.authenticate()
+          handler.authorize()
+          return handler.execute()
+    service.py: |
+      class Service:
+          def __init__(self):
+              self.validator = Validator()
+              self.processor = DataProcessor()
+
+          def process(self):
+              raw = self.processor.fetch()
+              return self.processor.transform(raw)
+
+          def validate(self, data):
+              return self.validator.check(data)
+
+          def finalize(self):
+              return {"status": "complete"}
+
+      class ServiceFactory:
+          @staticmethod
+          def create():
+              return Service()
+    validator.py: |
+      class Validator:
+          def check(self, data):
+              return self._validate_format(data) and self._validate_content(data)
+
+          def _validate_format(self, data):
+              return isinstance(data, dict)
+
+          def _validate_content(self, data):
+              return "error" not in data
+    processor.py: |
+      class DataProcessor:
+          def fetch(self):
+              return self._load_from_source()
+
+          def transform(self, data):
+              cleaned = self._clean(data)
+              return self._enrich(cleaned)
+
+          def _load_from_source(self):
+              return {"raw": "data"}
+
+          def _clean(self, data):
+              return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+
+          def _enrich(self, data):
+              data["enriched"] = True
+              return data
+    handler.py: |
+      class RequestHandler:
+          def authenticate(self):
+              return self._check_token()
+
+          def authorize(self):
+              return self._verify_permissions()
+
+          def execute(self):
+              return {"executed": True}
+
+          def _check_token(self):
+              return True
+
+          def _verify_permissions(self):
+              return True
+    garbage_form_validator.py: |
+      GARBAGE_GRAPH_002_FORM_VALIDATOR_A = "form_validation"
+      GARBAGE_GRAPH_002_FORM_VALIDATOR_B = True
+
+      class FormEngine:
+          def verify(self, form_data):
+              return all(v is not None for v in form_data.values())
+
+          def submit(self):
+              return {"form": "submitted"}
+
+      def run_form():
+          engine = FormEngine()
+          result = engine.submit()
+          if not engine.verify(result):
+              raise ValueError("Form validation failed")
+          return result
+    garbage_widget_factory.py: |
+      GARBAGE_GRAPH_002_WIDGET_FACTORY_C = "widget_factory"
+      GARBAGE_GRAPH_002_WIDGET_FACTORY_D = 60
+
+      class Widget:
+          def render(self):
+              return "<div>widget</div>"
+
+          def dispose(self):
+              pass
+
+      class WidgetFactory:
+          GARBAGE_GRAPH_002_WIDGET_FACTORY_E = True
+
+          @staticmethod
+          def create():
+              return Widget()
+    garbage_schema_checker.py: |
+      GARBAGE_GRAPH_002_SCHEMA_CHECKER_F = "schema_check"
+      GARBAGE_GRAPH_002_SCHEMA_CHECKER_G = 200
+
+      class SchemaValidator:
+          def check_schema(self, data):
+              return isinstance(data, dict) and "type" in data
+
+          def transform(self, data):
+              return {k: str(v) for k, v in data.items()}
+
+      def validate_and_transform(data):
+          sv = SchemaValidator()
+          if not sv.check_schema(data):
+              raise ValueError("Schema validation failed")
+          return sv.transform(data)
+    garbage/geo_service_GARBAGE_GRAPH_def001.py: |
+      class GeoLocationService_GARBAGE_GRAPH_def001:
+          def calculate_distance(self, lat1, lon1, lat2, lon2):
+              import math
+              R = 6371
+              dlat = math.radians(lat2 - lat1)
+              dlon = math.radians(lon2 - lon1)
+              a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+              return R * 2 * math.asin(math.sqrt(a))
+
+          def find_nearest(self, locations, point):
+              return min(locations, key=lambda loc: self.calculate_distance(point[0], point[1], loc[0], loc[1]))
+    garbage/cache_manager_GARBAGE_GRAPH_def002.py: |
+      class CacheManager_GARBAGE_GRAPH_def002:
+          def __init__(self):
+              self._cache = {}
+
+          def get(self, key):
+              return self._cache.get(key)
+
+          def set(self, key, value, ttl=3600):
+              self._cache[key] = {"value": value, "ttl": ttl}
+
+          def invalidate(self, key):
+              self._cache.pop(key, None)
+    garbage/notification_GARBAGE_GRAPH_def003.py: |
+      class NotificationSender_GARBAGE_GRAPH_def003:
+          def send_email(self, to, subject, body):
+              pass
+
+          def send_sms(self, phone, message):
+              pass
+
+          def send_push(self, device_id, payload):
+              pass
+  changed_files:
+    caller.py: |
+      def use_service():
+          svc = ServiceFactory.create()
+          result = svc.process()
+          if not svc.validate(result):
+              raise ValueError("Validation failed")
+          return svc.finalize()
+
+      def complex_workflow():
+          handler = RequestHandler()
+          handler.authenticate()
+          handler.authorize()
+          return handler.execute()
+    service.py: |
+      class Service:
+          def __init__(self):
+              self.validator = Validator()
+              self.processor = DataProcessor()
+
+          def process(self):
+              raw = self.processor.fetch()
+              return self.processor.transform(raw)
+
+          def validate(self, data):
+              return self.validator.check(data)
+
+          def finalize(self):
+              return {"status": "complete"}
+
+      class ServiceFactory:
+          @staticmethod
+          def create():
+              return Service()
+    validator.py: |
+      class Validator:
+          def check(self, data):
+              return self._validate_format(data) and self._validate_content(data)
+
+          def _validate_format(self, data):
+              return isinstance(data, dict)
+
+          def _validate_content(self, data):
+              return "error" not in data
+    processor.py: |
+      class DataProcessor:
+          def fetch(self):
+              return self._load_from_source()
+
+          def transform(self, data):
+              cleaned = self._clean(data)
+              return self._enrich(cleaned)
+
+          def _load_from_source(self):
+              return {"raw": "data"}
+
+          def _clean(self, data):
+              return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+
+          def _enrich(self, data):
+              data["enriched"] = True
+              return data
+    handler.py: |
+      class RequestHandler:
+          def authenticate(self):
+              return self._check_token()
+
+          def authorize(self):
+              return self._verify_permissions()
+
+          def execute(self):
+              return {"executed": True}
+
+          def _check_token(self):
+              return True
+
+          def _verify_permissions(self):
+              return True
+    garbage_form_validator.py: |
+      GARBAGE_GRAPH_002_FORM_VALIDATOR_A = "form_validation"
+      GARBAGE_GRAPH_002_FORM_VALIDATOR_B = True
+
+      class FormEngine:
+          def verify(self, form_data):
+              return all(v is not None for v in form_data.values())
+
+          def submit(self):
+              return {"form": "submitted"}
+
+      def run_form():
+          engine = FormEngine()
+          result = engine.submit()
+          if not engine.verify(result):
+              raise ValueError("Form validation failed")
+          return result
+    garbage_widget_factory.py: |
+      GARBAGE_GRAPH_002_WIDGET_FACTORY_C = "widget_factory"
+      GARBAGE_GRAPH_002_WIDGET_FACTORY_D = 60
+
+      class Widget:
+          def render(self):
+              return "<div>widget</div>"
+
+          def dispose(self):
+              pass
+
+      class WidgetFactory:
+          GARBAGE_GRAPH_002_WIDGET_FACTORY_E = True
+
+          @staticmethod
+          def create():
+              return Widget()
+    garbage_schema_checker.py: |
+      GARBAGE_GRAPH_002_SCHEMA_CHECKER_F = "schema_check"
+      GARBAGE_GRAPH_002_SCHEMA_CHECKER_G = 200
+
+      class SchemaValidator:
+          def check_schema(self, data):
+              return isinstance(data, dict) and "type" in data
+
+          def transform(self, data):
+              return {k: str(v) for k, v in data.items()}
+
+      def validate_and_transform(data):
+          sv = SchemaValidator()
+          if not sv.check_schema(data):
+              raise ValueError("Schema validation failed")
+          return sv.transform(data)
+    garbage/geo_service_GARBAGE_GRAPH_def001.py: |
+      class GeoLocationService_GARBAGE_GRAPH_def001:
+          def calculate_distance(self, lat1, lon1, lat2, lon2):
+              import math
+              R = 6371
+              dlat = math.radians(lat2 - lat1)
+              dlon = math.radians(lon2 - lon1)
+              a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+              return R * 2 * math.asin(math.sqrt(a))
+
+          def find_nearest(self, locations, point):
+              return min(locations, key=lambda loc: self.calculate_distance(point[0], point[1], loc[0], loc[1]))
+    garbage/cache_manager_GARBAGE_GRAPH_def002.py: |
+      class CacheManager_GARBAGE_GRAPH_def002:
+          def __init__(self):
+              self._cache = {}
+
+          def get(self, key):
+              return self._cache.get(key)
+
+          def set(self, key, value, ttl=3600):
+              self._cache[key] = {"value": value, "ttl": ttl}
+
+          def invalidate(self, key):
+              self._cache.pop(key, None)
+    garbage/notification_GARBAGE_GRAPH_def003.py: |
+      class NotificationSender_GARBAGE_GRAPH_def003:
+          def send_email(self, to, subject, body):
+              pass
+
+          def send_sms(self, phone, message):
+              pass
+
+          def send_push(self, device_id, payload):
+              pass
+  commit_message: Update files
+fragments:
+- id: caller
+  selector:
+    path: caller.py
+    anchor: 'if not svc.validate(result):'
+- id: caller_1
+  selector:
+    path: caller.py
+    anchor: raise ValueError("Validation failed")
+- id: caller_2
+  selector:
+    path: caller.py
+    anchor: 'def use_service():'
+- id: no_geo_service_garbage_graph_def001
+  selector:
+    path: garbage/geo_service_GARBAGE_GRAPH_def001.py
+- id: no_cache_manager_garbage_graph_def002
+  selector:
+    path: garbage/cache_manager_GARBAGE_GRAPH_def002.py
+- id: no_notification_garbage_graph_def003
+  selector:
+    path: garbage/notification_GARBAGE_GRAPH_def003.py
+- id: no_garbage_form_validator
+  selector:
+    path: garbage_form_validator.py
+- id: no_garbage_widget_factory
+  selector:
+    path: garbage_widget_factory.py
+- id: no_garbage_schema_checker
+  selector:
+    path: garbage_schema_checker.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GRAPH_def001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GRAPH_def002
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GRAPH_def003
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GRAPH_002_FORM_VALIDATOR_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GRAPH_002_FORM_VALIDATOR_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GRAPH_002_WIDGET_FACTORY_C
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_GRAPH_002_WIDGET_FACTORY_D
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_GRAPH_002_WIDGET_FACTORY_E
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_GRAPH_002_SCHEMA_CHECKER_F
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_GRAPH_002_SCHEMA_CHECKER_G
+oracle:
+  required:
+  - caller
+  - caller_1
+  - caller_2
+  allowed: []
+  forbidden:
+  - no_geo_service_garbage_graph_def001
+  - no_cache_manager_garbage_graph_def002
+  - no_notification_garbage_graph_def003
+  - no_garbage_form_validator
+  - no_garbage_widget_factory
+  - no_garbage_schema_checker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

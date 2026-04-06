@@ -1,0 +1,161 @@
+name: cicd_and_docs_038_gitlab_parallel
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      stages:
+        - test
+
+      e2e:
+        stage: test
+        script:
+          - npm ci
+          - npm run test:e2e
+    tests/browser.test.ts: |
+      import { test, expect } from '@playwright/test';
+
+      const browser = process.env.BROWSER || 'chromium';
+
+      test(`renders correctly in ${browser}`, async ({ page }) => {
+        await page.goto('/');
+        await expect(page.locator('h1')).toBeVisible();
+      });
+    package.json: |
+      {
+        "name": "gitlab-parallel-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test:e2e": "playwright test"
+        },
+        "devDependencies": {
+          "@playwright/test": "^1.40.0"
+        }
+      }
+    playwright.config.ts: |
+      import { defineConfig } from '@playwright/test';
+
+      export default defineConfig({
+        testDir: './tests',
+        use: {
+          baseURL: 'http://localhost:3000'
+        }
+      });
+    garbage_parallel_executor.ts: |
+      const GARBAGE_CICD_DOCS_038_EXECUTOR_MARKER_A = "worker";
+      const GARBAGE_CICD_DOCS_038_POOL_MARKER_B = 4;
+
+      class GarbageParallelExecutor {
+        static GARBAGE_CICD_DOCS_038_BATCH_MARKER_C = 10;
+        execute(): void {}
+      }
+    garbage_parallel_coordinator.ts: |
+      const GARBAGE_CICD_DOCS_038_COORDINATOR_MARKER_D = "central";
+      const GARBAGE_CICD_DOCS_038_SYNC_MARKER_E = "barrier";
+
+      class GarbageParallelCoordinator {
+        static GARBAGE_CICD_DOCS_038_TIMEOUT_MARKER_F = 60000;
+        coordinate(): void {}
+      }
+  changed_files:
+    .gitlab-ci.yml: |
+      stages:
+        - test
+
+      e2e:
+        stage: test
+        parallel:
+          matrix:
+            - BROWSER: [chrome, firefox, safari]
+        script:
+          - npm ci
+          - npm run test:e2e -- --browser=$BROWSER
+    tests/browser.test.ts: |
+      import { test, expect } from '@playwright/test';
+
+      const browser = process.env.BROWSER || 'chromium';
+
+      test(`renders correctly in ${browser}`, async ({ page }) => {
+        await page.goto('/');
+        await expect(page.locator('h1')).toBeVisible();
+      });
+    package.json: |
+      {
+        "name": "gitlab-parallel-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test:e2e": "playwright test"
+        },
+        "devDependencies": {
+          "@playwright/test": "^1.40.0"
+        }
+      }
+    playwright.config.ts: |
+      import { defineConfig } from '@playwright/test';
+
+      export default defineConfig({
+        testDir: './tests',
+        use: {
+          baseURL: 'http://localhost:3000'
+        }
+      });
+    garbage_parallel_executor.ts: |
+      const GARBAGE_CICD_DOCS_038_EXECUTOR_MARKER_A = "worker";
+      const GARBAGE_CICD_DOCS_038_POOL_MARKER_B = 4;
+
+      class GarbageParallelExecutor {
+        static GARBAGE_CICD_DOCS_038_BATCH_MARKER_C = 10;
+        execute(): void {}
+      }
+    garbage_parallel_coordinator.ts: |
+      const GARBAGE_CICD_DOCS_038_COORDINATOR_MARKER_D = "central";
+      const GARBAGE_CICD_DOCS_038_SYNC_MARKER_E = "barrier";
+
+      class GarbageParallelCoordinator {
+        static GARBAGE_CICD_DOCS_038_TIMEOUT_MARKER_F = 60000;
+        coordinate(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- BROWSER: [chrome, firefox, safari]'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_BATCH_MARKER_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_COORDINATOR_MARKER_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_EXECUTOR_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_POOL_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_SYNC_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_038_TIMEOUT_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: garbage_parallel_coordinator.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_parallel_executor.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

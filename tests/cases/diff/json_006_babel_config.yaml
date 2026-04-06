@@ -1,0 +1,149 @@
+name: json_006_babel_config
+repo:
+  initial_files:
+    babel.config.json: |
+      {
+        "presets": ["@babel/preset-env"],
+        "plugins": [
+          "@babel/plugin-proposal-class-properties",
+          "@babel/plugin-transform-runtime"
+        ],
+        "env": {
+          "test": {
+            "presets": ["@babel/preset-env"]
+          }
+        }
+      }
+    src/modern.js: |
+      const greet = (name) => `Hello, ${name}`;
+
+      const createPipeline = (...fns) => (input) =>
+          fns.reduce((acc, fn) => fn(acc), input);
+
+      class MessageBuilder {
+          #prefix = '';
+
+          constructor(prefix) {
+              this.#prefix = prefix;
+          }
+
+          build(text) {
+              return `${this.#prefix}: ${text}`;
+          }
+
+          withTimestamp(text) {
+              const ts = new Date().toISOString();
+              return this.build(`[${ts}] ${text}`);
+          }
+      }
+
+      const formatOutput = createPipeline(
+          (s) => s.trim(),
+          (s) => s.toLowerCase(),
+          (s) => s.replace(/\s+/g, '-')
+      );
+
+      export { greet, createPipeline, MessageBuilder, formatOutput };
+      export default greet;
+    src/runtime.js: |
+      import { greet, MessageBuilder } from './modern';
+
+      const builder = new MessageBuilder('APP');
+
+      function startApp(userName) {
+          const welcome = greet(userName);
+          const message = builder.withTimestamp(welcome);
+          console.log(message);
+          return message;
+      }
+
+      function processMessage(text) {
+          return builder.build(text);
+      }
+
+      export { startApp, processMessage };
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "strict": true,
+          "esModuleInterop": true,
+          "noEmit": true,
+          "skipLibCheck": true
+        },
+        "include": ["src/**/*"]
+      }
+    package.json: |
+      {
+        "name": "modern-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "babel src --out-dir dist",
+          "build:ts": "tsc && babel dist --out-dir lib"
+        },
+        "devDependencies": {
+          "@babel/core": "^7.22.0",
+          "@babel/preset-env": "^7.22.0",
+          "@babel/preset-typescript": "^7.22.0",
+          "@babel/plugin-proposal-class-properties": "^7.18.0",
+          "@babel/plugin-transform-runtime": "^7.22.0"
+        }
+      }
+  changed_files:
+    babel.config.json: |
+      {
+        "presets": [
+          ["@babel/preset-env", {"targets": {"node": "18"}}],
+          "@babel/preset-typescript"
+        ],
+        "plugins": [
+          "@babel/plugin-proposal-class-properties",
+          "@babel/plugin-transform-runtime"
+        ],
+        "env": {
+          "test": {
+            "presets": ["@babel/preset-env"]
+          }
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: babel_config
+  selector:
+    path: babel.config.json
+    anchor: '"targets": {"node": "18"}'
+- id: babel_config_1
+  selector:
+    path: babel.config.json
+    anchor: '@babel/preset-typescript'
+- id: no_tsconfig
+  selector:
+    path: tsconfig.json
+- id: no_package
+  selector:
+    path: package.json
+- id: no_global_0
+  selector:
+    anchor: noEmit
+- id: no_global_1
+  selector:
+    anchor: skipLibCheck
+- id: no_global_2
+  selector:
+    anchor: '@babel/core'
+- id: no_global_3
+  selector:
+    anchor: build:ts
+oracle:
+  required:
+  - babel_config
+  - babel_config_1
+  allowed: []
+  forbidden:
+  - no_tsconfig
+  - no_package
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

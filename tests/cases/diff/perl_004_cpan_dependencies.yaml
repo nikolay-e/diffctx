@@ -1,0 +1,282 @@
+name: perl_004_cpan_dependencies
+repo:
+  initial_files:
+    cpanfile: |
+      requires 'Moose', '2.2000';
+      requires 'DBI', '1.643';
+      requires 'DBD::Pg', '3.15';
+      requires 'Catalyst::Runtime', '5.90';
+      requires 'JSON::XS', '4.03';
+      requires 'DateTime', '1.59';
+      requires 'Template', '3.10';
+
+      on 'test' => sub {
+          requires 'Test::More', '1.302';
+          requires 'Test::Exception', '0.43';
+      };
+    lib/MyApp/Exporter.pm: |
+      package MyApp::Exporter;
+      use strict;
+      use warnings;
+      use JSON::XS;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { format => $args{format} || 'json' }, $class;
+      }
+
+      sub export_json {
+          my ($self, $data) = @_;
+          return encode_json($data);
+      }
+
+      sub export_data {
+          my ($self, $data) = @_;
+          if ($self->{format} eq 'json') {
+              return $self->export_json($data);
+          }
+          die "Unsupported format: $self->{format}";
+      }
+
+      1;
+    lib/MyApp/Importer.pm: |
+      my $GARBAGE_PERL_004_A = "noise_marker_importer";
+
+      package MyApp::Importer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { source => $args{source} }, $class;
+      }
+
+      sub import_from_file {
+          my ($self, $path) = @_;
+          open my $fh, '<', $path or die "Cannot open $path: $!";
+          my @lines = <$fh>;
+          close $fh;
+          chomp @lines;
+          return \@lines;
+      }
+
+      sub parse_csv_line {
+          my ($self, $line) = @_;
+          my @fields = split /,/, $line;
+          return \@fields;
+      }
+
+      1;
+    lib/MyApp/Reporter.pm: |
+      my $GARBAGE_PERL_004_B = "noise_marker_reporter";
+
+      package MyApp::Reporter;
+      use strict;
+      use warnings;
+      use Template;
+
+      sub new {
+          my ($class, %args) = @_;
+          my $tt = Template->new(INCLUDE_PATH => $args{template_dir});
+          return bless { tt => $tt }, $class;
+      }
+
+      sub generate_report {
+          my ($self, $template_name, $data) = @_;
+          my $output = '';
+          $self->{tt}->process($template_name, $data, \$output)
+              or die $self->{tt}->error();
+          return $output;
+      }
+
+      sub generate_summary {
+          my ($self, $records) = @_;
+          my $total = 0;
+          $total += $_->{amount} for @$records;
+          return { count => scalar @$records, total => $total };
+      }
+
+      1;
+  changed_files:
+    cpanfile: |
+      requires 'Moose', '2.2000';
+      requires 'DBI', '1.643';
+      requires 'DBD::Pg', '3.15';
+      requires 'Catalyst::Runtime', '5.90';
+      requires 'JSON::XS', '4.03';
+      requires 'Text::CSV_XS', '1.50';
+      requires 'DateTime', '1.59';
+      requires 'Template', '3.10';
+
+      on 'test' => sub {
+          requires 'Test::More', '1.302';
+          requires 'Test::Exception', '0.43';
+      };
+    lib/MyApp/Exporter.pm: |
+      package MyApp::Exporter;
+      use strict;
+      use warnings;
+      use JSON::XS;
+      use Text::CSV_XS;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { format => $args{format} || 'json' }, $class;
+      }
+
+      sub export_json {
+          my ($self, $data) = @_;
+          return encode_json($data);
+      }
+
+      sub export_csv {
+          my ($self, $headers, $rows) = @_;
+          my $csv = Text::CSV_XS->new({ binary => 1, eol => "\n" });
+          my $output = '';
+          open my $fh, '>', \$output or die "Cannot open string ref: $!";
+          $csv->print($fh, $headers);
+          for my $row (@$rows) {
+              my @ordered = map { $row->{$_} // '' } @$headers;
+              $csv->print($fh, \@ordered);
+          }
+          close $fh;
+          return $output;
+      }
+
+      sub export_data {
+          my ($self, $data, %opts) = @_;
+          if ($self->{format} eq 'json') {
+              return $self->export_json($data);
+          }
+          if ($self->{format} eq 'csv') {
+              my $headers = $opts{headers} || [sort keys %{$data->[0]}];
+              return $self->export_csv($headers, $data);
+          }
+          die "Unsupported format: $self->{format}";
+      }
+
+      1;
+    lib/MyApp/Importer.pm: |
+      my $GARBAGE_PERL_004_A = "noise_marker_importer";
+
+      package MyApp::Importer;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { source => $args{source} }, $class;
+      }
+
+      sub import_from_file {
+          my ($self, $path) = @_;
+          open my $fh, '<', $path or die "Cannot open $path: $!";
+          my @lines = <$fh>;
+          close $fh;
+          chomp @lines;
+          return \@lines;
+      }
+
+      sub parse_csv_line {
+          my ($self, $line) = @_;
+          my @fields = split /,/, $line;
+          return \@fields;
+      }
+
+      1;
+    lib/MyApp/Reporter.pm: |
+      my $GARBAGE_PERL_004_B = "noise_marker_reporter";
+
+      package MyApp::Reporter;
+      use strict;
+      use warnings;
+      use Template;
+
+      sub new {
+          my ($class, %args) = @_;
+          my $tt = Template->new(INCLUDE_PATH => $args{template_dir});
+          return bless { tt => $tt }, $class;
+      }
+
+      sub generate_report {
+          my ($self, $template_name, $data) = @_;
+          my $output = '';
+          $self->{tt}->process($template_name, $data, \$output)
+              or die $self->{tt}->error();
+          return $output;
+      }
+
+      sub generate_summary {
+          my ($self, $records) = @_;
+          my $total = 0;
+          $total += $_->{amount} for @$records;
+          return { count => scalar @$records, total => $total };
+      }
+
+      1;
+  commit_message: Update files
+fragments:
+- id: cpanfile
+  selector:
+    path: cpanfile
+    anchor: Text::CSV_XS
+- id: exporter
+  selector:
+    path: lib/MyApp/Exporter.pm
+    anchor: use Text::CSV_XS
+- id: exporter_1
+  selector:
+    path: lib/MyApp/Exporter.pm
+    anchor: sub export_csv
+- id: exporter_2
+  selector:
+    path: lib/MyApp/Exporter.pm
+    anchor: Text::CSV_XS->new
+- id: no_importer
+  selector:
+    path: lib/MyApp/Importer.pm
+- id: no_reporter
+  selector:
+    path: lib/MyApp/Reporter.pm
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PERL_004_A
+- id: no_global_1
+  selector:
+    anchor: noise_marker_importer
+- id: no_global_2
+  selector:
+    anchor: import_from_file
+- id: no_global_3
+  selector:
+    anchor: parse_csv_line
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PERL_004_B
+- id: no_global_5
+  selector:
+    anchor: noise_marker_reporter
+- id: no_global_6
+  selector:
+    anchor: generate_report
+- id: no_global_7
+  selector:
+    anchor: generate_summary
+oracle:
+  required:
+  - cpanfile
+  - exporter
+  - exporter_1
+  - exporter_2
+  allowed: []
+  forbidden:
+  - no_importer
+  - no_reporter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,312 @@
+name: python_060_pytest_fixture_usage
+repo:
+  initial_files:
+    test_service.py: |
+      def test_placeholder():
+          assert True
+    conftest.py: |
+      import pytest
+      from database import Session
+      from models import User, Project
+
+      @pytest.fixture
+      def db_session():
+          session = Session()
+          yield session
+          session.close()
+
+      @pytest.fixture
+      def test_user(db_session):
+          user = User(name="Alice", email="alice@example.com")
+          db_session.add(user)
+          db_session.commit()
+          return user
+
+      @pytest.fixture
+      def test_project(db_session, test_user):
+          project = Project(name="Test Project", owner=test_user)
+          db_session.add(project)
+          db_session.commit()
+          return project
+    models.py: |
+      class User:
+          def __init__(self, name: str, email: str, is_active: bool = True):
+              self.name = name
+              self.email = email
+              self.is_active = is_active
+
+          def __repr__(self):
+              return f"User(name={self.name!r}, email={self.email!r})"
+
+      class Project:
+          def __init__(self, name: str, owner: User):
+              self.name = name
+              self.owner = owner
+              self.is_archived = False
+
+          def __repr__(self):
+              return f"Project(name={self.name!r}, owner={self.owner.name!r})"
+    database.py: |
+      class Session:
+          def __init__(self, url: str = "sqlite:///test.db"):
+              self.url = url
+              self._data: dict[str, list] = {}
+
+          def add(self, obj: object) -> None:
+              table = type(obj).__name__
+              if table not in self._data:
+                  self._data[table] = []
+              self._data[table].append(obj)
+
+          def commit(self) -> None:
+              pass
+
+          def rollback(self) -> None:
+              self._data.clear()
+
+          def close(self) -> None:
+              self._data.clear()
+
+          def query(self, model_class: type) -> list:
+              return self._data.get(model_class.__name__, [])
+    tests/test_api.py: |
+      def test_api_user_creation(db_session, test_user):
+          """Verify user fixture is usable in API-level tests."""
+          assert test_user.name == "Alice"
+          db_session.add(test_user)
+
+      def test_api_project_access(db_session, test_project):
+          """Verify project fixture is accessible."""
+          assert test_project.name == "Test Project"
+
+      def test_api_list_users(db_session, test_user):
+          """Verify user appears in session query."""
+          users = db_session.query(type(test_user))
+          assert len(users) >= 1
+    services/user_service.py: |
+      from database import Session
+      from models import User
+
+      class UserService:
+          def __init__(self, session: Session):
+              self.session = session
+
+          def create_user(self, name: str, email: str) -> User:
+              user = User(name=name, email=email)
+              self.session.add(user)
+              self.session.commit()
+              return user
+
+          def get_users(self) -> list:
+              return self.session.query(User)
+
+          def deactivate_user(self, user: User) -> None:
+              user.is_active = False
+              self.session.commit()
+    tests/integration/conftest.py: |
+      import pytest
+      from database import Session
+      from models import User
+
+      @pytest.fixture(scope="session")
+      def integration_db():
+          session = Session(url="sqlite:///integration_test.db")
+          yield session
+          session.close()
+
+      @pytest.fixture
+      def integration_user(integration_db):
+          user = User(name="IntegrationUser", email="integration@test.com")
+          integration_db.add(user)
+          integration_db.commit()
+          return user
+    utils/test_factories.py: |
+      from models import User, Project
+
+      class UserFactory:
+          _counter = 0
+
+          @classmethod
+          def create(cls, name: str = None, email: str = None) -> User:
+              cls._counter += 1
+              return User(
+                  name=name or f"TestUser_{cls._counter}",
+                  email=email or f"user{cls._counter}@test.com",
+              )
+
+      class ProjectFactory:
+          _counter = 0
+
+          @classmethod
+          def create(cls, name: str = None, owner: User = None) -> Project:
+              cls._counter += 1
+              if owner is None:
+                  owner = UserFactory.create()
+              return Project(
+                  name=name or f"TestProject_{cls._counter}",
+                  owner=owner,
+              )
+    utils/migration_runner.py: |
+      from typing import Optional
+
+      class MigrationRunner:
+          def __init__(self, db_url: str = ""):
+              self.db_url = db_url
+              self._applied: list[str] = []
+
+          def apply(self, migration_id: str) -> None:
+              self._applied.append(migration_id)
+
+          def rollback(self, migration_id: str) -> bool:
+              if migration_id in self._applied:
+                  self._applied.remove(migration_id)
+                  return True
+              return False
+
+          def get_current_version(self) -> Optional[str]:
+              return self._applied[-1] if self._applied else None
+  changed_files:
+    test_service.py: |
+      def test_create_user(db_session, test_user):
+          assert test_user.name == "Alice"
+          assert test_user.email == "alice@example.com"
+          users = db_session.query(type(test_user))
+          assert len(users) == 1
+
+      def test_create_project(db_session, test_project, test_user):
+          assert test_project.name == "Test Project"
+          assert test_project.owner is test_user
+
+      def test_user_is_active(test_user):
+          assert test_user.is_active is True
+  commit_message: Update files
+fragments:
+- id: test_service
+  selector:
+    path: test_service.py
+    anchor: 'def test_create_user(db_session, test_user):'
+- id: test_service_1
+  selector:
+    path: test_service.py
+    anchor: 'def test_create_project(db_session, test_project, test_user):'
+- id: test_service_2
+  selector:
+    path: test_service.py
+    anchor: assert test_user.is_active is True
+- id: conftest
+  selector:
+    path: conftest.py
+    anchor: 'def db_session():'
+- id: conftest_1
+  selector:
+    path: conftest.py
+    anchor: 'def test_user(db_session):'
+- id: conftest_2
+  selector:
+    path: conftest.py
+    anchor: 'def test_project(db_session, test_user):'
+- id: models
+  selector:
+    path: models.py
+    anchor: 'def __init__(self, name: str, email: str, is_active: bool = True):'
+- id: models_1
+  selector:
+    path: models.py
+    anchor: 'def __init__(self, name: str, owner: User):'
+- id: database
+  selector:
+    path: database.py
+    anchor: 'def query(self, model_class: type) -> list:'
+- id: no_test_api
+  selector:
+    path: tests/test_api.py
+- id: no_user_service
+  selector:
+    path: services/user_service.py
+- id: no_conftest
+  selector:
+    path: tests/integration/conftest.py
+- id: no_test_factories
+  selector:
+    path: utils/test_factories.py
+- id: no_migration_runner
+  selector:
+    path: utils/migration_runner.py
+- id: no_global_0
+  selector:
+    anchor: test_api_user_creation
+- id: no_global_1
+  selector:
+    anchor: test_api_project_access
+- id: no_global_2
+  selector:
+    anchor: test_api_list_users
+- id: no_global_3
+  selector:
+    anchor: UserService
+- id: no_global_4
+  selector:
+    anchor: create_user
+- id: no_global_5
+  selector:
+    anchor: deactivate_user
+- id: no_global_6
+  selector:
+    anchor: get_users
+- id: no_global_7
+  selector:
+    anchor: integration_db
+- id: no_global_8
+  selector:
+    anchor: integration_user
+- id: no_global_9
+  selector:
+    anchor: sqlite:///integration_test.db
+- id: no_global_10
+  selector:
+    anchor: UserFactory
+- id: no_global_11
+  selector:
+    anchor: ProjectFactory
+- id: no_global_12
+  selector:
+    anchor: _counter
+- id: no_global_13
+  selector:
+    anchor: MigrationRunner
+- id: no_global_14
+  selector:
+    anchor: get_current_version
+oracle:
+  required:
+  - test_service
+  - test_service_1
+  - test_service_2
+  - conftest
+  - conftest_1
+  - conftest_2
+  - models
+  - models_1
+  - database
+  allowed: []
+  forbidden:
+  - no_test_api
+  - no_user_service
+  - no_conftest
+  - no_test_factories
+  - no_migration_runner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

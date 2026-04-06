@@ -1,0 +1,171 @@
+name: javascript_071_union_type
+repo:
+  initial_files:
+    result.ts: |
+      export type Success<T> = { success: true; data: T };
+      export type Failure = { success: false; error: string };
+    handler.ts: |
+      console.log('initial');
+    result-factory.ts: |
+      import { Success, Failure } from './result';
+
+      export function ok<T>(data: T): Success<T> {
+          return { success: true, data };
+      }
+
+      export function fail(error: string): Failure {
+          return { success: false, error };
+      }
+    result-logger.ts: |
+      import { Success, Failure } from './result';
+
+      type AnyResult = Success<unknown> | Failure;
+
+      export function logResult(result: AnyResult): void {
+          if (result.success) {
+              console.log('[OK]', result.data);
+          } else {
+              console.error('[FAIL]', result.error);
+          }
+      }
+    either.ts: |
+      export type Left<E> = { tag: 'left'; error: E };
+      export type Right<T> = { tag: 'right'; value: T };
+      export type Either<E, T> = Left<E> | Right<T>;
+
+      export function mapEither<E, A, B>(either: Either<E, A>, fn: (a: A) => B): Either<E, B> {
+          return either.tag === 'right' ? { tag: 'right', value: fn(either.value) } : either;
+      }
+  changed_files:
+    result.ts: |
+      export type Success<T> = { success: true; data: T };
+      export type Failure = { success: false; error: string };
+    handler.ts: |
+      import { Success, Failure } from './result';
+
+      type Result<T> = Success<T> | Failure;
+
+      function handleResult<T>(result: Result<T>) {
+          if (result.success) {
+              return result.data;
+          }
+          throw new Error(result.error);
+      }
+    result-factory.ts: |
+      import { Success, Failure } from './result';
+
+      export function ok<T>(data: T): Success<T> {
+          return { success: true, data };
+      }
+
+      export function fail(error: string): Failure {
+          return { success: false, error };
+      }
+    result-logger.ts: |
+      import { Success, Failure } from './result';
+
+      type AnyResult = Success<unknown> | Failure;
+
+      export function logResult(result: AnyResult): void {
+          if (result.success) {
+              console.log('[OK]', result.data);
+          } else {
+              console.error('[FAIL]', result.error);
+          }
+      }
+    either.ts: |
+      export type Left<E> = { tag: 'left'; error: E };
+      export type Right<T> = { tag: 'right'; value: T };
+      export type Either<E, T> = Left<E> | Right<T>;
+
+      export function mapEither<E, A, B>(either: Either<E, A>, fn: (a: A) => B): Either<E, B> {
+          return either.tag === 'right' ? { tag: 'right', value: fn(either.value) } : either;
+      }
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: handler.ts
+    anchor: import { Success, Failure } from './result'
+- id: handler_1
+  selector:
+    path: handler.ts
+    anchor: type Result<T> = Success<T> | Failure
+- id: handler_2
+  selector:
+    path: handler.ts
+    anchor: result.data
+- id: handler_3
+  selector:
+    path: handler.ts
+    anchor: result.error
+- id: result
+  selector:
+    path: result.ts
+    anchor: 'type Success<T> = { success: true; data: T }'
+- id: result_1
+  selector:
+    path: result.ts
+    anchor: 'type Failure = { success: false; error: string }'
+- id: no_result_factory
+  selector:
+    path: result-factory.ts
+- id: no_result_logger
+  selector:
+    path: result-logger.ts
+- id: no_either
+  selector:
+    path: either.ts
+- id: no_global_0
+  selector:
+    anchor: function ok<T>
+- id: no_global_1
+  selector:
+    anchor: function fail(
+- id: no_global_2
+  selector:
+    anchor: logResult
+- id: no_global_3
+  selector:
+    anchor: AnyResult
+- id: no_global_4
+  selector:
+    anchor: '[OK]'
+- id: no_global_5
+  selector:
+    anchor: '[FAIL]'
+- id: no_global_6
+  selector:
+    anchor: Either
+- id: no_global_7
+  selector:
+    anchor: mapEither
+- id: no_global_8
+  selector:
+    anchor: 'tag: ''left'''
+- id: no_global_9
+  selector:
+    anchor: 'tag: ''right'''
+oracle:
+  required:
+  - handler
+  - handler_1
+  - handler_2
+  - handler_3
+  - result
+  - result_1
+  allowed: []
+  forbidden:
+  - no_result_factory
+  - no_result_logger
+  - no_either
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

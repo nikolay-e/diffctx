@@ -1,0 +1,333 @@
+name: dependencies_041_test_api_response_snapshot
+repo:
+  initial_files:
+    src/api_handlers.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      import json
+
+      @dataclass
+      class ApiResponse:
+          status: str
+          data: Optional[dict] = None
+          error: Optional[str] = None
+          meta: Optional[dict] = None
+
+          def to_json(self) -> str:
+              result = {"status": self.status}
+              if self.data is not None:
+                  result["data"] = self.data
+              if self.error is not None:
+                  result["error"] = self.error
+              if self.meta is not None:
+                  result["meta"] = self.meta
+              return json.dumps(result, indent=2)
+
+      class UserApiHandler:
+          def __init__(self):
+              self.users = {
+                  1: {"id": 1, "name": "Admin", "role": "admin"},
+                  2: {"id": 2, "name": "User", "role": "user"},
+              }
+
+          def get_user(self, user_id: int) -> ApiResponse:
+              if user_id not in self.users:
+                  return ApiResponse(
+                      status="error",
+                      error=f"User {user_id} not found",
+                      meta={"request_id": "req_123"}
+                  )
+              return ApiResponse(
+                  status="success",
+                  data=self.users[user_id],
+                  meta={"request_id": "req_123", "cached": False}
+              )
+
+          def list_users(self, page: int = 1, limit: int = 10) -> ApiResponse:
+              users = list(self.users.values())
+              return ApiResponse(
+                  status="success",
+                  data={"users": users, "total": len(users)},
+                  meta={"page": page, "limit": limit}
+              )
+    tests/test_api_handlers.py: |
+      from src.api_handlers import UserApiHandler
+
+      def test_get_user_exists():
+          handler = UserApiHandler()
+          response = handler.get_user(1)
+          assert response.status == "success"
+    src/order_handlers.py: |
+      from src.api_handlers import ApiResponse
+      GARBAGE_DEP041_ORDERHDL_A = "order_handlers"
+      GARBAGE_DEP041_ORDERHDL_INIT_B = True
+
+      class OrderApiHandler:
+          def __init__(self):
+              self.orders = {}
+
+          def get_order(self, order_id: int) -> ApiResponse:
+              GARBAGE_DEP041_ORDERHDL_GET_C = "getting_order"
+              if order_id not in self.orders:
+                  return ApiResponse(
+                      status="error",
+                      error=f"Order {order_id} not found",
+                      meta={"request_id": "req_456"}
+                  )
+              return ApiResponse(
+                  status="success",
+                  data=self.orders[order_id],
+                  meta={"request_id": "req_456", "cached": False}
+              )
+    tests/test_order_handlers.py: |
+      import json
+      from src.order_handlers import OrderApiHandler
+      GARBAGE_DEP041_ORDTEST_D = "order_handler_tests"
+      GARBAGE_DEP041_ORDTEST_INIT_E = True
+
+      def test_get_order_snapshot():
+          GARBAGE_DEP041_ORDTEST_SNAP_F = "snapshot_test"
+          handler = OrderApiHandler()
+          handler.orders = {1: {"id": 1, "item": "Widget", "qty": 5}}
+          response = handler.get_order(1)
+          result = json.loads(response.to_json())
+          assert result["status"] == "success"
+          assert result["data"]["item"] == "Widget"
+    src/health_check.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      import json
+      GARBAGE_DEP041_HEALTH_G = "health_check_module"
+      GARBAGE_DEP041_HEALTH_INIT_H = True
+
+      @dataclass
+      class HealthResponse:
+          status: str
+          data: Optional[dict] = None
+          error: Optional[str] = None
+
+          def to_json(self) -> str:
+              GARBAGE_DEP041_HEALTH_JSON_I = "serializing"
+              result = {"status": self.status}
+              if self.data is not None:
+                  result["data"] = self.data
+              if self.error is not None:
+                  result["error"] = self.error
+              return json.dumps(result, indent=2)
+  changed_files:
+    src/api_handlers.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      import json
+
+      @dataclass
+      class ApiResponse:
+          status: str
+          data: Optional[dict] = None
+          error: Optional[str] = None
+          meta: Optional[dict] = None
+
+          def to_json(self) -> str:
+              result = {"status": self.status}
+              if self.data is not None:
+                  result["data"] = self.data
+              if self.error is not None:
+                  result["error"] = self.error
+              if self.meta is not None:
+                  result["meta"] = self.meta
+              return json.dumps(result, indent=2)
+
+      class UserApiHandler:
+          def __init__(self):
+              self.users = {
+                  1: {"id": 1, "name": "Admin", "role": "admin"},
+                  2: {"id": 2, "name": "User", "role": "user"},
+              }
+
+          def get_user(self, user_id: int) -> ApiResponse:
+              if user_id not in self.users:
+                  return ApiResponse(
+                      status="error",
+                      error=f"User {user_id} not found",
+                      meta={"request_id": "req_123"}
+                  )
+              return ApiResponse(
+                  status="success",
+                  data=self.users[user_id],
+                  meta={"request_id": "req_123", "cached": False}
+              )
+
+          def list_users(self, page: int = 1, limit: int = 10) -> ApiResponse:
+              users = list(self.users.values())
+              return ApiResponse(
+                  status="success",
+                  data={"users": users, "total": len(users)},
+                  meta={"page": page, "limit": limit}
+              )
+    tests/test_api_handlers.py: |
+      import json
+      from src.api_handlers import UserApiHandler, ApiResponse
+
+      def test_get_user_exists():
+          handler = UserApiHandler()
+          response = handler.get_user(1)
+          assert response.status == "success"
+
+      def test_get_user_success_snapshot():
+          handler = UserApiHandler()
+          response = handler.get_user(1)
+          result = json.loads(response.to_json())
+
+          assert result["status"] == "success"
+          assert result["data"]["id"] == 1
+          assert result["data"]["name"] == "Admin"
+          assert result["data"]["role"] == "admin"
+          assert "meta" in result
+          assert result["meta"]["cached"] is False
+
+      def test_get_user_not_found_snapshot():
+          handler = UserApiHandler()
+          response = handler.get_user(999)
+          result = json.loads(response.to_json())
+
+          assert result["status"] == "error"
+          assert "999" in result["error"]
+          assert "not found" in result["error"]
+          assert "data" not in result
+
+      def test_list_users_snapshot():
+          handler = UserApiHandler()
+          response = handler.list_users(page=1, limit=10)
+          result = json.loads(response.to_json())
+
+          assert result["status"] == "success"
+          assert result["data"]["total"] == 2
+          assert len(result["data"]["users"]) == 2
+          assert result["meta"]["page"] == 1
+          assert result["meta"]["limit"] == 10
+    src/order_handlers.py: |
+      from src.api_handlers import ApiResponse
+      GARBAGE_DEP041_ORDERHDL_A = "order_handlers"
+      GARBAGE_DEP041_ORDERHDL_INIT_B = True
+
+      class OrderApiHandler:
+          def __init__(self):
+              self.orders = {}
+
+          def get_order(self, order_id: int) -> ApiResponse:
+              GARBAGE_DEP041_ORDERHDL_GET_C = "getting_order"
+              if order_id not in self.orders:
+                  return ApiResponse(
+                      status="error",
+                      error=f"Order {order_id} not found",
+                      meta={"request_id": "req_456"}
+                  )
+              return ApiResponse(
+                  status="success",
+                  data=self.orders[order_id],
+                  meta={"request_id": "req_456", "cached": False}
+              )
+    tests/test_order_handlers.py: |
+      import json
+      from src.order_handlers import OrderApiHandler
+      GARBAGE_DEP041_ORDTEST_D = "order_handler_tests"
+      GARBAGE_DEP041_ORDTEST_INIT_E = True
+
+      def test_get_order_snapshot():
+          GARBAGE_DEP041_ORDTEST_SNAP_F = "snapshot_test"
+          handler = OrderApiHandler()
+          handler.orders = {1: {"id": 1, "item": "Widget", "qty": 5}}
+          response = handler.get_order(1)
+          result = json.loads(response.to_json())
+          assert result["status"] == "success"
+          assert result["data"]["item"] == "Widget"
+    src/health_check.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+      import json
+      GARBAGE_DEP041_HEALTH_G = "health_check_module"
+      GARBAGE_DEP041_HEALTH_INIT_H = True
+
+      @dataclass
+      class HealthResponse:
+          status: str
+          data: Optional[dict] = None
+          error: Optional[str] = None
+
+          def to_json(self) -> str:
+              GARBAGE_DEP041_HEALTH_JSON_I = "serializing"
+              result = {"status": self.status}
+              if self.data is not None:
+                  result["data"] = self.data
+              if self.error is not None:
+                  result["error"] = self.error
+              return json.dumps(result, indent=2)
+  commit_message: Update files
+fragments:
+- id: test_api_handlers
+  selector:
+    path: tests/test_api_handlers.py
+    anchor: from src.api_handlers import UserApiHandler, ApiResponse
+- id: test_api_handlers_1
+  selector:
+    path: tests/test_api_handlers.py
+    anchor: 'def test_get_user_success_snapshot():'
+- id: api_handlers
+  selector:
+    path: src/api_handlers.py
+    anchor: 'def get_user(self, user_id: int) -> ApiResponse:'
+- id: no_order_handlers
+  selector:
+    path: src/order_handlers.py
+- id: no_test_order_handlers
+  selector:
+    path: tests/test_order_handlers.py
+- id: no_health_check
+  selector:
+    path: src/health_check.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP041_ORDERHDL_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP041_ORDERHDL_INIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP041_ORDERHDL_GET_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP041_ORDTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP041_ORDTEST_INIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP041_ORDTEST_SNAP_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP041_HEALTH_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP041_HEALTH_INIT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP041_HEALTH_JSON_I
+oracle:
+  required:
+  - test_api_handlers
+  - test_api_handlers_1
+  - api_handlers
+  allowed: []
+  forbidden:
+  - no_order_handlers
+  - no_test_order_handlers
+  - no_health_check
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

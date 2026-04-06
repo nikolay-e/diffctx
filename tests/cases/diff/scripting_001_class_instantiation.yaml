@@ -1,0 +1,258 @@
+name: scripting_001_class_instantiation
+repo:
+  initial_files:
+    src/app.php: |
+      <?php
+      echo "Hello World";
+    src/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User {
+          private string $name;
+          private string $email;
+          private int $age;
+          private array $roles;
+
+          public function __construct(string $name, string $email, int $age = 0) {
+              $this->name = $name;
+              $this->email = $email;
+              $this->age = $age;
+              $this->roles = [];
+          }
+
+          public function getName(): string {
+              return $this->name;
+          }
+
+          public function getEmail(): string {
+              return $this->email;
+          }
+
+          public function addRole(string $role): void {
+              $this->roles[] = $role;
+          }
+
+          public function getRoles(): array {
+              return $this->roles;
+          }
+
+          public function toArray(): array {
+              return [
+                  'name' => $this->name,
+                  'email' => $this->email,
+                  'age' => $this->age,
+                  'roles' => $this->roles,
+              ];
+          }
+      }
+    src/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      class Product {
+          private string $name;
+          private float $price;
+          private string $sku;
+
+          public function __construct(string $name, float $price, string $sku) {
+              $this->name = $name;
+              $this->price = $price;
+              $this->sku = $sku;
+          }
+
+          public function getName(): string {
+              return $this->name;
+          }
+
+          public function getPrice(): float {
+              return $this->price;
+          }
+
+          public function toArray(): array {
+              return ['name' => $this->name, 'price' => $this->price, 'sku' => $this->sku];
+          }
+      }
+    src/Models/Order.php: |
+      <?php
+      namespace App\Models;
+
+      class Order {
+          private int $id;
+          private string $customerName;
+          private float $total;
+          private string $status;
+
+          public function __construct(int $id, string $customerName, float $total) {
+              $this->id = $id;
+              $this->customerName = $customerName;
+              $this->total = $total;
+              $this->status = 'pending';
+          }
+
+          public function getName(): string {
+              return $this->customerName;
+          }
+
+          public function toArray(): array {
+              return ['id' => $this->id, 'customer' => $this->customerName, 'total' => $this->total];
+          }
+      }
+    src/Helpers/StringHelper.php: |
+      <?php
+      namespace App\Helpers;
+
+      class StringHelper {
+          public static function slugify(string $text): string {
+              return strtolower(preg_replace('/[^a-z0-9]+/i', '-', $text));
+          }
+
+          public static function truncate(string $text, int $length = 100): string {
+              return mb_substr($text, 0, $length);
+          }
+      }
+    src/Services/UserService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Models\User;
+
+      class UserService {
+          private array $users = [];
+
+          public function createUser(string $name, string $email, int $age): User {
+              $user = new User($name, $email, $age);
+              $this->users[] = $user;
+              return $user;
+          }
+
+          public function assignRole(User $user, string $role): void {
+              $user->addRole($role);
+          }
+
+          public function listUsers(): array {
+              return array_map(fn(User $u) => $u->toArray(), $this->users);
+          }
+      }
+    src/Views/UserView.php: |
+      <?php
+      namespace App\Views;
+
+      use App\Models\User;
+
+      class UserView {
+          public function render(User $user): string {
+              $data = $user->toArray();
+              return sprintf(
+                  "<div>%s (%s) - Roles: %s</div>",
+                  $user->getName(),
+                  $data['email'],
+                  implode(', ', $data['roles'])
+              );
+          }
+      }
+  changed_files:
+    src/app.php: |
+      <?php
+      require_once __DIR__ . '/Models/User.php';
+
+      use App\Models\User;
+
+      $user = new User('John', 'john@example.com', 30);
+      $user->addRole('admin');
+      echo $user->getName() . "\n";
+      print_r($user->toArray());
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: src/Models/User.php
+    anchor: public function __construct(string $name, string $email, int $age = 0)
+- id: user_1
+  selector:
+    path: src/Models/User.php
+    anchor: 'public function addRole(string $role): void'
+- id: user_2
+  selector:
+    path: src/Models/User.php
+    anchor: 'public function toArray(): array'
+- id: user_3
+  selector:
+    path: src/Models/User.php
+    anchor: '''roles'' => $this->roles'
+- id: no_product
+  selector:
+    path: src/Models/Product.php
+- id: no_order
+  selector:
+    path: src/Models/Order.php
+- id: no_stringhelper
+  selector:
+    path: src/Helpers/StringHelper.php
+- id: no_userservice
+  selector:
+    path: src/Services/UserService.php
+- id: no_userview
+  selector:
+    path: src/Views/UserView.php
+- id: no_global_0
+  selector:
+    anchor: class Product
+- id: no_global_1
+  selector:
+    anchor: private string $sku
+- id: no_global_2
+  selector:
+    anchor: getPrice
+- id: no_global_3
+  selector:
+    anchor: class Order
+- id: no_global_4
+  selector:
+    anchor: customerName
+- id: no_global_5
+  selector:
+    anchor: function slugify
+- id: no_global_6
+  selector:
+    anchor: function truncate
+- id: no_global_7
+  selector:
+    anchor: class UserService
+- id: no_global_8
+  selector:
+    anchor: createUser
+- id: no_global_9
+  selector:
+    anchor: assignRole
+- id: no_global_10
+  selector:
+    anchor: class UserView
+- id: no_global_11
+  selector:
+    anchor: function render
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - user_3
+  allowed: []
+  forbidden:
+  - no_product
+  - no_order
+  - no_stringhelper
+  - no_userservice
+  - no_userview
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

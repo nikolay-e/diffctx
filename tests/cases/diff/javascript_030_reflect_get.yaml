@@ -1,0 +1,127 @@
+name: javascript_030_reflect_get
+repo:
+  initial_files:
+    accessor.ts: |
+      export class Accessor {
+          private _value: number = 0;
+
+          get value(): number {
+              return this._value;
+          }
+
+          set value(v: number) {
+              this._value = v;
+          }
+      }
+    main.ts: |
+      console.log('initial');
+    counter.ts: |
+      export class Counter {
+          private _value: number = 0;
+
+          increment(): void { this._value++; }
+          decrement(): void { this._value--; }
+          get value(): number { return this._value; }
+      }
+    metadata.ts: |
+      const metadataStore = new Map<string, Record<string, unknown>>();
+
+      export function defineMetadata(key: string, value: unknown, target: string): void {
+          const existing = metadataStore.get(target) ?? {};
+          existing[key] = value;
+          metadataStore.set(target, existing);
+      }
+
+      export function getMetadata(key: string, target: string): unknown {
+          return metadataStore.get(target)?.[key];
+      }
+  changed_files:
+    accessor.ts: |
+      export class Accessor {
+          private _value: number = 0;
+
+          get value(): number {
+              return this._value;
+          }
+
+          set value(v: number) {
+              this._value = v;
+          }
+      }
+    main.ts: |
+      import { Accessor } from './accessor';
+
+      function getValue(obj: Accessor) {
+          return Reflect.get(obj, 'value');
+      }
+
+      const accessor = new Accessor();
+      console.log(getValue(accessor));
+    counter.ts: |
+      export class Counter {
+          private _value: number = 0;
+
+          increment(): void { this._value++; }
+          decrement(): void { this._value--; }
+          get value(): number { return this._value; }
+      }
+    metadata.ts: |
+      const metadataStore = new Map<string, Record<string, unknown>>();
+
+      export function defineMetadata(key: string, value: unknown, target: string): void {
+          const existing = metadataStore.get(target) ?? {};
+          existing[key] = value;
+          metadataStore.set(target, existing);
+      }
+
+      export function getMetadata(key: string, target: string): unknown {
+          return metadataStore.get(target)?.[key];
+      }
+  commit_message: Update files
+fragments:
+- id: accessor
+  selector:
+    path: accessor.ts
+    anchor: class Accessor {
+- id: accessor_1
+  selector:
+    path: accessor.ts
+    anchor: 'get value(): number {'
+- id: no_counter
+  selector:
+    path: counter.ts
+- id: no_metadata
+  selector:
+    path: metadata.ts
+- id: no_global_0
+  selector:
+    anchor: Counter
+- id: no_global_1
+  selector:
+    anchor: increment
+- id: no_global_2
+  selector:
+    anchor: decrement
+- id: no_global_3
+  selector:
+    anchor: defineMetadata
+- id: no_global_4
+  selector:
+    anchor: getMetadata
+- id: no_global_5
+  selector:
+    anchor: metadataStore
+oracle:
+  required:
+  - accessor
+  - accessor_1
+  allowed: []
+  forbidden:
+  - no_counter
+  - no_metadata
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

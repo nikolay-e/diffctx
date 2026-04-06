@@ -1,0 +1,240 @@
+name: shell_012_case_statement
+repo:
+  initial_files:
+    service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+
+      case "$1" in
+          start)
+              echo "Starting $SERVICE_NAME..."
+              $APP_BIN start
+              ;;
+          stop)
+              echo "Stopping $SERVICE_NAME..."
+              $APP_BIN stop
+              ;;
+          *)
+              echo "Usage: $0 {start|stop}"
+              exit 1
+              ;;
+      esac
+    service_config.sh: |
+      #!/bin/bash
+      export SERVICE_NAME="myapp"
+      export APP_BIN="./bin/app"
+      export PID_FILE="/var/run/myapp.pid"
+      export LOG_DIR="/var/log/myapp"
+    scripts/monitor.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      curl -sf "http://localhost:8080/health" > /dev/null && \
+          echo "$SERVICE_NAME: healthy" || echo "$SERVICE_NAME: unhealthy"
+    scripts/logrotate.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      find "$LOG_DIR" -name "*.log" -mtime +7 -exec gzip {} \;
+      echo "Logs rotated for $SERVICE_NAME"
+    scripts/install_service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+      [Unit]
+      Description=$SERVICE_NAME service
+      [Service]
+      ExecStart=$APP_BIN start
+      PIDFile=$PID_FILE
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+      systemctl daemon-reload
+      echo "Service unit installed for $SERVICE_NAME"
+    scripts/uninstall_service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      systemctl stop "$SERVICE_NAME" 2>/dev/null
+      rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+      rm -f "$PID_FILE"
+      systemctl daemon-reload
+      echo "Service $SERVICE_NAME uninstalled"
+    config/service_config_staging.sh: |
+      #!/bin/bash
+      export SERVICE_NAME="myapp-staging"
+      export APP_BIN="./bin/app-staging"
+      export PID_FILE="/var/run/myapp-staging.pid"
+      export LOG_DIR="/var/log/myapp-staging"
+  changed_files:
+    service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+
+      case "$1" in
+          start)
+              echo "Starting $SERVICE_NAME..."
+              $APP_BIN start
+              echo $! > "$PID_FILE"
+              ;;
+          stop)
+              echo "Stopping $SERVICE_NAME..."
+              $APP_BIN stop
+              rm -f "$PID_FILE"
+              ;;
+          restart)
+              $0 stop
+              sleep 2
+              $0 start
+              ;;
+          status)
+              if [[ -f "$PID_FILE" ]]; then
+                  pid=$(cat "$PID_FILE")
+                  if kill -0 "$pid" 2>/dev/null; then
+                      echo "$SERVICE_NAME is running (PID $pid)"
+                  else
+                      echo "$SERVICE_NAME PID file exists but process is dead"
+                  fi
+              else
+                  echo "$SERVICE_NAME is stopped"
+              fi
+              ;;
+          *)
+              echo "Usage: $0 {start|stop|restart|status}"
+              exit 1
+              ;;
+      esac
+    service_config.sh: |
+      #!/bin/bash
+      export SERVICE_NAME="myapp"
+      export APP_BIN="./bin/app"
+      export PID_FILE="/var/run/myapp.pid"
+      export LOG_DIR="/var/log/myapp"
+    scripts/monitor.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      curl -sf "http://localhost:8080/health" > /dev/null && \
+          echo "$SERVICE_NAME: healthy" || echo "$SERVICE_NAME: unhealthy"
+    scripts/logrotate.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      find "$LOG_DIR" -name "*.log" -mtime +7 -exec gzip {} \;
+      echo "Logs rotated for $SERVICE_NAME"
+    scripts/install_service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+      [Unit]
+      Description=$SERVICE_NAME service
+      [Service]
+      ExecStart=$APP_BIN start
+      PIDFile=$PID_FILE
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+      systemctl daemon-reload
+      echo "Service unit installed for $SERVICE_NAME"
+    scripts/uninstall_service.sh: |
+      #!/bin/bash
+      source ./service_config.sh
+      systemctl stop "$SERVICE_NAME" 2>/dev/null
+      rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+      rm -f "$PID_FILE"
+      systemctl daemon-reload
+      echo "Service $SERVICE_NAME uninstalled"
+    config/service_config_staging.sh: |
+      #!/bin/bash
+      export SERVICE_NAME="myapp-staging"
+      export APP_BIN="./bin/app-staging"
+      export PID_FILE="/var/run/myapp-staging.pid"
+      export LOG_DIR="/var/log/myapp-staging"
+  commit_message: Update files
+fragments:
+- id: service_config
+  selector:
+    path: service_config.sh
+    anchor: SERVICE_NAME="myapp"
+- id: service_config_1
+  selector:
+    path: service_config.sh
+    anchor: PID_FILE="/var/run/myapp.pid"
+- id: service_config_2
+  selector:
+    path: service_config.sh
+    anchor: APP_BIN="./bin/app"
+- id: service
+  selector:
+    path: service.sh
+    anchor: cat "$PID_FILE"
+- id: service_1
+  selector:
+    path: service.sh
+    anchor: $SERVICE_NAME is running
+- id: no_monitor
+  selector:
+    path: scripts/monitor.sh
+- id: no_logrotate
+  selector:
+    path: scripts/logrotate.sh
+- id: no_install_service
+  selector:
+    path: scripts/install_service.sh
+- id: no_uninstall_service
+  selector:
+    path: scripts/uninstall_service.sh
+- id: no_service_config_staging
+  selector:
+    path: config/service_config_staging.sh
+- id: no_global_0
+  selector:
+    anchor: curl -sf
+- id: no_global_1
+  selector:
+    anchor: healthy
+- id: no_global_2
+  selector:
+    anchor: unhealthy
+- id: no_global_3
+  selector:
+    anchor: gzip
+- id: no_global_4
+  selector:
+    anchor: Logs rotated
+- id: no_global_5
+  selector:
+    anchor: systemd/system
+- id: no_global_6
+  selector:
+    anchor: daemon-reload
+- id: no_global_7
+  selector:
+    anchor: Service unit installed
+- id: no_global_8
+  selector:
+    anchor: Service $SERVICE_NAME uninstalled
+- id: no_global_9
+  selector:
+    anchor: myapp-staging
+oracle:
+  required:
+  - service_config
+  - service_config_1
+  - service_config_2
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_monitor
+  - no_logrotate
+  - no_install_service
+  - no_uninstall_service
+  - no_service_config_staging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

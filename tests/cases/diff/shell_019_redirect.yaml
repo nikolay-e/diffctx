@@ -1,0 +1,387 @@
+name: shell_019_redirect
+repo:
+  initial_files:
+    runner.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      source ./log_config.sh
+      source ./lib/banner.sh
+
+      print_banner "Application Runner"
+
+      echo "Starting application..."
+      ./app >> "$LOG_FILE" 2>&1
+    log_config.sh: |
+      #!/bin/bash
+      export LOG_DIR="/var/log/app"
+      export LOG_FILE="${LOG_DIR}/runner.log"
+      export LOG_LEVEL="info"
+      export LOG_MAX_SIZE="100M"
+
+      mkdir -p "$LOG_DIR"
+    background-task.sh: |
+      #!/bin/bash
+      source ./log_config.sh
+      source ./lib/lock.sh
+
+      acquire_lock "background-cleanup" || { echo "Already running"; exit 0; }
+
+      echo "[$(date)] Starting background cleanup" >> "$LOG_FILE"
+
+      # Purge temp files older than 24h
+      find /tmp/app -type f -mtime +1 -delete 2>/dev/null || true
+
+      # Invalidate stale cache entries
+      if [ -d /var/cache/app ]; then
+          find /var/cache/app -type f -mmin +60 -delete
+          echo "[$(date)] Cache cleanup complete" >> "$LOG_FILE"
+      fi
+
+      # Run registered cleanup hooks
+      ./hooks/post-cleanup.sh 2>/dev/null || true
+
+      # Compact database WAL
+      if command -v sqlite3 &>/dev/null; then
+          sqlite3 /var/lib/app/data.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+      fi
+
+      echo "[$(date)] Background cleanup finished" >> "$LOG_FILE"
+      release_lock "background-cleanup"
+    lib/banner.sh: |
+      #!/bin/bash
+      print_banner() {
+          local title="$1"
+          local width=60
+          printf '%*s\n' "$width" '' | tr ' ' '='
+          printf '%*s\n' $(( (width + ${#title}) / 2 )) "$title"
+          printf '%*s\n' "$width" '' | tr ' ' '='
+      }
+    lib/lock.sh: |
+      #!/bin/bash
+      LOCK_DIR="/var/run/app"
+      mkdir -p "$LOCK_DIR"
+
+      acquire_lock() {
+          local name="$1"
+          local lockfile="${LOCK_DIR}/${name}.lock"
+          if [ -f "$lockfile" ]; then
+              local pid=$(cat "$lockfile")
+              if kill -0 "$pid" 2>/dev/null; then
+                  return 1  # already running
+              fi
+              rm -f "$lockfile"  # stale lock
+          fi
+          echo $$ > "$lockfile"
+          return 0
+      }
+
+      release_lock() {
+          local name="$1"
+          rm -f "${LOCK_DIR}/${name}.lock"
+      }
+
+      is_locked() {
+          local name="$1"
+          [ -f "${LOCK_DIR}/${name}.lock" ]
+      }
+    hooks/post-cleanup.sh: |
+      #!/bin/bash
+      source ./log_config.sh
+
+      echo "[$(date)] Running post-cleanup hooks..." >> "$LOG_FILE"
+
+      # Notify monitoring
+      curl -sf http://localhost:9090/api/v1/webhook \
+          -d '{"event": "cleanup_complete"}' 2>/dev/null || true
+
+      # Update metrics
+      CLEANUP_COUNT_FILE="/var/lib/app/cleanup_count"
+      if [ -f "$CLEANUP_COUNT_FILE" ]; then
+          COUNT=$(cat "$CLEANUP_COUNT_FILE")
+          echo $((COUNT + 1)) > "$CLEANUP_COUNT_FILE"
+      else
+          echo 1 > "$CLEANUP_COUNT_FILE"
+      fi
+
+      echo "[$(date)] Post-cleanup hooks complete" >> "$LOG_FILE"
+    service/app-manager.sh: |
+      #!/bin/bash
+      source ./log_config.sh
+
+      APP_PID_FILE="/var/run/app/app.pid"
+
+      start_service() {
+          if [ -f "$APP_PID_FILE" ] && kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null; then
+              echo "Service already running (PID=$(cat "$APP_PID_FILE"))"
+              return 1
+          fi
+
+          echo "Starting service..." >> "$LOG_FILE"
+          ./runner.sh &
+          local pid=$!
+          echo "$pid" > "$APP_PID_FILE"
+
+          sleep 3
+          if kill -0 "$pid" 2>/dev/null; then
+              echo "Service started (PID=$pid)" >> "$LOG_FILE"
+          else
+              echo "Service FAILED to start" >> "$LOG_FILE"
+              rm -f "$APP_PID_FILE"
+              return 1
+          fi
+      }
+
+      stop_service() {
+          if [ ! -f "$APP_PID_FILE" ]; then
+              echo "Service not running"
+              return 0
+          fi
+          local pid=$(cat "$APP_PID_FILE")
+          echo "Stopping service (PID=$pid)..." >> "$LOG_FILE"
+          kill "$pid" 2>/dev/null
+          sleep 2
+          kill -9 "$pid" 2>/dev/null || true
+          rm -f "$APP_PID_FILE"
+          echo "Service stopped" >> "$LOG_FILE"
+      }
+
+      status_service() {
+          if [ -f "$APP_PID_FILE" ] && kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null; then
+              echo "Running (PID=$(cat "$APP_PID_FILE"))"
+          else
+              echo "Stopped"
+          fi
+      }
+
+      case "${1:-status}" in
+          start)  start_service ;;
+          stop)   stop_service ;;
+          status) status_service ;;
+          restart) stop_service; sleep 1; start_service ;;
+          *) echo "Usage: $0 {start|stop|restart|status}" ;;
+      esac
+    cron/app.crontab: |
+      # Application cron jobs
+      # Restart runner every day at 3am
+      0 3 * * * /opt/app/service/app-manager.sh restart >> /var/log/app/cron.log 2>&1
+
+      # Background cleanup every hour
+      0 * * * * /opt/app/background-task.sh >> /var/log/app/cron.log 2>&1
+
+      # Log rotation weekly
+      0 0 * * 0 find /var/log/app -name "*.log" -size +100M -exec gzip {} \;
+
+      # Health check every 5 minutes
+      */5 * * * * /opt/app/scripts/health_check.sh >> /var/log/app/cron.log 2>&1
+    systemd/app.service: |
+      [Unit]
+      Description=Application Runner
+      After=network.target postgresql.service
+      Wants=postgresql.service
+
+      [Service]
+      Type=simple
+      User=app
+      WorkingDirectory=/opt/app
+      ExecStart=/opt/app/runner.sh
+      ExecStartPost=/opt/app/background-task.sh
+      ExecStop=/bin/kill -TERM $MAINPID
+      Restart=on-failure
+      RestartSec=5
+      StandardOutput=journal
+      StandardError=journal
+      Environment=LOG_LEVEL=info
+      Environment=DEPLOY_ENV=production
+
+      [Install]
+      WantedBy=multi-user.target
+  changed_files:
+    runner.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      source ./log_config.sh
+      source ./lib/banner.sh
+
+      print_banner "Application Runner"
+
+      echo "Starting application..."
+      ./app 2>&1 | tee -a "$LOG_FILE"
+
+      {
+          echo "=== System Info ==="
+          date
+          hostname
+          uptime
+      } >> "$LOG_FILE"
+
+      ./background-task.sh > /dev/null 2>&1
+  commit_message: Update files
+fragments:
+- id: runner
+  selector:
+    path: runner.sh
+    anchor: tee -a "$LOG_FILE"
+- id: runner_1
+  selector:
+    path: runner.sh
+    anchor: ./background-task.sh > /dev/null 2>&1
+- id: runner_2
+  selector:
+    path: runner.sh
+    anchor: === System Info ===
+- id: runner_3
+  selector:
+    path: runner.sh
+    anchor: source ./lib/banner.sh
+- id: log_config
+  selector:
+    path: log_config.sh
+    anchor: LOG_FILE="${LOG_DIR}/runner.log"
+- id: log_config_1
+  selector:
+    path: log_config.sh
+    anchor: LOG_DIR="/var/log/app"
+- id: log_config_2
+  selector:
+    path: log_config.sh
+    anchor: mkdir -p "$LOG_DIR"
+- id: background_task
+  selector:
+    path: background-task.sh
+    anchor: find /tmp/app -type f -mtime +1 -delete
+- id: background_task_1
+  selector:
+    path: background-task.sh
+    anchor: wal_checkpoint
+- id: background_task_2
+  selector:
+    path: background-task.sh
+    anchor: acquire_lock
+- id: no_lock
+  selector:
+    path: lib/lock.sh
+- id: no_post_cleanup
+  selector:
+    path: hooks/post-cleanup.sh
+- id: no_app_manager
+  selector:
+    path: service/app-manager.sh
+- id: no_app
+  selector:
+    path: cron/app.crontab
+- id: no_app_1
+  selector:
+    path: systemd/app.service
+- id: no_banner
+  selector:
+    path: lib/banner.sh
+- id: no_global_0
+  selector:
+    anchor: acquire_lock
+- id: no_global_1
+  selector:
+    anchor: release_lock
+- id: no_global_2
+  selector:
+    anchor: is_locked
+- id: no_global_3
+  selector:
+    anchor: LOCK_DIR
+- id: no_global_4
+  selector:
+    anchor: stale lock
+- id: no_global_5
+  selector:
+    anchor: post-cleanup hooks
+- id: no_global_6
+  selector:
+    anchor: cleanup_complete
+- id: no_global_7
+  selector:
+    anchor: CLEANUP_COUNT_FILE
+- id: no_global_8
+  selector:
+    anchor: start_service
+- id: no_global_9
+  selector:
+    anchor: stop_service
+- id: no_global_10
+  selector:
+    anchor: status_service
+- id: no_global_11
+  selector:
+    anchor: APP_PID_FILE
+- id: no_global_12
+  selector:
+    anchor: Service already running
+- id: no_global_13
+  selector:
+    anchor: 0 3 * * *
+- id: no_global_14
+  selector:
+    anchor: 0 * * * *
+- id: no_global_15
+  selector:
+    anchor: cron.log
+- id: no_global_16
+  selector:
+    anchor: ExecStart=/opt/app/runner.sh
+- id: no_global_17
+  selector:
+    anchor: ExecStartPost
+- id: no_global_18
+  selector:
+    anchor: StandardOutput=journal
+- id: no_global_19
+  selector:
+    anchor: multi-user.target
+- id: no_global_20
+  selector:
+    anchor: print_banner
+- id: no_global_21
+  selector:
+    anchor: tr ' ' '='
+oracle:
+  required:
+  - runner
+  - runner_1
+  - runner_2
+  - runner_3
+  - log_config
+  - log_config_1
+  - log_config_2
+  - background_task
+  - background_task_1
+  - background_task_2
+  allowed: []
+  forbidden:
+  - no_lock
+  - no_post_cleanup
+  - no_app_manager
+  - no_app
+  - no_app_1
+  - no_banner
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21

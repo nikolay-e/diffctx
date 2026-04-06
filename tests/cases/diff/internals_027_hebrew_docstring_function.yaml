@@ -1,0 +1,29 @@
+name: internals_027_hebrew_docstring_function
+repo:
+  initial_files:
+    hebrew_docs.py: |
+      def placeholder():
+          pass
+  changed_files:
+    hebrew_docs.py: |
+      def foo():
+          """תיעוד בעברית"""
+          return 42
+
+      def bar(x, y):
+          """עוד תיעוד"""
+          return x + y
+  commit_message: Update files
+fragments:
+- id: hebrew_docs_file
+  selector:
+    path: hebrew_docs.py
+- id: req_global_0
+  selector:
+    anchor: '"""תיעוד בעברית"""'
+oracle:
+  required:
+  - hebrew_docs_file
+  - req_global_0
+  allowed: []
+  forbidden: []

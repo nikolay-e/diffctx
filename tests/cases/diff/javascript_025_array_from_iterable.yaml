@@ -1,0 +1,176 @@
+name: javascript_025_array_from_iterable
+repo:
+  initial_files:
+    iterator.ts: |
+      export class NumberRange {
+          constructor(private start: number, private end: number) {}
+
+          *[Symbol.iterator]() {
+              for (let i = this.start; i <= this.end; i++) {
+                  yield i;
+              }
+          }
+      }
+    main.ts: |
+      console.log('initial');
+    collection-utils.ts: |
+      export function chunk<T>(arr: T[], size: number): T[][] {
+          return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+              arr.slice(i * size, i * size + size)
+          );
+      }
+
+      export function flatten<T>(nested: T[][]): T[] {
+          return Array.from(nested.reduce((acc, arr) => [...acc, ...arr], []));
+      }
+
+      export function unique<T>(arr: T[]): T[] {
+          return Array.from(new Set(arr));
+      }
+    lazy-sequence.ts: |
+      export class LazySequence<T> {
+          private transforms: ((value: any) => any)[] = [];
+
+          constructor(private source: Iterable<T>) {}
+
+          map<R>(fn: (value: T) => R): LazySequence<R> {
+              this.transforms.push(fn);
+              return this as unknown as LazySequence<R>;
+          }
+
+          filter(predicate: (value: T) => boolean): LazySequence<T> {
+              this.transforms.push((v) => predicate(v) ? v : undefined);
+              return this;
+          }
+
+          *[Symbol.iterator]() {
+              for (const value of this.source) {
+                  let result: any = value;
+                  for (const transform of this.transforms) {
+                      result = transform(result);
+                      if (result === undefined) break;
+                  }
+                  if (result !== undefined) yield result;
+              }
+          }
+      }
+  changed_files:
+    iterator.ts: |
+      export class NumberRange {
+          constructor(private start: number, private end: number) {}
+
+          *[Symbol.iterator]() {
+              for (let i = this.start; i <= this.end; i++) {
+                  yield i;
+              }
+          }
+      }
+    main.ts: |
+      import { NumberRange } from './iterator';
+
+      function getNumbers() {
+          const range = new NumberRange(1, 10);
+          return Array.from(range);
+      }
+
+      console.log(getNumbers());
+    collection-utils.ts: |
+      export function chunk<T>(arr: T[], size: number): T[][] {
+          return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+              arr.slice(i * size, i * size + size)
+          );
+      }
+
+      export function flatten<T>(nested: T[][]): T[] {
+          return Array.from(nested.reduce((acc, arr) => [...acc, ...arr], []));
+      }
+
+      export function unique<T>(arr: T[]): T[] {
+          return Array.from(new Set(arr));
+      }
+    lazy-sequence.ts: |
+      export class LazySequence<T> {
+          private transforms: ((value: any) => any)[] = [];
+
+          constructor(private source: Iterable<T>) {}
+
+          map<R>(fn: (value: T) => R): LazySequence<R> {
+              this.transforms.push(fn);
+              return this as unknown as LazySequence<R>;
+          }
+
+          filter(predicate: (value: T) => boolean): LazySequence<T> {
+              this.transforms.push((v) => predicate(v) ? v : undefined);
+              return this;
+          }
+
+          *[Symbol.iterator]() {
+              for (const value of this.source) {
+                  let result: any = value;
+                  for (const transform of this.transforms) {
+                      result = transform(result);
+                      if (result === undefined) break;
+                  }
+                  if (result !== undefined) yield result;
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { NumberRange } from './iterator'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: Array.from(range)
+- id: iterator
+  selector:
+    path: iterator.ts
+    anchor: class NumberRange
+- id: iterator_1
+  selector:
+    path: iterator.ts
+    anchor: '*[Symbol.iterator]()'
+- id: iterator_2
+  selector:
+    path: iterator.ts
+    anchor: yield i
+- id: no_collection_utils
+  selector:
+    path: collection-utils.ts
+- id: no_lazy_sequence
+  selector:
+    path: lazy-sequence.ts
+- id: no_global_0
+  selector:
+    anchor: chunk
+- id: no_global_1
+  selector:
+    anchor: flatten
+- id: no_global_2
+  selector:
+    anchor: unique
+- id: no_global_3
+  selector:
+    anchor: LazySequence
+- id: no_global_4
+  selector:
+    anchor: this.transforms
+oracle:
+  required:
+  - main
+  - main_1
+  - iterator
+  - iterator_1
+  - iterator_2
+  allowed: []
+  forbidden:
+  - no_collection_utils
+  - no_lazy_sequence
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

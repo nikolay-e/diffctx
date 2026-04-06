@@ -1,0 +1,200 @@
+name: terraform_042_data_source_external
+repo:
+  initial_files:
+    scripts/get_ami.sh: |
+      #!/bin/bash
+      REGION="${1:-us-east-1}"
+      AMI_ID=$(aws ec2 describe-images \
+        --owners amazon \
+        --filters "Name=name,Values=amzn2-ami-hvm-*" \
+        --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
+        --output text --region "$REGION")
+      echo "{\"ami_id\": \"${AMI_ID}\"}"
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = "ami-0abcdef1234567890"
+        instance_type = "t3.micro"
+        key_name      = var.key_name
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    asg.tf: |
+      resource "aws_launch_template" "web_fleet" {
+        name_prefix   = "web-fleet-"
+        image_id      = "ami-0abcdef1234567890"
+        instance_type = "t3.small"
+        key_name      = var.key_name
+
+        tag_specifications {
+          resource_type = "instance"
+          tags = {
+            Name = "web-fleet-instance"
+          }
+        }
+      }
+
+      resource "aws_autoscaling_group" "web" {
+        name                = "web-asg"
+        min_size            = 1
+        max_size            = 5
+        desired_capacity    = 2
+        vpc_zone_identifier = var.subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.web_fleet.id
+          version = "$Latest"
+        }
+      }
+    networking/dns_lookup.tf: |
+      data "external" "dns_resolver" {
+        program = ["${path.module}/scripts/resolve_dns.sh"]
+
+        query = {
+          domain = "api.internal.example.com"
+        }
+      }
+
+      resource "aws_route53_record" "resolved" {
+        name    = "app.internal"
+        type    = "A"
+        records = [data.external.dns_resolver.result.ip]
+        zone_id = aws_route53_zone.internal.zone_id
+        ttl     = 300
+      }
+    scripts/get_certificate.sh: |
+      #!/bin/bash
+      DOMAIN="${1:-example.com}"
+      CERT_ARN=$(aws acm list-certificates \
+        --query "CertificateSummaryList[?DomainName=='${DOMAIN}'].CertificateArn | [0]" \
+        --output text)
+      echo "{\"certificate_arn\": \"${CERT_ARN}\"}"
+    storage/lifecycle.tf: |
+      resource "aws_s3_bucket_lifecycle_configuration" "archive" {
+        bucket = aws_s3_bucket.data.id
+
+        rule {
+          id     = "archive-rule"
+          status = "Enabled"
+
+          transition {
+            days          = 90
+            storage_class = "GLACIER"
+          }
+
+          expiration {
+            days = 365
+          }
+        }
+      }
+    ci/build_ami.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Building AMI with Packer..."
+      packer build \
+        -var "region=us-east-1" \
+        -var "source_ami=$(aws ec2 describe-images \
+          --owners amazon \
+          --filters 'Name=name,Values=amzn2-ami-hvm-*' \
+          --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
+          --output text)" \
+        template.pkr.hcl
+      echo "AMI build complete"
+  changed_files:
+    main.tf: |
+      data "external" "ami" {
+        program = ["${path.module}/scripts/get_ami.sh"]
+      }
+
+      resource "aws_instance" "web" {
+        ami           = data.external.ami.result.ami_id
+        instance_type = "t3.micro"
+        key_name      = var.key_name
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: get_ami
+  selector:
+    path: scripts/get_ami.sh
+    anchor: ami_id
+- id: get_ami_1
+  selector:
+    path: scripts/get_ami.sh
+    anchor: amzn2-ami-hvm
+- id: asg
+  selector:
+    path: asg.tf
+    anchor: image_id      = "ami-0abcdef1234567890"
+- id: asg_1
+  selector:
+    path: asg.tf
+    anchor: resource "aws_launch_template" "web_fleet"
+- id: no_dns_lookup
+  selector:
+    path: networking/dns_lookup.tf
+- id: no_get_certificate
+  selector:
+    path: scripts/get_certificate.sh
+- id: no_lifecycle
+  selector:
+    path: storage/lifecycle.tf
+- id: no_build_ami
+  selector:
+    path: ci/build_ami.sh
+- id: no_global_0
+  selector:
+    anchor: resolve_dns.sh
+- id: no_global_1
+  selector:
+    anchor: dns_resolver
+- id: no_global_2
+  selector:
+    anchor: app.internal
+- id: no_global_3
+  selector:
+    anchor: certificate_arn
+- id: no_global_4
+  selector:
+    anchor: acm list-certificates
+- id: no_global_5
+  selector:
+    anchor: GLACIER
+- id: no_global_6
+  selector:
+    anchor: archive-rule
+- id: no_global_7
+  selector:
+    anchor: packer build
+- id: no_global_8
+  selector:
+    anchor: template.pkr.hcl
+- id: no_global_9
+  selector:
+    anchor: AMI build complete
+oracle:
+  required:
+  - get_ami
+  - get_ami_1
+  - asg
+  - asg_1
+  allowed: []
+  forbidden:
+  - no_dns_lookup
+  - no_get_certificate
+  - no_lifecycle
+  - no_build_ami
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

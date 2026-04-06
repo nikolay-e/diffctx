@@ -1,0 +1,266 @@
+name: scripting_025_proc_lambda
+repo:
+  initial_files:
+    validators.rb: |
+      module Validators
+        POSITIVE = ->(x) { x > 0 }
+        NON_EMPTY = ->(s) { !s.nil? && !s.empty? }
+        EMAIL_FORMAT = ->(e) { e =~ /\A[^@\s]+@[^@\s]+\z/ }
+        IN_RANGE = ->(v, min, max) { v >= min && v <= max }
+      end
+    form.rb: |
+      class Form
+      end
+    error_messages.rb: |
+      module ErrorMessages
+        CODES = {
+          required: "This field is required",
+          too_short: "Must be at least %{min} characters",
+          invalid_format: "Invalid format",
+          out_of_range: "Value must be between %{min} and %{max}"
+        }.freeze
+
+        def self.for(code, interpolations = {})
+          template = CODES.fetch(code, "Unknown error")
+          interpolations.reduce(template) do |msg, (key, val)|
+            msg.gsub("%{#{key}}", val.to_s)
+          end
+        end
+
+        def self.all_codes
+          CODES.keys
+        end
+      end
+    type_coercer.rb: |
+      module TypeCoercer
+        def self.to_integer(value)
+          Integer(value)
+        rescue ArgumentError, TypeError
+          nil
+        end
+
+        def self.to_float(value)
+          Float(value)
+        rescue ArgumentError, TypeError
+          nil
+        end
+
+        def self.to_boolean(value)
+          case value.to_s.downcase
+          when 'true', '1', 'yes' then true
+          when 'false', '0', 'no' then false
+          end
+        end
+
+        def self.to_date(value)
+          Date.parse(value.to_s)
+        rescue Date::Error
+          nil
+        end
+      end
+    signup_form.rb: |
+      require_relative 'validators'
+
+      class SignupForm
+        def initialize(params)
+          @params = params
+        end
+
+        def valid?
+          return false unless Validators::NON_EMPTY.call(@params[:username])
+          return false unless Validators::EMAIL_FORMAT.call(@params[:email])
+          return false unless Validators::NON_EMPTY.call(@params[:password])
+          @params[:password].length >= 8
+        end
+
+        def errors
+          errs = []
+          errs << :username_required unless Validators::NON_EMPTY.call(@params[:username])
+          errs << :email_invalid unless Validators::EMAIL_FORMAT.call(@params[:email])
+          errs
+        end
+      end
+    rules_engine.rb: |
+      class RulesEngine
+        def initialize
+          @rules = []
+        end
+
+        def add_rule(name, &block)
+          @rules << { name: name, check: block }
+        end
+
+        def evaluate(data)
+          @rules.map do |rule|
+            { name: rule[:name], passed: rule[:check].call(data) }
+          end
+        end
+
+        def all_pass?(data)
+          @rules.all? { |rule| rule[:check].call(data) }
+        end
+      end
+    lib/sanitizers.rb: |
+      module Sanitizers
+        def self.strip_html(input)
+          input.gsub(/<\/?[^>]+>/, '')
+        end
+
+        def self.trim(input)
+          input.to_s.strip
+        end
+
+        def self.downcase_email(email)
+          email.to_s.strip.downcase
+        end
+
+        def self.normalize_phone(phone)
+          phone.to_s.gsub(/[^0-9+]/, '')
+        end
+      end
+  changed_files:
+    validators.rb: |
+      module Validators
+        POSITIVE = ->(x) { x > 0 }
+        NON_EMPTY = ->(s) { !s.nil? && !s.empty? }
+        EMAIL_FORMAT = ->(e) { e =~ /\A[^@\s]+@[^@\s]+\z/ }
+        IN_RANGE = ->(v, min, max) { v >= min && v <= max }
+      end
+    form.rb: |
+      require_relative 'validators'
+
+      class Form
+        def validate(data)
+          return false unless Validators::POSITIVE.call(data[:age])
+          return false unless Validators::NON_EMPTY.call(data[:name])
+          return false unless Validators::EMAIL_FORMAT.call(data[:email])
+          true
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: validators
+  selector:
+    path: validators.rb
+    anchor: POSITIVE = ->(x) { x > 0 }
+- id: validators_1
+  selector:
+    path: validators.rb
+    anchor: NON_EMPTY = ->(s)
+- id: validators_2
+  selector:
+    path: validators.rb
+    anchor: EMAIL_FORMAT = ->(e)
+- id: form
+  selector:
+    path: form.rb
+    anchor: Validators::POSITIVE
+- id: form_1
+  selector:
+    path: form.rb
+    anchor: Validators::NON_EMPTY
+- id: no_error_messages
+  selector:
+    path: error_messages.rb
+- id: no_type_coercer
+  selector:
+    path: type_coercer.rb
+- id: no_signup_form
+  selector:
+    path: signup_form.rb
+- id: no_rules_engine
+  selector:
+    path: rules_engine.rb
+- id: no_sanitizers
+  selector:
+    path: lib/sanitizers.rb
+- id: no_global_0
+  selector:
+    anchor: ErrorMessages
+- id: no_global_1
+  selector:
+    anchor: CODES
+- id: no_global_2
+  selector:
+    anchor: invalid_format
+- id: no_global_3
+  selector:
+    anchor: all_codes
+- id: no_global_4
+  selector:
+    anchor: TypeCoercer
+- id: no_global_5
+  selector:
+    anchor: to_integer
+- id: no_global_6
+  selector:
+    anchor: to_boolean
+- id: no_global_7
+  selector:
+    anchor: to_date
+- id: no_global_8
+  selector:
+    anchor: SignupForm
+- id: no_global_9
+  selector:
+    anchor: '@params[:username]'
+- id: no_global_10
+  selector:
+    anchor: '@params[:password]'
+- id: no_global_11
+  selector:
+    anchor: RulesEngine
+- id: no_global_12
+  selector:
+    anchor: add_rule
+- id: no_global_13
+  selector:
+    anchor: evaluate
+- id: no_global_14
+  selector:
+    anchor: all_pass?
+- id: no_global_15
+  selector:
+    anchor: Sanitizers
+- id: no_global_16
+  selector:
+    anchor: strip_html
+- id: no_global_17
+  selector:
+    anchor: downcase_email
+- id: no_global_18
+  selector:
+    anchor: normalize_phone
+oracle:
+  required:
+  - validators
+  - validators_1
+  - validators_2
+  - form
+  - form_1
+  allowed: []
+  forbidden:
+  - no_error_messages
+  - no_type_coercer
+  - no_signup_form
+  - no_rules_engine
+  - no_sanitizers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

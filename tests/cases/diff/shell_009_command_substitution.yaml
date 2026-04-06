@@ -1,0 +1,213 @@
+name: shell_009_command_substitution
+repo:
+  initial_files:
+    scripts/backup.sh: |
+      #!/bin/bash
+      source ./env.sh
+
+      current_date=$(date +%Y-%m-%d)
+      hostname=$(hostname)
+
+      backup_name="${BACKUP_PREFIX}_${hostname}_${current_date}"
+      echo "Creating backup: $backup_name"
+    env.sh: |
+      #!/bin/bash
+      export BACKUP_DIR="/var/backups/app"
+      export BACKUP_PREFIX="nightly"
+      export RETENTION_DAYS=30
+    scripts/rotate.sh: |
+      #!/bin/bash
+      source ./env.sh
+      find "$BACKUP_DIR" -name "*.tar.gz" -mtime +${RETENTION_DAYS} -delete
+      echo "Old backups removed from $BACKUP_DIR"
+    scripts/notify.sh: |
+      #!/bin/bash
+      SLACK_WEBHOOK="https://hooks.slack.com/services/XXX"
+      send_notification() {
+          local message=$1
+          curl -s -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"$message\"}"
+      }
+    scripts/verify.sh: |
+      #!/bin/bash
+      source ./env.sh
+      latest=$(ls -t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | head -1)
+      if [[ -n "$latest" ]]; then
+          file_count=$(tar -tzf "$latest" | wc -l)
+          echo "Latest backup: $latest ($file_count files)"
+          tar -tzf "$latest" > /dev/null 2>&1 && echo "Integrity: OK" || echo "Integrity: FAILED"
+      else
+          echo "No backups found in $BACKUP_DIR"
+      fi
+    scripts/restore.sh: |
+      #!/bin/bash
+      source ./env.sh
+      RESTORE_DIR="/tmp/restore"
+      backup_file=$1
+      if [[ -z "$backup_file" ]]; then
+          backup_file=$(ls -t "$BACKUP_DIR"/${BACKUP_PREFIX}_*.tar.gz | head -1)
+      fi
+      mkdir -p "$RESTORE_DIR"
+      tar xzf "$backup_file" -C "$RESTORE_DIR"
+      echo "Restored to $RESTORE_DIR"
+    cron/backup_cron.sh: |
+      #!/bin/bash
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      LOG_FILE="/var/log/backup_cron.log"
+      echo "=== $(date) ===" >> "$LOG_FILE"
+      flock -n /tmp/backup.lock "$SCRIPT_DIR/../scripts/backup.sh" >> "$LOG_FILE" 2>&1
+  changed_files:
+    scripts/backup.sh: |
+      #!/bin/bash
+      source ./env.sh
+
+      current_date=$(date +%Y-%m-%d)
+      current_time=$(date +%H-%M-%S)
+      hostname=$(hostname)
+      git_hash=$(git rev-parse --short HEAD 2>/dev/null || echo "nogit")
+
+      backup_name="${BACKUP_PREFIX}_${hostname}_${current_date}_${current_time}"
+      echo "Creating backup: $backup_name"
+      echo "Git version: $git_hash"
+
+      file_count=$(find . -type f | wc -l)
+      echo "Total files: $file_count"
+
+      disk_free=$(df -h "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+      echo "Available disk at $BACKUP_DIR: $disk_free"
+
+      tar czf "${BACKUP_DIR}/${backup_name}.tar.gz" .
+    env.sh: |
+      #!/bin/bash
+      export BACKUP_DIR="/var/backups/app"
+      export BACKUP_PREFIX="nightly"
+      export RETENTION_DAYS=30
+    scripts/rotate.sh: |
+      #!/bin/bash
+      source ./env.sh
+      find "$BACKUP_DIR" -name "*.tar.gz" -mtime +${RETENTION_DAYS} -delete
+      echo "Old backups removed from $BACKUP_DIR"
+    scripts/notify.sh: |
+      #!/bin/bash
+      SLACK_WEBHOOK="https://hooks.slack.com/services/XXX"
+      send_notification() {
+          local message=$1
+          curl -s -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"$message\"}"
+      }
+    scripts/verify.sh: |
+      #!/bin/bash
+      source ./env.sh
+      latest=$(ls -t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | head -1)
+      if [[ -n "$latest" ]]; then
+          file_count=$(tar -tzf "$latest" | wc -l)
+          echo "Latest backup: $latest ($file_count files)"
+          tar -tzf "$latest" > /dev/null 2>&1 && echo "Integrity: OK" || echo "Integrity: FAILED"
+      else
+          echo "No backups found in $BACKUP_DIR"
+      fi
+    scripts/restore.sh: |
+      #!/bin/bash
+      source ./env.sh
+      RESTORE_DIR="/tmp/restore"
+      backup_file=$1
+      if [[ -z "$backup_file" ]]; then
+          backup_file=$(ls -t "$BACKUP_DIR"/${BACKUP_PREFIX}_*.tar.gz | head -1)
+      fi
+      mkdir -p "$RESTORE_DIR"
+      tar xzf "$backup_file" -C "$RESTORE_DIR"
+      echo "Restored to $RESTORE_DIR"
+    cron/backup_cron.sh: |
+      #!/bin/bash
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      LOG_FILE="/var/log/backup_cron.log"
+      echo "=== $(date) ===" >> "$LOG_FILE"
+      flock -n /tmp/backup.lock "$SCRIPT_DIR/../scripts/backup.sh" >> "$LOG_FILE" 2>&1
+  commit_message: Update files
+fragments:
+- id: env
+  selector:
+    path: env.sh
+    anchor: BACKUP_DIR="/var/backups/app"
+- id: env_1
+  selector:
+    path: env.sh
+    anchor: BACKUP_PREFIX="nightly"
+- id: backup
+  selector:
+    path: scripts/backup.sh
+    anchor: ${BACKUP_DIR}/${backup_name}.tar.gz
+- id: backup_1
+  selector:
+    path: scripts/backup.sh
+    anchor: disk_free=$(df -h "$BACKUP_DIR"
+- id: no_rotate
+  selector:
+    path: scripts/rotate.sh
+- id: no_notify
+  selector:
+    path: scripts/notify.sh
+- id: no_verify
+  selector:
+    path: scripts/verify.sh
+- id: no_restore
+  selector:
+    path: scripts/restore.sh
+- id: no_backup_cron
+  selector:
+    path: cron/backup_cron.sh
+- id: no_global_0
+  selector:
+    anchor: -mtime +${RETENTION_DAYS}
+- id: no_global_1
+  selector:
+    anchor: Old backups removed
+- id: no_global_2
+  selector:
+    anchor: SLACK_WEBHOOK
+- id: no_global_3
+  selector:
+    anchor: send_notification
+- id: no_global_4
+  selector:
+    anchor: 'Integrity: OK'
+- id: no_global_5
+  selector:
+    anchor: 'Integrity: FAILED'
+- id: no_global_6
+  selector:
+    anchor: tar -tzf
+- id: no_global_7
+  selector:
+    anchor: RESTORE_DIR
+- id: no_global_8
+  selector:
+    anchor: Restored to
+- id: no_global_9
+  selector:
+    anchor: flock -n
+- id: no_global_10
+  selector:
+    anchor: backup.lock
+oracle:
+  required:
+  - env
+  - env_1
+  - backup
+  - backup_1
+  allowed: []
+  forbidden:
+  - no_rotate
+  - no_notify
+  - no_verify
+  - no_restore
+  - no_backup_cron
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

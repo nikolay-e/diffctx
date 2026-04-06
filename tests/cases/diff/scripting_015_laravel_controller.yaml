@@ -1,0 +1,397 @@
+name: scripting_015_laravel_controller
+repo:
+  initial_files:
+    app/Http/Controllers/UserController.php: |
+      <?php
+
+      namespace App\Http\Controllers;
+
+      use Illuminate\Http\JsonResponse;
+
+      class UserController extends Controller
+      {
+          public function index(): JsonResponse
+          {
+              return response()->json(['users' => [], 'total' => 0]);
+          }
+      }
+    app/Http/Requests/StoreUserRequest.php: |
+      <?php
+
+      namespace App\Http\Requests;
+
+      use Illuminate\Foundation\Http\FormRequest;
+
+      class StoreUserRequest extends FormRequest
+      {
+          public function authorize(): bool
+          {
+              return true;
+          }
+
+          public function rules(): array
+          {
+              return [
+                  'name' => 'required|string|max:255',
+                  'email' => 'required|email|unique:users',
+              ];
+          }
+
+          public function messages(): array
+          {
+              return [
+                  'email.unique' => 'A user with this email already exists.',
+              ];
+          }
+      }
+    app/Models/User.php: |
+      <?php
+
+      namespace App\Models;
+
+      use Illuminate\Database\Eloquent\Model;
+      use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+      class User extends Model
+      {
+          use HasFactory;
+
+          protected $fillable = ['name', 'email', 'password'];
+
+          protected $hidden = ['password', 'remember_token'];
+
+          protected $casts = [
+              'email_verified_at' => 'datetime',
+          ];
+
+          public function posts()
+          {
+              return $this->hasMany(Post::class);
+          }
+
+          public function fullName(): string
+          {
+              return $this->name;
+          }
+      }
+    routes/api.php: |
+      <?php
+
+      use App\Http\Controllers\UserController;
+      use App\Http\Controllers\PostController;
+      use Illuminate\Support\Facades\Route;
+
+      Route::middleware('api')->group(function () {
+          Route::get('/users', [UserController::class, 'index']);
+          Route::post('/users', [UserController::class, 'store']);
+          Route::get('/users/{user}', [UserController::class, 'show']);
+          Route::put('/users/{user}', [UserController::class, 'update']);
+          Route::delete('/users/{user}', [UserController::class, 'destroy']);
+
+          Route::apiResource('posts', PostController::class);
+      });
+    tests/Feature/UserControllerTest.php: |
+      <?php
+
+      namespace Tests\Feature;
+
+      use Tests\TestCase;
+      use App\Models\User;
+      use Illuminate\Foundation\Testing\RefreshDatabase;
+
+      class UserControllerTest extends TestCase
+      {
+          use RefreshDatabase;
+
+          public function test_store_creates_user(): void
+          {
+              $response = $this->postJson('/api/users', [
+                  'name' => 'Jane Doe',
+                  'email' => 'jane@example.com',
+              ]);
+
+              $response->assertStatus(201)
+                  ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'created']);
+
+              $this->assertDatabaseHas('users', ['email' => 'jane@example.com']);
+          }
+
+          public function test_store_validates_email(): void
+          {
+              $response = $this->postJson('/api/users', [
+                  'name' => 'Test',
+                  'email' => 'not-an-email',
+              ]);
+
+              $response->assertStatus(422);
+          }
+
+          public function test_store_rejects_duplicate_email(): void
+          {
+              User::factory()->create(['email' => 'taken@example.com']);
+
+              $response = $this->postJson('/api/users', [
+                  'name' => 'Duplicate',
+                  'email' => 'taken@example.com',
+              ]);
+
+              $response->assertStatus(422);
+          }
+
+          public function test_index_returns_empty(): void
+          {
+              $this->getJson('/api/users')->assertStatus(200);
+          }
+      }
+    app/Http/Requests/UpdateUserRequest.php: |
+      <?php
+
+      namespace App\Http\Requests;
+
+      use Illuminate\Foundation\Http\FormRequest;
+
+      class UpdateUserRequest extends FormRequest
+      {
+          public function authorize(): bool
+          {
+              return true;
+          }
+
+          public function rules(): array
+          {
+              return [
+                  'name' => 'sometimes|string|max:255',
+                  'email' => 'sometimes|email|unique:users,email,' . $this->route('user'),
+              ];
+          }
+      }
+    app/Http/Middleware/EnsureJsonResponse.php: |
+      <?php
+
+      namespace App\Http\Middleware;
+
+      use Closure;
+      use Illuminate\Http\Request;
+
+      class EnsureJsonResponse
+      {
+          public function handle(Request $request, Closure $next)
+          {
+              $request->headers->set('Accept', 'application/json');
+              return $next($request);
+          }
+      }
+    app/Observers/UserObserver.php: |
+      <?php
+
+      namespace App\Observers;
+
+      use App\Models\User;
+      use Illuminate\Support\Facades\Log;
+
+      class UserObserver
+      {
+          public function created(User $user): void
+          {
+              Log::info("User created: {$user->email}");
+              // Dispatch welcome email job
+          }
+
+          public function updated(User $user): void
+          {
+              Log::info("User updated: {$user->email}");
+          }
+
+          public function deleted(User $user): void
+          {
+              Log::info("User deleted: {$user->email}");
+          }
+      }
+    app/Http/Resources/UserResource.php: |
+      <?php
+
+      namespace App\Http\Resources;
+
+      use Illuminate\Http\Resources\Json\JsonResource;
+
+      class UserResource extends JsonResource
+      {
+          public function toArray($request): array
+          {
+              return [
+                  'id' => $this->id,
+                  'name' => $this->name,
+                  'email' => $this->email,
+                  'created_at' => $this->created_at->toISOString(),
+              ];
+          }
+      }
+  changed_files:
+    app/Http/Controllers/UserController.php: |
+      <?php
+
+      namespace App\Http\Controllers;
+
+      use App\Http\Requests\StoreUserRequest;
+      use App\Models\User;
+      use Illuminate\Http\JsonResponse;
+
+      class UserController extends Controller
+      {
+          public function index(): JsonResponse
+          {
+              return response()->json(['users' => [], 'total' => 0]);
+          }
+
+          public function store(StoreUserRequest $request): JsonResponse
+          {
+              $data = $request->validated();
+              $user = User::create($data);
+              return response()->json(['user' => $user, 'created' => true], 201);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: usercontroller
+  selector:
+    path: app/Http/Controllers/UserController.php
+    anchor: StoreUserRequest $request
+- id: usercontroller_1
+  selector:
+    path: app/Http/Controllers/UserController.php
+    anchor: $request->validated()
+- id: usercontroller_2
+  selector:
+    path: app/Http/Controllers/UserController.php
+    anchor: User::create($data)
+- id: storeuserrequest
+  selector:
+    path: app/Http/Requests/StoreUserRequest.php
+    anchor: '''name'' => ''required|string|max:255'''
+- id: storeuserrequest_1
+  selector:
+    path: app/Http/Requests/StoreUserRequest.php
+    anchor: '''email'' => ''required|email|unique:users'''
+- id: user
+  selector:
+    path: app/Models/User.php
+    anchor: protected $fillable = ['name', 'email', 'password']
+- id: user_1
+  selector:
+    path: app/Models/User.php
+    anchor: protected $hidden = ['password', 'remember_token']
+- id: no_api
+  selector:
+    path: routes/api.php
+- id: no_usercontrollertest
+  selector:
+    path: tests/Feature/UserControllerTest.php
+- id: no_updateuserrequest
+  selector:
+    path: app/Http/Requests/UpdateUserRequest.php
+- id: no_ensurejsonresponse
+  selector:
+    path: app/Http/Middleware/EnsureJsonResponse.php
+- id: no_userobserver
+  selector:
+    path: app/Observers/UserObserver.php
+- id: no_userresource
+  selector:
+    path: app/Http/Resources/UserResource.php
+- id: no_global_0
+  selector:
+    anchor: Route::post('/users'
+- id: no_global_1
+  selector:
+    anchor: Route::apiResource
+- id: no_global_2
+  selector:
+    anchor: PostController
+- id: no_global_3
+  selector:
+    anchor: Route::delete
+- id: no_global_4
+  selector:
+    anchor: test_store_creates_user
+- id: no_global_5
+  selector:
+    anchor: test_store_validates_email
+- id: no_global_6
+  selector:
+    anchor: test_store_rejects_duplicate_email
+- id: no_global_7
+  selector:
+    anchor: assertDatabaseHas
+- id: no_global_8
+  selector:
+    anchor: RefreshDatabase
+- id: no_global_9
+  selector:
+    anchor: UpdateUserRequest
+- id: no_global_10
+  selector:
+    anchor: '''sometimes|string'
+- id: no_global_11
+  selector:
+    anchor: route('user')
+- id: no_global_12
+  selector:
+    anchor: EnsureJsonResponse
+- id: no_global_13
+  selector:
+    anchor: headers->set('Accept'
+- id: no_global_14
+  selector:
+    anchor: UserObserver
+- id: no_global_15
+  selector:
+    anchor: 'User created:'
+- id: no_global_16
+  selector:
+    anchor: 'User updated:'
+- id: no_global_17
+  selector:
+    anchor: 'User deleted:'
+- id: no_global_18
+  selector:
+    anchor: UserResource
+- id: no_global_19
+  selector:
+    anchor: toISOString
+oracle:
+  required:
+  - usercontroller
+  - usercontroller_1
+  - usercontroller_2
+  - storeuserrequest
+  - storeuserrequest_1
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_api
+  - no_usercontrollertest
+  - no_updateuserrequest
+  - no_ensurejsonresponse
+  - no_userobserver
+  - no_userresource
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19

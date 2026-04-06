@@ -1,0 +1,267 @@
+name: cicd_014_nox_config
+repo:
+  initial_files:
+    noxfile.py: |
+      import nox
+
+      @nox.session
+      def tests(session):
+          session.install("pytest")
+          session.run("pytest")
+    src/api.py: |
+      from typing import List, Optional
+      from dataclasses import dataclass, field
+      from datetime import datetime
+
+      @dataclass
+      class User:
+          id: int
+          name: str
+          email: str
+          created_at: datetime = field(default_factory=datetime.now)
+
+      class UserRepository:
+          def __init__(self):
+              self._users: List[User] = []
+              self._next_id = 1
+
+          def get_users(self) -> List[User]:
+              return self._users.copy()
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              for user in self._users:
+                  if user.id == user_id:
+                      return user
+              return None
+
+          def create_user(self, name: str, email: str) -> User:
+              user = User(id=self._next_id, name=name, email=email)
+              self._users.append(user)
+              self._next_id += 1
+              return user
+
+          def delete_user(self, user_id: int) -> bool:
+              for i, user in enumerate(self._users):
+                  if user.id == user_id:
+                      del self._users[i]
+                      return True
+              return False
+
+      def get_users() -> List[User]:
+          repo = UserRepository()
+          return repo.get_users()
+    tests/test_api.py: |
+      import pytest
+      from src.api import UserRepository, get_users
+
+      class TestUserRepository:
+          def test_create_user(self):
+              repo = UserRepository()
+              user = repo.create_user("Alice", "alice@example.com")
+              assert user.name == "Alice"
+              assert user.id == 1
+
+          def test_get_users_empty(self):
+              repo = UserRepository()
+              assert repo.get_users() == []
+
+          def test_delete_user(self):
+              repo = UserRepository()
+              user = repo.create_user("Bob", "bob@example.com")
+              assert repo.delete_user(user.id) is True
+              assert repo.get_users() == []
+
+      def test_get_users_function():
+          users = get_users()
+          assert isinstance(users, list)
+    garbage_auth.py: |
+      GARBAGE_CICD_014_AUTH_MARKER_A = "jwt"
+      GARBAGE_CICD_014_EXPIRY_MARKER_B = 3600
+
+      class GarbageAuthService:
+          GARBAGE_CICD_014_SECRET_MARKER_C = "secret"
+
+          def authenticate(self) -> bool:
+              return True
+    garbage_session.py: |
+      GARBAGE_CICD_014_SESSION_MARKER_D = "redis"
+      GARBAGE_CICD_014_TTL_MARKER_E = 86400
+
+      class GarbageSessionManager:
+          GARBAGE_CICD_014_PREFIX_MARKER_F = "sess:"
+
+          def create(self) -> str:
+              return ""
+  changed_files:
+    noxfile.py: |
+      import nox
+
+      @nox.session(python=["3.10", "3.11", "3.12"])
+      def tests(session):
+          session.install("-e", ".[dev]")
+          session.run("pytest", "--cov")
+
+      @nox.session
+      def lint(session):
+          session.install("ruff")
+          session.run("ruff", "check", "src/")
+    src/api.py: |
+      from typing import List, Optional
+      from dataclasses import dataclass, field
+      from datetime import datetime
+
+      @dataclass
+      class User:
+          id: int
+          name: str
+          email: str
+          created_at: datetime = field(default_factory=datetime.now)
+
+      class UserRepository:
+          def __init__(self):
+              self._users: List[User] = []
+              self._next_id = 1
+
+          def get_users(self) -> List[User]:
+              return self._users.copy()
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              for user in self._users:
+                  if user.id == user_id:
+                      return user
+              return None
+
+          def create_user(self, name: str, email: str) -> User:
+              user = User(id=self._next_id, name=name, email=email)
+              self._users.append(user)
+              self._next_id += 1
+              return user
+
+          def delete_user(self, user_id: int) -> bool:
+              for i, user in enumerate(self._users):
+                  if user.id == user_id:
+                      del self._users[i]
+                      return True
+              return False
+
+      def get_users() -> List[User]:
+          repo = UserRepository()
+          return repo.get_users()
+    tests/test_api.py: |
+      import pytest
+      from src.api import UserRepository, get_users
+
+      class TestUserRepository:
+          def test_create_user(self):
+              repo = UserRepository()
+              user = repo.create_user("Alice", "alice@example.com")
+              assert user.name == "Alice"
+              assert user.id == 1
+
+          def test_get_users_empty(self):
+              repo = UserRepository()
+              assert repo.get_users() == []
+
+          def test_delete_user(self):
+              repo = UserRepository()
+              user = repo.create_user("Bob", "bob@example.com")
+              assert repo.delete_user(user.id) is True
+              assert repo.get_users() == []
+
+      def test_get_users_function():
+          users = get_users()
+          assert isinstance(users, list)
+    garbage_auth.py: |
+      GARBAGE_CICD_014_AUTH_MARKER_A = "jwt"
+      GARBAGE_CICD_014_EXPIRY_MARKER_B = 3600
+
+      class GarbageAuthService:
+          GARBAGE_CICD_014_SECRET_MARKER_C = "secret"
+
+          def authenticate(self) -> bool:
+              return True
+    garbage_session.py: |
+      GARBAGE_CICD_014_SESSION_MARKER_D = "redis"
+      GARBAGE_CICD_014_TTL_MARKER_E = 86400
+
+      class GarbageSessionManager:
+          GARBAGE_CICD_014_PREFIX_MARKER_F = "sess:"
+
+          def create(self) -> str:
+              return ""
+  commit_message: Update files
+fragments:
+- id: noxfile
+  selector:
+    path: noxfile.py
+    anchor: '@nox.session(python=["3.10", "3.11", "3.12"])'
+- id: noxfile_1
+  selector:
+    path: noxfile.py
+    anchor: session.install("-e", ".[dev]")
+- id: noxfile_2
+  selector:
+    path: noxfile.py
+    anchor: session.run("pytest", "--cov")
+- id: noxfile_3
+  selector:
+    path: noxfile.py
+    anchor: 'def lint(session):'
+- id: noxfile_4
+  selector:
+    path: noxfile.py
+    anchor: session.install("ruff")
+- id: noxfile_5
+  selector:
+    path: noxfile.py
+    anchor: session.run("ruff", "check", "src/")
+- id: no_garbage_auth
+  selector:
+    path: garbage_auth.py
+- id: no_garbage_session
+  selector:
+    path: garbage_session.py
+- id: no_api
+  selector:
+    path: src/api.py
+- id: no_test_api
+  selector:
+    path: tests/test_api.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_014_AUTH_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_014_EXPIRY_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_014_PREFIX_MARKER_F
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_014_SECRET_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_014_SESSION_MARKER_D
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_014_TTL_MARKER_E
+oracle:
+  required:
+  - noxfile
+  - noxfile_1
+  - noxfile_2
+  - noxfile_3
+  - noxfile_4
+  - noxfile_5
+  allowed: []
+  forbidden:
+  - no_garbage_auth
+  - no_garbage_session
+  - no_api
+  - no_test_api
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

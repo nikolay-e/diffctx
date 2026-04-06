@@ -1,0 +1,242 @@
+name: jvm_and_compiled_007_cpp_raii
+repo:
+  initial_files:
+    include/mutex.h: |
+      #pragma once
+
+      class Mutex {
+      public:
+          void lock() {}
+          void unlock() {}
+      };
+    src/guard.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    src/scoped_timer.cpp: |
+      #include <chrono>
+      #include <iostream>
+      #include <string>
+
+      class ScopedTimer {
+          std::string name_;
+          std::chrono::steady_clock::time_point start_;
+      public:
+          explicit ScopedTimer(const std::string& name)
+              : name_(name), start_(std::chrono::steady_clock::now()) {}
+
+          ~ScopedTimer() {
+              auto end = std::chrono::steady_clock::now();
+              auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
+              std::cout << name_ << " took " << ms << "ms" << std::endl;
+          }
+
+          ScopedTimer(const ScopedTimer&) = delete;
+          ScopedTimer& operator=(const ScopedTimer&) = delete;
+      };
+    include/rwlock.h: |
+      #pragma once
+
+      class ReadWriteLock {
+          int readers_ = 0;
+          bool writing_ = false;
+      public:
+          void lock_shared() { readers_++; }
+          void unlock_shared() { readers_--; }
+          void lock() { writing_ = true; }
+          void unlock() { writing_ = false; }
+          bool is_locked() const { return writing_ || readers_ > 0; }
+      };
+    src/thread_pool.cpp: |
+      #include "mutex.h"
+      #include <functional>
+      #include <vector>
+      #include <queue>
+
+      class ThreadPool {
+          Mutex mtx_;
+          std::queue<std::function<void()>> tasks_;
+          bool running_ = true;
+      public:
+          void submit(std::function<void()> task) {
+              mtx_.lock();
+              tasks_.push(task);
+              mtx_.unlock();
+          }
+
+          bool tryGetTask(std::function<void()>& task) {
+              mtx_.lock();
+              if (tasks_.empty()) { mtx_.unlock(); return false; }
+              task = tasks_.front();
+              tasks_.pop();
+              mtx_.unlock();
+              return true;
+          }
+
+          void shutdown() { running_ = false; }
+      };
+    tests/guard_test.cpp: |
+      #include "mutex.h"
+      #include <cassert>
+
+      int lock_count = 0;
+      int unlock_count = 0;
+
+      class TrackingMutex {
+      public:
+          void lock() { lock_count++; }
+          void unlock() { unlock_count++; }
+      };
+
+      void test_guard_locks_and_unlocks() {
+          lock_count = unlock_count = 0;
+          TrackingMutex m;
+          // Would construct LockGuard here
+          assert(lock_count == 1);
+          assert(unlock_count == 0);
+          // Destructor would run, unlock
+      }
+  changed_files:
+    src/guard.cpp: |
+      #include "mutex.h"
+
+      class LockGuard {
+          Mutex& mutex_;
+
+      public:
+          explicit LockGuard(Mutex& m) : mutex_(m) {
+              mutex_.lock();
+          }
+
+          ~LockGuard() {
+              mutex_.unlock();
+          }
+
+          LockGuard(const LockGuard&) = delete;
+          LockGuard& operator=(const LockGuard&) = delete;
+      };
+
+      void criticalSection(Mutex& m) {
+          LockGuard guard(m);
+      }
+  commit_message: Update files
+fragments:
+- id: guard
+  selector:
+    path: src/guard.cpp
+    anchor: class LockGuard
+- id: guard_1
+  selector:
+    path: src/guard.cpp
+    anchor: Mutex& mutex_
+- id: guard_2
+  selector:
+    path: src/guard.cpp
+    anchor: 'explicit LockGuard(Mutex& m) : mutex_(m)'
+- id: guard_3
+  selector:
+    path: src/guard.cpp
+    anchor: mutex_.lock()
+- id: guard_4
+  selector:
+    path: src/guard.cpp
+    anchor: mutex_.unlock()
+- id: guard_5
+  selector:
+    path: src/guard.cpp
+    anchor: LockGuard(const LockGuard&) = delete
+- id: mutex
+  selector:
+    path: include/mutex.h
+    anchor: void lock()
+- id: mutex_1
+  selector:
+    path: include/mutex.h
+    anchor: void unlock()
+- id: no_scoped_timer
+  selector:
+    path: src/scoped_timer.cpp
+- id: no_rwlock
+  selector:
+    path: include/rwlock.h
+- id: no_thread_pool
+  selector:
+    path: src/thread_pool.cpp
+- id: no_guard_test
+  selector:
+    path: tests/guard_test.cpp
+- id: no_global_0
+  selector:
+    anchor: ScopedTimer
+- id: no_global_1
+  selector:
+    anchor: steady_clock
+- id: no_global_2
+  selector:
+    anchor: milliseconds
+- id: no_global_3
+  selector:
+    anchor: took
+- id: no_global_4
+  selector:
+    anchor: ReadWriteLock
+- id: no_global_5
+  selector:
+    anchor: lock_shared
+- id: no_global_6
+  selector:
+    anchor: unlock_shared
+- id: no_global_7
+  selector:
+    anchor: readers_
+- id: no_global_8
+  selector:
+    anchor: ThreadPool
+- id: no_global_9
+  selector:
+    anchor: submit
+- id: no_global_10
+  selector:
+    anchor: tryGetTask
+- id: no_global_11
+  selector:
+    anchor: shutdown
+- id: no_global_12
+  selector:
+    anchor: TrackingMutex
+- id: no_global_13
+  selector:
+    anchor: lock_count
+- id: no_global_14
+  selector:
+    anchor: test_guard_locks_and_unlocks
+oracle:
+  required:
+  - guard
+  - guard_1
+  - guard_2
+  - guard_3
+  - guard_4
+  - guard_5
+  - mutex
+  - mutex_1
+  allowed: []
+  forbidden:
+  - no_scoped_timer
+  - no_rwlock
+  - no_thread_pool
+  - no_guard_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

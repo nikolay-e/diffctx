@@ -1,0 +1,177 @@
+name: php_004_interface
+repo:
+  initial_files:
+    src/Contracts/RequestHandler.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface RequestHandler {
+          public function handle(array $request): array;
+          public function validate(array $request): bool;
+          public function getMiddleware(): array;
+      }
+    src/Contracts/Middleware.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface Middleware {
+          public function process(array $request, callable $next): array;
+      }
+    src/Handlers/ApiHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      class ApiHandler {
+          public function respond(array $data): array {
+              return ['data' => $data, 'status' => 200];
+          }
+      }
+    src/Contracts/EventDispatcher.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface EventDispatcher {
+          public function dispatch(string $event, array $payload): void;
+          public function listen(string $event, callable $listener): void;
+          public function hasListeners(string $event): bool;
+      }
+    src/Handlers/WebhookHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      class WebhookHandler {
+          private string $secret;
+
+          public function __construct(string $secret) {
+              $this->secret = $secret;
+          }
+
+          public function verifySignature(string $payload, string $signature): bool {
+              return hash_hmac('sha256', $payload, $this->secret) === $signature;
+          }
+
+          public function process(array $event): array {
+              return ['event' => $event['type'], 'processed' => true];
+          }
+      }
+  changed_files:
+    src/Contracts/RequestHandler.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface RequestHandler {
+          public function handle(array $request): array;
+          public function validate(array $request): bool;
+          public function getMiddleware(): array;
+      }
+    src/Contracts/Middleware.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface Middleware {
+          public function process(array $request, callable $next): array;
+      }
+    src/Handlers/ApiHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      use App\Contracts\RequestHandler;
+
+      class ApiHandler implements RequestHandler {
+          public function handle(array $request): array {
+              if (!$this->validate($request)) {
+                  return ['error' => 'Invalid request', 'status' => 400];
+              }
+              return ['data' => $request['body'] ?? [], 'status' => 200];
+          }
+
+          public function validate(array $request): bool {
+              return isset($request['action']) && isset($request['body']);
+          }
+
+          public function getMiddleware(): array {
+              return ['auth', 'throttle'];
+          }
+      }
+    src/Contracts/EventDispatcher.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface EventDispatcher {
+          public function dispatch(string $event, array $payload): void;
+          public function listen(string $event, callable $listener): void;
+          public function hasListeners(string $event): bool;
+      }
+    src/Handlers/WebhookHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      class WebhookHandler {
+          private string $secret;
+
+          public function __construct(string $secret) {
+              $this->secret = $secret;
+          }
+
+          public function verifySignature(string $payload, string $signature): bool {
+              return hash_hmac('sha256', $payload, $this->secret) === $signature;
+          }
+
+          public function process(array $event): array {
+              return ['event' => $event['type'], 'processed' => true];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: apihandler
+  selector:
+    path: src/Handlers/ApiHandler.php
+    anchor: implements RequestHandler
+- id: apihandler_1
+  selector:
+    path: src/Handlers/ApiHandler.php
+    anchor: 'public function validate(array $request): bool'
+- id: requesthandler
+  selector:
+    path: src/Contracts/RequestHandler.php
+    anchor: interface RequestHandler
+- id: requesthandler_1
+  selector:
+    path: src/Contracts/RequestHandler.php
+    anchor: 'public function handle(array $request): array'
+- id: no_eventdispatcher
+  selector:
+    path: src/Contracts/EventDispatcher.php
+- id: no_webhookhandler
+  selector:
+    path: src/Handlers/WebhookHandler.php
+- id: no_global_0
+  selector:
+    anchor: interface EventDispatcher
+- id: no_global_1
+  selector:
+    anchor: hasListeners
+- id: no_global_2
+  selector:
+    anchor: class WebhookHandler
+- id: no_global_3
+  selector:
+    anchor: verifySignature
+- id: no_global_4
+  selector:
+    anchor: hash_hmac
+oracle:
+  required:
+  - apihandler
+  - apihandler_1
+  - requesthandler
+  - requesthandler_1
+  allowed: []
+  forbidden:
+  - no_eventdispatcher
+  - no_webhookhandler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

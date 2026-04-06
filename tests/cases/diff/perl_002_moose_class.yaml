@@ -1,0 +1,349 @@
+name: perl_002_moose_class
+repo:
+  initial_files:
+    lib/MyApp/Types.pm: |
+      package MyApp::Types;
+      use strict;
+      use warnings;
+      use Moose::Util::TypeConstraints;
+
+      subtype 'PositiveNum',
+          as 'Num',
+          where { $_ > 0 },
+          message { "Value must be a positive number, got $_" };
+
+      subtype 'PercentValue',
+          as 'Num',
+          where { $_ >= 0 && $_ <= 100 },
+          message { "Percentage must be 0-100, got $_" };
+
+      subtype 'NonEmptyStr',
+          as 'Str',
+          where { length($_) > 0 },
+          message { "String must not be empty" };
+
+      no Moose::Util::TypeConstraints;
+      1;
+    lib/MyApp/Base.pm: |
+      package MyApp::Base;
+      use Moose;
+      use DateTime;
+
+      has 'name' => (
+          is       => 'rw',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      has 'created_at' => (
+          is      => 'ro',
+          isa     => 'DateTime',
+          default => sub { DateTime->now },
+      );
+
+      sub display_name {
+          my ($self) = @_;
+          return $self->name;
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/Product.pm: |
+      package MyApp::Product;
+      use Moose;
+      use MyApp::Types;
+      extends 'MyApp::Base';
+
+      has 'price' => (
+          is       => 'rw',
+          isa      => 'PositiveNum',
+          required => 1,
+      );
+
+      has 'sku' => (
+          is       => 'ro',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      sub formatted_price {
+          my ($self) = @_;
+          return sprintf('$%.2f', $self->price);
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/Inventory.pm: |
+      my $GARBAGE_PERL_002_A = "noise_marker_inventory";
+
+      package MyApp::Inventory;
+      use Moose;
+      extends 'MyApp::Base';
+
+      has 'quantity' => (
+          is      => 'rw',
+          isa     => 'Int',
+          default => 0,
+      );
+
+      has 'warehouse' => (
+          is       => 'rw',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      sub is_in_stock {
+          my ($self) = @_;
+          return $self->quantity > 0;
+      }
+
+      sub adjust_quantity {
+          my ($self, $delta) = @_;
+          my $new_qty = $self->quantity + $delta;
+          die "Quantity cannot be negative" if $new_qty < 0;
+          $self->quantity($new_qty);
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/PriceCalculator.pm: |
+      my $GARBAGE_PERL_002_B = "noise_marker_price_calc";
+
+      package MyApp::PriceCalculator;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { tax_rate => $args{tax_rate} || 0.08 }, $class;
+      }
+
+      sub calculate_total {
+          my ($self, $price, $quantity) = @_;
+          my $subtotal = $price * $quantity;
+          my $tax = $subtotal * $self->{tax_rate};
+          return $subtotal + $tax;
+      }
+
+      sub apply_bulk_discount {
+          my ($self, $price, $quantity) = @_;
+          my $discount = $quantity >= 100 ? 0.15 : $quantity >= 10 ? 0.05 : 0;
+          return $price * (1 - $discount);
+      }
+
+      1;
+  changed_files:
+    lib/MyApp/Types.pm: |
+      package MyApp::Types;
+      use strict;
+      use warnings;
+      use Moose::Util::TypeConstraints;
+
+      subtype 'PositiveNum',
+          as 'Num',
+          where { $_ > 0 },
+          message { "Value must be a positive number, got $_" };
+
+      subtype 'PercentValue',
+          as 'Num',
+          where { $_ >= 0 && $_ <= 100 },
+          message { "Percentage must be 0-100, got $_" };
+
+      subtype 'NonEmptyStr',
+          as 'Str',
+          where { length($_) > 0 },
+          message { "String must not be empty" };
+
+      no Moose::Util::TypeConstraints;
+      1;
+    lib/MyApp/Base.pm: |
+      package MyApp::Base;
+      use Moose;
+      use DateTime;
+
+      has 'name' => (
+          is       => 'rw',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      has 'created_at' => (
+          is      => 'ro',
+          isa     => 'DateTime',
+          default => sub { DateTime->now },
+      );
+
+      sub display_name {
+          my ($self) = @_;
+          return $self->name;
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/Product.pm: |
+      package MyApp::Product;
+      use Moose;
+      use MyApp::Types;
+      extends 'MyApp::Base';
+
+      has 'price' => (
+          is       => 'rw',
+          isa      => 'PositiveNum',
+          required => 1,
+      );
+
+      has 'sku' => (
+          is       => 'ro',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      has 'discount_percent' => (
+          is      => 'rw',
+          isa     => 'PercentValue',
+          default => 0,
+      );
+
+      sub formatted_price {
+          my ($self) = @_;
+          return sprintf('$%.2f', $self->price);
+      }
+
+      sub discounted_price {
+          my ($self) = @_;
+          my $discount = $self->discount_percent / 100;
+          return $self->price * (1 - $discount);
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/Inventory.pm: |
+      my $GARBAGE_PERL_002_A = "noise_marker_inventory";
+
+      package MyApp::Inventory;
+      use Moose;
+      extends 'MyApp::Base';
+
+      has 'quantity' => (
+          is      => 'rw',
+          isa     => 'Int',
+          default => 0,
+      );
+
+      has 'warehouse' => (
+          is       => 'rw',
+          isa      => 'Str',
+          required => 1,
+      );
+
+      sub is_in_stock {
+          my ($self) = @_;
+          return $self->quantity > 0;
+      }
+
+      sub adjust_quantity {
+          my ($self, $delta) = @_;
+          my $new_qty = $self->quantity + $delta;
+          die "Quantity cannot be negative" if $new_qty < 0;
+          $self->quantity($new_qty);
+      }
+
+      __PACKAGE__->meta->make_immutable;
+      1;
+    lib/MyApp/PriceCalculator.pm: |
+      my $GARBAGE_PERL_002_B = "noise_marker_price_calc";
+
+      package MyApp::PriceCalculator;
+      use strict;
+      use warnings;
+
+      sub new {
+          my ($class, %args) = @_;
+          return bless { tax_rate => $args{tax_rate} || 0.08 }, $class;
+      }
+
+      sub calculate_total {
+          my ($self, $price, $quantity) = @_;
+          my $subtotal = $price * $quantity;
+          my $tax = $subtotal * $self->{tax_rate};
+          return $subtotal + $tax;
+      }
+
+      sub apply_bulk_discount {
+          my ($self, $price, $quantity) = @_;
+          my $discount = $quantity >= 100 ? 0.15 : $quantity >= 10 ? 0.05 : 0;
+          return $price * (1 - $discount);
+      }
+
+      1;
+  commit_message: Update files
+fragments:
+- id: product
+  selector:
+    path: lib/MyApp/Product.pm
+    anchor: discount_percent
+- id: product_1
+  selector:
+    path: lib/MyApp/Product.pm
+    anchor: PercentValue
+- id: product_2
+  selector:
+    path: lib/MyApp/Product.pm
+    anchor: sub discounted_price
+- id: types
+  selector:
+    path: lib/MyApp/Types.pm
+    anchor: subtype 'PercentValue'
+- id: types_1
+  selector:
+    path: lib/MyApp/Types.pm
+    anchor: $_ >= 0 && $_ <= 100
+- id: no_inventory
+  selector:
+    path: lib/MyApp/Inventory.pm
+- id: no_pricecalculator
+  selector:
+    path: lib/MyApp/PriceCalculator.pm
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PERL_002_A
+- id: no_global_1
+  selector:
+    anchor: noise_marker_inventory
+- id: no_global_2
+  selector:
+    anchor: is_in_stock
+- id: no_global_3
+  selector:
+    anchor: adjust_quantity
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PERL_002_B
+- id: no_global_5
+  selector:
+    anchor: noise_marker_price_calc
+- id: no_global_6
+  selector:
+    anchor: calculate_total
+- id: no_global_7
+  selector:
+    anchor: apply_bulk_discount
+oracle:
+  required:
+  - product
+  - product_1
+  - product_2
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_inventory
+  - no_pricecalculator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

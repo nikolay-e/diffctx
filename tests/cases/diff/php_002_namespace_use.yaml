@@ -1,0 +1,454 @@
+name: php_002_namespace_use
+repo:
+  initial_files:
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentService {
+          private float $taxRate;
+          private string $currency;
+
+          public function __construct(float $taxRate = 0.1, string $currency = 'USD') {
+              $this->taxRate = $taxRate;
+              $this->currency = $currency;
+          }
+
+          public function process(float $amount): bool {
+              if ($amount <= 0) {
+                  return false;
+              }
+              return $this->chargeGateway($amount);
+          }
+
+          public function calculateTotal(float $amount): float {
+              return round($amount * (1 + $this->taxRate), 2);
+          }
+
+          public function refund(float $amount): bool {
+              return $amount > 0 && $amount <= 10000;
+          }
+
+          private function chargeGateway(float $amount): bool {
+              return true;
+          }
+      }
+    src/Controllers/CheckoutController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class CheckoutController {
+          public function index(): array {
+              return ['page' => 'checkout'];
+          }
+      }
+    src/Services/ShippingService.php: |
+      <?php
+      namespace App\Services;
+
+      class ShippingService {
+          private float $baseRate;
+          private string $defaultZone;
+
+          public function __construct(float $baseRate = 5.99, string $defaultZone = 'domestic') {
+              $this->baseRate = $baseRate;
+              $this->defaultZone = $defaultZone;
+          }
+
+          public function calculateTotal(float $weight, string $zone = 'domestic'): float {
+              $zoneMultiplier = match($zone) {
+                  'international' => 3.0,
+                  'express' => 2.0,
+                  default => 1.0,
+              };
+              return round($this->baseRate * $weight * $zoneMultiplier, 2);
+          }
+
+          public function estimateDelivery(string $zone): int {
+              return match($zone) {
+                  'international' => 14,
+                  'express' => 2,
+                  default => 5,
+              };
+          }
+      }
+    src/Controllers/CartController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class CartController {
+          private array $items = [];
+
+          public function add(string $productId, int $quantity, float $price): void {
+              $this->items[] = ['id' => $productId, 'qty' => $quantity, 'price' => $price];
+          }
+
+          public function getTotal(): float {
+              return array_sum(array_map(
+                  fn($item) => $item['qty'] * $item['price'],
+                  $this->items
+              ));
+          }
+
+          public function clear(): void {
+              $this->items = [];
+          }
+
+          public function getItems(): array {
+              return $this->items;
+          }
+      }
+    src/Services/DiscountService.php: |
+      <?php
+      namespace App\Services;
+
+      class DiscountService {
+          private array $activeCodes = [];
+
+          public function applyDiscount(float $amount, string $code): float {
+              $rate = $this->getDiscountRate($code);
+              return round($amount * (1 - $rate), 2);
+          }
+
+          public function registerCode(string $code, float $rate): void {
+              $this->activeCodes[$code] = $rate;
+          }
+
+          private function getDiscountRate(string $code): float {
+              return $this->activeCodes[$code] ?? 0.0;
+          }
+      }
+    src/Events/PaymentProcessed.php: |
+      <?php
+      namespace App\Events;
+
+      class PaymentProcessed {
+          public readonly float $amount;
+          public readonly string $transactionId;
+          public readonly \DateTimeImmutable $processedAt;
+
+          public function __construct(float $amount, string $transactionId) {
+              $this->amount = $amount;
+              $this->transactionId = $transactionId;
+              $this->processedAt = new \DateTimeImmutable();
+          }
+
+          public function toArray(): array {
+              return [
+                  'amount' => $this->amount,
+                  'transaction_id' => $this->transactionId,
+                  'processed_at' => $this->processedAt->format('c'),
+              ];
+          }
+      }
+    src/Controllers/OrderController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class OrderController {
+          private array $orders = [];
+
+          public function processOrder(int $orderId, float $amount): array {
+              $this->orders[$orderId] = ['amount' => $amount, 'status' => 'processing'];
+              return $this->orders[$orderId];
+          }
+
+          public function getOrder(int $orderId): ?array {
+              return $this->orders[$orderId] ?? null;
+          }
+
+          public function cancelOrder(int $orderId): bool {
+              if (isset($this->orders[$orderId])) {
+                  $this->orders[$orderId]['status'] = 'cancelled';
+                  return true;
+              }
+              return false;
+          }
+      }
+  changed_files:
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentService {
+          private float $taxRate;
+          private string $currency;
+
+          public function __construct(float $taxRate = 0.1, string $currency = 'USD') {
+              $this->taxRate = $taxRate;
+              $this->currency = $currency;
+          }
+
+          public function process(float $amount): bool {
+              if ($amount <= 0) {
+                  return false;
+              }
+              return $this->chargeGateway($amount);
+          }
+
+          public function calculateTotal(float $amount): float {
+              return round($amount * (1 + $this->taxRate), 2);
+          }
+
+          public function refund(float $amount): bool {
+              return $amount > 0 && $amount <= 10000;
+          }
+
+          private function chargeGateway(float $amount): bool {
+              return true;
+          }
+      }
+    src/Controllers/CheckoutController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentService;
+
+      class CheckoutController {
+          private PaymentService $paymentService;
+
+          public function __construct() {
+              $this->paymentService = new PaymentService(0.08);
+          }
+
+          public function index(): array {
+              return ['page' => 'checkout'];
+          }
+
+          public function checkout(float $amount): array {
+              $total = $this->paymentService->calculateTotal($amount);
+              $success = $this->paymentService->process($total);
+              return ['total' => $total, 'success' => $success];
+          }
+      }
+    src/Services/ShippingService.php: |
+      <?php
+      namespace App\Services;
+
+      class ShippingService {
+          private float $baseRate;
+          private string $defaultZone;
+
+          public function __construct(float $baseRate = 5.99, string $defaultZone = 'domestic') {
+              $this->baseRate = $baseRate;
+              $this->defaultZone = $defaultZone;
+          }
+
+          public function calculateTotal(float $weight, string $zone = 'domestic'): float {
+              $zoneMultiplier = match($zone) {
+                  'international' => 3.0,
+                  'express' => 2.0,
+                  default => 1.0,
+              };
+              return round($this->baseRate * $weight * $zoneMultiplier, 2);
+          }
+
+          public function estimateDelivery(string $zone): int {
+              return match($zone) {
+                  'international' => 14,
+                  'express' => 2,
+                  default => 5,
+              };
+          }
+      }
+    src/Controllers/CartController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class CartController {
+          private array $items = [];
+
+          public function add(string $productId, int $quantity, float $price): void {
+              $this->items[] = ['id' => $productId, 'qty' => $quantity, 'price' => $price];
+          }
+
+          public function getTotal(): float {
+              return array_sum(array_map(
+                  fn($item) => $item['qty'] * $item['price'],
+                  $this->items
+              ));
+          }
+
+          public function clear(): void {
+              $this->items = [];
+          }
+
+          public function getItems(): array {
+              return $this->items;
+          }
+      }
+    src/Services/DiscountService.php: |
+      <?php
+      namespace App\Services;
+
+      class DiscountService {
+          private array $activeCodes = [];
+
+          public function applyDiscount(float $amount, string $code): float {
+              $rate = $this->getDiscountRate($code);
+              return round($amount * (1 - $rate), 2);
+          }
+
+          public function registerCode(string $code, float $rate): void {
+              $this->activeCodes[$code] = $rate;
+          }
+
+          private function getDiscountRate(string $code): float {
+              return $this->activeCodes[$code] ?? 0.0;
+          }
+      }
+    src/Events/PaymentProcessed.php: |
+      <?php
+      namespace App\Events;
+
+      class PaymentProcessed {
+          public readonly float $amount;
+          public readonly string $transactionId;
+          public readonly \DateTimeImmutable $processedAt;
+
+          public function __construct(float $amount, string $transactionId) {
+              $this->amount = $amount;
+              $this->transactionId = $transactionId;
+              $this->processedAt = new \DateTimeImmutable();
+          }
+
+          public function toArray(): array {
+              return [
+                  'amount' => $this->amount,
+                  'transaction_id' => $this->transactionId,
+                  'processed_at' => $this->processedAt->format('c'),
+              ];
+          }
+      }
+    src/Controllers/OrderController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class OrderController {
+          private array $orders = [];
+
+          public function processOrder(int $orderId, float $amount): array {
+              $this->orders[$orderId] = ['amount' => $amount, 'status' => 'processing'];
+              return $this->orders[$orderId];
+          }
+
+          public function getOrder(int $orderId): ?array {
+              return $this->orders[$orderId] ?? null;
+          }
+
+          public function cancelOrder(int $orderId): bool {
+              if (isset($this->orders[$orderId])) {
+                  $this->orders[$orderId]['status'] = 'cancelled';
+                  return true;
+              }
+              return false;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: checkoutcontroller
+  selector:
+    path: src/Controllers/CheckoutController.php
+    anchor: use App\Services\PaymentService
+- id: checkoutcontroller_1
+  selector:
+    path: src/Controllers/CheckoutController.php
+    anchor: $this->paymentService->calculateTotal($amount)
+- id: checkoutcontroller_2
+  selector:
+    path: src/Controllers/CheckoutController.php
+    anchor: $this->paymentService->process($total)
+- id: paymentservice
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: 'public function calculateTotal(float $amount): float'
+- id: paymentservice_1
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: return round($amount * (1 + $this->taxRate), 2)
+- id: paymentservice_2
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: 'public function process(float $amount): bool'
+- id: no_shippingservice
+  selector:
+    path: src/Services/ShippingService.php
+- id: no_cartcontroller
+  selector:
+    path: src/Controllers/CartController.php
+- id: no_discountservice
+  selector:
+    path: src/Services/DiscountService.php
+- id: no_paymentprocessed
+  selector:
+    path: src/Events/PaymentProcessed.php
+- id: no_ordercontroller
+  selector:
+    path: src/Controllers/OrderController.php
+- id: no_global_0
+  selector:
+    anchor: class ShippingService
+- id: no_global_1
+  selector:
+    anchor: zoneMultiplier
+- id: no_global_2
+  selector:
+    anchor: estimateDelivery
+- id: no_global_3
+  selector:
+    anchor: class CartController
+- id: no_global_4
+  selector:
+    anchor: getItems
+- id: no_global_5
+  selector:
+    anchor: class DiscountService
+- id: no_global_6
+  selector:
+    anchor: applyDiscount
+- id: no_global_7
+  selector:
+    anchor: getDiscountRate
+- id: no_global_8
+  selector:
+    anchor: class PaymentProcessed
+- id: no_global_9
+  selector:
+    anchor: transactionId
+- id: no_global_10
+  selector:
+    anchor: class OrderController
+- id: no_global_11
+  selector:
+    anchor: processOrder
+- id: no_global_12
+  selector:
+    anchor: cancelOrder
+oracle:
+  required:
+  - checkoutcontroller
+  - checkoutcontroller_1
+  - checkoutcontroller_2
+  - paymentservice
+  - paymentservice_1
+  - paymentservice_2
+  allowed: []
+  forbidden:
+  - no_shippingservice
+  - no_cartcontroller
+  - no_discountservice
+  - no_paymentprocessed
+  - no_ordercontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

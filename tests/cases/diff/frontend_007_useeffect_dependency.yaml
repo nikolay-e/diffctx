@@ -1,0 +1,181 @@
+name: frontend_007_useeffect_dependency
+repo:
+  initial_files:
+    src/api.ts: |
+      export async function fetchData(endpoint: string): Promise<any> {
+          const response = await fetch(`/api/${endpoint}`);
+          return response.json();
+      }
+
+      export async function fetchUsers(): Promise<any[]> {
+          return fetchData('users');
+      }
+
+      export async function fetchDashboard(filter: string): Promise<any> {
+          return fetchData(`dashboard?filter=${filter}`);
+      }
+    src/Dashboard.tsx: |
+      import React from 'react';
+
+      export function Dashboard() {
+          return <div>TODO</div>;
+      }
+    src/hooks/useDebounce.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useDebounce<T>(value: T, delay: number): T {
+          const [debouncedValue, setDebouncedValue] = useState(value);
+
+          useEffect(() => {
+              const timer = setTimeout(() => setDebouncedValue(value), delay);
+              return () => clearTimeout(timer);
+          }, [value, delay]);
+
+          return debouncedValue;
+      }
+    src/api/auth.ts: |
+      export async function login(email: string, password: string): Promise<{ token: string }> {
+          const response = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+          });
+          return response.json();
+      }
+
+      export async function logout(): Promise<void> {
+          await fetch('/api/auth/logout', { method: 'POST' });
+      }
+
+      export async function refreshToken(token: string): Promise<{ token: string }> {
+          const response = await fetch('/api/auth/refresh', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+          });
+          return response.json();
+      }
+  changed_files:
+    src/api.ts: |
+      export async function fetchData(endpoint: string): Promise<any> {
+          const response = await fetch(`/api/${endpoint}`);
+          return response.json();
+      }
+
+      export async function fetchUsers(): Promise<any[]> {
+          return fetchData('users');
+      }
+
+      export async function fetchDashboard(filter: string): Promise<any> {
+          return fetchData(`dashboard?filter=${filter}`);
+      }
+    src/Dashboard.tsx: |
+      import React, { useEffect, useState } from 'react';
+      import { fetchDashboard } from './api';
+
+      interface DashboardProps {
+          filter: string;
+      }
+
+      export function Dashboard({ filter }: DashboardProps) {
+          const [data, setData] = useState(null);
+          const [loading, setLoading] = useState(false);
+
+          useEffect(() => {
+              let cancelled = false;
+              setLoading(true);
+
+              fetchDashboard(filter).then(result => {
+                  if (!cancelled) {
+                      setData(result);
+                      setLoading(false);
+                  }
+              });
+
+              return () => { cancelled = true; };
+          }, [filter]);
+
+          return (
+              <div>
+                  {loading ? <p>Loading...</p> : null}
+                  {data ? <pre>{JSON.stringify(data)}</pre> : null}
+              </div>
+          );
+      }
+    src/hooks/useDebounce.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useDebounce<T>(value: T, delay: number): T {
+          const [debouncedValue, setDebouncedValue] = useState(value);
+
+          useEffect(() => {
+              const timer = setTimeout(() => setDebouncedValue(value), delay);
+              return () => clearTimeout(timer);
+          }, [value, delay]);
+
+          return debouncedValue;
+      }
+    src/api/auth.ts: |
+      export async function login(email: string, password: string): Promise<{ token: string }> {
+          const response = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+          });
+          return response.json();
+      }
+
+      export async function logout(): Promise<void> {
+          await fetch('/api/auth/logout', { method: 'POST' });
+      }
+
+      export async function refreshToken(token: string): Promise<{ token: string }> {
+          const response = await fetch('/api/auth/refresh', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+          });
+          return response.json();
+      }
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: src/api.ts
+    anchor: 'async function fetchDashboard(filter: string)'
+- id: api_1
+  selector:
+    path: src/api.ts
+    anchor: fetchData(`dashboard?filter=${filter}`)
+- id: dashboard_file
+  selector:
+    path: src/Dashboard.tsx
+- id: no_usedebounce
+  selector:
+    path: src/hooks/useDebounce.ts
+- id: no_auth
+  selector:
+    path: src/api/auth.ts
+- id: no_global_0
+  selector:
+    anchor: useDebounce
+- id: no_global_1
+  selector:
+    anchor: debouncedValue
+- id: no_global_2
+  selector:
+    anchor: refreshToken
+- id: no_global_3
+  selector:
+    anchor: logout
+oracle:
+  required:
+  - api
+  - api_1
+  - dashboard_file
+  allowed: []
+  forbidden:
+  - no_usedebounce
+  - no_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

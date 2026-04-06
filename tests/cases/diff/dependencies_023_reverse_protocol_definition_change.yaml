@@ -1,0 +1,297 @@
+name: dependencies_023_reverse_protocol_definition_change
+repo:
+  initial_files:
+    interfaces/repository.py: |
+      from typing import Protocol, TypeVar
+
+      T = TypeVar('T')
+
+      class Repository(Protocol[T]):
+          def find(self, id: int) -> T:
+              ...
+
+          def save(self, entity: T) -> None:
+              ...
+    repos/user_repository.py: |
+      from interfaces.repository import Repository
+
+      class User:
+          def __init__(self, id: int, name: str):
+              self.id = id
+              self.name = name
+
+      class UserRepository:
+          def __init__(self):
+              self.users = {}
+
+          def find(self, id: int) -> User:
+              return self.users.get(id)
+
+          def save(self, entity: User) -> None:
+              self.users[entity.id] = entity
+    repos/product_repository.py: |
+      from interfaces.repository import Repository
+
+      class Product:
+          def __init__(self, id: int, name: str, price: float):
+              self.id = id
+              self.name = name
+              self.price = price
+
+      class ProductRepository:
+          def __init__(self):
+              self.products = {}
+
+          def find(self, id: int) -> Product:
+              return self.products.get(id)
+
+          def save(self, entity: Product) -> None:
+              self.products[entity.id] = entity
+    storage/protocols.py: |
+      from typing import Protocol, TypeVar, Optional
+      GARBAGE_DEP_023_STORAGE_PROTO_A = "storage_protocol"
+      GARBAGE_DEP_023_STORAGE_MOD_B = True
+
+      T = TypeVar('T')
+
+      class Repository(Protocol[T]):
+          GARBAGE_DEP_023_STORAGE_CLASS_C = "different_protocol"
+
+          def find(self, id: int) -> Optional[T]:
+              ...
+
+          def save(self, entity: T) -> None:
+              ...
+
+          def delete(self, id: int) -> bool:
+              ...
+
+          def find_all(self) -> list[T]:
+              ...
+    repos/order_repository.py: |
+      from interfaces.repository import Repository
+      GARBAGE_DEP_023_ORDER_IMPORT_D = "order_consumer"
+      GARBAGE_DEP_023_ORDER_SHIP_E = "fulfillment"
+
+      class Order:
+          def __init__(self, id: int, total: float):
+              self.id = id
+              self.total = total
+
+      class OrderRepository:
+          GARBAGE_DEP_023_ORDER_CLASS_F = True
+
+          def __init__(self):
+              self.orders = {}
+
+          def find(self, id: int) -> Order:
+              return self.orders.get(id)
+
+          def save(self, entity: Order) -> None:
+              self.orders[entity.id] = entity
+
+          def delete(self, id: int) -> bool:
+              return self.orders.pop(id, None) is not None
+    interfaces/service.py: |
+      from typing import Protocol
+      GARBAGE_DEP_023_SERVICE_PROTO_G = "service_sibling"
+      GARBAGE_DEP_023_SERVICE_TYPE_H = "interface"
+
+      class Service(Protocol):
+          GARBAGE_DEP_023_SERVICE_CLASS_I = "no_typevar"
+
+          def execute(self, request: dict) -> dict:
+              ...
+
+          def validate(self, request: dict) -> bool:
+              ...
+  changed_files:
+    interfaces/repository.py: |
+      from typing import Protocol, TypeVar, Optional
+
+      T = TypeVar('T')
+
+      class Repository(Protocol[T]):
+          def find(self, id: int) -> Optional[T]:
+              ...
+
+          def save(self, entity: T) -> None:
+              ...
+
+          def delete(self, id: int) -> bool:
+              ...
+
+          def find_all(self) -> list[T]:
+              ...
+    repos/user_repository.py: |
+      from interfaces.repository import Repository
+
+      class User:
+          def __init__(self, id: int, name: str):
+              self.id = id
+              self.name = name
+
+      class UserRepository:
+          def __init__(self):
+              self.users = {}
+
+          def find(self, id: int) -> User:
+              return self.users.get(id)
+
+          def save(self, entity: User) -> None:
+              self.users[entity.id] = entity
+    repos/product_repository.py: |
+      from interfaces.repository import Repository
+
+      class Product:
+          def __init__(self, id: int, name: str, price: float):
+              self.id = id
+              self.name = name
+              self.price = price
+
+      class ProductRepository:
+          def __init__(self):
+              self.products = {}
+
+          def find(self, id: int) -> Product:
+              return self.products.get(id)
+
+          def save(self, entity: Product) -> None:
+              self.products[entity.id] = entity
+    storage/protocols.py: |
+      from typing import Protocol, TypeVar, Optional
+      GARBAGE_DEP_023_STORAGE_PROTO_A = "storage_protocol"
+      GARBAGE_DEP_023_STORAGE_MOD_B = True
+
+      T = TypeVar('T')
+
+      class Repository(Protocol[T]):
+          GARBAGE_DEP_023_STORAGE_CLASS_C = "different_protocol"
+
+          def find(self, id: int) -> Optional[T]:
+              ...
+
+          def save(self, entity: T) -> None:
+              ...
+
+          def delete(self, id: int) -> bool:
+              ...
+
+          def find_all(self) -> list[T]:
+              ...
+    repos/order_repository.py: |
+      from interfaces.repository import Repository
+      GARBAGE_DEP_023_ORDER_IMPORT_D = "order_consumer"
+      GARBAGE_DEP_023_ORDER_SHIP_E = "fulfillment"
+
+      class Order:
+          def __init__(self, id: int, total: float):
+              self.id = id
+              self.total = total
+
+      class OrderRepository:
+          GARBAGE_DEP_023_ORDER_CLASS_F = True
+
+          def __init__(self):
+              self.orders = {}
+
+          def find(self, id: int) -> Order:
+              return self.orders.get(id)
+
+          def save(self, entity: Order) -> None:
+              self.orders[entity.id] = entity
+
+          def delete(self, id: int) -> bool:
+              return self.orders.pop(id, None) is not None
+    interfaces/service.py: |
+      from typing import Protocol
+      GARBAGE_DEP_023_SERVICE_PROTO_G = "service_sibling"
+      GARBAGE_DEP_023_SERVICE_TYPE_H = "interface"
+
+      class Service(Protocol):
+          GARBAGE_DEP_023_SERVICE_CLASS_I = "no_typevar"
+
+          def execute(self, request: dict) -> dict:
+              ...
+
+          def validate(self, request: dict) -> bool:
+              ...
+  commit_message: Update files
+fragments:
+- id: repository
+  selector:
+    path: interfaces/repository.py
+    anchor: from typing import Protocol, TypeVar, Optional
+- id: repository_1
+  selector:
+    path: interfaces/repository.py
+    anchor: 'def find(self, id: int) -> Optional[T]:'
+- id: repository_2
+  selector:
+    path: interfaces/repository.py
+    anchor: 'def find_all(self) -> list[T]:'
+- id: repository_3
+  selector:
+    path: interfaces/repository.py
+    anchor: 'def delete(self, id: int) -> bool:'
+- id: repository_4
+  selector:
+    path: interfaces/repository.py
+    anchor: 'class Repository(Protocol[T]):'
+- id: no_protocols
+  selector:
+    path: storage/protocols.py
+- id: no_order_repository
+  selector:
+    path: repos/order_repository.py
+- id: no_service
+  selector:
+    path: interfaces/service.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_023_STORAGE_PROTO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_023_STORAGE_MOD_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_023_STORAGE_CLASS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_023_ORDER_IMPORT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_023_ORDER_SHIP_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_023_ORDER_CLASS_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_023_SERVICE_PROTO_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_023_SERVICE_TYPE_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_023_SERVICE_CLASS_I
+oracle:
+  required:
+  - repository
+  - repository_1
+  - repository_2
+  - repository_3
+  - repository_4
+  allowed: []
+  forbidden:
+  - no_protocols
+  - no_order_repository
+  - no_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

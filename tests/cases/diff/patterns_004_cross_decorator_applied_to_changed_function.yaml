@@ -1,0 +1,216 @@
+name: patterns_004_cross_decorator_applied_to_changed_function
+repo:
+  initial_files:
+    decorators/auth.py: |
+      import functools
+
+      def login_required(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              if not is_authenticated():
+                  raise ValueError("Not authenticated")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def is_authenticated():
+          return True
+
+      def admin_only(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              if not is_admin():
+                  raise ValueError("Admin access required")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def is_admin():
+          return False
+    decorators/rate.py: |
+      import functools
+      import time
+
+      def rate_limit(limit):
+          def decorator(func):
+              calls = []
+              @functools.wraps(func)
+              def wrapper(*args, **kwargs):
+                  now = time.time()
+                  calls[:] = [c for c in calls if now - c < 60]
+                  if len(calls) >= limit:
+                      raise ValueError("Rate limit exceeded")
+                  calls.append(now)
+                  return func(*args, **kwargs)
+              return wrapper
+          return decorator
+    api.py: |
+      from decorators.auth import login_required
+      from decorators.rate import rate_limit
+
+      @login_required
+      @rate_limit(100)
+      def api_endpoint():
+          return {"status": "ok"}
+
+      @login_required
+      def user_profile():
+          return {"user": "current"}
+    utils/api_versioning.py: |
+      SUPPORTED_VERSIONS = ["v1", "v2", "v3"]
+      DEFAULT_API_VERSION = "v2"
+
+      class ApiVersionRouter:
+          def __init__(self):
+              self._version_handlers: dict[str, callable] = {}
+
+          def register(self, version: str, handler: callable) -> None:
+              self._version_handlers[version] = handler
+
+          def route(self, version: str, request: dict) -> dict:
+              handler = self._version_handlers.get(version)
+              if not handler:
+                  return {"error": f"Unsupported version: {version}"}
+              return handler(request)
+    utils/request_sanitizer.py: |
+      import html
+
+      DANGEROUS_TAGS = ["script", "iframe", "object", "embed"]
+
+      class RequestSanitizer:
+          def sanitize_string(self, value: str) -> str:
+              return html.escape(value)
+
+          def sanitize_params(self, params: dict) -> dict:
+              return {k: self.sanitize_string(str(v)) for k, v in params.items()}
+  changed_files:
+    decorators/auth.py: |
+      import functools
+
+      def login_required(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              if not is_authenticated():
+                  raise ValueError("Not authenticated")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def is_authenticated():
+          return True
+
+      def admin_only(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              if not is_admin():
+                  raise ValueError("Admin access required")
+              return func(*args, **kwargs)
+          return wrapper
+
+      def is_admin():
+          return False
+    decorators/rate.py: |
+      import functools
+      import time
+
+      def rate_limit(limit):
+          def decorator(func):
+              calls = []
+              @functools.wraps(func)
+              def wrapper(*args, **kwargs):
+                  now = time.time()
+                  calls[:] = [c for c in calls if now - c < 60]
+                  if len(calls) >= limit:
+                      raise ValueError("Rate limit exceeded")
+                  calls.append(now)
+                  return func(*args, **kwargs)
+              return wrapper
+          return decorator
+    api.py: |
+      from decorators.auth import login_required
+      from decorators.rate import rate_limit
+
+      @login_required
+      @rate_limit(100)
+      def api_endpoint():
+          data = fetch_data()
+          return {"status": "ok", "data": data}
+
+      def fetch_data():
+          return [1, 2, 3]
+
+      @login_required
+      def user_profile():
+          return {"user": "current"}
+    utils/api_versioning.py: |
+      SUPPORTED_VERSIONS = ["v1", "v2", "v3"]
+      DEFAULT_API_VERSION = "v2"
+
+      class ApiVersionRouter:
+          def __init__(self):
+              self._version_handlers: dict[str, callable] = {}
+
+          def register(self, version: str, handler: callable) -> None:
+              self._version_handlers[version] = handler
+
+          def route(self, version: str, request: dict) -> dict:
+              handler = self._version_handlers.get(version)
+              if not handler:
+                  return {"error": f"Unsupported version: {version}"}
+              return handler(request)
+    utils/request_sanitizer.py: |
+      import html
+
+      DANGEROUS_TAGS = ["script", "iframe", "object", "embed"]
+
+      class RequestSanitizer:
+          def sanitize_string(self, value: str) -> str:
+              return html.escape(value)
+
+          def sanitize_params(self, params: dict) -> dict:
+              return {k: self.sanitize_string(str(v)) for k, v in params.items()}
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: api.py
+    anchor: data = fetch_data()
+- id: api_1
+  selector:
+    path: api.py
+    anchor: 'def fetch_data():'
+- id: no_api_versioning
+  selector:
+    path: utils/api_versioning.py
+- id: no_request_sanitizer
+  selector:
+    path: utils/request_sanitizer.py
+- id: no_global_0
+  selector:
+    anchor: ApiVersionRouter
+- id: no_global_1
+  selector:
+    anchor: SUPPORTED_VERSIONS
+- id: no_global_2
+  selector:
+    anchor: DEFAULT_API_VERSION
+- id: no_global_3
+  selector:
+    anchor: RequestSanitizer
+- id: no_global_4
+  selector:
+    anchor: DANGEROUS_TAGS
+- id: no_global_5
+  selector:
+    anchor: sanitize_params
+oracle:
+  required:
+  - api
+  - api_1
+  allowed: []
+  forbidden:
+  - no_api_versioning
+  - no_request_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

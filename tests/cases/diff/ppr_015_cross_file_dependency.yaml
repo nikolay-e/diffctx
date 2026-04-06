@@ -1,0 +1,150 @@
+name: ppr_015_cross_file_dependency
+repo:
+  initial_files:
+    utils.py: |
+      def helper():
+          return 42
+    main.py: |
+      from utils import helper
+
+      def main():
+          return helper()
+    unrelated.py: |
+      def unrelated_func():
+          pass
+    analytics.py: |
+      from utils import helper
+
+      class AnalyticsEngine:
+          def compute_metric(self):
+              return helper() * 10
+
+          def validate_result(self):
+              return True
+    alt_utils.py: |
+      def helper():
+          return 99
+
+      def helper_v2():
+          return helper() + 1
+
+      class HelperRegistry:
+          def get_helper(self):
+              return helper()
+    db_pool.py: |
+      DB_CONNECTION = "postgresql://localhost"
+      POOL_SIZE = 10
+
+      class DatabasePool:
+          def connect(self):
+              pass
+  changed_files:
+    utils.py: |
+      def helper():
+          return 42
+    main.py: |
+      from utils import helper
+
+      def main():
+          return helper() + 1
+    unrelated.py: |
+      def unrelated_func():
+          pass
+    analytics.py: |
+      from utils import helper
+
+      class AnalyticsEngine:
+          def compute_metric(self):
+              return helper() * 10
+
+          def validate_result(self):
+              return True
+    alt_utils.py: |
+      def helper():
+          return 99
+
+      def helper_v2():
+          return helper() + 1
+
+      class HelperRegistry:
+          def get_helper(self):
+              return helper()
+    db_pool.py: |
+      DB_CONNECTION = "postgresql://localhost"
+      POOL_SIZE = 10
+
+      class DatabasePool:
+          def connect(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.py
+    anchor: 'def main():'
+- id: main_1
+  selector:
+    path: main.py
+    anchor: return helper() + 1
+- id: req_pattern_0
+  selector:
+    anchor: main
+- id: req_pattern_1
+  selector:
+    anchor: helper
+- id: no_analytics
+  selector:
+    path: analytics.py
+- id: no_alt_utils
+  selector:
+    path: alt_utils.py
+- id: no_unrelated
+  selector:
+    path: unrelated.py
+- id: no_db_pool
+  selector:
+    path: db_pool.py
+- id: no_global_0
+  selector:
+    anchor: AnalyticsEngine
+- id: no_global_1
+  selector:
+    anchor: compute_metric
+- id: no_global_2
+  selector:
+    anchor: validate_result
+- id: no_global_3
+  selector:
+    anchor: HelperRegistry
+- id: no_global_4
+  selector:
+    anchor: helper_v2
+- id: no_global_5
+  selector:
+    anchor: unrelated_func
+- id: no_global_6
+  selector:
+    anchor: DatabasePool
+- id: no_global_7
+  selector:
+    anchor: DB_CONNECTION
+oracle:
+  required:
+  - main
+  - main_1
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_analytics
+  - no_alt_utils
+  - no_unrelated
+  - no_db_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

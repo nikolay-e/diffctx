@@ -1,0 +1,154 @@
+name: output_012_large_file_with_budget
+repo:
+  initial_files:
+    large.py: |
+      line_0 = 0
+      line_1 = 1
+      line_2 = 2
+      line_3 = 3
+      line_4 = 4
+      line_5 = 5
+      line_6 = 6
+      line_7 = 7
+      line_8 = 8
+      line_9 = 9
+      line_10 = 10
+      line_11 = 11
+      line_12 = 12
+      line_13 = 13
+      line_14 = 14
+      line_15 = 15
+      line_16 = 16
+      line_17 = 17
+      line_18 = 18
+      line_19 = 19
+    utils/schema_migrator.py: |
+      MIGRATION_LOG_TABLE = "migration_history"
+      LOCK_TIMEOUT_SECONDS = 30
+
+      class SchemaMigrator:
+          def __init__(self, connection_uri: str):
+              self.connection_uri = connection_uri
+
+          def migrate(self, version: int) -> bool:
+              return True
+
+          def rollback(self, version: int) -> bool:
+              return True
+
+          def get_current_version(self) -> int:
+              return 0
+    utils/version_resolver.py: |
+      SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
+      LATEST_TAG = "latest"
+
+      class VersionResolver:
+          def resolve(self, constraint: str) -> str:
+              return "1.0.0"
+
+          def is_compatible(self, version: str, constraint: str) -> bool:
+              return True
+
+          def get_latest(self, versions: list[str]) -> str:
+              return sorted(versions)[-1] if versions else ""
+  changed_files:
+    large.py: |
+      line_0 = 100
+      line_1 = 101
+      line_2 = 102
+      line_3 = 103
+      line_4 = 104
+      line_5 = 105
+      line_6 = 106
+      line_7 = 107
+      line_8 = 108
+      line_9 = 109
+      line_10 = 110
+      line_11 = 111
+      line_12 = 112
+      line_13 = 113
+      line_14 = 114
+      line_15 = 115
+      line_16 = 116
+      line_17 = 117
+      line_18 = 118
+      line_19 = 119
+    utils/schema_migrator.py: |
+      MIGRATION_LOG_TABLE = "migration_history"
+      LOCK_TIMEOUT_SECONDS = 30
+
+      class SchemaMigrator:
+          def __init__(self, connection_uri: str):
+              self.connection_uri = connection_uri
+
+          def migrate(self, version: int) -> bool:
+              return True
+
+          def rollback(self, version: int) -> bool:
+              return True
+
+          def get_current_version(self) -> int:
+              return 0
+    utils/version_resolver.py: |
+      SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
+      LATEST_TAG = "latest"
+
+      class VersionResolver:
+          def resolve(self, constraint: str) -> str:
+              return "1.0.0"
+
+          def is_compatible(self, version: str, constraint: str) -> bool:
+              return True
+
+          def get_latest(self, versions: list[str]) -> str:
+              return sorted(versions)[-1] if versions else ""
+  commit_message: Update files
+fragments:
+- id: large_file
+  selector:
+    path: large.py
+- id: req_global_0
+  selector:
+    anchor: line_0 = 100
+- id: req_global_1
+  selector:
+    anchor: line_19 = 119
+- id: no_schema_migrator
+  selector:
+    path: utils/schema_migrator.py
+- id: no_version_resolver
+  selector:
+    path: utils/version_resolver.py
+- id: no_global_0
+  selector:
+    anchor: SchemaMigrator
+- id: no_global_1
+  selector:
+    anchor: MIGRATION_LOG_TABLE
+- id: no_global_2
+  selector:
+    anchor: LOCK_TIMEOUT_SECONDS
+- id: no_global_3
+  selector:
+    anchor: VersionResolver
+- id: no_global_4
+  selector:
+    anchor: SEMVER_PATTERN
+- id: no_global_5
+  selector:
+    anchor: LATEST_TAG
+oracle:
+  required:
+  - large_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_schema_migrator
+  - no_version_resolver
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

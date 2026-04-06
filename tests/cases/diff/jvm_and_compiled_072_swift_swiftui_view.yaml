@@ -1,0 +1,161 @@
+name: jvm_and_compiled_072_swift_swiftui_view
+repo:
+  initial_files:
+    User.swift: |
+      struct User: Identifiable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    UserView.swift: |
+      import SwiftUI
+      struct UserView: View {
+          var body: some View { Text("") }
+      }
+    AvatarView.swift: |
+      import SwiftUI
+
+      struct AvatarView: View {
+          let initials: String
+          let size: CGFloat
+
+          var body: some View {
+              ZStack {
+                  Circle()
+                      .fill(Color.blue)
+                      .frame(width: size, height: size)
+                  Text(initials)
+                      .font(.system(size: size * 0.4))
+                      .foregroundColor(.white)
+              }
+          }
+      }
+    ColorPalette.swift: |
+      import SwiftUI
+
+      struct ColorPalette {
+          static let primaryText = Color.black
+          static let secondaryText = Color.gray
+          static let accent = Color.blue
+          static let background = Color(.systemBackground)
+          static let separator = Color(.separator)
+
+          static func textColor(for style: TextStyle) -> Color {
+              switch style {
+              case .headline: return primaryText
+              case .subheadline: return secondaryText
+              case .caption: return secondaryText.opacity(0.8)
+              }
+          }
+
+          enum TextStyle {
+              case headline, subheadline, caption
+          }
+      }
+  changed_files:
+    User.swift: |
+      struct User: Identifiable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    UserView.swift: |
+      import SwiftUI
+
+      struct UserView: View {
+          let user: User
+
+          var body: some View {
+              VStack(alignment: .leading) {
+                  Text(user.name)
+                      .font(.headline)
+                  Text(user.email)
+                      .font(.subheadline)
+                      .foregroundColor(.gray)
+              }
+          }
+      }
+    AvatarView.swift: |
+      import SwiftUI
+
+      struct AvatarView: View {
+          let initials: String
+          let size: CGFloat
+
+          var body: some View {
+              ZStack {
+                  Circle()
+                      .fill(Color.blue)
+                      .frame(width: size, height: size)
+                  Text(initials)
+                      .font(.system(size: size * 0.4))
+                      .foregroundColor(.white)
+              }
+          }
+      }
+    ColorPalette.swift: |
+      import SwiftUI
+
+      struct ColorPalette {
+          static let primaryText = Color.black
+          static let secondaryText = Color.gray
+          static let accent = Color.blue
+          static let background = Color(.systemBackground)
+          static let separator = Color(.separator)
+
+          static func textColor(for style: TextStyle) -> Color {
+              switch style {
+              case .headline: return primaryText
+              case .subheadline: return secondaryText
+              case .caption: return secondaryText.opacity(0.8)
+              }
+          }
+
+          enum TextStyle {
+              case headline, subheadline, caption
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userview
+  selector:
+    path: UserView.swift
+    anchor: 'let user: User'
+- id: userview_1
+  selector:
+    path: UserView.swift
+    anchor: Text(user.name)
+- id: no_avatarview
+  selector:
+    path: AvatarView.swift
+- id: no_colorpalette
+  selector:
+    path: ColorPalette.swift
+- id: no_global_0
+  selector:
+    anchor: AvatarView
+- id: no_global_1
+  selector:
+    anchor: ColorPalette
+- id: no_global_2
+  selector:
+    anchor: primaryText
+- id: no_global_3
+  selector:
+    anchor: secondaryText
+- id: no_global_4
+  selector:
+    anchor: textColor
+oracle:
+  required:
+  - userview
+  - userview_1
+  allowed: []
+  forbidden:
+  - no_avatarview
+  - no_colorpalette
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

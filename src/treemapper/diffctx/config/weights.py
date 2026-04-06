@@ -15,7 +15,7 @@ EDGE_WEIGHTS = {
     "test_direct": EdgeWeightConfig(0.60, 0.50),
     "test_naming": EdgeWeightConfig(0.50, 0.50),
     "test_reverse": EdgeWeightConfig(0.30, 1.0),
-    "config_code": EdgeWeightConfig(0.45, 0.70),
+    "config_code": EdgeWeightConfig(0.35, 0.50),
     "sibling": EdgeWeightConfig(0.05, 1.0),
     "cochange": EdgeWeightConfig(0.40, 1.0),
     "doc_structure": EdgeWeightConfig(0.30, 0.83),

@@ -1,0 +1,222 @@
+name: patterns_002_modification
+repo:
+  initial_files:
+    src/user_service.py: |
+      from typing import Optional
+
+      class User:
+          def __init__(self, id: int, name: str, email: str):
+              self.id = id
+              self.name = name
+              self.email = email
+
+      class UserService:
+          def __init__(self):
+              self.users = {}
+
+          def create_user(self, name: str, email: str) -> User:
+              user_id = len(self.users) + 1
+              user = User(user_id, name, email)
+              self.users[user_id] = user
+              return user
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              return self.users.get(user_id)
+
+          def list_users(self) -> list[User]:
+              return list(self.users.values())
+    tests/conftest.py: |
+      import pytest
+      from src.user_service import UserService
+
+      @pytest.fixture
+      def user_service():
+          return UserService()
+
+      @pytest.fixture
+      def sample_user(user_service):
+          return user_service.create_user("Test", "test@example.com")
+    tests/test_user_service.py: |
+      def test_create_user(user_service):
+          user = user_service.create_user("John", "john@example.com")
+          assert user.name == "John"
+
+      def test_get_user(user_service, sample_user):
+          retrieved = user_service.get_user(sample_user.id)
+          assert retrieved.name == "Test"
+    utils/password_hasher.py: |
+      import hashlib
+      import os
+
+      HASH_ALGORITHM = "sha256"
+      SALT_LENGTH = 16
+
+      class PasswordHasher:
+          def hash_password(self, password: str) -> str:
+              salt = os.urandom(SALT_LENGTH).hex()
+              hashed = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+              return f"{salt}:{hashed}"
+
+          def verify_password(self, password: str, stored_hash: str) -> bool:
+              salt, expected = stored_hash.split(":")
+              actual = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+              return actual == expected
+    utils/session_store.py: |
+      import time
+
+      SESSION_TTL = 3600
+      MAX_SESSIONS_PER_USER = 5
+
+      class SessionStore:
+          def __init__(self):
+              self._sessions: dict[str, dict] = {}
+
+          def create_session(self, user_id: str, token: str) -> None:
+              self._sessions[token] = {
+                  "user_id": user_id,
+                  "created_at": time.time(),
+              }
+
+          def get_session(self, token: str) -> dict | None:
+              session = self._sessions.get(token)
+              if session and time.time() - session["created_at"] < SESSION_TTL:
+                  return session
+              return None
+  changed_files:
+    src/user_service.py: |
+      from typing import Optional
+
+      class User:
+          def __init__(self, id: int, name: str, email: str):
+              self.id = id
+              self.name = name
+              self.email = email
+
+      class UserService:
+          def __init__(self):
+              self.users = {}
+
+          def create_user(self, name: str, email: str) -> User:
+              user_id = len(self.users) + 1
+              user = User(user_id, name, email)
+              self.users[user_id] = user
+              return user
+
+          def get_user(self, user_id: int) -> Optional[User]:
+              return self.users.get(user_id)
+
+          def list_users(self) -> list[User]:
+              return list(self.users.values())
+    tests/conftest.py: |
+      import pytest
+      from src.user_service import UserService
+
+      @pytest.fixture
+      def user_service():
+          service = UserService()
+          yield service
+          service.users.clear()
+
+      @pytest.fixture
+      def sample_user(user_service):
+          return user_service.create_user("Test", "test@example.com")
+
+      @pytest.fixture
+      def admin_user(user_service):
+          user = user_service.create_user("Admin", "admin@example.com")
+          user.is_admin = True
+          return user
+    tests/test_user_service.py: |
+      def test_create_user(user_service):
+          user = user_service.create_user("John", "john@example.com")
+          assert user.name == "John"
+
+      def test_get_user(user_service, sample_user):
+          retrieved = user_service.get_user(sample_user.id)
+          assert retrieved.name == "Test"
+    utils/password_hasher.py: |
+      import hashlib
+      import os
+
+      HASH_ALGORITHM = "sha256"
+      SALT_LENGTH = 16
+
+      class PasswordHasher:
+          def hash_password(self, password: str) -> str:
+              salt = os.urandom(SALT_LENGTH).hex()
+              hashed = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+              return f"{salt}:{hashed}"
+
+          def verify_password(self, password: str, stored_hash: str) -> bool:
+              salt, expected = stored_hash.split(":")
+              actual = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+              return actual == expected
+    utils/session_store.py: |
+      import time
+
+      SESSION_TTL = 3600
+      MAX_SESSIONS_PER_USER = 5
+
+      class SessionStore:
+          def __init__(self):
+              self._sessions: dict[str, dict] = {}
+
+          def create_session(self, user_id: str, token: str) -> None:
+              self._sessions[token] = {
+                  "user_id": user_id,
+                  "created_at": time.time(),
+              }
+
+          def get_session(self, token: str) -> dict | None:
+              session = self._sessions.get(token)
+              if session and time.time() - session["created_at"] < SESSION_TTL:
+                  return session
+              return None
+  commit_message: Update files
+fragments:
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: service = UserService()
+- id: conftest_1
+  selector:
+    path: tests/conftest.py
+    anchor: 'def admin_user(user_service):'
+- id: no_password_hasher
+  selector:
+    path: utils/password_hasher.py
+- id: no_session_store
+  selector:
+    path: utils/session_store.py
+- id: no_global_0
+  selector:
+    anchor: PasswordHasher
+- id: no_global_1
+  selector:
+    anchor: HASH_ALGORITHM
+- id: no_global_2
+  selector:
+    anchor: hash_password
+- id: no_global_3
+  selector:
+    anchor: SessionStore
+- id: no_global_4
+  selector:
+    anchor: SESSION_TTL
+- id: no_global_5
+  selector:
+    anchor: create_session
+oracle:
+  required:
+  - conftest
+  - conftest_1
+  allowed: []
+  forbidden:
+  - no_password_hasher
+  - no_session_store
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

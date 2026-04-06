@@ -1,0 +1,261 @@
+name: javascript_extended_045_pick_type
+repo:
+  initial_files:
+    src/user.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          password: string;
+          createdAt: Date;
+      }
+
+      export function createUser(name: string, email: string, password: string): User {
+          return {
+              id: crypto.randomUUID(),
+              name,
+              email,
+              password,
+              createdAt: new Date(),
+          };
+      }
+    src/dto.ts: |
+      console.log('placeholder');
+    src/userService.ts: |
+      import { User, createUser } from './user';
+
+      const users: Map<string, User> = new Map();
+
+      export function addUser(name: string, email: string, password: string): User {
+          const user = createUser(name, email, password);
+          users.set(user.id, user);
+          return user;
+      }
+
+      export function getUserById(id: string): User | undefined {
+          return users.get(id);
+      }
+
+      export function getAllUsers(): User[] {
+          return Array.from(users.values());
+      }
+
+      export function deleteUser(id: string): boolean {
+          return users.delete(id);
+      }
+
+      export function updateUserEmail(id: string, email: string): User | undefined {
+          const user = users.get(id);
+          if (user) {
+              user.email = email;
+          }
+          return user;
+      }
+    src/auth.ts: |
+      import { User } from './user';
+
+      export interface AuthToken {
+          userId: string;
+          token: string;
+          expiresAt: Date;
+      }
+
+      export function authenticate(user: User, passwordAttempt: string): AuthToken | null {
+          if (user.password !== passwordAttempt) {
+              return null;
+          }
+          return {
+              userId: user.id,
+              token: crypto.randomUUID(),
+              expiresAt: new Date(Date.now() + 3600000),
+          };
+      }
+
+      export function isTokenExpired(token: AuthToken): boolean {
+          return new Date() > token.expiresAt;
+      }
+
+      export function verifyToken(token: AuthToken, userId: string): boolean {
+          return token.userId === userId && !isTokenExpired(token);
+      }
+    src/userRepository.ts: |
+      import { User } from './user';
+
+      export interface UserRepository {
+          findById(id: string): Promise<User | null>;
+          findByEmail(email: string): Promise<User | null>;
+          save(user: User): Promise<void>;
+          delete(id: string): Promise<boolean>;
+      }
+
+      export class InMemoryUserRepository implements UserRepository {
+          private store = new Map<string, User>();
+
+          async findById(id: string): Promise<User | null> {
+              return this.store.get(id) ?? null;
+          }
+
+          async findByEmail(email: string): Promise<User | null> {
+              for (const user of this.store.values()) {
+                  if (user.email === email) return user;
+              }
+              return null;
+          }
+
+          async save(user: User): Promise<void> {
+              this.store.set(user.id, user);
+          }
+
+          async delete(id: string): Promise<boolean> {
+              return this.store.delete(id);
+          }
+      }
+    src/serializer.ts: |
+      export function toJSON<T>(obj: T): string {
+          return JSON.stringify(obj, null, 2);
+      }
+
+      export function fromJSON<T>(json: string): T {
+          return JSON.parse(json) as T;
+      }
+
+      export function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+          const result = {} as Pick<T, K>;
+          for (const key of keys) {
+              result[key] = obj[key];
+          }
+          return result;
+      }
+
+      export function omit<T, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+          const result = { ...obj };
+          for (const key of keys) {
+              delete (result as any)[key];
+          }
+          return result as Omit<T, K>;
+      }
+  changed_files:
+    src/dto.ts: |
+      import { User } from './user';
+
+      export type UserPublic = Pick<User, 'id' | 'name' | 'email'>;
+
+      export function toPublic(user: User): UserPublic {
+          return { id: user.id, name: user.name, email: user.email };
+      }
+
+      export function toPublicList(users: User[]): UserPublic[] {
+          return users.map(toPublic);
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: src/user.ts
+    anchor: User
+- id: user_1
+  selector:
+    path: src/user.ts
+    anchor: 'id: string'
+- id: user_2
+  selector:
+    path: src/user.ts
+    anchor: 'name: string'
+- id: user_3
+  selector:
+    path: src/user.ts
+    anchor: 'email: string'
+- id: user_4
+  selector:
+    path: src/user.ts
+    anchor: 'password: string'
+- id: user_5
+  selector:
+    path: src/user.ts
+    anchor: 'createdAt: Date'
+- id: no_userservice
+  selector:
+    path: src/userService.ts
+- id: no_auth
+  selector:
+    path: src/auth.ts
+- id: no_userrepository
+  selector:
+    path: src/userRepository.ts
+- id: no_serializer
+  selector:
+    path: src/serializer.ts
+- id: no_global_0
+  selector:
+    anchor: addUser
+- id: no_global_1
+  selector:
+    anchor: getUserById
+- id: no_global_2
+  selector:
+    anchor: getAllUsers
+- id: no_global_3
+  selector:
+    anchor: deleteUser
+- id: no_global_4
+  selector:
+    anchor: updateUserEmail
+- id: no_global_5
+  selector:
+    anchor: AuthToken
+- id: no_global_6
+  selector:
+    anchor: authenticate
+- id: no_global_7
+  selector:
+    anchor: isTokenExpired
+- id: no_global_8
+  selector:
+    anchor: verifyToken
+- id: no_global_9
+  selector:
+    anchor: UserRepository
+- id: no_global_10
+  selector:
+    anchor: InMemoryUserRepository
+- id: no_global_11
+  selector:
+    anchor: findByEmail
+- id: no_global_12
+  selector:
+    anchor: toJSON
+- id: no_global_13
+  selector:
+    anchor: fromJSON
+- id: no_global_14
+  selector:
+    anchor: omit<T
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - user_3
+  - user_4
+  - user_5
+  allowed: []
+  forbidden:
+  - no_userservice
+  - no_auth
+  - no_userrepository
+  - no_serializer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

@@ -1,0 +1,216 @@
+name: python_053_django_cbv_url
+repo:
+  initial_files:
+    models.py: |
+      from datetime import datetime
+
+      class Article:
+          def __init__(self, title: str, slug: str, content: str, published: bool = False):
+              self.title = title
+              self.slug = slug
+              self.content = content
+              self.published = published
+              self.created_at = datetime.now()
+
+          def get_absolute_url(self) -> str:
+              return f"/articles/{self.slug}/"
+
+          def is_published(self) -> bool:
+              return self.published
+
+          def summary(self, max_length: int = 200) -> str:
+              if len(self.content) <= max_length:
+                  return self.content
+              return self.content[:max_length] + "..."
+    views.py: |
+      from django.views.generic import ListView, DetailView
+      from models import Article
+
+      class ArticleListView(ListView):
+          model = Article
+          template_name = "articles/list.html"
+          context_object_name = "articles"
+          paginate_by = 10
+          ordering = ["-created_at"]
+
+          def get_queryset(self):
+              return super().get_queryset().filter(published=True)
+
+      class ArticleDetailView(DetailView):
+          model = Article
+          template_name = "articles/detail.html"
+          slug_field = "slug"
+          slug_url_kwarg = "slug"
+    urls.py: |
+      from django.urls import path
+
+      urlpatterns = []
+    middleware/rate_limiter.py: |
+      from typing import Any
+      from collections import defaultdict
+
+      class RateLimitMiddleware:
+          def __init__(self, get_response, max_requests: int = 100):
+              self.get_response = get_response
+              self.max_requests = max_requests
+              self._request_counts: dict[str, int] = defaultdict(int)
+
+          def __call__(self, request: Any) -> Any:
+              client_ip = getattr(request, "META", {}).get("REMOTE_ADDR", "unknown")
+              self._request_counts[client_ip] += 1
+              if self._request_counts[client_ip] > self.max_requests:
+                  return None
+              return self.get_response(request)
+    templates/template_engine.py: |
+      class TemplateEngine:
+          def __init__(self, template_dir: str = "templates"):
+              self.template_dir = template_dir
+              self._cache: dict[str, str] = {}
+
+          def render(self, template_name: str, context: dict) -> str:
+              return f"<html>{template_name}: {context}</html>"
+
+          def clear_cache(self) -> None:
+              self._cache.clear()
+
+          def precompile(self, template_name: str) -> None:
+              self._cache[template_name] = f"compiled:{template_name}"
+  changed_files:
+    models.py: |
+      from datetime import datetime
+
+      class Article:
+          def __init__(self, title: str, slug: str, content: str, published: bool = False):
+              self.title = title
+              self.slug = slug
+              self.content = content
+              self.published = published
+              self.created_at = datetime.now()
+
+          def get_absolute_url(self) -> str:
+              return f"/articles/{self.slug}/"
+
+          def is_published(self) -> bool:
+              return self.published
+
+          def summary(self, max_length: int = 200) -> str:
+              if len(self.content) <= max_length:
+                  return self.content
+              return self.content[:max_length] + "..."
+    views.py: |
+      from django.views.generic import ListView, DetailView
+      from models import Article
+
+      class ArticleListView(ListView):
+          model = Article
+          template_name = "articles/list.html"
+          context_object_name = "articles"
+          paginate_by = 10
+          ordering = ["-created_at"]
+
+          def get_queryset(self):
+              return super().get_queryset().filter(published=True)
+
+      class ArticleDetailView(DetailView):
+          model = Article
+          template_name = "articles/detail.html"
+          slug_field = "slug"
+          slug_url_kwarg = "slug"
+    urls.py: |
+      from django.urls import path
+      from views import ArticleListView, ArticleDetailView
+
+      urlpatterns = [
+          path("articles/", ArticleListView.as_view(), name="article-list"),
+          path("articles/<slug:slug>/", ArticleDetailView.as_view(), name="article-detail"),
+      ]
+    middleware/rate_limiter.py: |
+      from typing import Any
+      from collections import defaultdict
+
+      class RateLimitMiddleware:
+          def __init__(self, get_response, max_requests: int = 100):
+              self.get_response = get_response
+              self.max_requests = max_requests
+              self._request_counts: dict[str, int] = defaultdict(int)
+
+          def __call__(self, request: Any) -> Any:
+              client_ip = getattr(request, "META", {}).get("REMOTE_ADDR", "unknown")
+              self._request_counts[client_ip] += 1
+              if self._request_counts[client_ip] > self.max_requests:
+                  return None
+              return self.get_response(request)
+    templates/template_engine.py: |
+      class TemplateEngine:
+          def __init__(self, template_dir: str = "templates"):
+              self.template_dir = template_dir
+              self._cache: dict[str, str] = {}
+
+          def render(self, template_name: str, context: dict) -> str:
+              return f"<html>{template_name}: {context}</html>"
+
+          def clear_cache(self) -> None:
+              self._cache.clear()
+
+          def precompile(self, template_name: str) -> None:
+              self._cache[template_name] = f"compiled:{template_name}"
+  commit_message: Update files
+fragments:
+- id: urls
+  selector:
+    path: urls.py
+    anchor: from views import ArticleListView, ArticleDetailView
+- id: urls_1
+  selector:
+    path: urls.py
+    anchor: ArticleListView.as_view()
+- id: urls_2
+  selector:
+    path: urls.py
+    anchor: <slug:slug>
+- id: views
+  selector:
+    path: views.py
+    anchor: class ArticleListView(ListView)
+- id: views_1
+  selector:
+    path: views.py
+    anchor: class ArticleDetailView(DetailView)
+- id: views_2
+  selector:
+    path: views.py
+    anchor: slug_url_kwarg
+- id: no_rate_limiter
+  selector:
+    path: middleware/rate_limiter.py
+- id: no_template_engine
+  selector:
+    path: templates/template_engine.py
+- id: no_global_0
+  selector:
+    anchor: RateLimitMiddleware
+- id: no_global_1
+  selector:
+    anchor: TemplateEngine
+- id: no_global_2
+  selector:
+    anchor: clear_cache
+- id: no_global_3
+  selector:
+    anchor: precompile
+oracle:
+  required:
+  - urls
+  - urls_1
+  - urls_2
+  - views
+  - views_1
+  - views_2
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_template_engine
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

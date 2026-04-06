@@ -1,0 +1,32 @@
+name: internals_020_greek_letters_scientific_code
+repo:
+  initial_files:
+    greek_science.py: |
+      def placeholder():
+          pass
+  changed_files:
+    greek_science.py: |
+      def calculate_Δ(θ, φ):
+          import math
+          return θ * math.cos(φ)
+
+      def compute_σ(μ, data):
+          return sum((x - μ)**2 for x in data)
+  commit_message: Update files
+fragments:
+- id: greek_science_file
+  selector:
+    path: greek_science.py
+- id: req_global_0
+  selector:
+    anchor: 'def calculate_Δ(θ, φ):'
+- id: req_global_1
+  selector:
+    anchor: 'def compute_σ(μ, data):'
+oracle:
+  required:
+  - greek_science_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

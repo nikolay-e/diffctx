@@ -1,0 +1,246 @@
+name: javascript_extended_046_omit_type
+repo:
+  initial_files:
+    src/full.ts: |
+      export interface FullRecord {
+          id: string;
+          name: string;
+          email: string;
+          secret: string;
+          internal: boolean;
+          createdAt: Date;
+      }
+
+      export function createFullRecord(name: string, email: string): FullRecord {
+          return {
+              id: Date.now().toString(),
+              name,
+              email,
+              secret: 'hidden-value',
+              internal: true,
+              createdAt: new Date(),
+          };
+      }
+    src/public.ts: |
+      console.log('initial');
+    src/api/user-handler.ts: |
+      import { createFullRecord, FullRecord } from '../full';
+      import { Request, Response } from 'express';
+
+      export function handleCreateUser(req: Request, res: Response) {
+          const { name, email } = req.body;
+          const record: FullRecord = createFullRecord(name, email);
+          res.status(201).json({ id: record.id, name: record.name });
+      }
+
+      export function handleGetUser(req: Request, res: Response) {
+          // fetch from DB, return full record internally
+          res.json({ id: req.params.id });
+      }
+    src/serializers/record-serializer.ts: |
+      export interface SerializedRecord {
+          id: string;
+          name: string;
+          email: string;
+          created: string;
+      }
+
+      export function serializeForClient(record: { id: string; name: string; email: string; createdAt: Date }): SerializedRecord {
+          return {
+              id: record.id,
+              name: record.name,
+              email: record.email,
+              created: record.createdAt.toISOString(),
+          };
+      }
+
+      export function serializeBatch(records: Array<{ id: string; name: string; email: string; createdAt: Date }>): SerializedRecord[] {
+          return records.map(serializeForClient);
+      }
+    src/middleware/auth.ts: |
+      import { FullRecord } from '../full';
+
+      export function requireInternal(record: FullRecord): boolean {
+          return record.internal === true;
+      }
+
+      export function validateSecret(record: FullRecord, expected: string): boolean {
+          return record.secret === expected;
+      }
+
+      export function stripSensitive(record: FullRecord): Omit<FullRecord, 'secret'> {
+          const { secret, ...rest } = record;
+          return rest;
+      }
+    src/validators/record-validator.ts: |
+      import { FullRecord } from '../full';
+
+      export function validateRecord(record: Partial<FullRecord>): string[] {
+          const errors: string[] = [];
+          if (!record.name || record.name.length === 0) {
+              errors.push('Name is required');
+          }
+          if (!record.email || !record.email.includes('@')) {
+              errors.push('Valid email is required');
+          }
+          if (record.name && record.name.length > 100) {
+              errors.push('Name must be under 100 characters');
+          }
+          return errors;
+      }
+
+      export function isComplete(record: Partial<FullRecord>): record is FullRecord {
+          return !!(record.id && record.name && record.email && record.secret !== undefined && record.createdAt);
+      }
+    src/db/record-repository.ts: |
+      import { FullRecord, createFullRecord } from '../full';
+
+      const store = new Map<string, FullRecord>();
+
+      export function save(record: FullRecord): void {
+          store.set(record.id, record);
+      }
+
+      export function findById(id: string): FullRecord | undefined {
+          return store.get(id);
+      }
+
+      export function createAndSave(name: string, email: string): FullRecord {
+          const record = createFullRecord(name, email);
+          save(record);
+          return record;
+      }
+
+      export function deleteById(id: string): boolean {
+          return store.delete(id);
+      }
+  changed_files:
+    src/public.ts: |
+      import { FullRecord, createFullRecord } from './full';
+
+      type PublicRecord = Omit<FullRecord, 'secret' | 'internal'>;
+
+      function sanitize(record: FullRecord): PublicRecord {
+          const { secret, internal, ...publicData } = record;
+          return publicData;
+      }
+
+      function createAndSanitize(name: string, email: string): PublicRecord {
+          const full = createFullRecord(name, email);
+          return sanitize(full);
+      }
+
+      export { PublicRecord, sanitize, createAndSanitize };
+  commit_message: Update files
+fragments:
+- id: public
+  selector:
+    path: src/public.ts
+    anchor: import { FullRecord, createFullRecord } from './full'
+- id: public_1
+  selector:
+    path: src/public.ts
+    anchor: type PublicRecord = Omit<FullRecord, 'secret' | 'internal'>
+- id: public_2
+  selector:
+    path: src/public.ts
+    anchor: const { secret, internal, ...publicData } = record
+- id: full
+  selector:
+    path: src/full.ts
+    anchor: export interface FullRecord
+- id: full_1
+  selector:
+    path: src/full.ts
+    anchor: 'secret: string'
+- id: full_2
+  selector:
+    path: src/full.ts
+    anchor: 'internal: boolean'
+- id: full_3
+  selector:
+    path: src/full.ts
+    anchor: 'export function createFullRecord(name: string, email: string)'
+- id: no_user_handler
+  selector:
+    path: src/api/user-handler.ts
+- id: no_record_serializer
+  selector:
+    path: src/serializers/record-serializer.ts
+- id: no_auth
+  selector:
+    path: src/middleware/auth.ts
+- id: no_record_validator
+  selector:
+    path: src/validators/record-validator.ts
+- id: no_record_repository
+  selector:
+    path: src/db/record-repository.ts
+- id: no_global_0
+  selector:
+    anchor: handleCreateUser
+- id: no_global_1
+  selector:
+    anchor: handleGetUser
+- id: no_global_2
+  selector:
+    anchor: SerializedRecord
+- id: no_global_3
+  selector:
+    anchor: serializeForClient
+- id: no_global_4
+  selector:
+    anchor: serializeBatch
+- id: no_global_5
+  selector:
+    anchor: requireInternal
+- id: no_global_6
+  selector:
+    anchor: validateSecret
+- id: no_global_7
+  selector:
+    anchor: stripSensitive
+- id: no_global_8
+  selector:
+    anchor: validateRecord
+- id: no_global_9
+  selector:
+    anchor: isComplete
+- id: no_global_10
+  selector:
+    anchor: createAndSave
+- id: no_global_11
+  selector:
+    anchor: deleteById
+- id: no_global_12
+  selector:
+    anchor: findById
+oracle:
+  required:
+  - public
+  - public_1
+  - public_2
+  - full
+  - full_1
+  - full_2
+  - full_3
+  allowed: []
+  forbidden:
+  - no_user_handler
+  - no_record_serializer
+  - no_auth
+  - no_record_validator
+  - no_record_repository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

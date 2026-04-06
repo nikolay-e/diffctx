@@ -1,0 +1,185 @@
+name: javascript_031_eval_function
+repo:
+  initial_files:
+    functions.ts: |
+      export function targetFunction() {
+          return 'called';
+      }
+    main.ts: |
+      console.log('initial');
+    analytics.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      @Injectable({ providedIn: 'root' })
+      export class AnalyticsService {
+          constructor(private http: HttpClient) {}
+
+          trackEvent(category: string, action: string): Observable<void> {
+              return this.http.post<void>('/api/analytics', { category, action });
+          }
+
+          getMetrics(period: string): Observable<Record<string, number>> {
+              return this.http.get<Record<string, number>>(`/api/analytics/metrics?period=${period}`);
+          }
+      }
+    string-utils.ts: |
+      export function capitalize(str: string): string {
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLength: number): string {
+          return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+      }
+
+      export function slugify(str: string): string {
+          return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      }
+    eval-sanitizer.ts: |
+      export function sanitizeForEval(input: string): string {
+          const forbidden = ['require', 'import', 'process', 'global', '__dirname'];
+          for (const keyword of forbidden) {
+              if (input.includes(keyword)) {
+                  throw new Error(`Forbidden keyword in eval input: ${keyword}`);
+              }
+          }
+          return input;
+      }
+
+      export function isEvalSafe(code: string): boolean {
+          const dangerousPatterns = [/\beval\b/, /Function\(/, /setTimeout\(\s*['"`]/];
+          return !dangerousPatterns.some(p => p.test(code));
+      }
+  changed_files:
+    functions.ts: |
+      export function targetFunction() {
+          return 'called';
+      }
+    main.ts: |
+      import { targetFunction } from './functions';
+
+      function dynamicCall() {
+          const result = eval('targetFunction()');
+          return result;
+      }
+
+      console.log(dynamicCall());
+    analytics.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      @Injectable({ providedIn: 'root' })
+      export class AnalyticsService {
+          constructor(private http: HttpClient) {}
+
+          trackEvent(category: string, action: string): Observable<void> {
+              return this.http.post<void>('/api/analytics', { category, action });
+          }
+
+          getMetrics(period: string): Observable<Record<string, number>> {
+              return this.http.get<Record<string, number>>(`/api/analytics/metrics?period=${period}`);
+          }
+      }
+    string-utils.ts: |
+      export function capitalize(str: string): string {
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function truncate(str: string, maxLength: number): string {
+          return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+      }
+
+      export function slugify(str: string): string {
+          return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      }
+    eval-sanitizer.ts: |
+      export function sanitizeForEval(input: string): string {
+          const forbidden = ['require', 'import', 'process', 'global', '__dirname'];
+          for (const keyword of forbidden) {
+              if (input.includes(keyword)) {
+                  throw new Error(`Forbidden keyword in eval input: ${keyword}`);
+              }
+          }
+          return input;
+      }
+
+      export function isEvalSafe(code: string): boolean {
+          const dangerousPatterns = [/\beval\b/, /Function\(/, /setTimeout\(\s*['"`]/];
+          return !dangerousPatterns.some(p => p.test(code));
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { targetFunction } from './functions'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: eval('targetFunction()')
+- id: functions
+  selector:
+    path: functions.ts
+    anchor: export function targetFunction()
+- id: functions_1
+  selector:
+    path: functions.ts
+    anchor: return 'called'
+- id: no_analytics_service
+  selector:
+    path: analytics.service.ts
+- id: no_string_utils
+  selector:
+    path: string-utils.ts
+- id: no_eval_sanitizer
+  selector:
+    path: eval-sanitizer.ts
+- id: no_global_0
+  selector:
+    anchor: AnalyticsService
+- id: no_global_1
+  selector:
+    anchor: trackEvent
+- id: no_global_2
+  selector:
+    anchor: getMetrics
+- id: no_global_3
+  selector:
+    anchor: capitalize
+- id: no_global_4
+  selector:
+    anchor: truncate
+- id: no_global_5
+  selector:
+    anchor: slugify
+- id: no_global_6
+  selector:
+    anchor: sanitizeForEval
+- id: no_global_7
+  selector:
+    anchor: isEvalSafe
+- id: no_global_8
+  selector:
+    anchor: Forbidden keyword in eval input
+oracle:
+  required:
+  - main
+  - main_1
+  - functions
+  - functions_1
+  allowed: []
+  forbidden:
+  - no_analytics_service
+  - no_string_utils
+  - no_eval_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

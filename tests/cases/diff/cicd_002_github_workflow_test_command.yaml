@@ -1,0 +1,249 @@
+name: cicd_002_github_workflow_test_command
+repo:
+  initial_files:
+    .github/workflows/test.yml: |
+      name: Test
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          strategy:
+            matrix:
+              python-version: ['3.10', '3.11', '3.12']
+          steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                python-version: ${{ matrix.python-version }}
+            - name: Install dependencies
+              run: pip install -e .[dev]
+            - name: Run tests
+              run: pytest tests/
+    src/calculator.py: |
+      from typing import Union
+      from decimal import Decimal
+
+      Number = Union[int, float, Decimal]
+
+      def add(a: Number, b: Number) -> Number:
+          return a + b
+
+      def subtract(a: Number, b: Number) -> Number:
+          return a - b
+
+      def multiply(a: Number, b: Number) -> Number:
+          return a * b
+
+      def divide(a: Number, b: Number) -> Number:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add, subtract, multiply, divide
+
+      class TestAddition:
+          def test_addition_integers(self):
+              assert add(1, 2) == 3
+
+          def test_addition_floats(self):
+              assert add(1.5, 2.5) == 4.0
+
+          def test_addition_negative(self):
+              assert add(-1, 1) == 0
+
+      class TestSubtraction:
+          def test_subtraction_integers(self):
+              assert subtract(5, 3) == 2
+
+      class TestDivision:
+          def test_division_integers(self):
+              assert divide(10, 2) == 5
+
+          def test_division_by_zero(self):
+              with pytest.raises(ValueError):
+                  divide(10, 0)
+    garbage_benchmarks.py: |
+      GARBAGE_CICD_002_BENCH_MARKER_A = "benchmark"
+      GARBAGE_CICD_002_PERF_MARKER_B = True
+
+      class BenchmarkRunner:
+          GARBAGE_CICD_002_ITERATIONS_MARKER_C = 1000
+
+          def run(self) -> None:
+              pass
+    garbage_fixtures.py: |
+      GARBAGE_CICD_002_FIXTURE_MARKER_D = "fixture"
+      GARBAGE_CICD_002_SETUP_MARKER_E = []
+
+      class TestFixtures:
+          GARBAGE_CICD_002_DATA_MARKER_F = {}
+
+          def setup(self) -> None:
+              pass
+  changed_files:
+    .github/workflows/test.yml: |
+      name: Test
+      on:
+        push:
+          branches: [main, develop]
+        pull_request:
+          branches: [main]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          strategy:
+            matrix:
+              python-version: ['3.10', '3.11', '3.12']
+          steps:
+            - uses: actions/checkout@v4
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                python-version: ${{ matrix.python-version }}
+            - name: Install dependencies
+              run: pip install -e .[dev]
+            - name: Run tests with coverage
+              run: pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80
+            - name: Upload coverage
+              uses: codecov/codecov-action@v4
+              with:
+                file: ./coverage.xml
+    src/calculator.py: |
+      from typing import Union
+      from decimal import Decimal
+
+      Number = Union[int, float, Decimal]
+
+      def add(a: Number, b: Number) -> Number:
+          return a + b
+
+      def subtract(a: Number, b: Number) -> Number:
+          return a - b
+
+      def multiply(a: Number, b: Number) -> Number:
+          return a * b
+
+      def divide(a: Number, b: Number) -> Number:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add, subtract, multiply, divide
+
+      class TestAddition:
+          def test_addition_integers(self):
+              assert add(1, 2) == 3
+
+          def test_addition_floats(self):
+              assert add(1.5, 2.5) == 4.0
+
+          def test_addition_negative(self):
+              assert add(-1, 1) == 0
+
+      class TestSubtraction:
+          def test_subtraction_integers(self):
+              assert subtract(5, 3) == 2
+
+      class TestDivision:
+          def test_division_integers(self):
+              assert divide(10, 2) == 5
+
+          def test_division_by_zero(self):
+              with pytest.raises(ValueError):
+                  divide(10, 0)
+    garbage_benchmarks.py: |
+      GARBAGE_CICD_002_BENCH_MARKER_A = "benchmark"
+      GARBAGE_CICD_002_PERF_MARKER_B = True
+
+      class BenchmarkRunner:
+          GARBAGE_CICD_002_ITERATIONS_MARKER_C = 1000
+
+          def run(self) -> None:
+              pass
+    garbage_fixtures.py: |
+      GARBAGE_CICD_002_FIXTURE_MARKER_D = "fixture"
+      GARBAGE_CICD_002_SETUP_MARKER_E = []
+
+      class TestFixtures:
+          GARBAGE_CICD_002_DATA_MARKER_F = {}
+
+          def setup(self) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: test
+  selector:
+    path: .github/workflows/test.yml
+    anchor: '- name: Run tests with coverage'
+- id: test_1
+  selector:
+    path: .github/workflows/test.yml
+    anchor: 'run: pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80'
+- id: test_2
+  selector:
+    path: .github/workflows/test.yml
+    anchor: '- name: Upload coverage'
+- id: test_3
+  selector:
+    path: .github/workflows/test.yml
+    anchor: 'uses: codecov/codecov-action@v4'
+- id: test_4
+  selector:
+    path: .github/workflows/test.yml
+    anchor: 'file: ./coverage.xml'
+- id: no_garbage_benchmarks
+  selector:
+    path: garbage_benchmarks.py
+- id: no_garbage_fixtures
+  selector:
+    path: garbage_fixtures.py
+- id: no_calculator
+  selector:
+    path: src/calculator.py
+- id: no_test_calculator
+  selector:
+    path: tests/test_calculator.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_002_BENCH_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_002_DATA_MARKER_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_002_FIXTURE_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_002_ITERATIONS_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_002_PERF_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_002_SETUP_MARKER_E
+oracle:
+  required:
+  - test
+  - test_1
+  - test_2
+  - test_3
+  - test_4
+  allowed: []
+  forbidden:
+  - no_garbage_benchmarks
+  - no_garbage_fixtures
+  - no_calculator
+  - no_test_calculator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

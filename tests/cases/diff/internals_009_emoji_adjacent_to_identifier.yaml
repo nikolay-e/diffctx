@@ -1,0 +1,104 @@
+name: internals_009_emoji_adjacent_to_identifier
+repo:
+  initial_files:
+    src/badges/manager.py: |
+      from src.badges.renderer import render_badge
+      def assign_badge(user_id: int, badge_type: str) -> dict:
+          rendered = render_badge(badge_type)
+          return {"user_id": user_id, "badge": rendered}
+      def list_badges(user_id: int) -> list:
+          return []
+    src/badges/renderer.py: |
+      BADGE_ICONS = {"gold": "*", "silver": "-"}
+      def render_badge(badge_type: str) -> str:
+          icon = BADGE_ICONS.get(badge_type, "?")
+          return "[" + icon + "]"
+    garbage_badge_store.py: |
+      GARBAGE_INT_009_STORE_MARKER_A = "bdb"
+      GARBAGE_INT_009_QUERY_MARKER_B = "lookup"
+
+      class GarbageBadgeStore:
+          def noop(self):
+              pass
+    garbage_achievement_tracker.py: |
+      GARBAGE_INT_009_ACHIEVE_MARKER_C = "progress"
+      GARBAGE_INT_009_UNLOCK_MARKER_D = "threshold"
+
+      class GarbageAchievementTracker:
+          def noop(self):
+              pass
+  changed_files:
+    src/badges/manager.py: |
+      from src.badges.renderer import render_badge
+      def assign_badge(user_id: int, badge_type: str) -> dict:
+          status = "🔥"
+          handler_name = "fire"
+          rendered = render_badge(badge_type)
+          return {"user_id": user_id, "badge": rendered, "status": status, "handler": handler_name}
+      def list_badges(user_id: int) -> list:
+          return []
+    src/badges/renderer.py: |
+      BADGE_ICONS = {"gold": "*", "silver": "-", "fire": "🔥"}
+      def render_badge(badge_type: str) -> str:
+          icon = BADGE_ICONS.get(badge_type, "?")
+          return "[" + icon + "]"
+    garbage_badge_store.py: |
+      GARBAGE_INT_009_STORE_MARKER_A = "bdb"
+      GARBAGE_INT_009_QUERY_MARKER_B = "lookup"
+
+      class GarbageBadgeStore:
+          def noop(self):
+              pass
+    garbage_achievement_tracker.py: |
+      GARBAGE_INT_009_ACHIEVE_MARKER_C = "progress"
+      GARBAGE_INT_009_UNLOCK_MARKER_D = "threshold"
+
+      class GarbageAchievementTracker:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: manager_file
+  selector:
+    path: src/badges/manager.py
+- id: renderer_file
+  selector:
+    path: src/badges/renderer.py
+- id: req_global_0
+  selector:
+    anchor: handler_name = "fire"
+- id: req_global_1
+  selector:
+    anchor: 'BADGE_ICONS = {"gold": "*", "silver": "-", "fire": "🔥"}'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_009_ACHIEVE_MARKER_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_009_QUERY_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_009_STORE_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_009_UNLOCK_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: garbage_achievement_tracker.py
+- id: no_global_5
+  selector:
+    anchor: garbage_badge_store.py
+oracle:
+  required:
+  - manager_file
+  - renderer_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

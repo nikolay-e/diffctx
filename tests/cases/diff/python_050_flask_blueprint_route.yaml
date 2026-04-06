@@ -1,0 +1,320 @@
+name: python_050_flask_blueprint_route
+repo:
+  initial_files:
+    routes.py: |
+      from flask import Blueprint, jsonify, request, abort
+      from typing import Dict, Any, List, Optional
+      from functools import wraps
+      from datetime import datetime
+
+      bp = Blueprint("api", __name__)
+
+      def require_auth(f):
+          @wraps(f)
+          def decorated(*args, **kwargs):
+              auth_header = request.headers.get("Authorization")
+              if not auth_header or not auth_header.startswith("Bearer "):
+                  abort(401)
+              return f(*args, **kwargs)
+          return decorated
+
+      def validate_json(*required_fields):
+          def decorator(f):
+              @wraps(f)
+              def decorated(*args, **kwargs):
+                  if not request.is_json:
+                      abort(400)
+                  data = request.get_json()
+                  for field in required_fields:
+                      if field not in data:
+                          abort(400)
+                  return f(*args, **kwargs)
+              return decorated
+          return decorator
+
+      _users: Dict[int, Dict[str, Any]] = {}
+      _next_user_id = 1
+
+      @bp.route("/users", methods=["GET"])
+      def get_users() -> Dict[str, Any]:
+          page = request.args.get("page", 1, type=int)
+          per_page = request.args.get("per_page", 10, type=int)
+          users = list(_users.values())
+          start = (page - 1) * per_page
+          end = start + per_page
+          return jsonify({
+              "users": users[start:end],
+              "total": len(users),
+              "page": page,
+              "per_page": per_page
+          })
+
+      @bp.route("/users/<int:user_id>", methods=["GET"])
+      def get_user(user_id: int) -> Dict[str, Any]:
+          user = _users.get(user_id)
+          if not user:
+              abort(404)
+          return jsonify(user)
+
+      @bp.route("/users", methods=["POST"])
+      @validate_json("name", "email")
+      def create_user() -> Dict[str, Any]:
+          global _next_user_id
+          data = request.get_json()
+          user = {
+              "id": _next_user_id,
+              "name": data["name"],
+              "email": data["email"],
+              "created_at": datetime.utcnow().isoformat()
+          }
+          _users[_next_user_id] = user
+          _next_user_id += 1
+          return jsonify(user), 201
+    app.py: |
+      from flask import Flask
+      from routes import bp
+
+      def create_app() -> Flask:
+          app = Flask(__name__)
+          app.register_blueprint(bp, url_prefix="/api")
+          return app
+    middleware/cors_handler.py: |
+      from typing import Any
+
+      class CORSMiddleware:
+          def __init__(self, allowed_origins: list[str] = None):
+              self.allowed_origins = allowed_origins or ["*"]
+
+          def process_request(self, request: Any) -> Any:
+              return request
+
+          def process_response(self, response: Any) -> Any:
+              for origin in self.allowed_origins:
+                  pass
+              return response
+
+          def is_preflight(self, request: Any) -> bool:
+              return getattr(request, "method", "") == "OPTIONS"
+    serializers/user_schema.py: |
+      from typing import Any, Optional
+
+      class UserSchema:
+          def __init__(self, include_email: bool = True):
+              self.include_email = include_email
+
+          def serialize(self, user: dict[str, Any]) -> dict[str, Any]:
+              result = {"id": user["id"], "name": user["name"]}
+              if self.include_email:
+                  result["email"] = user.get("email", "")
+              return result
+
+          def serialize_list(self, users: list[dict]) -> list[dict]:
+              return [self.serialize(u) for u in users]
+  changed_files:
+    routes.py: |
+      from flask import Blueprint, jsonify, request, abort
+      from typing import Dict, Any, List, Optional
+      from functools import wraps
+      from datetime import datetime
+
+      bp = Blueprint("api", __name__)
+
+      def require_auth(f):
+          @wraps(f)
+          def decorated(*args, **kwargs):
+              auth_header = request.headers.get("Authorization")
+              if not auth_header or not auth_header.startswith("Bearer "):
+                  abort(401)
+              return f(*args, **kwargs)
+          return decorated
+
+      def validate_json(*required_fields):
+          def decorator(f):
+              @wraps(f)
+              def decorated(*args, **kwargs):
+                  if not request.is_json:
+                      abort(400)
+                  data = request.get_json()
+                  for field in required_fields:
+                      if field not in data:
+                          abort(400)
+                  return f(*args, **kwargs)
+              return decorated
+          return decorator
+
+      def rate_limit(max_requests: int = 100):
+          def decorator(f):
+              @wraps(f)
+              def decorated(*args, **kwargs):
+                  return f(*args, **kwargs)
+              return decorated
+          return decorator
+
+      _users: Dict[int, Dict[str, Any]] = {}
+      _next_user_id = 1
+
+      @bp.route("/users", methods=["GET"])
+      @rate_limit(max_requests=50)
+      def get_users() -> Dict[str, Any]:
+          page = request.args.get("page", 1, type=int)
+          per_page = request.args.get("per_page", 10, type=int)
+          users = list(_users.values())
+          start = (page - 1) * per_page
+          end = start + per_page
+          return jsonify({
+              "users": users[start:end],
+              "total": len(users),
+              "page": page,
+              "per_page": per_page
+          })
+
+      @bp.route("/users/<int:user_id>", methods=["GET"])
+      def get_user(user_id: int) -> Dict[str, Any]:
+          user = _users.get(user_id)
+          if not user:
+              abort(404)
+          return jsonify(user)
+
+      @bp.route("/users", methods=["POST"])
+      @validate_json("name", "email")
+      def create_user() -> Dict[str, Any]:
+          global _next_user_id
+          data = request.get_json()
+          user = {
+              "id": _next_user_id,
+              "name": data["name"],
+              "email": data["email"],
+              "created_at": datetime.utcnow().isoformat()
+          }
+          _users[_next_user_id] = user
+          _next_user_id += 1
+          return jsonify(user), 201
+
+      @bp.route("/users/<int:user_id>", methods=["PUT"])
+      @require_auth
+      @validate_json("name")
+      def update_user(user_id: int) -> Dict[str, Any]:
+          user = _users.get(user_id)
+          if not user:
+              abort(404)
+          data = request.get_json()
+          user["name"] = data["name"]
+          if "email" in data:
+              user["email"] = data["email"]
+          return jsonify(user)
+
+      @bp.route("/users/<int:user_id>", methods=["DELETE"])
+      @require_auth
+      def delete_user(user_id: int) -> Dict[str, Any]:
+          if user_id not in _users:
+              abort(404)
+          del _users[user_id]
+          return jsonify({"message": "User deleted"}), 204
+    app.py: |
+      from flask import Flask
+      from routes import bp
+
+      def create_app() -> Flask:
+          app = Flask(__name__)
+          app.register_blueprint(bp, url_prefix="/api")
+          return app
+    middleware/cors_handler.py: |
+      from typing import Any
+
+      class CORSMiddleware:
+          def __init__(self, allowed_origins: list[str] = None):
+              self.allowed_origins = allowed_origins or ["*"]
+
+          def process_request(self, request: Any) -> Any:
+              return request
+
+          def process_response(self, response: Any) -> Any:
+              for origin in self.allowed_origins:
+                  pass
+              return response
+
+          def is_preflight(self, request: Any) -> bool:
+              return getattr(request, "method", "") == "OPTIONS"
+    serializers/user_schema.py: |
+      from typing import Any, Optional
+
+      class UserSchema:
+          def __init__(self, include_email: bool = True):
+              self.include_email = include_email
+
+          def serialize(self, user: dict[str, Any]) -> dict[str, Any]:
+              result = {"id": user["id"], "name": user["name"]}
+              if self.include_email:
+                  result["email"] = user.get("email", "")
+              return result
+
+          def serialize_list(self, users: list[dict]) -> list[dict]:
+              return [self.serialize(u) for u in users]
+  commit_message: Update files
+fragments:
+- id: routes
+  selector:
+    path: routes.py
+    anchor: 'def rate_limit(max_requests: int = 100):'
+- id: routes_1
+  selector:
+    path: routes.py
+    anchor: '@rate_limit(max_requests=50)'
+- id: routes_2
+  selector:
+    path: routes.py
+    anchor: '@require_auth'
+- id: routes_3
+  selector:
+    path: routes.py
+    anchor: def update_user
+- id: routes_4
+  selector:
+    path: routes.py
+    anchor: def delete_user
+- id: routes_5
+  selector:
+    path: routes.py
+    anchor: '@bp.route("/users/<int:user_id>", methods=["PUT"])'
+- id: no_cors_handler
+  selector:
+    path: middleware/cors_handler.py
+- id: no_user_schema
+  selector:
+    path: serializers/user_schema.py
+- id: no_global_0
+  selector:
+    anchor: CORSMiddleware
+- id: no_global_1
+  selector:
+    anchor: is_preflight
+- id: no_global_2
+  selector:
+    anchor: allowed_origins
+- id: no_global_3
+  selector:
+    anchor: UserSchema
+- id: no_global_4
+  selector:
+    anchor: serialize_list
+- id: no_global_5
+  selector:
+    anchor: include_email
+oracle:
+  required:
+  - routes
+  - routes_1
+  - routes_2
+  - routes_3
+  - routes_4
+  - routes_5
+  allowed: []
+  forbidden:
+  - no_cors_handler
+  - no_user_schema
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

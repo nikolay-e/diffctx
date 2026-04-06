@@ -1,0 +1,207 @@
+name: ruby_006_attr_accessor
+repo:
+  initial_files:
+    lib/user.rb: |
+      class User
+        attr_accessor :name, :email
+        attr_reader :id, :created_at
+
+        def initialize(name:, email:, id: nil)
+          @id = id || SecureRandom.uuid
+          @name = name
+          @email = email
+          @created_at = Time.now
+        end
+
+        def to_h
+          { id: @id, name: @name, email: @email, created_at: @created_at }
+        end
+
+        def valid?
+          !@name.nil? && !@name.empty? && @email&.include?('@')
+        end
+      end
+    app.rb: |
+      puts 'Hello'
+    lib/user_preferences.rb: |
+      class UserPreferences
+        DEFAULTS = {
+          theme: 'light',
+          language: 'en',
+          notifications: true,
+          timezone: 'UTC'
+        }.freeze
+
+        def initialize(user_id)
+          @user_id = user_id
+          @settings = DEFAULTS.dup
+        end
+
+        def get(key)
+          @settings[key.to_sym]
+        end
+
+        def set(key, value)
+          @settings[key.to_sym] = value
+        end
+
+        def to_h
+          { user_id: @user_id, settings: @settings }
+        end
+      end
+    lib/email_validator.rb: |
+      class EmailValidator
+        EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}\z/
+
+        def self.valid?(email)
+          return false if email.nil? || email.empty?
+          !!(email =~ EMAIL_REGEX)
+        end
+
+        def self.normalize(email)
+          return nil unless valid?(email)
+          email.strip.downcase
+        end
+
+        def self.domain(email)
+          return nil unless valid?(email)
+          email.split('@').last
+        end
+      end
+  changed_files:
+    lib/user.rb: |
+      class User
+        attr_accessor :name, :email
+        attr_reader :id, :created_at
+
+        def initialize(name:, email:, id: nil)
+          @id = id || SecureRandom.uuid
+          @name = name
+          @email = email
+          @created_at = Time.now
+        end
+
+        def to_h
+          { id: @id, name: @name, email: @email, created_at: @created_at }
+        end
+
+        def valid?
+          !@name.nil? && !@name.empty? && @email&.include?('@')
+        end
+      end
+    app.rb: |
+      require_relative 'lib/user'
+
+      user = User.new(name: 'John Doe', email: 'john@example.com')
+      puts user.name
+      puts user.id
+
+      user.email = 'new@example.com'
+      puts user.to_h.inspect
+
+      if user.valid?
+        puts "User is valid"
+      end
+    lib/user_preferences.rb: |
+      class UserPreferences
+        DEFAULTS = {
+          theme: 'light',
+          language: 'en',
+          notifications: true,
+          timezone: 'UTC'
+        }.freeze
+
+        def initialize(user_id)
+          @user_id = user_id
+          @settings = DEFAULTS.dup
+        end
+
+        def get(key)
+          @settings[key.to_sym]
+        end
+
+        def set(key, value)
+          @settings[key.to_sym] = value
+        end
+
+        def to_h
+          { user_id: @user_id, settings: @settings }
+        end
+      end
+    lib/email_validator.rb: |
+      class EmailValidator
+        EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}\z/
+
+        def self.valid?(email)
+          return false if email.nil? || email.empty?
+          !!(email =~ EMAIL_REGEX)
+        end
+
+        def self.normalize(email)
+          return nil unless valid?(email)
+          email.strip.downcase
+        end
+
+        def self.domain(email)
+          return nil unless valid?(email)
+          email.split('@').last
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.rb
+    anchor: 'user = User.new(name: ''John Doe'', email: ''john@example.com'')'
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: user.email = 'new@example.com'
+- id: user
+  selector:
+    path: lib/user.rb
+    anchor: attr_accessor :name, :email
+- id: user_1
+  selector:
+    path: lib/user.rb
+    anchor: attr_reader :id, :created_at
+- id: no_user_preferences
+  selector:
+    path: lib/user_preferences.rb
+- id: no_email_validator
+  selector:
+    path: lib/email_validator.rb
+- id: no_global_0
+  selector:
+    anchor: UserPreferences
+- id: no_global_1
+  selector:
+    anchor: DEFAULTS
+- id: no_global_2
+  selector:
+    anchor: timezone
+- id: no_global_3
+  selector:
+    anchor: EmailValidator
+- id: no_global_4
+  selector:
+    anchor: EMAIL_REGEX
+- id: no_global_5
+  selector:
+    anchor: normalize
+oracle:
+  required:
+  - app
+  - app_1
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_user_preferences
+  - no_email_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

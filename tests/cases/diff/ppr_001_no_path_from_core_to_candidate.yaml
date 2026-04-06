@@ -1,0 +1,348 @@
+name: ppr_001_no_path_from_core_to_candidate
+repo:
+  initial_files:
+    core/main.py: |
+      from core.utils import core_helper, validate_input
+
+      def func_a():
+          data = validate_input("test")
+          result = core_helper(data)
+          return unique_a_process(result)
+
+      def unique_a_process(value):
+          return value * 2
+
+      def secondary_core_func():
+          return func_a() + 10
+    core/utils.py: |
+      def core_helper(data):
+          return data.upper()
+
+      def validate_input(raw):
+          if not raw:
+              raise ValueError("empty")
+          return raw.strip()
+
+      def unused_core_util():
+          return "never_called_from_core"
+    isolated/module_b.py: |
+      def func_b():
+          return unique_b_isolated()
+
+      def unique_b_isolated():
+          return "isolated_b_value"
+
+      def another_isolated_func():
+          return func_b() + "_extended"
+    core/func_a_analyzer.py: |
+      GARBAGE_PPR_001_ANALYZER_COLLISION_A = "analyzer_marker"
+      GARBAGE_PPR_001_ANALYZER_MODE_B = "batch"
+
+      def func_a():
+          return "completely_different_func_a"
+
+      def analyze_func_a_output(data):
+          return len(data)
+
+      class FuncAAnalyzer:
+          GARBAGE_PPR_001_ANALYZER_CLASS_C = True
+
+          def run(self):
+              return func_a()
+    core/validation_consumer.py: |
+      from core.utils import validate_input, core_helper
+      GARBAGE_PPR_001_VALIDATOR_IMPORT_D = "validation_consumer"
+      GARBAGE_PPR_001_VALIDATOR_FLAG_E = False
+
+      class ValidationConsumer:
+          def consume(self, raw):
+              return validate_input(raw)
+
+          def transform(self, data):
+              return core_helper(data)
+    core/processor.py: |
+      GARBAGE_PPR_001_PROCESSOR_SIBLING_F = "sibling_processor"
+      GARBAGE_PPR_001_PROCESSOR_VERSION_G = 2
+
+      def process_data(value):
+          return value * 3
+
+      def secondary_processor():
+          return process_data("input") + "_done"
+    garbage/GARBAGE_PPR_a1b2c3_unrelated.py: |
+      GARBAGE_MARKER_PPR_001_XYZ = "garbage_constant"
+
+      def garbage_function_ppr001_alpha():
+          return GARBAGE_MARKER_PPR_001_XYZ
+
+      def garbage_function_ppr001_beta():
+          garbage_function_ppr001_alpha()
+          return "beta_garbage_output"
+
+      class GarbageClassPPR001:
+          def garbage_method_one(self):
+              return garbage_function_ppr001_beta()
+
+          def garbage_method_two(self):
+              return "garbage_method_two_result"
+    garbage/GARBAGE_PPR_d4e5f6_noise.py: |
+      GARBAGE_NOISE_CONSTANT_PPR001 = 42
+
+      def noise_generator_ppr001():
+          return GARBAGE_NOISE_CONSTANT_PPR001 * 2
+
+      def unrelated_noise_ppr001():
+          return noise_generator_ppr001() + 100
+
+      def deep_noise_chain_ppr001():
+          return unrelated_noise_ppr001() * 3
+    garbage/GARBAGE_PPR_g7h8i9_decoy.py: |
+      DECOY_FLAG_PPR001 = True
+
+      def decoy_processor_ppr001(flag):
+          if flag:
+              return "decoy_active"
+          return "decoy_inactive"
+
+      def decoy_orchestrator_ppr001():
+          return decoy_processor_ppr001(DECOY_FLAG_PPR001)
+  changed_files:
+    core/main.py: |
+      from core.utils import core_helper, validate_input
+
+      def func_a():
+          data = validate_input("test")
+          result = core_helper(data)
+          processed = unique_a_process(result)
+          return processed + "_modified"
+
+      def unique_a_process(value):
+          return value * 2
+
+      def secondary_core_func():
+          return func_a() + 10
+    core/utils.py: |
+      def core_helper(data):
+          return data.upper()
+
+      def validate_input(raw):
+          if not raw:
+              raise ValueError("empty")
+          return raw.strip()
+
+      def unused_core_util():
+          return "never_called_from_core"
+    isolated/module_b.py: |
+      def func_b():
+          return unique_b_isolated()
+
+      def unique_b_isolated():
+          return "isolated_b_value"
+
+      def another_isolated_func():
+          return func_b() + "_extended"
+    core/func_a_analyzer.py: |
+      GARBAGE_PPR_001_ANALYZER_COLLISION_A = "analyzer_marker"
+      GARBAGE_PPR_001_ANALYZER_MODE_B = "batch"
+
+      def func_a():
+          return "completely_different_func_a"
+
+      def analyze_func_a_output(data):
+          return len(data)
+
+      class FuncAAnalyzer:
+          GARBAGE_PPR_001_ANALYZER_CLASS_C = True
+
+          def run(self):
+              return func_a()
+    core/validation_consumer.py: |
+      from core.utils import validate_input, core_helper
+      GARBAGE_PPR_001_VALIDATOR_IMPORT_D = "validation_consumer"
+      GARBAGE_PPR_001_VALIDATOR_FLAG_E = False
+
+      class ValidationConsumer:
+          def consume(self, raw):
+              return validate_input(raw)
+
+          def transform(self, data):
+              return core_helper(data)
+    core/processor.py: |
+      GARBAGE_PPR_001_PROCESSOR_SIBLING_F = "sibling_processor"
+      GARBAGE_PPR_001_PROCESSOR_VERSION_G = 2
+
+      def process_data(value):
+          return value * 3
+
+      def secondary_processor():
+          return process_data("input") + "_done"
+    garbage/GARBAGE_PPR_a1b2c3_unrelated.py: |
+      GARBAGE_MARKER_PPR_001_XYZ = "garbage_constant"
+
+      def garbage_function_ppr001_alpha():
+          return GARBAGE_MARKER_PPR_001_XYZ
+
+      def garbage_function_ppr001_beta():
+          garbage_function_ppr001_alpha()
+          return "beta_garbage_output"
+
+      class GarbageClassPPR001:
+          def garbage_method_one(self):
+              return garbage_function_ppr001_beta()
+
+          def garbage_method_two(self):
+              return "garbage_method_two_result"
+    garbage/GARBAGE_PPR_d4e5f6_noise.py: |
+      GARBAGE_NOISE_CONSTANT_PPR001 = 42
+
+      def noise_generator_ppr001():
+          return GARBAGE_NOISE_CONSTANT_PPR001 * 2
+
+      def unrelated_noise_ppr001():
+          return noise_generator_ppr001() + 100
+
+      def deep_noise_chain_ppr001():
+          return unrelated_noise_ppr001() * 3
+    garbage/GARBAGE_PPR_g7h8i9_decoy.py: |
+      DECOY_FLAG_PPR001 = True
+
+      def decoy_processor_ppr001(flag):
+          if flag:
+              return "decoy_active"
+          return "decoy_inactive"
+
+      def decoy_orchestrator_ppr001():
+          return decoy_processor_ppr001(DECOY_FLAG_PPR001)
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: core/main.py
+    anchor: 'def func_a():'
+- id: main_1
+  selector:
+    path: core/main.py
+    anchor: processed = unique_a_process(result)
+- id: main_2
+  selector:
+    path: core/main.py
+    anchor: return processed + "_modified"
+- id: no_garbage_ppr_a1b2c3_unrelated
+  selector:
+    path: garbage/GARBAGE_PPR_a1b2c3_unrelated.py
+- id: no_garbage_ppr_d4e5f6_noise
+  selector:
+    path: garbage/GARBAGE_PPR_d4e5f6_noise.py
+- id: no_garbage_ppr_g7h8i9_decoy
+  selector:
+    path: garbage/GARBAGE_PPR_g7h8i9_decoy.py
+- id: no_func_a_analyzer
+  selector:
+    path: core/func_a_analyzer.py
+- id: no_validation_consumer
+  selector:
+    path: core/validation_consumer.py
+- id: no_processor
+  selector:
+    path: core/processor.py
+- id: no_module_b
+  selector:
+    path: isolated/module_b.py
+- id: no_global_0
+  selector:
+    anchor: func_b
+- id: no_global_1
+  selector:
+    anchor: unique_b_isolated
+- id: no_global_2
+  selector:
+    anchor: another_isolated_func
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_MARKER_PPR_001_XYZ
+- id: no_global_4
+  selector:
+    anchor: garbage_function_ppr001_alpha
+- id: no_global_5
+  selector:
+    anchor: garbage_function_ppr001_beta
+- id: no_global_6
+  selector:
+    anchor: GarbageClassPPR001
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_NOISE_CONSTANT_PPR001
+- id: no_global_8
+  selector:
+    anchor: noise_generator_ppr001
+- id: no_global_9
+  selector:
+    anchor: unrelated_noise_ppr001
+- id: no_global_10
+  selector:
+    anchor: deep_noise_chain_ppr001
+- id: no_global_11
+  selector:
+    anchor: DECOY_FLAG_PPR001
+- id: no_global_12
+  selector:
+    anchor: decoy_processor_ppr001
+- id: no_global_13
+  selector:
+    anchor: decoy_orchestrator_ppr001
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_PPR_001_ANALYZER_COLLISION_A
+- id: no_global_15
+  selector:
+    anchor: GARBAGE_PPR_001_ANALYZER_MODE_B
+- id: no_global_16
+  selector:
+    anchor: GARBAGE_PPR_001_ANALYZER_CLASS_C
+- id: no_global_17
+  selector:
+    anchor: GARBAGE_PPR_001_VALIDATOR_IMPORT_D
+- id: no_global_18
+  selector:
+    anchor: GARBAGE_PPR_001_VALIDATOR_FLAG_E
+- id: no_global_19
+  selector:
+    anchor: GARBAGE_PPR_001_PROCESSOR_SIBLING_F
+- id: no_global_20
+  selector:
+    anchor: GARBAGE_PPR_001_PROCESSOR_VERSION_G
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  allowed: []
+  forbidden:
+  - no_garbage_ppr_a1b2c3_unrelated
+  - no_garbage_ppr_d4e5f6_noise
+  - no_garbage_ppr_g7h8i9_decoy
+  - no_func_a_analyzer
+  - no_validation_consumer
+  - no_processor
+  - no_module_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

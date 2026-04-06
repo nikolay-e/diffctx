@@ -1,0 +1,255 @@
+name: yaml_020_webhook_config
+repo:
+  initial_files:
+    config/webhooks.yaml: |
+      webhooks:
+        timeout: 30
+        retry_count: 3
+        endpoints:
+          - url: https://example.com/hook
+    src/webhooks.py: |
+      import requests
+      import time
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      class WebhookDispatcher:
+          def __init__(self, timeout: int = 30, retry_count: int = 3):
+              self.timeout = timeout
+              self.retry_count = retry_count
+
+          def dispatch(self, url: str, payload: dict) -> bool:
+              """Send webhook with retry logic."""
+              for attempt in range(1, self.retry_count + 1):
+                  try:
+                      resp = requests.post(url, json=payload, timeout=self.timeout)
+                      resp.raise_for_status()
+                      return True
+                  except requests.Timeout:
+                      logger.warning(f"Timeout on attempt {attempt}/{self.retry_count}")
+                  except requests.RequestException as exc:
+                      logger.error(f"Webhook failed: {exc}")
+                  if attempt < self.retry_count:
+                      time.sleep(2 ** attempt)
+              return False
+
+          def dispatch_all(self, urls: list[str], payload: dict) -> dict[str, bool]:
+              """Send to multiple endpoints, return per-URL results."""
+              return {url: self.dispatch(url, payload) for url in urls}
+    src/health_checker.py: |
+      import requests
+
+      class HealthChecker:
+          def __init__(self, check_interval: int = 60, check_timeout: int = 5):
+              self.check_interval = check_interval
+              self.check_timeout = check_timeout
+
+          def check_endpoint(self, url: str) -> bool:
+              """Poll a health endpoint."""
+              try:
+                  resp = requests.get(f"{url}/healthz", timeout=self.check_timeout)
+                  return resp.status_code == 200
+              except requests.RequestException:
+                  return False
+
+          def check_all(self, endpoints: list[str]) -> dict[str, bool]:
+              return {ep: self.check_endpoint(ep) for ep in endpoints}
+    src/event_bus.py: |
+      from collections import defaultdict
+      from typing import Callable
+
+      class EventBus:
+          def __init__(self):
+              self._handlers: dict[str, list[Callable]] = defaultdict(list)
+
+          def subscribe(self, event_type: str, handler: Callable) -> None:
+              self._handlers[event_type].append(handler)
+
+          def dispatch(self, event_type: str, data: dict) -> None:
+              """Dispatch event to all registered handlers."""
+              for handler in self._handlers.get(event_type, []):
+                  handler(data)
+
+          def clear(self, event_type: str | None = None) -> None:
+              if event_type:
+                  self._handlers.pop(event_type, None)
+              else:
+                  self._handlers.clear()
+    config/database.yaml: |
+      database:
+        host: localhost
+        port: 5432
+        name: myapp
+        pool_size: 10
+        connection_timeout: 30
+        query_timeout: 60
+  changed_files:
+    config/webhooks.yaml: |
+      webhooks:
+        timeout: 10
+        retry_count: 5
+        endpoints:
+          - url: https://example.com/hook
+          - url: https://backup.example.com/hook
+    src/webhooks.py: |
+      import requests
+      import time
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      class WebhookDispatcher:
+          def __init__(self, timeout: int = 30, retry_count: int = 3):
+              self.timeout = timeout
+              self.retry_count = retry_count
+
+          def dispatch(self, url: str, payload: dict) -> bool:
+              """Send webhook with retry logic."""
+              for attempt in range(1, self.retry_count + 1):
+                  try:
+                      resp = requests.post(url, json=payload, timeout=self.timeout)
+                      resp.raise_for_status()
+                      return True
+                  except requests.Timeout:
+                      logger.warning(f"Timeout on attempt {attempt}/{self.retry_count}")
+                  except requests.RequestException as exc:
+                      logger.error(f"Webhook failed: {exc}")
+                  if attempt < self.retry_count:
+                      time.sleep(2 ** attempt)
+              return False
+
+          def dispatch_all(self, urls: list[str], payload: dict) -> dict[str, bool]:
+              """Send to multiple endpoints, return per-URL results."""
+              return {url: self.dispatch(url, payload) for url in urls}
+    src/health_checker.py: |
+      import requests
+
+      class HealthChecker:
+          def __init__(self, check_interval: int = 60, check_timeout: int = 5):
+              self.check_interval = check_interval
+              self.check_timeout = check_timeout
+
+          def check_endpoint(self, url: str) -> bool:
+              """Poll a health endpoint."""
+              try:
+                  resp = requests.get(f"{url}/healthz", timeout=self.check_timeout)
+                  return resp.status_code == 200
+              except requests.RequestException:
+                  return False
+
+          def check_all(self, endpoints: list[str]) -> dict[str, bool]:
+              return {ep: self.check_endpoint(ep) for ep in endpoints}
+    src/event_bus.py: |
+      from collections import defaultdict
+      from typing import Callable
+
+      class EventBus:
+          def __init__(self):
+              self._handlers: dict[str, list[Callable]] = defaultdict(list)
+
+          def subscribe(self, event_type: str, handler: Callable) -> None:
+              self._handlers[event_type].append(handler)
+
+          def dispatch(self, event_type: str, data: dict) -> None:
+              """Dispatch event to all registered handlers."""
+              for handler in self._handlers.get(event_type, []):
+                  handler(data)
+
+          def clear(self, event_type: str | None = None) -> None:
+              if event_type:
+                  self._handlers.pop(event_type, None)
+              else:
+                  self._handlers.clear()
+    config/database.yaml: |
+      database:
+        host: localhost
+        port: 5432
+        name: myapp
+        pool_size: 10
+        connection_timeout: 30
+        query_timeout: 60
+  commit_message: Update files
+fragments:
+- id: webhooks
+  selector:
+    path: config/webhooks.yaml
+    anchor: 'timeout: 10'
+- id: webhooks_1
+  selector:
+    path: config/webhooks.yaml
+    anchor: 'retry_count: 5'
+- id: webhooks_2
+  selector:
+    path: config/webhooks.yaml
+    anchor: backup.example.com
+- id: webhooks_3
+  selector:
+    path: src/webhooks.py
+    anchor: 'timeout: int = 30'
+- id: webhooks_4
+  selector:
+    path: src/webhooks.py
+    anchor: 'retry_count: int = 3'
+- id: webhooks_5
+  selector:
+    path: src/webhooks.py
+    anchor: requests.post(url, json=payload, timeout=self.timeout)
+- id: no_health_checker
+  selector:
+    path: src/health_checker.py
+- id: no_event_bus
+  selector:
+    path: src/event_bus.py
+- id: no_database
+  selector:
+    path: config/database.yaml
+- id: no_global_0
+  selector:
+    anchor: HealthChecker
+- id: no_global_1
+  selector:
+    anchor: check_endpoint
+- id: no_global_2
+  selector:
+    anchor: /healthz
+- id: no_global_3
+  selector:
+    anchor: EventBus
+- id: no_global_4
+  selector:
+    anchor: subscribe
+- id: no_global_5
+  selector:
+    anchor: _handlers
+- id: no_global_6
+  selector:
+    anchor: pool_size
+- id: no_global_7
+  selector:
+    anchor: query_timeout
+- id: no_global_8
+  selector:
+    anchor: connection_timeout
+oracle:
+  required:
+  - webhooks
+  - webhooks_1
+  - webhooks_2
+  - webhooks_3
+  - webhooks_4
+  - webhooks_5
+  allowed: []
+  forbidden:
+  - no_health_checker
+  - no_event_bus
+  - no_database
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

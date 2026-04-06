@@ -1,0 +1,428 @@
+name: graph_015_markdown_internal_link
+repo:
+  initial_files:
+    docs.md: |
+      # Introduction
+
+      Welcome to the documentation. This guide covers everything you need to know.
+
+      See [Installation](#installation) for setup instructions.
+      Check [Configuration](#configuration) for customization options.
+      Read [Usage](#usage) for common workflows.
+      Visit [Troubleshooting](#troubleshooting) if you encounter issues.
+
+      # Installation
+
+      ## Prerequisites
+
+      Before installing, ensure you have:
+      - Python 3.8+
+      - pip package manager
+      - Virtual environment (recommended)
+
+      ## Quick Start
+
+      Run `pip install package`.
+
+      For development installation, see [Development Setup](#development-setup).
+
+      # Configuration
+
+      ## Basic Configuration
+
+      Create a `config.yaml` file with your settings.
+
+      See [Environment Variables](#environment-variables) for advanced options.
+
+      ## Environment Variables
+
+      Set these variables as needed:
+      - `DEBUG`: Enable debug mode
+      - `LOG_LEVEL`: Set logging level
+
+      For more details, see [Logging](#logging).
+
+      # Usage
+
+      After [Installation](#installation), you can use the tool.
+
+      ## Basic Commands
+
+      Common operations are documented below.
+
+      See [API Reference](#api-reference) for complete details.
+
+      ## Advanced Usage
+
+      For complex workflows, refer to [Configuration](#configuration).
+
+      # API Reference
+
+      ## Core Functions
+
+      The main entry points are:
+      - `run()` - Start the application
+      - `configure()` - Set options
+
+      See [Usage](#usage) for examples.
+
+      # Development Setup
+
+      For contributors, follow these additional steps after [Installation](#installation).
+
+      ## Running Tests
+
+      Execute the test suite with pytest.
+
+      # Logging
+
+      Configure logging via [Environment Variables](#environment-variables).
+
+      # Troubleshooting
+
+      ## Common Issues
+
+      If installation fails, check [Prerequisites](#prerequisites).
+      For runtime errors, enable [Logging](#logging).
+
+      ## Getting Help
+
+      Refer to [API Reference](#api-reference) or file an issue.
+    garbage/unrelated_docs_GARBAGE_GRAPH_qrs001.md: |
+      # Unrelated Guide GARBAGE_GRAPH_qrs001
+
+      This document is not related to the main docs.
+
+      See [Section A](#section-a-garbage) for details.
+
+      # Section A GARBAGE
+
+      Content for section A GARBAGE_GRAPH_qrs001.
+
+      # Section B GARBAGE
+
+      Content for section B GARBAGE_GRAPH_qrs001.
+
+      Refer back to [Section A](#section-a-garbage).
+    garbage/another_doc_GARBAGE_GRAPH_qrs002.md: |
+      # Another Document GARBAGE_GRAPH_qrs002
+
+      ## Overview GARBAGE
+
+      This is overview content GARBAGE_GRAPH_qrs002.
+
+      See [Details](#details-garbage) below.
+
+      ## Details GARBAGE
+
+      Detailed information GARBAGE_GRAPH_qrs002.
+
+      ## Summary GARBAGE
+
+      Summary of [Overview](#overview-garbage) and [Details](#details-garbage).
+    garbage/tutorial_GARBAGE_GRAPH_qrs003.md: |
+      # Tutorial GARBAGE_GRAPH_qrs003
+
+      ## Step 1 GARBAGE
+
+      First step GARBAGE_GRAPH_qrs003.
+
+      ## Step 2 GARBAGE
+
+      Second step GARBAGE_GRAPH_qrs003. See [Step 1](#step-1-garbage).
+
+      ## Step 3 GARBAGE
+
+      Final step GARBAGE_GRAPH_qrs003. Review [Step 2](#step-2-garbage).
+    garbage/setup_guide.md: |
+      # Setup Guide GARBAGE_GRAPH_015_SETUP_GUIDE_A
+
+      GARBAGE_GRAPH_015_SETUP_MARKER_B = true
+
+      ## Installation
+
+      Install with pip. See [Prerequisites](#prerequisites) first.
+
+      ## Prerequisites
+
+      - Python 3.9+
+      - pip package manager
+
+      ## Configuration
+
+      Set `DEBUG=true`. See [Environment Variables](#environment-variables).
+
+      ## Environment Variables
+
+      - `CACHE_TTL`: Cache time-to-live
+    garbage/migration_notes.md: |
+      # Migration Notes GARBAGE_GRAPH_015_MIGRATE_NOTES_C
+
+      GARBAGE_GRAPH_015_MIGRATE_FLAG_D = v2
+
+      ## Upgrading from 3.8 to 3.9
+
+      Run `pip install package-v2` to upgrade.
+
+      Check [Installation](#installation) for fresh install steps.
+
+      See [Troubleshooting](#troubleshooting) if upgrade fails.
+
+      ## Breaking Changes
+
+      - Python 3.9+ required (upgraded from 3.8)
+      - `CACHE_TTL` environment variable now required
+  changed_files:
+    docs.md: |
+      # Introduction
+
+      Welcome to the documentation. This guide covers everything you need to know.
+
+      See [Installation](#installation) for setup instructions.
+      Check [Configuration](#configuration) for customization options.
+      Read [Usage](#usage) for common workflows.
+      Visit [Troubleshooting](#troubleshooting) if you encounter issues.
+
+      # Installation
+
+      ## Prerequisites
+
+      Before installing, ensure you have:
+      - Python 3.9+ (upgraded from 3.8)
+      - pip package manager
+      - Virtual environment (recommended)
+
+      ## Quick Start
+
+      Run `pip install package-v2`.
+
+      For development installation, see [Development Setup](#development-setup).
+
+      # Configuration
+
+      ## Basic Configuration
+
+      Create a `config.yaml` file with your settings.
+
+      See [Environment Variables](#environment-variables) for advanced options.
+
+      ## Environment Variables
+
+      Set these variables as needed:
+      - `DEBUG`: Enable debug mode
+      - `LOG_LEVEL`: Set logging level
+      - `CACHE_TTL`: Cache time-to-live (new)
+
+      For more details, see [Logging](#logging).
+
+      # Usage
+
+      After [Installation](#installation), you can use the tool.
+
+      ## Basic Commands
+
+      Common operations are documented below.
+
+      See [API Reference](#api-reference) for complete details.
+
+      ## Advanced Usage
+
+      For complex workflows, refer to [Configuration](#configuration).
+
+      # API Reference
+
+      ## Core Functions
+
+      The main entry points are:
+      - `run()` - Start the application
+      - `configure()` - Set options
+
+      See [Usage](#usage) for examples.
+
+      # Development Setup
+
+      For contributors, follow these additional steps after [Installation](#installation).
+
+      ## Running Tests
+
+      Execute the test suite with pytest.
+
+      # Logging
+
+      Configure logging via [Environment Variables](#environment-variables).
+
+      # Troubleshooting
+
+      ## Common Issues
+
+      If installation fails, check [Prerequisites](#prerequisites).
+      For runtime errors, enable [Logging](#logging).
+
+      ## Getting Help
+
+      Refer to [API Reference](#api-reference) or file an issue.
+    garbage/unrelated_docs_GARBAGE_GRAPH_qrs001.md: |
+      # Unrelated Guide GARBAGE_GRAPH_qrs001
+
+      This document is not related to the main docs.
+
+      See [Section A](#section-a-garbage) for details.
+
+      # Section A GARBAGE
+
+      Content for section A GARBAGE_GRAPH_qrs001.
+
+      # Section B GARBAGE
+
+      Content for section B GARBAGE_GRAPH_qrs001.
+
+      Refer back to [Section A](#section-a-garbage).
+    garbage/another_doc_GARBAGE_GRAPH_qrs002.md: |
+      # Another Document GARBAGE_GRAPH_qrs002
+
+      ## Overview GARBAGE
+
+      This is overview content GARBAGE_GRAPH_qrs002.
+
+      See [Details](#details-garbage) below.
+
+      ## Details GARBAGE
+
+      Detailed information GARBAGE_GRAPH_qrs002.
+
+      ## Summary GARBAGE
+
+      Summary of [Overview](#overview-garbage) and [Details](#details-garbage).
+    garbage/tutorial_GARBAGE_GRAPH_qrs003.md: |
+      # Tutorial GARBAGE_GRAPH_qrs003
+
+      ## Step 1 GARBAGE
+
+      First step GARBAGE_GRAPH_qrs003.
+
+      ## Step 2 GARBAGE
+
+      Second step GARBAGE_GRAPH_qrs003. See [Step 1](#step-1-garbage).
+
+      ## Step 3 GARBAGE
+
+      Final step GARBAGE_GRAPH_qrs003. Review [Step 2](#step-2-garbage).
+    garbage/setup_guide.md: |
+      # Setup Guide GARBAGE_GRAPH_015_SETUP_GUIDE_A
+
+      GARBAGE_GRAPH_015_SETUP_MARKER_B = true
+
+      ## Installation
+
+      Install with pip. See [Prerequisites](#prerequisites) first.
+
+      ## Prerequisites
+
+      - Python 3.9+
+      - pip package manager
+
+      ## Configuration
+
+      Set `DEBUG=true`. See [Environment Variables](#environment-variables).
+
+      ## Environment Variables
+
+      - `CACHE_TTL`: Cache time-to-live
+    garbage/migration_notes.md: |
+      # Migration Notes GARBAGE_GRAPH_015_MIGRATE_NOTES_C
+
+      GARBAGE_GRAPH_015_MIGRATE_FLAG_D = v2
+
+      ## Upgrading from 3.8 to 3.9
+
+      Run `pip install package-v2` to upgrade.
+
+      Check [Installation](#installation) for fresh install steps.
+
+      See [Troubleshooting](#troubleshooting) if upgrade fails.
+
+      ## Breaking Changes
+
+      - Python 3.9+ required (upgraded from 3.8)
+      - `CACHE_TTL` environment variable now required
+  commit_message: Update files
+fragments:
+- id: docs
+  selector:
+    path: docs.md
+    anchor: '- Python 3.9+ (upgraded from 3.8)'
+- id: docs_1
+  selector:
+    path: docs.md
+    anchor: Run `pip install package-v2`.
+- id: docs_2
+  selector:
+    path: docs.md
+    anchor: '- `CACHE_TTL`: Cache time-to-live (new)'
+- id: no_unrelated_docs_garbage_graph_qrs001
+  selector:
+    path: garbage/unrelated_docs_GARBAGE_GRAPH_qrs001.md
+- id: no_another_doc_garbage_graph_qrs002
+  selector:
+    path: garbage/another_doc_GARBAGE_GRAPH_qrs002.md
+- id: no_tutorial_garbage_graph_qrs003
+  selector:
+    path: garbage/tutorial_GARBAGE_GRAPH_qrs003.md
+- id: no_setup_guide
+  selector:
+    path: garbage/setup_guide.md
+- id: no_migration_notes
+  selector:
+    path: garbage/migration_notes.md
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GRAPH_qrs001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GRAPH_qrs002
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GRAPH_qrs003
+- id: no_global_3
+  selector:
+    anchor: another_doc_GARBAGE_GRAPH_qrs002.md
+- id: no_global_4
+  selector:
+    anchor: tutorial_GARBAGE_GRAPH_qrs003.md
+- id: no_global_5
+  selector:
+    anchor: unrelated_docs_GARBAGE_GRAPH_qrs001.md
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_GRAPH_015_SETUP_GUIDE_A
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_GRAPH_015_SETUP_MARKER_B
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_GRAPH_015_MIGRATE_NOTES_C
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_GRAPH_015_MIGRATE_FLAG_D
+oracle:
+  required:
+  - docs
+  - docs_1
+  - docs_2
+  allowed: []
+  forbidden:
+  - no_unrelated_docs_garbage_graph_qrs001
+  - no_another_doc_garbage_graph_qrs002
+  - no_tutorial_garbage_graph_qrs003
+  - no_setup_guide
+  - no_migration_notes
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

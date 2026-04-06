@@ -1,0 +1,282 @@
+name: kubernetes_004_environment_variable
+repo:
+  initial_files:
+    src/config.py: |
+      import os
+      from dataclasses import dataclass
+
+      @dataclass
+      class DatabaseConfig:
+          host: str = os.environ.get('DATABASE_HOST', 'localhost')
+          port: int = int(os.environ.get('DATABASE_PORT', '5432'))
+          name: str = os.environ.get('DATABASE_NAME', 'app')
+          user: str = os.environ.get('DATABASE_USER', 'postgres')
+
+      @dataclass
+      class AppConfig:
+          debug: bool = os.environ.get('DEBUG', 'false').lower() == 'true'
+          log_level: str = os.environ.get('LOG_LEVEL', 'INFO')
+          database: DatabaseConfig = None
+
+          def __post_init__(self):
+              self.database = DatabaseConfig()
+    k8s/apps/backend/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-api
+        namespace: production
+        labels:
+          app: backend-api
+          component: api
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-api
+        template:
+          metadata:
+            labels:
+              app: backend-api
+              component: api
+          spec:
+            serviceAccountName: backend-sa
+            containers:
+            - name: api
+              image: backend-api:v1.0.0
+              ports:
+              - containerPort: 8080
+              env: []
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/backend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-api
+        namespace: production
+      spec:
+        selector:
+          app: backend-api
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/operators/cert-manager.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cert-manager-controller
+        namespace: cert-manager
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: cert-manager
+        template:
+          spec:
+            containers:
+            - name: controller
+              image: quay.io/jetstack/cert-manager-controller:v1.13.0
+              args:
+              - --cluster-resource-namespace=cert-manager
+              - --leader-election-namespace=cert-manager
+    k8s/ingress/traefik.yaml: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: traefik-ingress
+        namespace: kube-system
+      spec:
+        selector:
+          matchLabels:
+            app: traefik
+        template:
+          spec:
+            containers:
+            - name: traefik
+              image: traefik:v2.10
+              ports:
+              - containerPort: 80
+              - containerPort: 443
+  changed_files:
+    src/config.py: |
+      import os
+      from dataclasses import dataclass
+
+      @dataclass
+      class DatabaseConfig:
+          host: str = os.environ.get('DATABASE_HOST', 'localhost')
+          port: int = int(os.environ.get('DATABASE_PORT', '5432'))
+          name: str = os.environ.get('DATABASE_NAME', 'app')
+          user: str = os.environ.get('DATABASE_USER', 'postgres')
+
+      @dataclass
+      class AppConfig:
+          debug: bool = os.environ.get('DEBUG', 'false').lower() == 'true'
+          log_level: str = os.environ.get('LOG_LEVEL', 'INFO')
+          database: DatabaseConfig = None
+
+          def __post_init__(self):
+              self.database = DatabaseConfig()
+    k8s/apps/backend/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend-api
+        namespace: production
+        labels:
+          app: backend-api
+          component: api
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: backend-api
+        template:
+          metadata:
+            labels:
+              app: backend-api
+              component: api
+          spec:
+            serviceAccountName: backend-sa
+            containers:
+            - name: api
+              image: backend-api:v1.0.0
+              ports:
+              - containerPort: 8080
+              env:
+              - name: DATABASE_HOST
+                value: "postgres.database.svc.cluster.local"
+              - name: DATABASE_PORT
+                value: "5432"
+              - name: DATABASE_NAME
+                value: "production_db"
+              - name: DATABASE_USER
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: username
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/backend/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: backend-api
+        namespace: production
+      spec:
+        selector:
+          app: backend-api
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/operators/cert-manager.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cert-manager-controller
+        namespace: cert-manager
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: cert-manager
+        template:
+          spec:
+            containers:
+            - name: controller
+              image: quay.io/jetstack/cert-manager-controller:v1.13.0
+              args:
+              - --cluster-resource-namespace=cert-manager
+              - --leader-election-namespace=cert-manager
+    k8s/ingress/traefik.yaml: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: traefik-ingress
+        namespace: kube-system
+      spec:
+        selector:
+          matchLabels:
+            app: traefik
+        template:
+          spec:
+            containers:
+            - name: traefik
+              image: traefik:v2.10
+              ports:
+              - containerPort: 80
+              - containerPort: 443
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: '- name: DATABASE_HOST'
+- id: deployment_1
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: postgres.database.svc.cluster.local
+- id: deployment_2
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: '- name: DATABASE_USER'
+- id: deployment_3
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: 'secretKeyRef:'
+- id: deployment_4
+  selector:
+    path: k8s/apps/backend/deployment.yaml
+    anchor: 'name: db-credentials'
+- id: no_cert_manager
+  selector:
+    path: k8s/operators/cert-manager.yaml
+- id: no_traefik
+  selector:
+    path: k8s/ingress/traefik.yaml
+- id: no_global_0
+  selector:
+    anchor: cert-manager-controller
+- id: no_global_1
+  selector:
+    anchor: jetstack
+- id: no_global_2
+  selector:
+    anchor: leader-election-namespace
+- id: no_global_3
+  selector:
+    anchor: traefik-ingress
+- id: no_global_4
+  selector:
+    anchor: traefik:v2.10
+- id: no_global_5
+  selector:
+    anchor: DaemonSet
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - deployment_3
+  - deployment_4
+  allowed: []
+  forbidden:
+  - no_cert_manager
+  - no_traefik
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

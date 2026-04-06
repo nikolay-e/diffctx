@@ -1,0 +1,188 @@
+name: cicd_and_docs_074_sql_join_tables
+repo:
+  initial_files:
+    sql/queries/order_details.sql: |
+      -- Get order details with customer and product info
+      SELECT
+          o.id AS order_id,
+          u.name AS customer_name,
+          p.name AS product_name,
+          oi.quantity,
+          oi.price
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN products p ON oi.product_id = p.id
+      WHERE o.id = :order_id;
+    src/models/order_detail.py: |
+      from dataclasses import dataclass
+      from decimal import Decimal
+
+      @dataclass
+      class OrderDetail:
+          order_id: int
+          customer_name: str
+          product_name: str
+          quantity: int
+          price: Decimal
+    src/repositories/order_repository.py: |
+      from typing import List
+      from models.order_detail import OrderDetail
+
+      class OrderRepository:
+          def __init__(self, db):
+              self.db = db
+
+          def get_order_details(self, order_id: int) -> List[OrderDetail]:
+              results = self.db.execute_file(
+                  'sql/queries/order_details.sql',
+                  {'order_id': order_id}
+              )
+              return [OrderDetail(**r) for r in results]
+    garbage_join_optimizer.ts: |
+      const GARBAGE_CICD_DOCS_074_JOIN_MARKER_A = "inner";
+      const GARBAGE_CICD_DOCS_074_OUTER_MARKER_B = "left";
+
+      class GarbageJoinOptimizer {
+        static GARBAGE_CICD_DOCS_074_HASH_MARKER_C = true;
+        optimize(): void {}
+      }
+    garbage_query_planner.ts: |
+      const GARBAGE_CICD_DOCS_074_PLAN_MARKER_D = "cost";
+      const GARBAGE_CICD_DOCS_074_INDEX_MARKER_E = "scan";
+
+      class GarbageQueryPlanner {
+        static GARBAGE_CICD_DOCS_074_CACHE_MARKER_F = false;
+        plan(): void {}
+      }
+  changed_files:
+    sql/queries/order_details.sql: |
+      -- Get order details with customer, product, and category info
+      -- Includes line total calculation and optional category
+      SELECT
+          o.id AS order_id,
+          o.status,
+          o.created_at AS order_date,
+          u.name AS customer_name,
+          u.email AS customer_email,
+          p.name AS product_name,
+          p.sku AS product_sku,
+          c.name AS category_name,
+          oi.quantity,
+          oi.price AS unit_price,
+          (oi.quantity * oi.price) AS line_total,
+          d.code AS discount_code,
+          d.percent AS discount_percent
+      FROM orders o
+      JOIN users u ON o.user_id = u.id
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN products p ON oi.product_id = p.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN discounts d ON o.discount_id = d.id
+      WHERE o.id = :order_id
+      ORDER BY oi.id;
+    src/models/order_detail.py: |
+      from dataclasses import dataclass
+      from decimal import Decimal
+      from datetime import datetime
+      from typing import Optional
+
+      @dataclass
+      class OrderDetail:
+          order_id: int
+          status: str
+          order_date: datetime
+          customer_name: str
+          customer_email: str
+          product_name: str
+          product_sku: str
+          category_name: Optional[str]
+          quantity: int
+          unit_price: Decimal
+          line_total: Decimal
+          discount_code: Optional[str] = None
+          discount_percent: Optional[int] = None
+    src/repositories/order_repository.py: |
+      from typing import List
+      from models.order_detail import OrderDetail
+
+      class OrderRepository:
+          def __init__(self, db):
+              self.db = db
+
+          def get_order_details(self, order_id: int) -> List[OrderDetail]:
+              results = self.db.execute_file(
+                  'sql/queries/order_details.sql',
+                  {'order_id': order_id}
+              )
+              return [OrderDetail(**r) for r in results]
+    garbage_join_optimizer.ts: |
+      const GARBAGE_CICD_DOCS_074_JOIN_MARKER_A = "inner";
+      const GARBAGE_CICD_DOCS_074_OUTER_MARKER_B = "left";
+
+      class GarbageJoinOptimizer {
+        static GARBAGE_CICD_DOCS_074_HASH_MARKER_C = true;
+        optimize(): void {}
+      }
+    garbage_query_planner.ts: |
+      const GARBAGE_CICD_DOCS_074_PLAN_MARKER_D = "cost";
+      const GARBAGE_CICD_DOCS_074_INDEX_MARKER_E = "scan";
+
+      class GarbageQueryPlanner {
+        static GARBAGE_CICD_DOCS_074_CACHE_MARKER_F = false;
+        plan(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: order_details_file
+  selector:
+    path: sql/queries/order_details.sql
+- id: order_detail_file
+  selector:
+    path: src/models/order_detail.py
+- id: req_global_0
+  selector:
+    anchor: -- Get order details with customer, product, and category info
+- id: req_global_1
+  selector:
+    anchor: from datetime import datetime
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_CACHE_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_HASH_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_INDEX_MARKER_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_JOIN_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_OUTER_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_074_PLAN_MARKER_D
+- id: no_global_6
+  selector:
+    anchor: garbage_join_optimizer.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_query_planner.ts
+oracle:
+  required:
+  - order_details_file
+  - order_detail_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

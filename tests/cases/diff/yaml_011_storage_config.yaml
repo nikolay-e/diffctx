@@ -1,0 +1,143 @@
+name: yaml_011_storage_config
+repo:
+  initial_files:
+    config/storage.yaml: |
+      storage:
+        backend: local
+        path: /data/uploads
+    src/storage.py: |
+      import os
+
+      class StorageBackend:
+          def __init__(self, backend: str, path: str):
+              self.backend = backend
+              self.path = path
+
+          def save(self, filename: str, data: bytes):
+              filepath = os.path.join(self.path, filename)
+              os.makedirs(os.path.dirname(filepath), exist_ok=True)
+              with open(filepath, "wb") as f:
+                  f.write(data)
+
+          def exists(self, filename: str) -> bool:
+              return os.path.exists(os.path.join(self.path, filename))
+    config/backup.yaml: |
+      backup:
+        schedule: "0 3 * * *"
+        retention_days: 30
+        storage:
+          type: glacier
+          vault: my-backup-vault
+        notifications:
+          on_failure: ops@example.com
+    src/image_processor.py: |
+      from PIL import Image
+      from io import BytesIO
+
+      class ImageProcessor:
+          def __init__(self, max_width: int = 1920, quality: int = 85):
+              self.max_width = max_width
+              self.quality = quality
+
+          def resize(self, image_data: bytes) -> bytes:
+              img = Image.open(BytesIO(image_data))
+              if img.width > self.max_width:
+                  ratio = self.max_width / img.width
+                  new_size = (self.max_width, int(img.height * ratio))
+                  img = img.resize(new_size, Image.LANCZOS)
+              output = BytesIO()
+              img.save(output, format="JPEG", quality=self.quality)
+              return output.getvalue()
+  changed_files:
+    config/storage.yaml: |
+      storage:
+        backend: s3
+        bucket: my-bucket
+        region: us-east-1
+    src/storage.py: |
+      import os
+
+      class StorageBackend:
+          def __init__(self, backend: str, path: str):
+              self.backend = backend
+              self.path = path
+
+          def save(self, filename: str, data: bytes):
+              filepath = os.path.join(self.path, filename)
+              os.makedirs(os.path.dirname(filepath), exist_ok=True)
+              with open(filepath, "wb") as f:
+                  f.write(data)
+
+          def exists(self, filename: str) -> bool:
+              return os.path.exists(os.path.join(self.path, filename))
+    config/backup.yaml: |
+      backup:
+        schedule: "0 3 * * *"
+        retention_days: 30
+        storage:
+          type: glacier
+          vault: my-backup-vault
+        notifications:
+          on_failure: ops@example.com
+    src/image_processor.py: |
+      from PIL import Image
+      from io import BytesIO
+
+      class ImageProcessor:
+          def __init__(self, max_width: int = 1920, quality: int = 85):
+              self.max_width = max_width
+              self.quality = quality
+
+          def resize(self, image_data: bytes) -> bytes:
+              img = Image.open(BytesIO(image_data))
+              if img.width > self.max_width:
+                  ratio = self.max_width / img.width
+                  new_size = (self.max_width, int(img.height * ratio))
+                  img = img.resize(new_size, Image.LANCZOS)
+              output = BytesIO()
+              img.save(output, format="JPEG", quality=self.quality)
+              return output.getvalue()
+  commit_message: Update files
+fragments:
+- id: storage
+  selector:
+    path: src/storage.py
+    anchor: 'def __init__(self, backend: str, path: str):'
+- id: storage_1
+  selector:
+    path: src/storage.py
+    anchor: os.path.join(self.path, filename)
+- id: no_backup
+  selector:
+    path: config/backup.yaml
+- id: no_image_processor
+  selector:
+    path: src/image_processor.py
+- id: no_global_0
+  selector:
+    anchor: glacier
+- id: no_global_1
+  selector:
+    anchor: my-backup-vault
+- id: no_global_2
+  selector:
+    anchor: retention_days
+- id: no_global_3
+  selector:
+    anchor: ImageProcessor
+- id: no_global_4
+  selector:
+    anchor: LANCZOS
+oracle:
+  required:
+  - storage
+  - storage_1
+  allowed: []
+  forbidden:
+  - no_backup
+  - no_image_processor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

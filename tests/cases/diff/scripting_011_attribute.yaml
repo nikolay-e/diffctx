@@ -1,0 +1,401 @@
+name: scripting_011_attribute
+repo:
+  initial_files:
+    src/Controller.php: |
+      <?php
+
+      namespace App\Http;
+
+      class Controller
+      {
+      }
+    src/Route.php: |
+      <?php
+
+      namespace App\Http;
+
+      #[Attribute]
+      class Route
+      {
+          public string $path;
+          public string $method;
+
+          public function __construct(string $path, string $method = 'GET')
+          {
+              $this->path = $path;
+              $this->method = $method;
+          }
+
+          public function matches(string $requestPath, string $requestMethod): bool
+          {
+              return $this->path === $requestPath
+                  && strtoupper($this->method) === strtoupper($requestMethod);
+          }
+
+          public function __toString(): string
+          {
+              return "{$this->method} {$this->path}";
+          }
+      }
+    src/Router.php: |
+      <?php
+
+      namespace App\Http;
+
+      use ReflectionClass;
+      use ReflectionMethod;
+
+      class Router
+      {
+          private array $routes = [];
+
+          public function registerController(string $controllerClass): void
+          {
+              $reflection = new ReflectionClass($controllerClass);
+              foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+                  $attributes = $method->getAttributes(Route::class);
+                  foreach ($attributes as $attr) {
+                      $route = $attr->newInstance();
+                      $this->routes[] = [
+                          'path' => $route->path,
+                          'method' => $route->method,
+                          'controller' => $controllerClass,
+                          'action' => $method->getName(),
+                      ];
+                  }
+              }
+          }
+
+          public function dispatch(string $path, string $method): ?array
+          {
+              foreach ($this->routes as $route) {
+                  if ($route['path'] === $path && strtoupper($route['method']) === strtoupper($method)) {
+                      $controller = new $route['controller']();
+                      $action = $route['action'];
+                      return $controller->$action();
+                  }
+              }
+              return null;
+          }
+
+          public function getRoutes(): array
+          {
+              return $this->routes;
+          }
+
+          public function hasRoute(string $path, string $method): bool
+          {
+              foreach ($this->routes as $route) {
+                  if ($route['path'] === $path && strtoupper($route['method']) === strtoupper($method)) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+      }
+    tests/ControllerTest.php: |
+      <?php
+
+      namespace Tests;
+
+      use App\Http\Controller;
+      use App\Http\Route;
+      use ReflectionMethod;
+
+      class ControllerTest
+      {
+          public function testIndexReturnsUsers(): void
+          {
+              $controller = new Controller();
+              $result = $controller->index();
+              assert(is_array($result));
+              assert(array_key_exists('users', $result));
+          }
+
+          public function testStoreReturnsCreated(): void
+          {
+              $controller = new Controller();
+              $result = $controller->store();
+              assert($result['created'] === true);
+          }
+
+          public function testIndexHasRouteAttribute(): void
+          {
+              $method = new ReflectionMethod(Controller::class, 'index');
+              $attrs = $method->getAttributes(Route::class);
+              assert(count($attrs) === 1);
+              $route = $attrs[0]->newInstance();
+              assert($route->path === '/api/users');
+              assert($route->method === 'GET');
+          }
+
+          public function testStoreHasPostRoute(): void
+          {
+              $method = new ReflectionMethod(Controller::class, 'store');
+              $attrs = $method->getAttributes(Route::class);
+              $route = $attrs[0]->newInstance();
+              assert($route->method === 'POST');
+          }
+      }
+    src/ProductController.php: |
+      <?php
+
+      namespace App\Http;
+
+      class ProductController
+      {
+          #[Route('/api/products', 'GET')]
+          public function list(): array
+          {
+              return ['products' => []];
+          }
+
+          #[Route('/api/products', 'POST')]
+          public function create(): array
+          {
+              return ['created' => true];
+          }
+
+          #[Route('/api/products/{id}', 'GET')]
+          public function show(int $id): array
+          {
+              return ['product' => ['id' => $id]];
+          }
+
+          #[Route('/api/products/{id}', 'DELETE')]
+          public function delete(int $id): array
+          {
+              return ['deleted' => $id];
+          }
+      }
+    config/routes.php: |
+      <?php
+
+      use App\Http\Controller;
+      use App\Http\ProductController;
+      use App\Http\Router;
+
+      return function (Router $router): void {
+          $router->registerController(Controller::class);
+          $router->registerController(ProductController::class);
+
+          // Additional route scanning could be done here
+          // $router->scanDirectory(__DIR__ . '/../src/Controllers');
+      };
+    src/Middleware/AuthMiddleware.php: |
+      <?php
+
+      namespace App\Http\Middleware;
+
+      class AuthMiddleware
+      {
+          private array $protectedPaths = [
+              '/api/users',
+              '/api/products',
+          ];
+
+          public function handle(array $request, callable $next): array
+          {
+              $path = $request['path'] ?? '';
+              if ($this->isProtected($path) && empty($request['headers']['Authorization'] ?? '')) {
+                  return [
+                      'status' => 401,
+                      'body' => json_encode(['error' => 'Unauthorized']),
+                  ];
+              }
+              return $next($request);
+          }
+
+          private function isProtected(string $path): bool
+          {
+              foreach ($this->protectedPaths as $protected) {
+                  if (str_starts_with($path, $protected)) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+      }
+    src/Cacheable.php: |
+      <?php
+
+      namespace App\Http;
+
+      #[Attribute]
+      class Cacheable
+      {
+          public int $ttl;
+          public string $key;
+
+          public function __construct(string $key, int $ttl = 3600)
+          {
+              $this->key = $key;
+              $this->ttl = $ttl;
+          }
+
+          public function isExpired(int $timestamp): bool
+          {
+              return (time() - $timestamp) > $this->ttl;
+          }
+      }
+  changed_files:
+    src/Controller.php: |
+      <?php
+
+      namespace App\Http;
+
+      class Controller
+      {
+          #[Route('/api/users', 'GET')]
+          public function index(): array
+          {
+              return ['users' => []];
+          }
+
+          #[Route('/api/users', 'POST')]
+          public function store(): array
+          {
+              return ['created' => true];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: controller
+  selector:
+    path: src/Controller.php
+    anchor: '#[Route(''/api/users'', ''GET'')]'
+- id: controller_1
+  selector:
+    path: src/Controller.php
+    anchor: '#[Route(''/api/users'', ''POST'')]'
+- id: controller_2
+  selector:
+    path: src/Controller.php
+    anchor: 'public function store(): array'
+- id: route
+  selector:
+    path: src/Route.php
+    anchor: '#[Attribute]'
+- id: route_1
+  selector:
+    path: src/Route.php
+    anchor: public function __construct(string $path, string $method = 'GET')
+- id: route_2
+  selector:
+    path: src/Route.php
+    anchor: public string $path
+- id: route_3
+  selector:
+    path: src/Route.php
+    anchor: public string $method
+- id: no_router
+  selector:
+    path: src/Router.php
+- id: no_controllertest
+  selector:
+    path: tests/ControllerTest.php
+- id: no_routes
+  selector:
+    path: config/routes.php
+- id: no_productcontroller
+  selector:
+    path: src/ProductController.php
+- id: no_authmiddleware
+  selector:
+    path: src/Middleware/AuthMiddleware.php
+- id: no_cacheable
+  selector:
+    path: src/Cacheable.php
+- id: no_global_0
+  selector:
+    anchor: getAttributes(Route::class)
+- id: no_global_1
+  selector:
+    anchor: dispatch
+- id: no_global_2
+  selector:
+    anchor: registerController
+- id: no_global_3
+  selector:
+    anchor: hasRoute
+- id: no_global_4
+  selector:
+    anchor: testIndexReturnsUsers
+- id: no_global_5
+  selector:
+    anchor: testStoreReturnsCreated
+- id: no_global_6
+  selector:
+    anchor: testIndexHasRouteAttribute
+- id: no_global_7
+  selector:
+    anchor: testStoreHasPostRoute
+- id: no_global_8
+  selector:
+    anchor: registerController(Controller::class)
+- id: no_global_9
+  selector:
+    anchor: registerController(ProductController::class)
+- id: no_global_10
+  selector:
+    anchor: scanDirectory
+- id: no_global_11
+  selector:
+    anchor: ProductController
+- id: no_global_12
+  selector:
+    anchor: '''/api/products'''
+- id: no_global_13
+  selector:
+    anchor: '''DELETE'''
+- id: no_global_14
+  selector:
+    anchor: AuthMiddleware
+- id: no_global_15
+  selector:
+    anchor: protectedPaths
+- id: no_global_16
+  selector:
+    anchor: Unauthorized
+- id: no_global_17
+  selector:
+    anchor: Cacheable
+- id: no_global_18
+  selector:
+    anchor: isExpired
+oracle:
+  required:
+  - controller
+  - controller_1
+  - controller_2
+  - route
+  - route_1
+  - route_2
+  - route_3
+  allowed: []
+  forbidden:
+  - no_router
+  - no_controllertest
+  - no_routes
+  - no_productcontroller
+  - no_authmiddleware
+  - no_cacheable
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

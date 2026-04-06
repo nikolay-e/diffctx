@@ -1,0 +1,167 @@
+name: comprehensive_002_context_caller_backward_edges
+repo:
+  initial_files:
+    src/core.py: |
+      from typing import List
+
+      def core_function(values: List[int]) -> int:
+          return 42
+
+      def secondary_helper(x: int) -> int:
+          return x * x
+
+      def format_output(result: int) -> str:
+          return f"Result: {result}"
+    src/caller_a.py: |
+      from src.core import core_function, format_output
+
+      def use_core_a(data):
+          result = core_function(data)
+          return format_output(result + 1)
+
+      def prepare_data_a(raw_input):
+          cleaned = [int(x) for x in raw_input if x.isdigit()]
+          return cleaned
+    src/caller_b.py: |
+      from src.core import core_function, secondary_helper
+
+      def use_core_b(data):
+          base = core_function(data)
+          multiplied = secondary_helper(base)
+          return multiplied * 2
+
+      def validate_input_b(data):
+          return all(isinstance(x, int) for x in data)
+    src/unrelated_module.py: |
+      import os
+
+      def read_environment_variable(key):
+          return os.environ.get(key, "default")
+
+      def build_connection_string(host, port, db):
+          return f"postgresql://{host}:{port}/{db}"
+    garbage_rate_limiter.py: |
+      GARBAGE_COMP_002_BUCKET_SIZE_A = "tokens"
+      GARBAGE_COMP_002_REFILL_RATE_B = "per_second"
+
+      class GarbageRateLimiter:
+          GARBAGE_COMP_002_WINDOW_DURATION_C = 60
+          def limit(self):
+              pass
+    garbage_circuit_breaker.py: |
+      GARBAGE_COMP_002_FAILURE_THRESHOLD_D = "threshold"
+      GARBAGE_COMP_002_RECOVERY_TIMEOUT_E = "recovery"
+
+      class GarbageCircuitBreaker:
+          GARBAGE_COMP_002_HALF_OPEN_STATE_F = True
+          def trip(self):
+              pass
+  changed_files:
+    src/core.py: |
+      from typing import List
+
+      def core_function(values: List[int]) -> int:
+          if not values:
+              return 0
+          total = sum(values)
+          return total // len(values)
+
+      def secondary_helper(x: int) -> int:
+          return x * x
+
+      def format_output(result: int) -> str:
+          return f"Result: {result}"
+    src/caller_a.py: |
+      from src.core import core_function, format_output
+
+      def use_core_a(data):
+          result = core_function(data)
+          return format_output(result + 1)
+
+      def prepare_data_a(raw_input):
+          cleaned = [int(x) for x in raw_input if x.isdigit()]
+          return cleaned
+    src/caller_b.py: |
+      from src.core import core_function, secondary_helper
+
+      def use_core_b(data):
+          base = core_function(data)
+          multiplied = secondary_helper(base)
+          return multiplied * 2
+
+      def validate_input_b(data):
+          return all(isinstance(x, int) for x in data)
+    src/unrelated_module.py: |
+      import os
+
+      def read_environment_variable(key):
+          return os.environ.get(key, "default")
+
+      def build_connection_string(host, port, db):
+          return f"postgresql://{host}:{port}/{db}"
+    garbage_rate_limiter.py: |
+      GARBAGE_COMP_002_BUCKET_SIZE_A = "tokens"
+      GARBAGE_COMP_002_REFILL_RATE_B = "per_second"
+
+      class GarbageRateLimiter:
+          GARBAGE_COMP_002_WINDOW_DURATION_C = 60
+          def limit(self):
+              pass
+    garbage_circuit_breaker.py: |
+      GARBAGE_COMP_002_FAILURE_THRESHOLD_D = "threshold"
+      GARBAGE_COMP_002_RECOVERY_TIMEOUT_E = "recovery"
+
+      class GarbageCircuitBreaker:
+          GARBAGE_COMP_002_HALF_OPEN_STATE_F = True
+          def trip(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: core_file
+  selector:
+    path: src/core.py
+- id: req_global_0
+  selector:
+    anchor: 'if not values:'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_002_BUCKET_SIZE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_002_FAILURE_THRESHOLD_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_002_HALF_OPEN_STATE_F
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_002_RECOVERY_TIMEOUT_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_002_REFILL_RATE_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_002_WINDOW_DURATION_C
+- id: no_global_6
+  selector:
+    anchor: garbage_circuit_breaker.py
+- id: no_global_7
+  selector:
+    anchor: garbage_rate_limiter.py
+- id: no_global_8
+  selector:
+    anchor: unrelated_module.py
+oracle:
+  required:
+  - core_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

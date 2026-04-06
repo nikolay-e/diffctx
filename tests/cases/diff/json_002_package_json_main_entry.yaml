@@ -1,0 +1,168 @@
+name: json_002_package_json_main_entry
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "mylib",
+        "version": "2.1.0",
+        "description": "Utility library for string manipulation",
+        "main": "dist/index.js",
+        "scripts": {
+          "build": "tsc",
+          "prepublishOnly": "npm run build"
+        },
+        "keywords": ["string", "utils"],
+        "license": "MIT",
+        "devDependencies": {
+          "typescript": "^5.2.0"
+        }
+      }
+    src/index.ts: |
+      export function greet(name: string): string {
+          return `Hello, ${name}!`;
+      }
+
+      export function capitalize(str: string): string {
+          if (str.length === 0) return str;
+          return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      export function slugify(text: string): string {
+          return text
+              .toLowerCase()
+              .replace(/\s+/g, '-')
+              .replace(/[^a-z0-9-]/g, '');
+      }
+
+      export function truncate(str: string, maxLength: number): string {
+          if (str.length <= maxLength) return str;
+          return str.slice(0, maxLength - 3) + '...';
+      }
+    src/types.ts: |
+      export interface StringTransformOptions {
+          preserveCase: boolean;
+          trimWhitespace: boolean;
+          maxLength: number;
+      }
+
+      export type TransformFn = (input: string) => string;
+
+      export interface TransformPipeline {
+          transforms: TransformFn[];
+          apply(input: string): string;
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "declaration": true,
+          "outDir": "dist",
+          "rootDir": "src",
+          "strict": true,
+          "esModuleInterop": true
+        },
+        "include": ["src/**/*"]
+      }
+    .npmrc: |
+      registry=https://registry.npmjs.org/
+      access=public
+    .npmignore: |
+      src/
+      tsconfig.json
+      .eslintrc.json
+      tests/
+      coverage/
+  changed_files:
+    package.json: |
+      {
+        "name": "mylib",
+        "version": "2.1.0",
+        "description": "Utility library for string manipulation",
+        "main": "dist/index.cjs",
+        "module": "dist/index.mjs",
+        "types": "dist/index.d.ts",
+        "exports": {
+          ".": {
+            "require": "./dist/index.cjs",
+            "import": "./dist/index.mjs",
+            "types": "./dist/index.d.ts"
+          }
+        },
+        "scripts": {
+          "build": "tsc",
+          "prepublishOnly": "npm run build"
+        },
+        "keywords": ["string", "utils"],
+        "license": "MIT",
+        "devDependencies": {
+          "typescript": "^5.2.0"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: package
+  selector:
+    path: package.json
+    anchor: '"main": "dist/index.cjs"'
+- id: package_1
+  selector:
+    path: package.json
+    anchor: '"module": "dist/index.mjs"'
+- id: package_2
+  selector:
+    path: package.json
+    anchor: '"types": "dist/index.d.ts"'
+- id: package_3
+  selector:
+    path: package.json
+    anchor: '"require": "./dist/index.cjs"'
+- id: package_4
+  selector:
+    path: package.json
+    anchor: '"import": "./dist/index.mjs"'
+- id: no_tsconfig
+  selector:
+    path: tsconfig.json
+- id: no_npmrc
+  selector:
+    path: .npmrc
+- id: no_npmignore
+  selector:
+    path: .npmignore
+- id: no_global_0
+  selector:
+    anchor: '"declaration": true'
+- id: no_global_1
+  selector:
+    anchor: esModuleInterop
+- id: no_global_2
+  selector:
+    anchor: registry.npmjs.org
+- id: no_global_3
+  selector:
+    anchor: access=public
+- id: no_global_4
+  selector:
+    anchor: coverage/
+- id: no_global_5
+  selector:
+    anchor: tsconfig.json
+oracle:
+  required:
+  - package
+  - package_1
+  - package_2
+  - package_3
+  - package_4
+  allowed: []
+  forbidden:
+  - no_tsconfig
+  - no_npmrc
+  - no_npmignore
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

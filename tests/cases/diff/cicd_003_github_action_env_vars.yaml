@@ -1,0 +1,516 @@
+name: cicd_003_github_action_env_vars
+repo:
+  initial_files:
+    .github/workflows/deploy.yml: |
+      name: Deploy
+      on:
+        push:
+          branches: [main]
+        workflow_dispatch:
+          inputs:
+            environment:
+              description: 'Target environment'
+              required: true
+              default: 'staging'
+              type: choice
+              options:
+                - staging
+                - production
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          env:
+            NODE_ENV: production
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+                cache: 'npm'
+            - run: npm ci
+            - run: npm run build
+            - run: npm run deploy
+    src/deploy.ts: |
+      import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+      import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
+      import * as fs from 'fs';
+      import * as path from 'path';
+
+      interface DeployConfig {
+        environment: string;
+        region: string;
+        bucket: string;
+        distributionId: string;
+      }
+
+      function getConfig(): DeployConfig {
+        const env = process.env.NODE_ENV || 'development';
+        return {
+          environment: env,
+          region: process.env.AWS_REGION || 'us-east-1',
+          bucket: process.env.S3_BUCKET || `app-${env}`,
+          distributionId: process.env.CLOUDFRONT_ID || '',
+        };
+      }
+
+      async function uploadToS3(config: DeployConfig, filePath: string): Promise<void> {
+        const client = new S3Client({ region: config.region });
+        const content = fs.readFileSync(filePath);
+        const key = path.basename(filePath);
+
+        await client.send(new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: key,
+          Body: content,
+        }));
+
+        console.log(`Uploaded ${key} to ${config.bucket}`);
+      }
+
+      async function invalidateCache(config: DeployConfig): Promise<void> {
+        if (!config.distributionId) {
+          console.log('No CloudFront distribution configured');
+          return;
+        }
+
+        const client = new CloudFrontClient({ region: config.region });
+        await client.send(new CreateInvalidationCommand({
+          DistributionId: config.distributionId,
+          InvalidationBatch: {
+            CallerReference: Date.now().toString(),
+            Paths: { Quantity: 1, Items: ['/*'] },
+          },
+        }));
+
+        console.log('Cache invalidation started');
+      }
+
+      async function main(): Promise<void> {
+        const config = getConfig();
+        console.log(`Deploying to ${config.environment}`);
+
+        const distDir = './dist';
+        const files = fs.readdirSync(distDir);
+
+        for (const file of files) {
+          await uploadToS3(config, path.join(distDir, file));
+        }
+
+        await invalidateCache(config);
+        console.log('Deployment completed');
+      }
+
+      main().catch(console.error);
+    src/config/environments.ts: |
+      export interface EnvironmentConfig {
+        apiUrl: string;
+        logLevel: string;
+        enableMetrics: boolean;
+      }
+
+      export const environments: Record<string, EnvironmentConfig> = {
+        development: {
+          apiUrl: 'http://localhost:3000',
+          logLevel: 'debug',
+          enableMetrics: false,
+        },
+        staging: {
+          apiUrl: 'https://staging-api.example.com',
+          logLevel: 'info',
+          enableMetrics: true,
+        },
+        production: {
+          apiUrl: 'https://api.example.com',
+          logLevel: 'warn',
+          enableMetrics: true,
+        },
+      };
+
+      export function getEnvironmentConfig(env: string): EnvironmentConfig {
+        return environments[env] || environments.development;
+      }
+    garbage_rollback.ts: |
+      GARBAGE_CICD_003_ROLLBACK_MARKER_A = "rollback";
+      GARBAGE_CICD_003_VERSION_MARKER_B = "v1.0.0";
+
+      class GarbageRollbackManager {
+        GARBAGE_CICD_003_HISTORY_MARKER_C: string[] = [];
+
+        rollback(): void {
+          console.log("Rolling back...");
+        }
+      }
+    garbage_notifications.ts: |
+      GARBAGE_CICD_003_SLACK_MARKER_D = "webhook";
+      GARBAGE_CICD_003_EMAIL_MARKER_E = true;
+
+      class GarbageNotificationService {
+        GARBAGE_CICD_003_CHANNELS_MARKER_F: string[] = [];
+
+        notify(): void {
+          console.log("Notifying...");
+        }
+      }
+    .github/workflows/staging-deploy.yml: |
+      GARBAGE_CICD_003_STAGING_G = "staging_workflow"
+      GARBAGE_CICD_003_ECS_H = "ecs_target"
+
+      name: Staging Deploy
+      on:
+        push:
+          branches: [develop]
+      jobs:
+        deploy-staging:
+          runs-on: ubuntu-latest
+          env:
+            DEPLOY_TARGET: ecs
+            AWS_REGION: eu-west-1
+            NODE_ENV: staging
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm ci
+            - run: npm run build
+            - run: npm run deploy:staging
+    docker-compose.yml: |
+      GARBAGE_CICD_003_COMPOSE_I = "docker_compose"
+      GARBAGE_CICD_003_DOCKER_J = "container_env"
+
+      version: "3.8"
+      services:
+        app:
+          build: .
+          environment:
+            - AWS_REGION=us-west-2
+            - NODE_ENV=production
+          ports:
+            - "3000:3000"
+        redis:
+          image: redis:7
+          ports:
+            - "6379:6379"
+    scripts/check_deploy.sh: |
+      GARBAGE_CICD_003_SCRIPT_K="deploy_check"
+      GARBAGE_CICD_003_CHECK_L="validation"
+
+      if [ -z "$DEPLOY_TARGET" ]; then
+        echo "DEPLOY_TARGET is not set"
+        exit 1
+      fi
+
+      if [ "$DEPLOY_TARGET" = "kubernetes" ]; then
+        kubectl get pods
+      elif [ "$DEPLOY_TARGET" = "ecs" ]; then
+        aws ecs list-services
+      fi
+  changed_files:
+    .github/workflows/deploy.yml: |
+      name: Deploy
+      on:
+        push:
+          branches: [main]
+        workflow_dispatch:
+          inputs:
+            environment:
+              description: 'Target environment'
+              required: true
+              default: 'staging'
+              type: choice
+              options:
+                - staging
+                - production
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          env:
+            NODE_ENV: production
+            DEPLOY_TARGET: kubernetes
+            AWS_REGION: us-east-1
+          steps:
+            - uses: actions/checkout@v4
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+                cache: 'npm'
+            - run: npm ci
+            - run: npm run build
+            - run: npm run deploy
+    src/deploy.ts: |
+      import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+      import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
+      import * as fs from 'fs';
+      import * as path from 'path';
+
+      interface DeployConfig {
+        environment: string;
+        region: string;
+        bucket: string;
+        distributionId: string;
+        deployTarget: string;
+      }
+
+      function getConfig(): DeployConfig {
+        const env = process.env.NODE_ENV || 'development';
+        return {
+          environment: env,
+          region: process.env.AWS_REGION || 'us-east-1',
+          bucket: process.env.S3_BUCKET || `app-${env}`,
+          distributionId: process.env.CLOUDFRONT_ID || '',
+          deployTarget: process.env.DEPLOY_TARGET || 's3',
+        };
+      }
+
+      async function uploadToS3(config: DeployConfig, filePath: string): Promise<void> {
+        const client = new S3Client({ region: config.region });
+        const content = fs.readFileSync(filePath);
+        const key = path.basename(filePath);
+
+        await client.send(new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: key,
+          Body: content,
+        }));
+
+        console.log(`Uploaded ${key} to ${config.bucket}`);
+      }
+
+      async function invalidateCache(config: DeployConfig): Promise<void> {
+        if (!config.distributionId) {
+          console.log('No CloudFront distribution configured');
+          return;
+        }
+
+        const client = new CloudFrontClient({ region: config.region });
+        await client.send(new CreateInvalidationCommand({
+          DistributionId: config.distributionId,
+          InvalidationBatch: {
+            CallerReference: Date.now().toString(),
+            Paths: { Quantity: 1, Items: ['/*'] },
+          },
+        }));
+
+        console.log('Cache invalidation started');
+      }
+
+      async function main(): Promise<void> {
+        const config = getConfig();
+        console.log(`Deploying to ${config.environment} via ${config.deployTarget}`);
+
+        const distDir = './dist';
+        const files = fs.readdirSync(distDir);
+
+        for (const file of files) {
+          await uploadToS3(config, path.join(distDir, file));
+        }
+
+        await invalidateCache(config);
+        console.log('Deployment completed');
+      }
+
+      main().catch(console.error);
+    src/config/environments.ts: |
+      export interface EnvironmentConfig {
+        apiUrl: string;
+        logLevel: string;
+        enableMetrics: boolean;
+      }
+
+      export const environments: Record<string, EnvironmentConfig> = {
+        development: {
+          apiUrl: 'http://localhost:3000',
+          logLevel: 'debug',
+          enableMetrics: false,
+        },
+        staging: {
+          apiUrl: 'https://staging-api.example.com',
+          logLevel: 'info',
+          enableMetrics: true,
+        },
+        production: {
+          apiUrl: 'https://api.example.com',
+          logLevel: 'warn',
+          enableMetrics: true,
+        },
+      };
+
+      export function getEnvironmentConfig(env: string): EnvironmentConfig {
+        return environments[env] || environments.development;
+      }
+    garbage_rollback.ts: |
+      GARBAGE_CICD_003_ROLLBACK_MARKER_A = "rollback";
+      GARBAGE_CICD_003_VERSION_MARKER_B = "v1.0.0";
+
+      class GarbageRollbackManager {
+        GARBAGE_CICD_003_HISTORY_MARKER_C: string[] = [];
+
+        rollback(): void {
+          console.log("Rolling back...");
+        }
+      }
+    garbage_notifications.ts: |
+      GARBAGE_CICD_003_SLACK_MARKER_D = "webhook";
+      GARBAGE_CICD_003_EMAIL_MARKER_E = true;
+
+      class GarbageNotificationService {
+        GARBAGE_CICD_003_CHANNELS_MARKER_F: string[] = [];
+
+        notify(): void {
+          console.log("Notifying...");
+        }
+      }
+    .github/workflows/staging-deploy.yml: |
+      GARBAGE_CICD_003_STAGING_G = "staging_workflow"
+      GARBAGE_CICD_003_ECS_H = "ecs_target"
+
+      name: Staging Deploy
+      on:
+        push:
+          branches: [develop]
+      jobs:
+        deploy-staging:
+          runs-on: ubuntu-latest
+          env:
+            DEPLOY_TARGET: ecs
+            AWS_REGION: eu-west-1
+            NODE_ENV: staging
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm ci
+            - run: npm run build
+            - run: npm run deploy:staging
+    docker-compose.yml: |
+      GARBAGE_CICD_003_COMPOSE_I = "docker_compose"
+      GARBAGE_CICD_003_DOCKER_J = "container_env"
+
+      version: "3.8"
+      services:
+        app:
+          build: .
+          environment:
+            - AWS_REGION=us-west-2
+            - NODE_ENV=production
+          ports:
+            - "3000:3000"
+        redis:
+          image: redis:7
+          ports:
+            - "6379:6379"
+    scripts/check_deploy.sh: |
+      GARBAGE_CICD_003_SCRIPT_K="deploy_check"
+      GARBAGE_CICD_003_CHECK_L="validation"
+
+      if [ -z "$DEPLOY_TARGET" ]; then
+        echo "DEPLOY_TARGET is not set"
+        exit 1
+      fi
+
+      if [ "$DEPLOY_TARGET" = "kubernetes" ]; then
+        kubectl get pods
+      elif [ "$DEPLOY_TARGET" = "ecs" ]; then
+        aws ecs list-services
+      fi
+  commit_message: Update files
+fragments:
+- id: deploy
+  selector:
+    path: .github/workflows/deploy.yml
+    anchor: 'DEPLOY_TARGET: kubernetes'
+- id: deploy_1
+  selector:
+    path: .github/workflows/deploy.yml
+    anchor: 'AWS_REGION: us-east-1'
+- id: deploy_2
+  selector:
+    path: src/deploy.ts
+    anchor: 'deployTarget: string;'
+- id: deploy_3
+  selector:
+    path: src/deploy.ts
+    anchor: 'deployTarget: process.env.DEPLOY_TARGET || ''s3'','
+- id: deploy_4
+  selector:
+    path: src/deploy.ts
+    anchor: interface DeployConfig
+- id: deploy_5
+  selector:
+    path: src/deploy.ts
+    anchor: 'function getConfig(): DeployConfig'
+- id: no_garbage_rollback
+  selector:
+    path: garbage_rollback.ts
+- id: no_garbage_notifications
+  selector:
+    path: garbage_notifications.ts
+- id: no_staging_deploy
+  selector:
+    path: .github/workflows/staging-deploy.yml
+- id: no_docker_compose
+  selector:
+    path: docker-compose.yml
+- id: no_check_deploy
+  selector:
+    path: scripts/check_deploy.sh
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_003_ROLLBACK_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_003_VERSION_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_003_HISTORY_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_003_SLACK_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_003_EMAIL_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_003_CHANNELS_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD_003_STAGING_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD_003_ECS_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD_003_COMPOSE_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD_003_DOCKER_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_CICD_003_SCRIPT_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_CICD_003_CHECK_L
+oracle:
+  required:
+  - deploy
+  - deploy_1
+  - deploy_2
+  - deploy_3
+  - deploy_4
+  - deploy_5
+  allowed: []
+  forbidden:
+  - no_garbage_rollback
+  - no_garbage_notifications
+  - no_staging_deploy
+  - no_docker_compose
+  - no_check_deploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

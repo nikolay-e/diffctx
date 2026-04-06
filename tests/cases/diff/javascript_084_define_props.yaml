@@ -1,0 +1,228 @@
+name: javascript_084_define_props
+repo:
+  initial_files:
+    types.ts: |
+      export interface CardProps {
+          title: string;
+          subtitle?: string;
+          variant: 'primary' | 'secondary';
+      }
+
+      export interface PreviewProps {
+          imageUrl: string;
+          caption?: string;
+          aspect: '16:9' | '4:3' | '1:1';
+      }
+    Card.vue: |
+      <template><div>initial</div></template>
+    CardList.vue: |
+      <script setup lang="ts">
+      import Card from './Card.vue';
+      import type { CardProps } from './types';
+
+      const cards: CardProps[] = [
+          { title: 'First', variant: 'primary' },
+          { title: 'Second', subtitle: 'Details', variant: 'secondary' },
+      ];
+      </script>
+
+      <template>
+          <div class="card-list">
+              <Card v-for="(card, i) in cards" :key="i" v-bind="card" />
+          </div>
+      </template>
+    CardPreview.vue: |
+      <script setup lang="ts">
+      import type { PreviewProps } from './types';
+
+      const props = defineProps<PreviewProps>();
+      </script>
+
+      <template>
+          <figure :class="props.aspect">
+              <img :src="props.imageUrl" :alt="props.caption" />
+              <figcaption v-if="props.caption">{{ props.caption }}</figcaption>
+          </figure>
+      </template>
+    card-animations.ts: |
+      export function cardEnterTransition(el: HTMLElement): void {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(20px)';
+          requestAnimationFrame(() => {
+              el.style.transition = 'opacity 0.3s, transform 0.3s';
+              el.style.opacity = '1';
+              el.style.transform = 'translateY(0)';
+          });
+      }
+
+      export function cardLeaveTransition(el: HTMLElement): void {
+          el.style.transition = 'opacity 0.2s';
+          el.style.opacity = '0';
+      }
+  changed_files:
+    types.ts: |
+      export interface CardProps {
+          title: string;
+          subtitle?: string;
+          variant: 'primary' | 'secondary';
+      }
+
+      export interface PreviewProps {
+          imageUrl: string;
+          caption?: string;
+          aspect: '16:9' | '4:3' | '1:1';
+      }
+    Card.vue: |
+      <script setup lang="ts">
+      import type { CardProps } from './types';
+
+      const props = defineProps<CardProps>();
+      </script>
+
+      <template>
+          <div :class="props.variant">
+              <h2>{{ props.title }}</h2>
+              <p v-if="props.subtitle">{{ props.subtitle }}</p>
+          </div>
+      </template>
+    CardList.vue: |
+      <script setup lang="ts">
+      import Card from './Card.vue';
+      import type { CardProps } from './types';
+
+      const cards: CardProps[] = [
+          { title: 'First', variant: 'primary' },
+          { title: 'Second', subtitle: 'Details', variant: 'secondary' },
+      ];
+      </script>
+
+      <template>
+          <div class="card-list">
+              <Card v-for="(card, i) in cards" :key="i" v-bind="card" />
+          </div>
+      </template>
+    CardPreview.vue: |
+      <script setup lang="ts">
+      import type { PreviewProps } from './types';
+
+      const props = defineProps<PreviewProps>();
+      </script>
+
+      <template>
+          <figure :class="props.aspect">
+              <img :src="props.imageUrl" :alt="props.caption" />
+              <figcaption v-if="props.caption">{{ props.caption }}</figcaption>
+          </figure>
+      </template>
+    card-animations.ts: |
+      export function cardEnterTransition(el: HTMLElement): void {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(20px)';
+          requestAnimationFrame(() => {
+              el.style.transition = 'opacity 0.3s, transform 0.3s';
+              el.style.opacity = '1';
+              el.style.transform = 'translateY(0)';
+          });
+      }
+
+      export function cardLeaveTransition(el: HTMLElement): void {
+          el.style.transition = 'opacity 0.2s';
+          el.style.opacity = '0';
+      }
+  commit_message: Update files
+fragments:
+- id: card
+  selector:
+    path: Card.vue
+    anchor: defineProps<CardProps>()
+- id: card_1
+  selector:
+    path: Card.vue
+    anchor: props.variant
+- id: card_2
+  selector:
+    path: Card.vue
+    anchor: props.title
+- id: types
+  selector:
+    path: types.ts
+    anchor: interface CardProps {
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'title: string'
+- id: types_2
+  selector:
+    path: types.ts
+    anchor: 'subtitle?: string'
+- id: types_3
+  selector:
+    path: types.ts
+    anchor: 'variant: ''primary'' | ''secondary'''
+- id: no_cardlist
+  selector:
+    path: CardList.vue
+- id: no_cardpreview
+  selector:
+    path: CardPreview.vue
+- id: no_card_animations
+  selector:
+    path: card-animations.ts
+- id: no_global_0
+  selector:
+    anchor: CardList
+- id: no_global_1
+  selector:
+    anchor: card-list
+- id: no_global_2
+  selector:
+    anchor: v-for
+- id: no_global_3
+  selector:
+    anchor: v-bind="card"
+- id: no_global_4
+  selector:
+    anchor: CardPreview
+- id: no_global_5
+  selector:
+    anchor: PreviewProps
+- id: no_global_6
+  selector:
+    anchor: imageUrl
+- id: no_global_7
+  selector:
+    anchor: figcaption
+- id: no_global_8
+  selector:
+    anchor: cardEnterTransition
+- id: no_global_9
+  selector:
+    anchor: cardLeaveTransition
+- id: no_global_10
+  selector:
+    anchor: translateY
+oracle:
+  required:
+  - card
+  - card_1
+  - card_2
+  - types
+  - types_1
+  - types_2
+  - types_3
+  allowed: []
+  forbidden:
+  - no_cardlist
+  - no_cardpreview
+  - no_card_animations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

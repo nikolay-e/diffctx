@@ -1,0 +1,269 @@
+name: jvm_and_compiled_049_scala_case_class
+repo:
+  initial_files:
+    User.scala: |
+      case class User(name: String, age: Int) {
+        def isAdult: Boolean = age >= 18
+
+        def greet: String = s"Hello, I'm $name and I'm $age years old"
+      }
+
+      object User {
+        def apply(name: String): User = User(name, 0)
+
+        def adults(users: List[User]): List[User] = users.filter(_.isAdult)
+      }
+    UserService.scala: |
+      class UserService {}
+    services/ProductService.scala: |
+      case class Product(name: String, price: Double, inStock: Boolean = true)
+
+      class ProductService {
+        def createProduct(name: String, price: Double): Product = {
+          Product(name, price)
+        }
+
+        def copyWithNewPrice(product: Product, newPrice: Double): Product = {
+          product.copy(price = newPrice)
+        }
+
+        def compareProducts(p1: Product, p2: Product): Boolean = {
+          p1 == p2
+        }
+      }
+    formatters/UserFormatter.scala: |
+      object UserFormatter {
+        def format(user: User): String = s"${user.name} (age: ${user.age})"
+
+        def formatList(users: List[User]): String = {
+          users.map(format).mkString(", ")
+        }
+
+        def toJson(user: User): String = {
+          s"""{"name": "${user.name}", "age": ${user.age}}"""
+        }
+      }
+    stats/UserStats.scala: |
+      object UserStats {
+        def averageAge(users: List[User]): Double = {
+          if (users.isEmpty) 0.0
+          else users.map(_.age).sum.toDouble / users.size
+        }
+
+        def countAdults(users: List[User]): Int = {
+          users.count(_.isAdult)
+        }
+
+        def oldestUser(users: List[User]): Option[User] = {
+          users.sortBy(-_.age).headOption
+        }
+
+        def youngestUser(users: List[User]): Option[User] = {
+          users.sortBy(_.age).headOption
+        }
+      }
+    repositories/UserRepository.scala: |
+      class UserRepository {
+        private var users = Map.empty[String, User]
+
+        def save(user: User): Unit = {
+          users = users + (user.name -> user)
+        }
+
+        def findByName(name: String): Option[User] = users.get(name)
+
+        def findAll(): List[User] = users.values.toList
+
+        def delete(name: String): Unit = {
+          users = users - name
+        }
+      }
+  changed_files:
+    User.scala: |
+      case class User(name: String, age: Int) {
+        def isAdult: Boolean = age >= 18
+
+        def greet: String = s"Hello, I'm $name and I'm $age years old"
+      }
+
+      object User {
+        def apply(name: String): User = User(name, 0)
+
+        def adults(users: List[User]): List[User] = users.filter(_.isAdult)
+      }
+    UserService.scala: |
+      class UserService {
+        def createUser(name: String, age: Int): User = {
+          User(name, age)
+        }
+
+        def copyWithNewAge(user: User, newAge: Int): User = {
+          user.copy(age = newAge)
+        }
+
+        def compareUsers(u1: User, u2: User): Boolean = {
+          u1 == u2
+        }
+      }
+    services/ProductService.scala: |
+      case class Product(name: String, price: Double, inStock: Boolean = true)
+
+      class ProductService {
+        def createProduct(name: String, price: Double): Product = {
+          Product(name, price)
+        }
+
+        def copyWithNewPrice(product: Product, newPrice: Double): Product = {
+          product.copy(price = newPrice)
+        }
+
+        def compareProducts(p1: Product, p2: Product): Boolean = {
+          p1 == p2
+        }
+      }
+    formatters/UserFormatter.scala: |
+      object UserFormatter {
+        def format(user: User): String = s"${user.name} (age: ${user.age})"
+
+        def formatList(users: List[User]): String = {
+          users.map(format).mkString(", ")
+        }
+
+        def toJson(user: User): String = {
+          s"""{"name": "${user.name}", "age": ${user.age}}"""
+        }
+      }
+    stats/UserStats.scala: |
+      object UserStats {
+        def averageAge(users: List[User]): Double = {
+          if (users.isEmpty) 0.0
+          else users.map(_.age).sum.toDouble / users.size
+        }
+
+        def countAdults(users: List[User]): Int = {
+          users.count(_.isAdult)
+        }
+
+        def oldestUser(users: List[User]): Option[User] = {
+          users.sortBy(-_.age).headOption
+        }
+
+        def youngestUser(users: List[User]): Option[User] = {
+          users.sortBy(_.age).headOption
+        }
+      }
+    repositories/UserRepository.scala: |
+      class UserRepository {
+        private var users = Map.empty[String, User]
+
+        def save(user: User): Unit = {
+          users = users + (user.name -> user)
+        }
+
+        def findByName(name: String): Option[User] = users.get(name)
+
+        def findAll(): List[User] = users.values.toList
+
+        def delete(name: String): Unit = {
+          users = users - name
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: UserService.scala
+    anchor: User(name, age)
+- id: userservice_1
+  selector:
+    path: UserService.scala
+    anchor: user.copy(age = newAge)
+- id: userservice_2
+  selector:
+    path: UserService.scala
+    anchor: u1 == u2
+- id: user
+  selector:
+    path: User.scala
+    anchor: 'case class User(name: String, age: Int)'
+- id: user_1
+  selector:
+    path: User.scala
+    anchor: 'def isAdult: Boolean = age >= 18'
+- id: no_productservice
+  selector:
+    path: services/ProductService.scala
+- id: no_userformatter
+  selector:
+    path: formatters/UserFormatter.scala
+- id: no_userstats
+  selector:
+    path: stats/UserStats.scala
+- id: no_userrepository
+  selector:
+    path: repositories/UserRepository.scala
+- id: no_global_0
+  selector:
+    anchor: ProductService
+- id: no_global_1
+  selector:
+    anchor: createProduct
+- id: no_global_2
+  selector:
+    anchor: copyWithNewPrice
+- id: no_global_3
+  selector:
+    anchor: compareProducts
+- id: no_global_4
+  selector:
+    anchor: UserFormatter
+- id: no_global_5
+  selector:
+    anchor: formatList
+- id: no_global_6
+  selector:
+    anchor: toJson
+- id: no_global_7
+  selector:
+    anchor: UserStats
+- id: no_global_8
+  selector:
+    anchor: averageAge
+- id: no_global_9
+  selector:
+    anchor: countAdults
+- id: no_global_10
+  selector:
+    anchor: oldestUser
+- id: no_global_11
+  selector:
+    anchor: findByName
+- id: no_global_12
+  selector:
+    anchor: findAll
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_productservice
+  - no_userformatter
+  - no_userstats
+  - no_userrepository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

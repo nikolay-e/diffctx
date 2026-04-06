@@ -1,0 +1,120 @@
+name: patterns_020_edge_large_diff
+repo:
+  initial_files:
+    large.py: |
+      def original_function():
+          pass
+    utils/bulk_updater.py: |
+      import re
+
+      BULK_UPDATE_LIMIT = 500
+      DRY_RUN_DEFAULT = True
+
+      class BulkValueUpdater:
+          def __init__(self, dry_run: bool = DRY_RUN_DEFAULT):
+              self.dry_run = dry_run
+              self._changes: list[dict] = []
+
+          def replace_in_file(self, filepath: str, old: str, new: str) -> int:
+              self._changes.append({"file": filepath, "old": old, "new": new})
+              return 1
+
+          def get_change_count(self) -> int:
+              return len(self._changes)
+    utils/diff_stats.py: |
+      STAT_CATEGORIES = ["insertions", "deletions", "modifications"]
+
+      class DiffStatCalculator:
+          def __init__(self):
+              self._stats: dict[str, int] = {"insertions": 0, "deletions": 0, "modifications": 0}
+
+          def count_insertions(self, diff_text: str) -> int:
+              return diff_text.count("\n+") - diff_text.count("\n+++")
+
+          def count_deletions(self, diff_text: str) -> int:
+              return diff_text.count("\n-") - diff_text.count("\n---")
+
+          def summary(self) -> dict:
+              return dict(self._stats)
+  changed_files:
+    large.py: |
+      def original_function():
+          return 1
+
+      def new_function():
+          return 2
+    utils/bulk_updater.py: |
+      import re
+
+      BULK_UPDATE_LIMIT = 500
+      DRY_RUN_DEFAULT = True
+
+      class BulkValueUpdater:
+          def __init__(self, dry_run: bool = DRY_RUN_DEFAULT):
+              self.dry_run = dry_run
+              self._changes: list[dict] = []
+
+          def replace_in_file(self, filepath: str, old: str, new: str) -> int:
+              self._changes.append({"file": filepath, "old": old, "new": new})
+              return 1
+
+          def get_change_count(self) -> int:
+              return len(self._changes)
+    utils/diff_stats.py: |
+      STAT_CATEGORIES = ["insertions", "deletions", "modifications"]
+
+      class DiffStatCalculator:
+          def __init__(self):
+              self._stats: dict[str, int] = {"insertions": 0, "deletions": 0, "modifications": 0}
+
+          def count_insertions(self, diff_text: str) -> int:
+              return diff_text.count("\n+") - diff_text.count("\n+++")
+
+          def count_deletions(self, diff_text: str) -> int:
+              return diff_text.count("\n-") - diff_text.count("\n---")
+
+          def summary(self) -> dict:
+              return dict(self._stats)
+  commit_message: Update files
+fragments:
+- id: large
+  selector:
+    path: large.py
+    anchor: 'def new_function():'
+- id: no_bulk_updater
+  selector:
+    path: utils/bulk_updater.py
+- id: no_diff_stats
+  selector:
+    path: utils/diff_stats.py
+- id: no_global_0
+  selector:
+    anchor: BulkValueUpdater
+- id: no_global_1
+  selector:
+    anchor: BULK_UPDATE_LIMIT
+- id: no_global_2
+  selector:
+    anchor: DRY_RUN_DEFAULT
+- id: no_global_3
+  selector:
+    anchor: DiffStatCalculator
+- id: no_global_4
+  selector:
+    anchor: STAT_CATEGORIES
+- id: no_global_5
+  selector:
+    anchor: count_insertions
+oracle:
+  required:
+  - large
+  allowed: []
+  forbidden:
+  - no_bulk_updater
+  - no_diff_stats
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

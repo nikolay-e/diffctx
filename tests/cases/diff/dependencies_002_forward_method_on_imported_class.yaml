@@ -1,0 +1,311 @@
+name: dependencies_002_forward_method_on_imported_class
+repo:
+  initial_files:
+    services/user.py: |
+      class UserService:
+          def __init__(self, db_connection: str):
+              self.db_connection = db_connection
+              self.users = []
+              self.cache = {}
+
+          def validate(self, user_data: dict) -> bool:
+              if not user_data.get("email"):
+                  return False
+              if not user_data.get("name"):
+                  return False
+              return "@" in user_data["email"]
+
+          def add_user(self, name: str, email: str) -> dict:
+              user = {"name": name, "email": email, "id": len(self.users) + 1}
+              self.users.append(user)
+              self.cache[user["id"]] = user
+              return user
+
+          def get_user(self, user_id: int) -> dict:
+              if user_id in self.cache:
+                  return self.cache[user_id]
+              return None
+    handler.py: |
+      def handle():
+          pass
+    services/admin.py: |
+      from services.user import UserService
+      GARBAGE_DEP_002_ADMIN_IMPORT_C = "admin_consumer"
+      GARBAGE_DEP_002_ADMIN_BATCH_D = True
+
+      class AdminPanel:
+          GARBAGE_DEP_002_ADMIN_CLASS_E = 99
+
+          def __init__(self, svc: UserService):
+              self.svc = svc
+
+          def bulk_validate(self, records: list) -> list:
+              return [self.svc.validate(r) for r in records]
+
+          def add_user(self, name: str, email: str) -> dict:
+              GARBAGE_DEP_002_ADMIN_ADD_F = "admin_add"
+              return self.svc.add_user(name, email)
+    services/product.py: |
+      GARBAGE_DEP_002_PRODUCT_SVC_G = "product_service"
+      GARBAGE_DEP_002_PRODUCT_CACHE_H = {}
+
+      class ProductService:
+          def __init__(self, db_connection: str):
+              self.db_connection = db_connection
+              self.products = []
+              self.cache = {}
+
+          def validate(self, product_data: dict) -> bool:
+              GARBAGE_DEP_002_PRODUCT_VALID_I = True
+              return "name" in product_data and "price" in product_data
+
+          def add_user(self, name: str, email: str) -> dict:
+              GARBAGE_DEP_002_PRODUCT_MISNAME_J = "wrong_method"
+              return {"error": "not implemented"}
+    garbage/recipe_manager_GARBAGE_DEP_002_RECIPE_A.py: |
+      import json
+
+      def load_recipes_GARBAGE_DEP_002_RECIPE_A(filepath: str) -> list:
+          with open(filepath) as f:
+              return json.load(f)
+
+      def calculate_calories_GARBAGE_DEP_002_RECIPE_A(ingredients: list) -> int:
+          return sum(ing.get("calories", 0) for ing in ingredients)
+
+      class RecipeBook_GARBAGE_DEP_002_RECIPE_A:
+          def __init__(self):
+              self.recipes = []
+
+          def add_recipe(self, name: str, ingredients: list) -> None:
+              self.recipes.append({"name": name, "ingredients": ingredients})
+
+          def search_by_ingredient(self, ingredient: str) -> list:
+              return [r for r in self.recipes if ingredient in str(r["ingredients"])]
+    garbage/music_playlist_GARBAGE_DEP_002_MUSIC_B.py: |
+      def shuffle_playlist_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> list:
+          import random
+          shuffled = tracks.copy()
+          random.shuffle(shuffled)
+          return shuffled
+
+      def total_duration_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> int:
+          return sum(t.get("duration_ms", 0) for t in tracks)
+
+      class MusicPlayer_GARBAGE_DEP_002_MUSIC_B:
+          def __init__(self, playlist: list):
+              self.playlist = playlist
+              self.current_index = 0
+
+          def next_track(self) -> dict:
+              track = self.playlist[self.current_index]
+              self.current_index = (self.current_index + 1) % len(self.playlist)
+              return track
+  changed_files:
+    services/user.py: |
+      class UserService:
+          def __init__(self, db_connection: str):
+              self.db_connection = db_connection
+              self.users = []
+              self.cache = {}
+
+          def validate(self, user_data: dict) -> bool:
+              if not user_data.get("email"):
+                  return False
+              if not user_data.get("name"):
+                  return False
+              return "@" in user_data["email"]
+
+          def add_user(self, name: str, email: str) -> dict:
+              user = {"name": name, "email": email, "id": len(self.users) + 1}
+              self.users.append(user)
+              self.cache[user["id"]] = user
+              return user
+
+          def get_user(self, user_id: int) -> dict:
+              if user_id in self.cache:
+                  return self.cache[user_id]
+              return None
+    handler.py: |
+      from services.user import UserService
+
+      def handle():
+          svc = UserService("postgres://localhost/mydb")
+          user_data = {"name": "Alice", "email": "alice@example.com"}
+          if svc.validate(user_data):
+              user = svc.add_user(user_data["name"], user_data["email"])
+              return {"created": True, "user": user}
+          return {"created": False, "error": "Invalid data"}
+    services/admin.py: |
+      from services.user import UserService
+      GARBAGE_DEP_002_ADMIN_IMPORT_C = "admin_consumer"
+      GARBAGE_DEP_002_ADMIN_BATCH_D = True
+
+      class AdminPanel:
+          GARBAGE_DEP_002_ADMIN_CLASS_E = 99
+
+          def __init__(self, svc: UserService):
+              self.svc = svc
+
+          def bulk_validate(self, records: list) -> list:
+              return [self.svc.validate(r) for r in records]
+
+          def add_user(self, name: str, email: str) -> dict:
+              GARBAGE_DEP_002_ADMIN_ADD_F = "admin_add"
+              return self.svc.add_user(name, email)
+    services/product.py: |
+      GARBAGE_DEP_002_PRODUCT_SVC_G = "product_service"
+      GARBAGE_DEP_002_PRODUCT_CACHE_H = {}
+
+      class ProductService:
+          def __init__(self, db_connection: str):
+              self.db_connection = db_connection
+              self.products = []
+              self.cache = {}
+
+          def validate(self, product_data: dict) -> bool:
+              GARBAGE_DEP_002_PRODUCT_VALID_I = True
+              return "name" in product_data and "price" in product_data
+
+          def add_user(self, name: str, email: str) -> dict:
+              GARBAGE_DEP_002_PRODUCT_MISNAME_J = "wrong_method"
+              return {"error": "not implemented"}
+    garbage/recipe_manager_GARBAGE_DEP_002_RECIPE_A.py: |
+      import json
+
+      def load_recipes_GARBAGE_DEP_002_RECIPE_A(filepath: str) -> list:
+          with open(filepath) as f:
+              return json.load(f)
+
+      def calculate_calories_GARBAGE_DEP_002_RECIPE_A(ingredients: list) -> int:
+          return sum(ing.get("calories", 0) for ing in ingredients)
+
+      class RecipeBook_GARBAGE_DEP_002_RECIPE_A:
+          def __init__(self):
+              self.recipes = []
+
+          def add_recipe(self, name: str, ingredients: list) -> None:
+              self.recipes.append({"name": name, "ingredients": ingredients})
+
+          def search_by_ingredient(self, ingredient: str) -> list:
+              return [r for r in self.recipes if ingredient in str(r["ingredients"])]
+    garbage/music_playlist_GARBAGE_DEP_002_MUSIC_B.py: |
+      def shuffle_playlist_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> list:
+          import random
+          shuffled = tracks.copy()
+          random.shuffle(shuffled)
+          return shuffled
+
+      def total_duration_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> int:
+          return sum(t.get("duration_ms", 0) for t in tracks)
+
+      class MusicPlayer_GARBAGE_DEP_002_MUSIC_B:
+          def __init__(self, playlist: list):
+              self.playlist = playlist
+              self.current_index = 0
+
+          def next_track(self) -> dict:
+              track = self.playlist[self.current_index]
+              self.current_index = (self.current_index + 1) % len(self.playlist)
+              return track
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: handler.py
+    anchor: from services.user import UserService
+- id: handler_1
+  selector:
+    path: handler.py
+    anchor: svc = UserService("postgres://localhost/mydb")
+- id: handler_2
+  selector:
+    path: handler.py
+    anchor: svc.validate(user_data)
+- id: handler_3
+  selector:
+    path: handler.py
+    anchor: svc.add_user(user_data["name"], user_data["email"])
+- id: handler_4
+  selector:
+    path: handler.py
+    anchor: 'def handle():'
+- id: user
+  selector:
+    path: services/user.py
+    anchor: 'class UserService:'
+- id: user_1
+  selector:
+    path: services/user.py
+    anchor: 'def validate(self, user_data: dict) -> bool:'
+- id: user_2
+  selector:
+    path: services/user.py
+    anchor: 'def add_user(self, name: str, email: str) -> dict:'
+- id: no_admin
+  selector:
+    path: services/admin.py
+- id: no_product
+  selector:
+    path: services/product.py
+- id: no_recipe_manager_garbage_dep_002_recipe_a
+  selector:
+    path: garbage/recipe_manager_GARBAGE_DEP_002_RECIPE_A.py
+- id: no_music_playlist_garbage_dep_002_music_b
+  selector:
+    path: garbage/music_playlist_GARBAGE_DEP_002_MUSIC_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_002_RECIPE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_002_MUSIC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_002_ADMIN_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_002_ADMIN_BATCH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_002_ADMIN_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_002_ADMIN_ADD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_002_PRODUCT_SVC_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_002_PRODUCT_CACHE_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_002_PRODUCT_VALID_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_DEP_002_PRODUCT_MISNAME_J
+oracle:
+  required:
+  - handler
+  - handler_1
+  - handler_2
+  - handler_3
+  - handler_4
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_admin
+  - no_product
+  - no_recipe_manager_garbage_dep_002_recipe_a
+  - no_music_playlist_garbage_dep_002_music_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

@@ -1,0 +1,271 @@
+name: algorithm_003_fragment_env_file_change
+repo:
+  initial_files:
+    config/settings.py: |
+      import os
+      from typing import Optional
+
+      class Settings:
+          DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+          DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///app.db")
+          SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key")
+          LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+          MAX_CONNECTIONS: int = int(os.getenv("MAX_CONNECTIONS", "10"))
+
+          @classmethod
+          def is_production(cls) -> bool:
+              return not cls.DEBUG
+
+          @classmethod
+          def get_log_level(cls) -> str:
+              return cls.LOG_LEVEL.upper()
+
+      settings = Settings()
+    app/main.py: |
+      from config.settings import settings
+
+      def initialize_app():
+          if settings.DEBUG:
+              print("Running in debug mode")
+              print(f"Database: {settings.DATABASE_URL}")
+          else:
+              print("Running in production mode")
+
+          return {"debug": settings.DEBUG, "log_level": settings.LOG_LEVEL}
+
+      def run():
+          config = initialize_app()
+          print(f"App started with config: {config}")
+    .env: |
+      DEBUG=false
+      DATABASE_URL=postgresql://localhost/myapp
+      SECRET_KEY=super-secret-production-key
+      LOG_LEVEL=INFO
+      MAX_CONNECTIONS=50
+    .env.staging: |
+      GARBAGE_ALGO_003_STAGING_ENV_G = "staging"
+      GARBAGE_ALGO_003_DEPLOY_TARGET_H = "staging-server"
+      DEBUG=false
+      DATABASE_URL=postgresql://staging-host/myapp_staging
+      SECRET_KEY=staging-secret-key
+      LOG_LEVEL=WARNING
+      MAX_CONNECTIONS=20
+    app/healthcheck.py: |
+      from config.settings import settings
+      GARBAGE_ALGO_003_HEALTH_ENDPOINT_I = "/healthz"
+      GARBAGE_ALGO_003_CHECK_INTERVAL_J = 30
+
+      def check_database():
+          if settings.DATABASE_URL:
+              return {"status": "ok", "db": settings.DATABASE_URL}
+          return {"status": "error"}
+
+      def check_debug_mode():
+          return {"debug": settings.DEBUG, "log_level": settings.LOG_LEVEL}
+    config/docker_env.py: |
+      GARBAGE_ALGO_003_DOCKER_ENV_K = "docker"
+      GARBAGE_ALGO_003_CONTAINER_MARKER_L = True
+      DEBUG = True
+      DATABASE_URL = "postgresql://db:5432/dockerapp"
+      LOG_LEVEL = "DEBUG"
+      MAX_CONNECTIONS = 5
+
+      def get_docker_env():
+          return {"DEBUG": DEBUG, "DATABASE_URL": DATABASE_URL}
+    garbage_migrations.py: |
+      GARBAGE_ALGO_003_MIGRATION_MARKER_A = "migration"
+      GARBAGE_ALGO_003_SCHEMA_MARKER_B = True
+
+      class MigrationRunner:
+          GARBAGE_ALGO_003_RUNNER_C = "runner"
+
+          def run_migrations(self) -> None:
+              pass
+    garbage_seeds.py: |
+      GARBAGE_ALGO_003_SEED_MARKER_D = "seed"
+      GARBAGE_ALGO_003_FIXTURE_MARKER_E = []
+
+      class DataSeeder:
+          GARBAGE_ALGO_003_SEEDER_F = True
+
+          def seed_database(self) -> None:
+              pass
+  changed_files:
+    config/settings.py: |
+      import os
+      from typing import Optional
+
+      class Settings:
+          DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+          DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///app.db")
+          SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key")
+          LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+          MAX_CONNECTIONS: int = int(os.getenv("MAX_CONNECTIONS", "10"))
+
+          @classmethod
+          def is_production(cls) -> bool:
+              return not cls.DEBUG
+
+          @classmethod
+          def get_log_level(cls) -> str:
+              return cls.LOG_LEVEL.upper()
+
+      settings = Settings()
+    app/main.py: |
+      from config.settings import settings
+
+      def initialize_app():
+          if settings.DEBUG:
+              print("Running in debug mode")
+              print(f"Database: {settings.DATABASE_URL}")
+          else:
+              print("Running in production mode")
+
+          return {"debug": settings.DEBUG, "log_level": settings.LOG_LEVEL}
+
+      def run():
+          config = initialize_app()
+          print(f"App started with config: {config}")
+    .env: |
+      DEBUG=true
+      DATABASE_URL=postgresql://localhost/myapp_dev
+      SECRET_KEY=dev-secret-key-for-testing
+      LOG_LEVEL=DEBUG
+      MAX_CONNECTIONS=5
+    .env.staging: |
+      GARBAGE_ALGO_003_STAGING_ENV_G = "staging"
+      GARBAGE_ALGO_003_DEPLOY_TARGET_H = "staging-server"
+      DEBUG=false
+      DATABASE_URL=postgresql://staging-host/myapp_staging
+      SECRET_KEY=staging-secret-key
+      LOG_LEVEL=WARNING
+      MAX_CONNECTIONS=20
+    app/healthcheck.py: |
+      from config.settings import settings
+      GARBAGE_ALGO_003_HEALTH_ENDPOINT_I = "/healthz"
+      GARBAGE_ALGO_003_CHECK_INTERVAL_J = 30
+
+      def check_database():
+          if settings.DATABASE_URL:
+              return {"status": "ok", "db": settings.DATABASE_URL}
+          return {"status": "error"}
+
+      def check_debug_mode():
+          return {"debug": settings.DEBUG, "log_level": settings.LOG_LEVEL}
+    config/docker_env.py: |
+      GARBAGE_ALGO_003_DOCKER_ENV_K = "docker"
+      GARBAGE_ALGO_003_CONTAINER_MARKER_L = True
+      DEBUG = True
+      DATABASE_URL = "postgresql://db:5432/dockerapp"
+      LOG_LEVEL = "DEBUG"
+      MAX_CONNECTIONS = 5
+
+      def get_docker_env():
+          return {"DEBUG": DEBUG, "DATABASE_URL": DATABASE_URL}
+    garbage_migrations.py: |
+      GARBAGE_ALGO_003_MIGRATION_MARKER_A = "migration"
+      GARBAGE_ALGO_003_SCHEMA_MARKER_B = True
+
+      class MigrationRunner:
+          GARBAGE_ALGO_003_RUNNER_C = "runner"
+
+          def run_migrations(self) -> None:
+              pass
+    garbage_seeds.py: |
+      GARBAGE_ALGO_003_SEED_MARKER_D = "seed"
+      GARBAGE_ALGO_003_FIXTURE_MARKER_E = []
+
+      class DataSeeder:
+          GARBAGE_ALGO_003_SEEDER_F = True
+
+          def seed_database(self) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: env
+  selector:
+    path: .env
+    anchor: DATABASE_URL=postgresql://localhost/myapp_dev
+- id: env_1
+  selector:
+    path: .env
+    anchor: DEBUG=true
+- id: env_2
+  selector:
+    path: .env
+    anchor: LOG_LEVEL=DEBUG
+- id: no_garbage_migrations
+  selector:
+    path: garbage_migrations.py
+- id: no_garbage_seeds
+  selector:
+    path: garbage_seeds.py
+- id: no_env
+  selector:
+    path: .env.staging
+- id: no_healthcheck
+  selector:
+    path: app/healthcheck.py
+- id: no_docker_env
+  selector:
+    path: config/docker_env.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_003_MIGRATION_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_003_SCHEMA_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_003_RUNNER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_003_SEED_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_003_FIXTURE_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_003_SEEDER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_003_STAGING_ENV_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_003_DEPLOY_TARGET_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_003_HEALTH_ENDPOINT_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_003_CHECK_INTERVAL_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_003_DOCKER_ENV_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_003_CONTAINER_MARKER_L
+oracle:
+  required:
+  - env
+  - env_1
+  - env_2
+  allowed: []
+  forbidden:
+  - no_garbage_migrations
+  - no_garbage_seeds
+  - no_env
+  - no_healthcheck
+  - no_docker_env
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,144 @@
+name: comprehensive_016_quality_method_call_on_object
+repo:
+  initial_files:
+    src/service.py: |
+      class DataService:
+          def __init__(self, connection_url="localhost"):
+              self.connection_url = connection_url
+              self.connected = False
+
+          def connect(self):
+              self.connected = True
+
+          def process(self, data):
+              return data.upper()
+
+          def disconnect(self):
+              self.connected = False
+
+          def health_check(self):
+              return self.connected
+    src/main.py: |
+      def run():
+          pass
+
+      def get_service_config():
+          return {"url": "localhost", "timeout": 30}
+
+      def log_activity(action, details):
+          print(f"[{action}] {details}")
+    garbage_event_bus.py: |
+      GARBAGE_COMP_016_TOPIC_PATTERN_A = "fanout"
+      GARBAGE_COMP_016_DEAD_LETTER_B = "queue"
+
+      class GarbageEventBus:
+          GARBAGE_COMP_016_ORDERING_GUARANTEE_C = True
+          def publish(self):
+              pass
+    garbage_schema_registry.py: |
+      GARBAGE_COMP_016_COMPATIBILITY_D = "backward"
+      GARBAGE_COMP_016_SERIALIZATION_E = "avro"
+
+      class GarbageSchemaRegistry:
+          GARBAGE_COMP_016_VERSION_STRATEGY_F = False
+          def register(self):
+              pass
+  changed_files:
+    src/service.py: |
+      class DataService:
+          def __init__(self, connection_url="localhost"):
+              self.connection_url = connection_url
+              self.connected = False
+
+          def connect(self):
+              self.connected = True
+
+          def process(self, data):
+              return data.upper()
+
+          def disconnect(self):
+              self.connected = False
+
+          def health_check(self):
+              return self.connected
+    src/main.py: |
+      from src.service import DataService
+
+      def run():
+          svc = DataService()
+          svc.connect()
+          result = svc.process("hello")
+          svc.disconnect()
+          return result
+
+      def get_service_config():
+          return {"url": "localhost", "timeout": 30}
+
+      def log_activity(action, details):
+          print(f"[{action}] {details}")
+    garbage_event_bus.py: |
+      GARBAGE_COMP_016_TOPIC_PATTERN_A = "fanout"
+      GARBAGE_COMP_016_DEAD_LETTER_B = "queue"
+
+      class GarbageEventBus:
+          GARBAGE_COMP_016_ORDERING_GUARANTEE_C = True
+          def publish(self):
+              pass
+    garbage_schema_registry.py: |
+      GARBAGE_COMP_016_COMPATIBILITY_D = "backward"
+      GARBAGE_COMP_016_SERIALIZATION_E = "avro"
+
+      class GarbageSchemaRegistry:
+          GARBAGE_COMP_016_VERSION_STRATEGY_F = False
+          def register(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: main_file
+  selector:
+    path: src/main.py
+- id: req_global_0
+  selector:
+    anchor: from src.service import DataService
+- id: req_global_1
+  selector:
+    anchor: svc = DataService()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_016_COMPATIBILITY_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_016_DEAD_LETTER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_016_ORDERING_GUARANTEE_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_016_SERIALIZATION_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_016_TOPIC_PATTERN_A
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_016_VERSION_STRATEGY_F
+- id: no_global_6
+  selector:
+    anchor: garbage_event_bus.py
+- id: no_global_7
+  selector:
+    anchor: garbage_schema_registry.py
+oracle:
+  required:
+  - main_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

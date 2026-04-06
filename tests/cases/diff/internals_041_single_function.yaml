@@ -1,0 +1,23 @@
+name: internals_041_single_function
+repo:
+  initial_files:
+    single.py: |
+      pass
+  changed_files:
+    single.py: |
+      def only_function():
+          pass
+  commit_message: Update files
+fragments:
+- id: single_file
+  selector:
+    path: single.py
+- id: req_global_0
+  selector:
+    anchor: 'def only_function():'
+oracle:
+  required:
+  - single_file
+  - req_global_0
+  allowed: []
+  forbidden: []

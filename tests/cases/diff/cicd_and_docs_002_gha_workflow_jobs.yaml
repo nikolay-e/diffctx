@@ -1,0 +1,124 @@
+name: cicd_and_docs_002_gha_workflow_jobs
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+    src/server.ts: |
+      import express from 'express';
+
+      const app = express();
+
+      app.get('/health', (req, res) => {
+        res.json({ status: 'ok' });
+      });
+
+      app.listen(3000, () => {
+        console.log('Server started');
+      });
+    garbage_monitor.ts: |
+      const GARBAGE_CICD_DOCS_002_MONITOR_MARKER_A = "prometheus";
+      const GARBAGE_CICD_DOCS_002_METRIC_MARKER_B = "counter";
+
+      class GarbageMetricsMonitor {
+        static GARBAGE_CICD_DOCS_002_INTERVAL_MARKER_C = 10000;
+        collect(): void {}
+      }
+    garbage_alerting.ts: |
+      const GARBAGE_CICD_DOCS_002_ALERT_MARKER_D = "slack";
+      const GARBAGE_CICD_DOCS_002_THRESHOLD_MARKER_E = 0.9;
+
+      class GarbageAlertManager {
+        static GARBAGE_CICD_DOCS_002_CHANNEL_MARKER_F = "#alerts";
+        send(): void {}
+      }
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm install
+        test:
+          runs-on: ubuntu-latest
+          needs: build
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm test
+    src/server.ts: |
+      import express from 'express';
+
+      const app = express();
+
+      app.get('/health', (req, res) => {
+        res.json({ status: 'ok' });
+      });
+
+      app.listen(3000, () => {
+        console.log('Server started');
+      });
+    garbage_monitor.ts: |
+      const GARBAGE_CICD_DOCS_002_MONITOR_MARKER_A = "prometheus";
+      const GARBAGE_CICD_DOCS_002_METRIC_MARKER_B = "counter";
+
+      class GarbageMetricsMonitor {
+        static GARBAGE_CICD_DOCS_002_INTERVAL_MARKER_C = 10000;
+        collect(): void {}
+      }
+    garbage_alerting.ts: |
+      const GARBAGE_CICD_DOCS_002_ALERT_MARKER_D = "slack";
+      const GARBAGE_CICD_DOCS_002_THRESHOLD_MARKER_E = 0.9;
+
+      class GarbageAlertManager {
+        static GARBAGE_CICD_DOCS_002_CHANNEL_MARKER_F = "#alerts";
+        send(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'runs-on: ubuntu-latest'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_ALERT_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_CHANNEL_MARKER_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_INTERVAL_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_METRIC_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_MONITOR_MARKER_A
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_002_THRESHOLD_MARKER_E
+- id: no_global_6
+  selector:
+    anchor: garbage_alerting.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_monitor.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

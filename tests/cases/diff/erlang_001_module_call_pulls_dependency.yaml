@@ -1,0 +1,227 @@
+name: erlang_001_module_call_pulls_dependency
+repo:
+  initial_files:
+    src/order_processor.erl: |
+      -module(order_processor).
+      -export([process/1, validate/1]).
+
+      process(Order) ->
+          case validate(Order) of
+              ok ->
+                  order_store:save(Order),
+                  ok;
+              {error, Reason} ->
+                  {error, Reason}
+          end.
+
+      validate(#{total := Total}) when Total > 0 ->
+          ok;
+      validate(_) ->
+          {error, invalid_order}.
+    src/order_store.erl: |
+      -module(order_store).
+      -export([save/1, find/1, all/0]).
+
+      save(Order) ->
+          ets:insert(orders, Order),
+          ok.
+
+      find(Id) ->
+          case ets:lookup(orders, Id) of
+              [Order] -> {ok, Order};
+              [] -> {error, not_found}
+          end.
+
+      all() ->
+          ets:tab2list(orders).
+    src/warehouse_manager.erl: |
+      -module(warehouse_manager).
+      -export([allocate/2, release/2]).
+
+      GARBAGE_ERL_001_A = noise_warehouse_marker.
+
+      allocate(Sku, Qty) ->
+          ets:update_counter(stock, Sku, {2, -Qty}).
+
+      release(Sku, Qty) ->
+          ets:update_counter(stock, Sku, {2, Qty}).
+    src/notification_service.erl: |
+      -module(notification_service).
+      -export([send/2]).
+
+      GARBAGE_ERL_001_B = noise_notification_marker.
+
+      send(UserId, Message) ->
+          io:format("Notify ~p: ~s~n", [UserId, Message]).
+    src/audit_logger.erl: |
+      -module(audit_logger).
+      -export([log/2]).
+
+      GARBAGE_ERL_001_C = noise_audit_marker.
+
+      log(Event, Data) ->
+          io:format("[AUDIT] ~p ~p~n", [Event, Data]).
+    src/metrics_collector.erl: |
+      -module(metrics_collector).
+      -export([record/2]).
+
+      GARBAGE_ERL_001_D = noise_metrics_marker.
+
+      record(Key, Value) ->
+          ets:insert(metrics, {Key, Value}).
+    src/cache_server.erl: |
+      -module(cache_server).
+      -export([get/1, put/2]).
+
+      GARBAGE_ERL_001_E = noise_cache_marker.
+
+      get(Key) ->
+          ets:lookup(cache, Key).
+
+      put(Key, Value) ->
+          ets:insert(cache, {Key, Value}).
+  changed_files:
+    src/order_processor.erl: |
+      -module(order_processor).
+      -export([process/1, validate/1, cancel/1]).
+
+      process(Order) ->
+          case validate(Order) of
+              ok ->
+                  order_store:save(Order),
+                  ok;
+              {error, Reason} ->
+                  {error, Reason}
+          end.
+
+      cancel(OrderId) ->
+          case order_store:find(OrderId) of
+              {ok, Order} ->
+                  order_store:save(Order#{status => cancelled}),
+                  ok;
+              {error, Reason} ->
+                  {error, Reason}
+          end.
+
+      validate(#{total := Total}) when Total > 0 ->
+          ok;
+      validate(_) ->
+          {error, invalid_order}.
+    src/order_store.erl: |
+      -module(order_store).
+      -export([save/1, find/1, all/0]).
+
+      save(Order) ->
+          ets:insert(orders, Order),
+          ok.
+
+      find(Id) ->
+          case ets:lookup(orders, Id) of
+              [Order] -> {ok, Order};
+              [] -> {error, not_found}
+          end.
+
+      all() ->
+          ets:tab2list(orders).
+    src/warehouse_manager.erl: |
+      -module(warehouse_manager).
+      -export([allocate/2, release/2]).
+
+      GARBAGE_ERL_001_A = noise_warehouse_marker.
+
+      allocate(Sku, Qty) ->
+          ets:update_counter(stock, Sku, {2, -Qty}).
+
+      release(Sku, Qty) ->
+          ets:update_counter(stock, Sku, {2, Qty}).
+    src/notification_service.erl: |
+      -module(notification_service).
+      -export([send/2]).
+
+      GARBAGE_ERL_001_B = noise_notification_marker.
+
+      send(UserId, Message) ->
+          io:format("Notify ~p: ~s~n", [UserId, Message]).
+    src/audit_logger.erl: |
+      -module(audit_logger).
+      -export([log/2]).
+
+      GARBAGE_ERL_001_C = noise_audit_marker.
+
+      log(Event, Data) ->
+          io:format("[AUDIT] ~p ~p~n", [Event, Data]).
+    src/metrics_collector.erl: |
+      -module(metrics_collector).
+      -export([record/2]).
+
+      GARBAGE_ERL_001_D = noise_metrics_marker.
+
+      record(Key, Value) ->
+          ets:insert(metrics, {Key, Value}).
+    src/cache_server.erl: |
+      -module(cache_server).
+      -export([get/1, put/2]).
+
+      GARBAGE_ERL_001_E = noise_cache_marker.
+
+      get(Key) ->
+          ets:lookup(cache, Key).
+
+      put(Key, Value) ->
+          ets:insert(cache, {Key, Value}).
+  commit_message: Update files
+fragments:
+- id: store_save
+  selector:
+    path: src/order_store.erl
+    anchor: save
+- id: store_find
+  selector:
+    path: src/order_store.erl
+    anchor: find
+- id: no_warehouse
+  selector:
+    path: src/warehouse_manager.erl
+- id: no_notifications
+  selector:
+    path: src/notification_service.erl
+- id: no_audit
+  selector:
+    path: src/audit_logger.erl
+- id: no_metrics
+  selector:
+    path: src/metrics_collector.erl
+- id: no_cache
+  selector:
+    path: src/cache_server.erl
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ERL_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ERL_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ERL_001_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ERL_001_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ERL_001_E
+oracle:
+  required:
+  - store_save
+  - store_find
+  allowed: []
+  forbidden:
+  - no_warehouse
+  - no_notifications
+  - no_audit
+  - no_metrics
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

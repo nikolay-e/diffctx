@@ -1,0 +1,128 @@
+name: csharp_018_reflection_attribute
+repo:
+  initial_files:
+    Attributes/RouteAttribute.cs: |
+      namespace MyApp.Attributes;
+
+      [AttributeUsage(AttributeTargets.Method)]
+      public class RouteAttribute : Attribute
+      {
+          public string Path { get; }
+
+          public RouteAttribute(string path)
+          {
+              Path = path;
+          }
+      }
+    Services/Router.cs: |
+      namespace MyApp.Services;
+
+      public class Router { }
+    Unrelated/BlobStorage.cs: |
+      namespace MyApp.Unrelated;
+
+      public class BlobStorage
+      {
+          private const string GARBAGE_CS_018_BLOB_STORAGE_A = "blob_storage_marker";
+
+          public void Upload(byte[] data) => _ = GARBAGE_CS_018_BLOB_STORAGE_A;
+      }
+    Unrelated/CdnManager.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CdnManager
+      {
+          public const string GARBAGE_CS_018_CDN_MANAGER_B = "cdn_manager_marker";
+
+          public string GetUrl(string path) => GARBAGE_CS_018_CDN_MANAGER_B + path;
+      }
+  changed_files:
+    Attributes/RouteAttribute.cs: |
+      namespace MyApp.Attributes;
+
+      [AttributeUsage(AttributeTargets.Method)]
+      public class RouteAttribute : Attribute
+      {
+          public string Path { get; }
+
+          public RouteAttribute(string path)
+          {
+              Path = path;
+          }
+      }
+    Services/Router.cs: |
+      using System.Reflection;
+      using MyApp.Attributes;
+
+      namespace MyApp.Services;
+
+      public class Router
+      {
+          public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
+          {
+              var routes = new Dictionary<string, MethodInfo>();
+
+              foreach (var method in controllerType.GetMethods())
+              {
+                  var attr = method.GetCustomAttribute<RouteAttribute>();
+                  if (attr != null)
+                  {
+                      routes[attr.Path] = method;
+                  }
+              }
+
+              return routes;
+          }
+      }
+    Unrelated/BlobStorage.cs: |
+      namespace MyApp.Unrelated;
+
+      public class BlobStorage
+      {
+          private const string GARBAGE_CS_018_BLOB_STORAGE_A = "blob_storage_marker";
+
+          public void Upload(byte[] data) => _ = GARBAGE_CS_018_BLOB_STORAGE_A;
+      }
+    Unrelated/CdnManager.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CdnManager
+      {
+          public const string GARBAGE_CS_018_CDN_MANAGER_B = "cdn_manager_marker";
+
+          public string GetUrl(string path) => GARBAGE_CS_018_CDN_MANAGER_B + path;
+      }
+  commit_message: Update files
+fragments:
+- id: router_file
+  selector:
+    path: Services/Router.cs
+- id: req_global_0
+  selector:
+    anchor: using System.Reflection;
+- id: req_global_1
+  selector:
+    anchor: public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_018_BLOB_STORAGE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_018_CDN_MANAGER_B
+- id: no_global_2
+  selector:
+    anchor: BlobStorage.cs
+- id: no_global_3
+  selector:
+    anchor: CdnManager.cs
+oracle:
+  required:
+  - router_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

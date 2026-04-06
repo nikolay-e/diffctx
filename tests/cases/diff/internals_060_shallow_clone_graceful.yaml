@@ -1,0 +1,20 @@
+name: internals_060_shallow_clone_graceful
+repo:
+  initial_files:
+    file_4.py: |
+      def func_4():
+          return 4
+  changed_files:
+    file_4.py: |
+      def func_4():
+          return 400
+  commit_message: Update files
+fragments:
+- id: file_4_file
+  selector:
+    path: file_4.py
+oracle:
+  required:
+  - file_4_file
+  allowed: []
+  forbidden: []

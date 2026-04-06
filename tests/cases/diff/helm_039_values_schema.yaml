@@ -1,0 +1,223 @@
+name: helm_039_values_schema
+repo:
+  initial_files:
+    values.schema.json: |
+      {}
+    values.yaml: |
+      replicaCount: 3
+      image:
+        repository: myapp
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 80
+    values-staging.yaml: |
+      replicaCount: 1
+      image:
+        repository: myapp
+        tag: "latest"
+      service:
+        port: 8080
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+      description: My application chart
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                ports:
+                  - containerPort: {{ .Values.service.port }}
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+
+      {{- define "myapp.labels" -}}
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/version: {{ .Chart.AppVersion | default .Chart.Version }}
+      {{- end -}}
+    tests/test-connection.yaml: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: "{{ include "myapp.fullname" . }}-test-connection"
+        annotations:
+          "helm.sh/hook": test
+      spec:
+        containers:
+          - name: wget
+            image: busybox
+            command: ['wget']
+            args: ['{{ include "myapp.fullname" . }}:{{ .Values.service.port }}']
+        restartPolicy: Never
+  changed_files:
+    values.schema.json: |
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "required": ["image", "replicaCount"],
+        "properties": {
+          "replicaCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "image": {
+            "type": "object",
+            "required": ["repository"],
+            "properties": {
+              "repository": { "type": "string" },
+              "tag": { "type": "string" }
+            }
+          }
+        }
+      }
+    values.yaml: |
+      replicaCount: 3
+      image:
+        repository: myapp
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 80
+    values-staging.yaml: |
+      replicaCount: 1
+      image:
+        repository: myapp
+        tag: "latest"
+      service:
+        port: 8080
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+      description: My application chart
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                ports:
+                  - containerPort: {{ .Values.service.port }}
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+
+      {{- define "myapp.labels" -}}
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/version: {{ .Chart.AppVersion | default .Chart.Version }}
+      {{- end -}}
+    tests/test-connection.yaml: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: "{{ include "myapp.fullname" . }}-test-connection"
+        annotations:
+          "helm.sh/hook": test
+      spec:
+        containers:
+          - name: wget
+            image: busybox
+            command: ['wget']
+            args: ['{{ include "myapp.fullname" . }}:{{ .Values.service.port }}']
+        restartPolicy: Never
+  commit_message: Update files
+fragments:
+- id: values_schema
+  selector:
+    path: values.schema.json
+    anchor: '"$schema": "http://json-schema.org/draft-07/schema#"'
+- id: values_schema_1
+  selector:
+    path: values.schema.json
+    anchor: '"required": ["image", "replicaCount"]'
+- id: values_schema_2
+  selector:
+    path: values.schema.json
+    anchor: '"minimum": 1'
+- id: values
+  selector:
+    path: values.yaml
+    anchor: 'replicaCount: 3'
+- id: values_1
+  selector:
+    path: values.yaml
+    anchor: 'repository: myapp'
+- id: no_values_staging
+  selector:
+    path: values-staging.yaml
+- id: no_deployment
+  selector:
+    path: templates/deployment.yaml
+- id: no_helpers
+  selector:
+    path: templates/_helpers.tpl
+- id: no_test_connection
+  selector:
+    path: tests/test-connection.yaml
+- id: no_chart
+  selector:
+    path: Chart.yaml
+- id: no_global_0
+  selector:
+    anchor: values-staging
+- id: no_global_1
+  selector:
+    anchor: 'tag: "latest"'
+- id: no_global_2
+  selector:
+    anchor: 'replicas: {{ .Values.replicaCount }}'
+- id: no_global_3
+  selector:
+    anchor: '{{ .Values.image.repository }}'
+- id: no_global_4
+  selector:
+    anchor: myapp.fullname
+- id: no_global_5
+  selector:
+    anchor: myapp.labels
+- id: no_global_6
+  selector:
+    anchor: helm.sh/hook
+- id: no_global_7
+  selector:
+    anchor: test-connection
+oracle:
+  required:
+  - values_schema
+  - values_schema_1
+  - values_schema_2
+  - values
+  - values_1
+  allowed: []
+  forbidden:
+  - no_values_staging
+  - no_deployment
+  - no_helpers
+  - no_test_connection
+  - no_chart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

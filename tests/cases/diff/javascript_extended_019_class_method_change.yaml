@@ -1,0 +1,215 @@
+name: javascript_extended_019_class_method_change
+repo:
+  initial_files:
+    src/base.ts: |
+      export class BaseService {
+          protected log(message: string): void {
+              console.log(message);
+          }
+
+          process(data: string): string {
+              this.log(`Processing: ${data}`);
+              return data.toUpperCase();
+          }
+
+          validate(data: string): boolean {
+              return data.length > 0 && data.length < 1000;
+          }
+
+          sanitize(data: string): string {
+              return data.trim().replace(/[<>]/g, '');
+          }
+      }
+    src/derived.ts: |
+      import { BaseService } from './base';
+
+      export class ExtendedService extends BaseService {
+          process(data: string): string {
+              const result = super.process(data);
+              return `[Extended] ${result}`;
+          }
+
+          processAll(items: string[]): string[] {
+              return items.map(item => this.process(item));
+          }
+      }
+    src/formatters/text-formatter.ts: |
+      export class TextFormatter {
+          capitalize(text: string): string {
+              return text.charAt(0).toUpperCase() + text.slice(1);
+          }
+
+          truncate(text: string, maxLength: number): string {
+              if (text.length <= maxLength) return text;
+              return text.slice(0, maxLength - 3) + '...';
+          }
+
+          slugify(text: string): string {
+              return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+          }
+      }
+
+      export function wrapInQuotes(text: string): string {
+          return `"${text}"`;
+      }
+    src/validators/input-validator.ts: |
+      interface ValidationRule {
+          field: string;
+          required: boolean;
+          minLength?: number;
+          maxLength?: number;
+          pattern?: RegExp;
+      }
+
+      export class InputValidator {
+          private rules: ValidationRule[] = [];
+
+          addRule(rule: ValidationRule): void {
+              this.rules.push(rule);
+          }
+
+          validate(data: Record<string, unknown>): string[] {
+              const errors: string[] = [];
+              for (const rule of this.rules) {
+                  const value = data[rule.field];
+                  if (rule.required && (value === undefined || value === null)) {
+                      errors.push(`${rule.field} is required`);
+                  }
+              }
+              return errors;
+          }
+
+          hasErrors(data: Record<string, unknown>): boolean {
+              return this.validate(data).length > 0;
+          }
+      }
+  changed_files:
+    src/base.ts: |
+      export type LogLevel = 'info' | 'warn' | 'error';
+
+      export class BaseService {
+          protected log(message: string, level: LogLevel = 'info'): void {
+              console[level](message);
+          }
+
+          process(data: string, options?: { prefix?: string }): string {
+              this.log(`Processing: ${data}`, 'info');
+              const result = data.toUpperCase();
+              return options?.prefix ? `${options.prefix}${result}` : result;
+          }
+
+          validate(data: string): boolean {
+              return data.length > 0 && data.length < 1000;
+          }
+
+          sanitize(data: string): string {
+              return data.trim().replace(/[<>]/g, '');
+          }
+      }
+    src/derived.ts: |
+      import { BaseService } from './base';
+
+      export class ExtendedService extends BaseService {
+          process(data: string): string {
+              const result = super.process(data);
+              return `[Extended] ${result}`;
+          }
+
+          processAll(items: string[]): string[] {
+              return items.map(item => this.process(item));
+          }
+      }
+    src/formatters/text-formatter.ts: |
+      export class TextFormatter {
+          capitalize(text: string): string {
+              return text.charAt(0).toUpperCase() + text.slice(1);
+          }
+
+          truncate(text: string, maxLength: number): string {
+              if (text.length <= maxLength) return text;
+              return text.slice(0, maxLength - 3) + '...';
+          }
+
+          slugify(text: string): string {
+              return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+          }
+      }
+
+      export function wrapInQuotes(text: string): string {
+          return `"${text}"`;
+      }
+    src/validators/input-validator.ts: |
+      interface ValidationRule {
+          field: string;
+          required: boolean;
+          minLength?: number;
+          maxLength?: number;
+          pattern?: RegExp;
+      }
+
+      export class InputValidator {
+          private rules: ValidationRule[] = [];
+
+          addRule(rule: ValidationRule): void {
+              this.rules.push(rule);
+          }
+
+          validate(data: Record<string, unknown>): string[] {
+              const errors: string[] = [];
+              for (const rule of this.rules) {
+                  const value = data[rule.field];
+                  if (rule.required && (value === undefined || value === null)) {
+                      errors.push(`${rule.field} is required`);
+                  }
+              }
+              return errors;
+          }
+
+          hasErrors(data: Record<string, unknown>): boolean {
+              return this.validate(data).length > 0;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: derived
+  selector:
+    path: src/derived.ts
+    anchor: ExtendedService extends BaseService
+- id: derived_1
+  selector:
+    path: src/derived.ts
+    anchor: super.process(data)
+- id: no_text_formatter
+  selector:
+    path: src/formatters/text-formatter.ts
+- id: no_input_validator
+  selector:
+    path: src/validators/input-validator.ts
+- id: no_global_0
+  selector:
+    anchor: slugify
+- id: no_global_1
+  selector:
+    anchor: wrapInQuotes
+- id: no_global_2
+  selector:
+    anchor: InputValidator
+- id: no_global_3
+  selector:
+    anchor: ValidationRule
+- id: no_global_4
+  selector:
+    anchor: hasErrors
+oracle:
+  required:
+  - derived
+  - derived_1
+  allowed: []
+  forbidden:
+  - no_text_formatter
+  - no_input_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

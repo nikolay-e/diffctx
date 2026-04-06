@@ -1,0 +1,379 @@
+name: jvm_and_compiled_024_java_application_properties
+repo:
+  initial_files:
+    src/main/resources/application.properties: |
+      server.port=8080
+      spring.datasource.url=jdbc:postgresql://localhost/db
+      spring.datasource.username=app
+      spring.datasource.password=secret
+      spring.jpa.hibernate.ddl-auto=validate
+    src/main/java/com/example/Config.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class Config {
+          @Value("${server.port}")
+          private int port;
+
+          @Value("${spring.datasource.url}")
+          private String datasourceUrl;
+
+          public int getPort() { return port; }
+          public String getDatasourceUrl() { return datasourceUrl; }
+      }
+    src/main/java/com/example/config/CacheConfig.java: |
+      package com.example.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.cache.annotation.EnableCaching;
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.data.redis.connection.RedisConnectionFactory;
+      import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+
+      @Configuration
+      @EnableCaching
+      public class CacheConfig {
+          @Value("${spring.redis.host:localhost}")
+          private String redisHost;
+
+          @Value("${spring.redis.port:6379}")
+          private int redisPort;
+
+          @Bean
+          public RedisConnectionFactory redisConnectionFactory() {
+              return new LettuceConnectionFactory(redisHost, redisPort);
+          }
+      }
+    src/test/resources/application-test.properties: |
+      server.port=0
+      spring.datasource.url=jdbc:h2:mem:testdb
+      spring.datasource.username=sa
+      spring.datasource.password=
+      spring.jpa.hibernate.ddl-auto=create-drop
+      spring.cache.type=none
+      logging.level.root=WARN
+    src/main/java/com/example/config/DatabaseConfig.java: |
+      package com.example.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import javax.sql.DataSource;
+
+      @Configuration
+      public class DatabaseConfig {
+          @Value("${spring.datasource.url}")
+          private String dbUrl;
+
+          @Value("${spring.datasource.username}")
+          private String dbUsername;
+
+          @Value("${spring.datasource.password}")
+          private String dbPassword;
+
+          @Bean
+          public DataSource dataSource() {
+              var ds = new org.postgresql.ds.PGSimpleDataSource();
+              ds.setUrl(dbUrl);
+              ds.setUser(dbUsername);
+              ds.setPassword(dbPassword);
+              return ds;
+          }
+      }
+    src/main/java/com/example/config/SecurityConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+      import org.springframework.security.web.SecurityFilterChain;
+
+      @Configuration
+      public class SecurityConfig {
+          @Bean
+          public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+              http.csrf().disable()
+                  .authorizeHttpRequests()
+                  .requestMatchers("/api/public/**").permitAll()
+                  .anyRequest().authenticated();
+              return http.build();
+          }
+      }
+    src/main/java/com/example/config/LoggingConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Configuration;
+      import javax.annotation.PostConstruct;
+      import java.util.logging.Logger;
+
+      @Configuration
+      public class LoggingConfig {
+          private static final Logger logger = Logger.getLogger(LoggingConfig.class.getName());
+
+          @PostConstruct
+          public void init() {
+              logger.info("Application logging configured");
+          }
+      }
+    src/main/java/com/example/HealthCheckController.java: |
+      package com.example;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+      import java.util.Map;
+
+      @RestController
+      public class HealthCheckController {
+          @GetMapping("/health")
+          public Map<String, String> health() {
+              return Map.of("status", "UP");
+          }
+      }
+  changed_files:
+    src/main/resources/application.properties: |
+      server.port=8080
+      spring.datasource.url=jdbc:postgresql://localhost/db
+      spring.datasource.username=app
+      spring.datasource.password=secret
+      spring.jpa.hibernate.ddl-auto=validate
+      spring.cache.type=redis
+      spring.redis.host=localhost
+      spring.redis.port=6379
+    src/main/java/com/example/Config.java: |
+      package com.example;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class Config {
+          @Value("${server.port}")
+          private int port;
+
+          @Value("${spring.datasource.url}")
+          private String datasourceUrl;
+
+          public int getPort() { return port; }
+          public String getDatasourceUrl() { return datasourceUrl; }
+      }
+    src/main/java/com/example/config/CacheConfig.java: |
+      package com.example.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.cache.annotation.EnableCaching;
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.data.redis.connection.RedisConnectionFactory;
+      import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+
+      @Configuration
+      @EnableCaching
+      public class CacheConfig {
+          @Value("${spring.redis.host:localhost}")
+          private String redisHost;
+
+          @Value("${spring.redis.port:6379}")
+          private int redisPort;
+
+          @Bean
+          public RedisConnectionFactory redisConnectionFactory() {
+              return new LettuceConnectionFactory(redisHost, redisPort);
+          }
+      }
+    src/test/resources/application-test.properties: |
+      server.port=0
+      spring.datasource.url=jdbc:h2:mem:testdb
+      spring.datasource.username=sa
+      spring.datasource.password=
+      spring.jpa.hibernate.ddl-auto=create-drop
+      spring.cache.type=none
+      logging.level.root=WARN
+    src/main/java/com/example/config/DatabaseConfig.java: |
+      package com.example.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import javax.sql.DataSource;
+
+      @Configuration
+      public class DatabaseConfig {
+          @Value("${spring.datasource.url}")
+          private String dbUrl;
+
+          @Value("${spring.datasource.username}")
+          private String dbUsername;
+
+          @Value("${spring.datasource.password}")
+          private String dbPassword;
+
+          @Bean
+          public DataSource dataSource() {
+              var ds = new org.postgresql.ds.PGSimpleDataSource();
+              ds.setUrl(dbUrl);
+              ds.setUser(dbUsername);
+              ds.setPassword(dbPassword);
+              return ds;
+          }
+      }
+    src/main/java/com/example/config/SecurityConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+      import org.springframework.security.web.SecurityFilterChain;
+
+      @Configuration
+      public class SecurityConfig {
+          @Bean
+          public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+              http.csrf().disable()
+                  .authorizeHttpRequests()
+                  .requestMatchers("/api/public/**").permitAll()
+                  .anyRequest().authenticated();
+              return http.build();
+          }
+      }
+    src/main/java/com/example/config/LoggingConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Configuration;
+      import javax.annotation.PostConstruct;
+      import java.util.logging.Logger;
+
+      @Configuration
+      public class LoggingConfig {
+          private static final Logger logger = Logger.getLogger(LoggingConfig.class.getName());
+
+          @PostConstruct
+          public void init() {
+              logger.info("Application logging configured");
+          }
+      }
+    src/main/java/com/example/HealthCheckController.java: |
+      package com.example;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+      import java.util.Map;
+
+      @RestController
+      public class HealthCheckController {
+          @GetMapping("/health")
+          public Map<String, String> health() {
+              return Map.of("status", "UP");
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: application
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.cache.type=redis
+- id: application_1
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.redis.host=localhost
+- id: application_2
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.redis.port=6379
+- id: cacheconfig
+  selector:
+    path: src/main/java/com/example/config/CacheConfig.java
+    anchor: ${spring.redis.host:localhost}
+- id: cacheconfig_1
+  selector:
+    path: src/main/java/com/example/config/CacheConfig.java
+    anchor: ${spring.redis.port:6379}
+- id: cacheconfig_2
+  selector:
+    path: src/main/java/com/example/config/CacheConfig.java
+    anchor: RedisConnectionFactory
+- id: no_application_test
+  selector:
+    path: src/test/resources/application-test.properties
+- id: no_databaseconfig
+  selector:
+    path: src/main/java/com/example/config/DatabaseConfig.java
+- id: no_securityconfig
+  selector:
+    path: src/main/java/com/example/config/SecurityConfig.java
+- id: no_loggingconfig
+  selector:
+    path: src/main/java/com/example/config/LoggingConfig.java
+- id: no_healthcheckcontroller
+  selector:
+    path: src/main/java/com/example/HealthCheckController.java
+- id: no_global_0
+  selector:
+    anchor: jdbc:h2:mem:testdb
+- id: no_global_1
+  selector:
+    anchor: spring.cache.type=none
+- id: no_global_2
+  selector:
+    anchor: create-drop
+- id: no_global_3
+  selector:
+    anchor: DatabaseConfig
+- id: no_global_4
+  selector:
+    anchor: PGSimpleDataSource
+- id: no_global_5
+  selector:
+    anchor: dbUsername
+- id: no_global_6
+  selector:
+    anchor: SecurityConfig
+- id: no_global_7
+  selector:
+    anchor: SecurityFilterChain
+- id: no_global_8
+  selector:
+    anchor: filterChain
+- id: no_global_9
+  selector:
+    anchor: LoggingConfig
+- id: no_global_10
+  selector:
+    anchor: Application logging configured
+- id: no_global_11
+  selector:
+    anchor: HealthCheckController
+- id: no_global_12
+  selector:
+    anchor: /health
+oracle:
+  required:
+  - application
+  - application_1
+  - application_2
+  - cacheconfig
+  - cacheconfig_1
+  - cacheconfig_2
+  allowed: []
+  forbidden:
+  - no_application_test
+  - no_databaseconfig
+  - no_securityconfig
+  - no_loggingconfig
+  - no_healthcheckcontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

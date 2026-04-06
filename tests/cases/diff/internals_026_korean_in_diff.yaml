@@ -1,0 +1,24 @@
+name: internals_026_korean_in_diff
+repo:
+  initial_files:
+    korean_diff.py: |
+      x = 0
+  changed_files:
+    korean_diff.py: |
+      # 한국어 주석
+      message = "안녕하세요"
+      result = process_data(value)
+  commit_message: Update files
+fragments:
+- id: korean_diff_file
+  selector:
+    path: korean_diff.py
+- id: req_global_0
+  selector:
+    anchor: message = "안녕하세요"
+oracle:
+  required:
+  - korean_diff_file
+  - req_global_0
+  allowed: []
+  forbidden: []

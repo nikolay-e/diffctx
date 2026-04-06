@@ -1,0 +1,404 @@
+name: jvm_and_compiled_064_swift_extension
+repo:
+  initial_files:
+    extensions/StringExtensions.swift: |
+      import Foundation
+
+      extension String {
+          func isValidEmail() -> Bool {
+              let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+              return self.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          var trimmed: String {
+              trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          var isBlank: Bool {
+              trimmed.isEmpty
+          }
+
+          func truncated(to length: Int) -> String {
+              if self.count <= length { return self }
+              return String(self.prefix(length)) + "..."
+          }
+      }
+    Validator.swift: |
+      struct Validator {}
+    extensions/DateExtensions.swift: |
+      import Foundation
+
+      extension Date {
+          var isToday: Bool {
+              Calendar.current.isDateInToday(self)
+          }
+
+          var isYesterday: Bool {
+              Calendar.current.isDateInYesterday(self)
+          }
+
+          func formatted(as format: String) -> String {
+              let formatter = DateFormatter()
+              formatter.dateFormat = format
+              return formatter.string(from: self)
+          }
+
+          var timeAgo: String {
+              let interval = Date().timeIntervalSince(self)
+              if interval < 60 { return "just now" }
+              if interval < 3600 { return "\(Int(interval / 60))m ago" }
+              return "\(Int(interval / 3600))h ago"
+          }
+      }
+    extensions/IntExtensions.swift: |
+      import Foundation
+
+      extension Int {
+          var isEven: Bool { self % 2 == 0 }
+          var isOdd: Bool { self % 2 != 0 }
+
+          func clamped(to range: ClosedRange<Int>) -> Int {
+              return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+          }
+
+          var ordinal: String {
+              let suffix: String
+              switch self % 10 {
+              case 1 where self % 100 != 11: suffix = "st"
+              case 2 where self % 100 != 12: suffix = "nd"
+              case 3 where self % 100 != 13: suffix = "rd"
+              default: suffix = "th"
+              }
+              return "\(self)\(suffix)"
+          }
+      }
+    extensions/ArrayExtensions.swift: |
+      extension Array where Element: Comparable {
+          func sortedUnique() -> [Element] {
+              return Array(Set(self)).sorted()
+          }
+
+          var median: Element? {
+              guard !isEmpty else { return nil }
+              let sorted = self.sorted()
+              return sorted[sorted.count / 2]
+          }
+      }
+
+      extension Array where Element: Hashable {
+          func removingDuplicates() -> [Element] {
+              var seen = Set<Element>()
+              return filter { seen.insert($0).inserted }
+          }
+      }
+    helpers/RegexHelper.swift: |
+      import Foundation
+
+      struct RegexHelper {
+          static func matches(_ input: String, pattern: String) -> Bool {
+              return input.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          static func extractMatches(_ input: String, pattern: String) -> [String] {
+              guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+              let range = NSRange(input.startIndex..., in: input)
+              return regex.matches(in: input, range: range).compactMap {
+                  Range($0.range, in: input).map { String(input[$0]) }
+              }
+          }
+
+          static func replaceMatches(_ input: String, pattern: String, with replacement: String) -> String {
+              guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
+              let range = NSRange(input.startIndex..., in: input)
+              return regex.stringByReplacingMatches(in: input, range: range, withTemplate: replacement)
+          }
+      }
+    helpers/InputSanitizer.swift: |
+      import Foundation
+
+      struct InputSanitizer {
+          static func sanitize(_ input: String) -> String {
+              return input
+                  .trimmingCharacters(in: .whitespacesAndNewlines)
+                  .replacingOccurrences(of: "<", with: "&lt;")
+                  .replacingOccurrences(of: ">", with: "&gt;")
+          }
+
+          static func stripHTML(_ input: String) -> String {
+              return input.replacingOccurrences(
+                  of: "<[^>]+>",
+                  with: "",
+                  options: .regularExpression
+              )
+          }
+
+          static func normalizeWhitespace(_ input: String) -> String {
+              return input.components(separatedBy: .whitespacesAndNewlines)
+                  .filter { !$0.isEmpty }
+                  .joined(separator: " ")
+          }
+      }
+  changed_files:
+    extensions/StringExtensions.swift: |
+      import Foundation
+
+      extension String {
+          func isValidEmail() -> Bool {
+              let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+              return self.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          var trimmed: String {
+              trimmingCharacters(in: .whitespacesAndNewlines)
+          }
+
+          var isBlank: Bool {
+              trimmed.isEmpty
+          }
+
+          func truncated(to length: Int) -> String {
+              if self.count <= length { return self }
+              return String(self.prefix(length)) + "..."
+          }
+      }
+    Validator.swift: |
+      struct Validator {
+          func validateEmail(_ email: String) -> Bool {
+              return email.trimmed.isValidEmail()
+          }
+      }
+    extensions/DateExtensions.swift: |
+      import Foundation
+
+      extension Date {
+          var isToday: Bool {
+              Calendar.current.isDateInToday(self)
+          }
+
+          var isYesterday: Bool {
+              Calendar.current.isDateInYesterday(self)
+          }
+
+          func formatted(as format: String) -> String {
+              let formatter = DateFormatter()
+              formatter.dateFormat = format
+              return formatter.string(from: self)
+          }
+
+          var timeAgo: String {
+              let interval = Date().timeIntervalSince(self)
+              if interval < 60 { return "just now" }
+              if interval < 3600 { return "\(Int(interval / 60))m ago" }
+              return "\(Int(interval / 3600))h ago"
+          }
+      }
+    extensions/IntExtensions.swift: |
+      import Foundation
+
+      extension Int {
+          var isEven: Bool { self % 2 == 0 }
+          var isOdd: Bool { self % 2 != 0 }
+
+          func clamped(to range: ClosedRange<Int>) -> Int {
+              return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+          }
+
+          var ordinal: String {
+              let suffix: String
+              switch self % 10 {
+              case 1 where self % 100 != 11: suffix = "st"
+              case 2 where self % 100 != 12: suffix = "nd"
+              case 3 where self % 100 != 13: suffix = "rd"
+              default: suffix = "th"
+              }
+              return "\(self)\(suffix)"
+          }
+      }
+    extensions/ArrayExtensions.swift: |
+      extension Array where Element: Comparable {
+          func sortedUnique() -> [Element] {
+              return Array(Set(self)).sorted()
+          }
+
+          var median: Element? {
+              guard !isEmpty else { return nil }
+              let sorted = self.sorted()
+              return sorted[sorted.count / 2]
+          }
+      }
+
+      extension Array where Element: Hashable {
+          func removingDuplicates() -> [Element] {
+              var seen = Set<Element>()
+              return filter { seen.insert($0).inserted }
+          }
+      }
+    helpers/RegexHelper.swift: |
+      import Foundation
+
+      struct RegexHelper {
+          static func matches(_ input: String, pattern: String) -> Bool {
+              return input.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          static func extractMatches(_ input: String, pattern: String) -> [String] {
+              guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+              let range = NSRange(input.startIndex..., in: input)
+              return regex.matches(in: input, range: range).compactMap {
+                  Range($0.range, in: input).map { String(input[$0]) }
+              }
+          }
+
+          static func replaceMatches(_ input: String, pattern: String, with replacement: String) -> String {
+              guard let regex = try? NSRegularExpression(pattern: pattern) else { return input }
+              let range = NSRange(input.startIndex..., in: input)
+              return regex.stringByReplacingMatches(in: input, range: range, withTemplate: replacement)
+          }
+      }
+    helpers/InputSanitizer.swift: |
+      import Foundation
+
+      struct InputSanitizer {
+          static func sanitize(_ input: String) -> String {
+              return input
+                  .trimmingCharacters(in: .whitespacesAndNewlines)
+                  .replacingOccurrences(of: "<", with: "&lt;")
+                  .replacingOccurrences(of: ">", with: "&gt;")
+          }
+
+          static func stripHTML(_ input: String) -> String {
+              return input.replacingOccurrences(
+                  of: "<[^>]+>",
+                  with: "",
+                  options: .regularExpression
+              )
+          }
+
+          static func normalizeWhitespace(_ input: String) -> String {
+              return input.components(separatedBy: .whitespacesAndNewlines)
+                  .filter { !$0.isEmpty }
+                  .joined(separator: " ")
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: validator
+  selector:
+    path: Validator.swift
+    anchor: email.trimmed.isValidEmail()
+- id: stringextensions
+  selector:
+    path: extensions/StringExtensions.swift
+    anchor: func isValidEmail() -> Bool
+- id: stringextensions_1
+  selector:
+    path: extensions/StringExtensions.swift
+    anchor: 'var trimmed: String'
+- id: stringextensions_2
+  selector:
+    path: extensions/StringExtensions.swift
+    anchor: 'self.range(of: pattern, options: .regularExpression)'
+- id: no_dateextensions
+  selector:
+    path: extensions/DateExtensions.swift
+- id: no_intextensions
+  selector:
+    path: extensions/IntExtensions.swift
+- id: no_arrayextensions
+  selector:
+    path: extensions/ArrayExtensions.swift
+- id: no_regexhelper
+  selector:
+    path: helpers/RegexHelper.swift
+- id: no_inputsanitizer
+  selector:
+    path: helpers/InputSanitizer.swift
+- id: no_global_0
+  selector:
+    anchor: DateExtensions
+- id: no_global_1
+  selector:
+    anchor: isToday
+- id: no_global_2
+  selector:
+    anchor: isYesterday
+- id: no_global_3
+  selector:
+    anchor: timeAgo
+- id: no_global_4
+  selector:
+    anchor: IntExtensions
+- id: no_global_5
+  selector:
+    anchor: isEven
+- id: no_global_6
+  selector:
+    anchor: ordinal
+- id: no_global_7
+  selector:
+    anchor: clamped
+- id: no_global_8
+  selector:
+    anchor: ArrayExtensions
+- id: no_global_9
+  selector:
+    anchor: sortedUnique
+- id: no_global_10
+  selector:
+    anchor: removingDuplicates
+- id: no_global_11
+  selector:
+    anchor: median
+- id: no_global_12
+  selector:
+    anchor: RegexHelper
+- id: no_global_13
+  selector:
+    anchor: extractMatches
+- id: no_global_14
+  selector:
+    anchor: replaceMatches
+- id: no_global_15
+  selector:
+    anchor: NSRegularExpression
+- id: no_global_16
+  selector:
+    anchor: InputSanitizer
+- id: no_global_17
+  selector:
+    anchor: stripHTML
+- id: no_global_18
+  selector:
+    anchor: normalizeWhitespace
+oracle:
+  required:
+  - validator
+  - stringextensions
+  - stringextensions_1
+  - stringextensions_2
+  allowed: []
+  forbidden:
+  - no_dateextensions
+  - no_intextensions
+  - no_arrayextensions
+  - no_regexhelper
+  - no_inputsanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

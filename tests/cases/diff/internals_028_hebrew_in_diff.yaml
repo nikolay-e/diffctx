@@ -1,0 +1,25 @@
+name: internals_028_hebrew_in_diff
+repo:
+  initial_files:
+    hebrew_diff.py: |
+      def placeholder():
+          pass
+  changed_files:
+    hebrew_diff.py: |
+      def foo():
+          """תיעוד בעברית"""
+          return process_value(x)
+  commit_message: Update files
+fragments:
+- id: hebrew_diff_file
+  selector:
+    path: hebrew_diff.py
+- id: req_global_0
+  selector:
+    anchor: '"""תיעוד בעברית"""'
+oracle:
+  required:
+  - hebrew_diff_file
+  - req_global_0
+  allowed: []
+  forbidden: []

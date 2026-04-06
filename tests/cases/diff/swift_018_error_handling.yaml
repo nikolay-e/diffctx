@@ -1,0 +1,444 @@
+name: swift_018_error_handling
+repo:
+  initial_files:
+    Features/Payment/PaymentError.swift: |
+      import Foundation
+
+      enum PaymentError: LocalizedError {
+          case insufficientFunds(available: Decimal, required: Decimal)
+          case invalidCard(reason: String)
+          case expiredCard(month: Int, year: Int)
+          case networkFailure(underlying: Error)
+
+          var errorDescription: String? {
+              switch self {
+              case .insufficientFunds(let available, let required):
+                  return "Insufficient funds: \(available) available, \(required) required"
+              case .invalidCard(let reason):
+                  return "Invalid card: \(reason)"
+              case .expiredCard(let month, let year):
+                  return "Card expired: \(month)/\(year)"
+              case .networkFailure(let underlying):
+                  return "Network error: \(underlying.localizedDescription)"
+              }
+          }
+      }
+    Features/Payment/PaymentModels.swift: |
+      import Foundation
+
+      struct PaymentRequest {
+          let amount: Decimal
+          let cardNumber: String
+          let expiryMonth: Int
+          let expiryYear: Int
+          let cvv: String
+      }
+
+      struct PaymentReceipt {
+          let transactionId: String
+          let amount: Decimal
+          let timestamp: Date
+      }
+    Features/Payment/PaymentService.swift: |
+      class PaymentService {}
+    Features/Auth/AuthError.swift: |
+      import Foundation
+
+      enum AuthError: LocalizedError {
+          case invalidCredentials
+          case tokenExpired(expiresAt: Date)
+          case accountLocked(until: Date)
+          case twoFactorRequired
+
+          var errorDescription: String? {
+              switch self {
+              case .invalidCredentials:
+                  return "Invalid username or password"
+              case .tokenExpired(let date):
+                  return "Token expired at \(date)"
+              case .accountLocked(let until):
+                  return "Account locked until \(until)"
+              case .twoFactorRequired:
+                  return "Two-factor authentication required"
+              }
+          }
+      }
+    Features/Shipping/ShippingService.swift: |
+      import Foundation
+
+      struct ShippingRate {
+          let carrier: String
+          let cost: Decimal
+          let estimatedDays: Int
+      }
+
+      class ShippingService {
+          func calculateRate(weight: Double, destination: String) throws -> ShippingRate {
+              guard weight > 0 else {
+                  throw NSError(domain: "Shipping", code: 1)
+              }
+              return ShippingRate(carrier: "Standard", cost: 5.99, estimatedDays: 5)
+          }
+      }
+    Features/Payment/PaymentGateway.swift: |
+      import Foundation
+
+      class PaymentGateway {
+          private let service: PaymentService
+
+          init(service: PaymentService) {
+              self.service = service
+          }
+
+          func charge(request: PaymentRequest) -> Result<PaymentReceipt, PaymentError> {
+              do {
+                  let receipt = try service.processPayment(request)
+                  return .success(receipt)
+              } catch let error as PaymentError {
+                  return .failure(error)
+              } catch {
+                  return .failure(.networkFailure(underlying: error))
+              }
+          }
+      }
+    Features/Payment/PaymentHistory.swift: |
+      import Foundation
+
+      class PaymentHistory {
+          private var receipts: [PaymentReceipt] = []
+
+          func record(_ receipt: PaymentReceipt) {
+              receipts.append(receipt)
+          }
+
+          func total() -> Decimal {
+              receipts.reduce(0) { $0 + $1.amount }
+          }
+
+          func recent(limit: Int) -> [PaymentReceipt] {
+              Array(receipts.suffix(limit))
+          }
+      }
+    Features/Order/OrderError.swift: |
+      import Foundation
+
+      enum OrderError: LocalizedError {
+          case itemOutOfStock(itemId: String)
+          case invalidQuantity(requested: Int, available: Int)
+          case shippingUnavailable(destination: String)
+
+          var errorDescription: String? {
+              switch self {
+              case .itemOutOfStock(let id): return "Item \(id) is out of stock"
+              case .invalidQuantity(let r, let a): return "Requested \(r), only \(a) available"
+              case .shippingUnavailable(let d): return "Cannot ship to \(d)"
+              }
+          }
+      }
+  changed_files:
+    Features/Payment/PaymentError.swift: |
+      import Foundation
+
+      enum PaymentError: LocalizedError {
+          case insufficientFunds(available: Decimal, required: Decimal)
+          case invalidCard(reason: String)
+          case expiredCard(month: Int, year: Int)
+          case networkFailure(underlying: Error)
+
+          var errorDescription: String? {
+              switch self {
+              case .insufficientFunds(let available, let required):
+                  return "Insufficient funds: \(available) available, \(required) required"
+              case .invalidCard(let reason):
+                  return "Invalid card: \(reason)"
+              case .expiredCard(let month, let year):
+                  return "Card expired: \(month)/\(year)"
+              case .networkFailure(let underlying):
+                  return "Network error: \(underlying.localizedDescription)"
+              }
+          }
+      }
+    Features/Payment/PaymentModels.swift: |
+      import Foundation
+
+      struct PaymentRequest {
+          let amount: Decimal
+          let cardNumber: String
+          let expiryMonth: Int
+          let expiryYear: Int
+          let cvv: String
+      }
+
+      struct PaymentReceipt {
+          let transactionId: String
+          let amount: Decimal
+          let timestamp: Date
+      }
+    Features/Payment/PaymentService.swift: |
+      import Foundation
+
+      class PaymentService {
+          private let accountBalance: Decimal
+
+          init(accountBalance: Decimal) {
+              self.accountBalance = accountBalance
+          }
+
+          func processPayment(_ request: PaymentRequest) throws -> PaymentReceipt {
+              try validateCard(request)
+              try validateFunds(request.amount)
+              return PaymentReceipt(
+                  transactionId: UUID().uuidString,
+                  amount: request.amount,
+                  timestamp: Date()
+              )
+          }
+
+          private func validateCard(_ request: PaymentRequest) throws {
+              guard request.cardNumber.count == 16 else {
+                  throw PaymentError.invalidCard(reason: "Card number must be 16 digits")
+              }
+              guard request.cvv.count == 3 else {
+                  throw PaymentError.invalidCard(reason: "CVV must be 3 digits")
+              }
+              let now = Calendar.current.dateComponents([.month, .year], from: Date())
+              let currentYear = now.year ?? 0
+              let currentMonth = now.month ?? 0
+              if request.expiryYear < currentYear ||
+                 (request.expiryYear == currentYear && request.expiryMonth < currentMonth) {
+                  throw PaymentError.expiredCard(
+                      month: request.expiryMonth,
+                      year: request.expiryYear
+                  )
+              }
+          }
+
+          private func validateFunds(_ amount: Decimal) throws {
+              guard accountBalance >= amount else {
+                  throw PaymentError.insufficientFunds(
+                      available: accountBalance,
+                      required: amount
+                  )
+              }
+          }
+      }
+    Features/Auth/AuthError.swift: |
+      import Foundation
+
+      enum AuthError: LocalizedError {
+          case invalidCredentials
+          case tokenExpired(expiresAt: Date)
+          case accountLocked(until: Date)
+          case twoFactorRequired
+
+          var errorDescription: String? {
+              switch self {
+              case .invalidCredentials:
+                  return "Invalid username or password"
+              case .tokenExpired(let date):
+                  return "Token expired at \(date)"
+              case .accountLocked(let until):
+                  return "Account locked until \(until)"
+              case .twoFactorRequired:
+                  return "Two-factor authentication required"
+              }
+          }
+      }
+    Features/Shipping/ShippingService.swift: |
+      import Foundation
+
+      struct ShippingRate {
+          let carrier: String
+          let cost: Decimal
+          let estimatedDays: Int
+      }
+
+      class ShippingService {
+          func calculateRate(weight: Double, destination: String) throws -> ShippingRate {
+              guard weight > 0 else {
+                  throw NSError(domain: "Shipping", code: 1)
+              }
+              return ShippingRate(carrier: "Standard", cost: 5.99, estimatedDays: 5)
+          }
+      }
+    Features/Payment/PaymentGateway.swift: |
+      import Foundation
+
+      class PaymentGateway {
+          private let service: PaymentService
+
+          init(service: PaymentService) {
+              self.service = service
+          }
+
+          func charge(request: PaymentRequest) -> Result<PaymentReceipt, PaymentError> {
+              do {
+                  let receipt = try service.processPayment(request)
+                  return .success(receipt)
+              } catch let error as PaymentError {
+                  return .failure(error)
+              } catch {
+                  return .failure(.networkFailure(underlying: error))
+              }
+          }
+      }
+    Features/Payment/PaymentHistory.swift: |
+      import Foundation
+
+      class PaymentHistory {
+          private var receipts: [PaymentReceipt] = []
+
+          func record(_ receipt: PaymentReceipt) {
+              receipts.append(receipt)
+          }
+
+          func total() -> Decimal {
+              receipts.reduce(0) { $0 + $1.amount }
+          }
+
+          func recent(limit: Int) -> [PaymentReceipt] {
+              Array(receipts.suffix(limit))
+          }
+      }
+    Features/Order/OrderError.swift: |
+      import Foundation
+
+      enum OrderError: LocalizedError {
+          case itemOutOfStock(itemId: String)
+          case invalidQuantity(requested: Int, available: Int)
+          case shippingUnavailable(destination: String)
+
+          var errorDescription: String? {
+              switch self {
+              case .itemOutOfStock(let id): return "Item \(id) is out of stock"
+              case .invalidQuantity(let r, let a): return "Requested \(r), only \(a) available"
+              case .shippingUnavailable(let d): return "Cannot ship to \(d)"
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: paymenterror
+  selector:
+    path: Features/Payment/PaymentError.swift
+    anchor: 'enum PaymentError: LocalizedError'
+- id: paymenterror_1
+  selector:
+    path: Features/Payment/PaymentError.swift
+    anchor: case insufficientFunds
+- id: paymenterror_2
+  selector:
+    path: Features/Payment/PaymentError.swift
+    anchor: case invalidCard
+- id: paymenterror_3
+  selector:
+    path: Features/Payment/PaymentError.swift
+    anchor: case expiredCard
+- id: paymentmodels
+  selector:
+    path: Features/Payment/PaymentModels.swift
+    anchor: struct PaymentRequest
+- id: paymentmodels_1
+  selector:
+    path: Features/Payment/PaymentModels.swift
+    anchor: 'let cardNumber: String'
+- id: paymentmodels_2
+  selector:
+    path: Features/Payment/PaymentModels.swift
+    anchor: 'let expiryMonth: Int'
+- id: paymentmodels_3
+  selector:
+    path: Features/Payment/PaymentModels.swift
+    anchor: struct PaymentReceipt
+- id: paymentservice_file
+  selector:
+    path: Features/Payment/PaymentService.swift
+- id: no_autherror
+  selector:
+    path: Features/Auth/AuthError.swift
+- id: no_shippingservice
+  selector:
+    path: Features/Shipping/ShippingService.swift
+- id: no_paymentgateway
+  selector:
+    path: Features/Payment/PaymentGateway.swift
+- id: no_paymenthistory
+  selector:
+    path: Features/Payment/PaymentHistory.swift
+- id: no_ordererror
+  selector:
+    path: Features/Order/OrderError.swift
+- id: no_global_0
+  selector:
+    anchor: AuthError
+- id: no_global_1
+  selector:
+    anchor: invalidCredentials
+- id: no_global_2
+  selector:
+    anchor: twoFactorRequired
+- id: no_global_3
+  selector:
+    anchor: ShippingService
+- id: no_global_4
+  selector:
+    anchor: ShippingRate
+- id: no_global_5
+  selector:
+    anchor: estimatedDays
+- id: no_global_6
+  selector:
+    anchor: PaymentGateway
+- id: no_global_7
+  selector:
+    anchor: charge(request
+- id: no_global_8
+  selector:
+    anchor: PaymentHistory
+- id: no_global_9
+  selector:
+    anchor: record(
+- id: no_global_10
+  selector:
+    anchor: recent(limit
+- id: no_global_11
+  selector:
+    anchor: OrderError
+- id: no_global_12
+  selector:
+    anchor: itemOutOfStock
+- id: no_global_13
+  selector:
+    anchor: shippingUnavailable
+oracle:
+  required:
+  - paymenterror
+  - paymenterror_1
+  - paymenterror_2
+  - paymenterror_3
+  - paymentmodels
+  - paymentmodels_1
+  - paymentmodels_2
+  - paymentmodels_3
+  - paymentservice_file
+  allowed: []
+  forbidden:
+  - no_autherror
+  - no_shippingservice
+  - no_paymentgateway
+  - no_paymenthistory
+  - no_ordererror
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

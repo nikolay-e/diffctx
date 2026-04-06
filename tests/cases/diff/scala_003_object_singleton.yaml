@@ -1,0 +1,241 @@
+name: scala_003_object_singleton
+repo:
+  initial_files:
+    src/config/AppConfig.scala: |
+      package config
+
+      object AppConfig {
+        val timeout: Int = 30
+        val maxRetries: Int = 3
+        val baseUrl: String = "https://api.example.com"
+        val apiVersion: String = "v1"
+
+        def getFullUrl(path: String): String = s"$baseUrl/$apiVersion$path"
+
+        def getTimeoutMillis: Long = timeout * 1000L
+      }
+    src/client/ApiClient.scala: |
+      package client
+
+      class ApiClient {
+        def healthCheck(): String = "ok"
+      }
+    src/config/DatabaseConfig.scala: |
+      package config
+
+      object DatabaseConfig {
+        val host: String = "localhost"
+        val port: Int = 5432
+        val database: String = "myapp"
+        val maxPoolSize: Int = 10
+        val minIdle: Int = 2
+
+        def connectionString: String =
+          s"jdbc:postgresql://$host:$port/$database"
+
+        def poolConfig: Map[String, Any] = Map(
+          "maxPoolSize" -> maxPoolSize,
+          "minIdle" -> minIdle
+        )
+      }
+    src/config/CacheConfig.scala: |
+      package config
+
+      object CacheConfig {
+        val ttlSeconds: Int = 300
+        val maxEntries: Int = 1000
+        val evictionPolicy: String = "lru"
+
+        def isEnabled: Boolean = maxEntries > 0
+
+        def ttlMillis: Long = ttlSeconds * 1000L
+      }
+    src/client/WebSocketClient.scala: |
+      package client
+
+      class WebSocketClient(url: String) {
+        private var connected: Boolean = false
+
+        def connect(): Unit = {
+          println(s"Connecting to $url")
+          connected = true
+        }
+
+        def disconnect(): Unit = {
+          connected = false
+        }
+
+        def send(message: String): Unit = {
+          if (connected) println(s"Sending: $message")
+        }
+
+        def isConnected: Boolean = connected
+      }
+    src/client/HttpClient.scala: |
+      package client
+
+      import config.AppConfig
+
+      class HttpClient {
+        def get(path: String): String = {
+          val url = AppConfig.getFullUrl(path)
+          s"GET $url (timeout: ${AppConfig.timeout}s)"
+        }
+
+        def post(path: String, body: String): String = {
+          val url = AppConfig.getFullUrl(path)
+          s"POST $url: $body"
+        }
+      }
+    src/middleware/RetryMiddleware.scala: |
+      package middleware
+
+      import config.AppConfig
+
+      class RetryMiddleware {
+        def withRetry[T](action: => T): T = {
+          var attempts = 0
+          var lastError: Throwable = null
+          while (attempts < AppConfig.maxRetries) {
+            try { return action }
+            catch { case e: Throwable => lastError = e; attempts += 1 }
+          }
+          throw lastError
+        }
+      }
+  changed_files:
+    src/client/ApiClient.scala: |
+      package client
+
+      import config.AppConfig
+
+      class ApiClient {
+        def healthCheck(): String = "ok"
+
+        def fetch(path: String): String = {
+          val url = AppConfig.getFullUrl(path)
+          val timeout = AppConfig.timeout
+          s"Fetching $url with timeout $timeout"
+        }
+
+        def retry[T](action: => T): T = {
+          var attempts = 0
+          var lastError: Throwable = null
+          while (attempts < AppConfig.maxRetries) {
+            try {
+              return action
+            } catch {
+              case e: Throwable =>
+                lastError = e
+                attempts += 1
+            }
+          }
+          throw lastError
+        }
+
+        def fetchWithRetry(path: String): String = {
+          retry(fetch(path))
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: appconfig
+  selector:
+    path: src/config/AppConfig.scala
+    anchor: object AppConfig
+- id: appconfig_1
+  selector:
+    path: src/config/AppConfig.scala
+    anchor: 'val timeout: Int = 30'
+- id: appconfig_2
+  selector:
+    path: src/config/AppConfig.scala
+    anchor: 'val maxRetries: Int = 3'
+- id: appconfig_3
+  selector:
+    path: src/config/AppConfig.scala
+    anchor: 'def getFullUrl(path: String): String'
+- id: no_databaseconfig
+  selector:
+    path: src/config/DatabaseConfig.scala
+- id: no_cacheconfig
+  selector:
+    path: src/config/CacheConfig.scala
+- id: no_websocketclient
+  selector:
+    path: src/client/WebSocketClient.scala
+- id: no_httpclient
+  selector:
+    path: src/client/HttpClient.scala
+- id: no_retrymiddleware
+  selector:
+    path: src/middleware/RetryMiddleware.scala
+- id: no_global_0
+  selector:
+    anchor: object DatabaseConfig
+- id: no_global_1
+  selector:
+    anchor: connectionString
+- id: no_global_2
+  selector:
+    anchor: maxPoolSize
+- id: no_global_3
+  selector:
+    anchor: object CacheConfig
+- id: no_global_4
+  selector:
+    anchor: ttlSeconds
+- id: no_global_5
+  selector:
+    anchor: evictionPolicy
+- id: no_global_6
+  selector:
+    anchor: class WebSocketClient
+- id: no_global_7
+  selector:
+    anchor: isConnected
+- id: no_global_8
+  selector:
+    anchor: disconnect
+- id: no_global_9
+  selector:
+    anchor: class HttpClient
+- id: no_global_10
+  selector:
+    anchor: def get(path
+- id: no_global_11
+  selector:
+    anchor: def post(path
+- id: no_global_12
+  selector:
+    anchor: class RetryMiddleware
+- id: no_global_13
+  selector:
+    anchor: withRetry
+oracle:
+  required:
+  - appconfig
+  - appconfig_1
+  - appconfig_2
+  - appconfig_3
+  allowed: []
+  forbidden:
+  - no_databaseconfig
+  - no_cacheconfig
+  - no_websocketclient
+  - no_httpclient
+  - no_retrymiddleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

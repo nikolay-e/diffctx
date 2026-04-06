@@ -1,0 +1,240 @@
+name: jvm_and_compiled_005_cpp_namespace
+repo:
+  initial_files:
+    include/utils.h: |
+      #pragma once
+      #include <string>
+
+      namespace myapp::utils {
+
+      std::string trim(const std::string& s);
+      std::string toUpper(const std::string& s);
+
+      }
+    src/utils.cpp: |
+      #include "utils.h"
+      #include <algorithm>
+      #include <cctype>
+
+      namespace myapp::utils {
+
+      std::string trim(const std::string& s) {
+          size_t start = s.find_first_not_of(" \t\n");
+          size_t end = s.find_last_not_of(" \t\n");
+          return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+      }
+
+      std::string toUpper(const std::string& s) {
+          std::string result = s;
+          std::transform(result.begin(), result.end(), result.begin(), ::toupper);
+          return result;
+      }
+
+      }
+    src/app.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    src/parser.cpp: |
+      #include "utils.h"
+      #include <string>
+      #include <vector>
+
+      using myapp::utils::trim;
+
+      namespace myapp::parser {
+
+      std::vector<std::string> splitAndTrim(const std::string& input, char delim) {
+          std::vector<std::string> tokens;
+          std::string current;
+          for (char c : input) {
+              if (c == delim) {
+                  auto trimmed = trim(current);
+                  if (!trimmed.empty()) tokens.push_back(trimmed);
+                  current.clear();
+              } else {
+                  current += c;
+              }
+          }
+          auto trimmed = trim(current);
+          if (!trimmed.empty()) tokens.push_back(trimmed);
+          return tokens;
+      }
+
+      }
+    include/io_utils.h: |
+      #pragma once
+      #include <string>
+      #include <fstream>
+
+      namespace myapp::io {
+
+      std::string readFile(const std::string& path);
+      void writeFile(const std::string& path, const std::string& content);
+      bool fileExists(const std::string& path);
+
+      }
+    src/config.cpp: |
+      #include "utils.h"
+      #include <unordered_map>
+      #include <string>
+
+      using myapp::utils::trim;
+      using myapp::utils::toUpper;
+
+      class ConfigLoader {
+          std::unordered_map<std::string, std::string> entries_;
+      public:
+          void load(const std::string& line) {
+              auto eq = line.find('=');
+              if (eq == std::string::npos) return;
+              auto key = toUpper(trim(line.substr(0, eq)));
+              auto val = trim(line.substr(eq + 1));
+              entries_[key] = val;
+          }
+
+          std::string get(const std::string& key) const {
+              auto it = entries_.find(toUpper(key));
+              return it != entries_.end() ? it->second : "";
+          }
+      };
+    tests/utils_test.cpp: |
+      #include "utils.h"
+      #include <cassert>
+
+      void test_trim() {
+          assert(myapp::utils::trim("  hello  ") == "hello");
+          assert(myapp::utils::trim("") == "");
+          assert(myapp::utils::trim("no-spaces") == "no-spaces");
+      }
+
+      void test_toUpper() {
+          assert(myapp::utils::toUpper("hello") == "HELLO");
+          assert(myapp::utils::toUpper("Hello World") == "HELLO WORLD");
+      }
+  changed_files:
+    src/app.cpp: |
+      #include "utils.h"
+      #include <iostream>
+
+      using myapp::utils::trim;
+      using myapp::utils::toUpper;
+
+      int main() {
+          std::string input = "  Hello World  ";
+          std::cout << toUpper(trim(input)) << std::endl;
+          return 0;
+      }
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: src/app.cpp
+    anchor: using myapp::utils::trim
+- id: app_1
+  selector:
+    path: src/app.cpp
+    anchor: using myapp::utils::toUpper
+- id: app_2
+  selector:
+    path: src/app.cpp
+    anchor: toUpper(trim(input))
+- id: utils
+  selector:
+    path: include/utils.h
+    anchor: namespace myapp::utils
+- id: utils_1
+  selector:
+    path: include/utils.h
+    anchor: std::string trim(const std::string& s)
+- id: utils_2
+  selector:
+    path: include/utils.h
+    anchor: std::string toUpper(const std::string& s)
+- id: utils_3
+  selector:
+    path: src/utils.cpp
+    anchor: find_first_not_of
+- id: utils_4
+  selector:
+    path: src/utils.cpp
+    anchor: std::transform
+- id: no_parser
+  selector:
+    path: src/parser.cpp
+- id: no_io_utils
+  selector:
+    path: include/io_utils.h
+- id: no_config
+  selector:
+    path: src/config.cpp
+- id: no_utils_test
+  selector:
+    path: tests/utils_test.cpp
+- id: no_global_0
+  selector:
+    anchor: splitAndTrim
+- id: no_global_1
+  selector:
+    anchor: myapp::parser
+- id: no_global_2
+  selector:
+    anchor: delim
+- id: no_global_3
+  selector:
+    anchor: myapp::io
+- id: no_global_4
+  selector:
+    anchor: readFile
+- id: no_global_5
+  selector:
+    anchor: writeFile
+- id: no_global_6
+  selector:
+    anchor: fileExists
+- id: no_global_7
+  selector:
+    anchor: ConfigLoader
+- id: no_global_8
+  selector:
+    anchor: line.find('=')
+- id: no_global_9
+  selector:
+    anchor: entries_
+- id: no_global_10
+  selector:
+    anchor: test_trim
+- id: no_global_11
+  selector:
+    anchor: test_toUpper
+- id: no_global_12
+  selector:
+    anchor: no-spaces
+oracle:
+  required:
+  - app
+  - app_1
+  - app_2
+  - utils
+  - utils_1
+  - utils_2
+  - utils_3
+  - utils_4
+  allowed: []
+  forbidden:
+  - no_parser
+  - no_io_utils
+  - no_config
+  - no_utils_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

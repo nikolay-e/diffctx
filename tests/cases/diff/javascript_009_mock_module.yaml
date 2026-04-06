@@ -1,0 +1,124 @@
+name: javascript_009_mock_module
+repo:
+  initial_files:
+    api.ts: |
+      export async function fetchUser(id: string) {
+          const response = await fetch(`/api/users/${id}`);
+          return response.json();
+      }
+    service.ts: |
+      import { fetchUser } from './api';
+
+      export async function getUserName(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return user.name;
+      }
+    service.test.ts: |
+      console.log('initial');
+    user.types.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          createdAt: string;
+      }
+
+      export type UserSummary = Pick<User, 'id' | 'name'>;
+    auth.ts: |
+      export function getAuthToken(): string | null {
+          return localStorage.getItem('auth_token');
+      }
+
+      export function isAuthenticated(): boolean {
+          return getAuthToken() !== null;
+      }
+  changed_files:
+    api.ts: |
+      export async function fetchUser(id: string) {
+          const response = await fetch(`/api/users/${id}`);
+          return response.json();
+      }
+    service.ts: |
+      import { fetchUser } from './api';
+
+      export async function getUserName(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return user.name;
+      }
+    service.test.ts: |
+      import { getUserName } from './service';
+      import { fetchUser } from './api';
+
+      jest.mock('./api');
+
+      const mockedFetchUser = fetchUser as jest.MockedFunction<typeof fetchUser>;
+
+      describe('Service', () => {
+          it('should return user name', async () => {
+              mockedFetchUser.mockResolvedValue({ id: '1', name: 'Test User' });
+              const name = await getUserName('1');
+              expect(name).toBe('Test User');
+          });
+      });
+    user.types.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          createdAt: string;
+      }
+
+      export type UserSummary = Pick<User, 'id' | 'name'>;
+    auth.ts: |
+      export function getAuthToken(): string | null {
+          return localStorage.getItem('auth_token');
+      }
+
+      export function isAuthenticated(): boolean {
+          return getAuthToken() !== null;
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.ts
+    anchor: import { fetchUser } from './api'
+- id: service_1
+  selector:
+    path: service.ts
+    anchor: return user.name
+- id: api
+  selector:
+    path: api.ts
+    anchor: 'function fetchUser(id: string)'
+- id: no_user_types
+  selector:
+    path: user.types.ts
+- id: no_auth
+  selector:
+    path: auth.ts
+- id: no_global_0
+  selector:
+    anchor: UserSummary
+- id: no_global_1
+  selector:
+    anchor: createdAt
+- id: no_global_2
+  selector:
+    anchor: getAuthToken
+- id: no_global_3
+  selector:
+    anchor: isAuthenticated
+oracle:
+  required:
+  - service
+  - service_1
+  - api
+  allowed: []
+  forbidden:
+  - no_user_types
+  - no_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,150 @@
+name: jvm_and_compiled_060_swift_async_await
+repo:
+  initial_files:
+    User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+      }
+    UserAPI.swift: |
+      // Initial
+      class UserAPI {}
+    ImageDownloader.swift: |
+      import Foundation
+
+      class ImageDownloader {
+          func downloadImage(from urlString: String) async throws -> Data {
+              let url = URL(string: urlString)!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return data
+          }
+
+          func downloadThumbnail(from urlString: String) async throws -> Data {
+              let url = URL(string: "\(urlString)?size=thumb")!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return data
+          }
+      }
+    URLBuilder.swift: |
+      import Foundation
+
+      struct URLBuilder {
+          private var components: URLComponents
+
+          init(base: String) {
+              components = URLComponents(string: base) ?? URLComponents()
+          }
+
+          mutating func addQueryItem(name: String, value: String) {
+              var items = components.queryItems ?? []
+              items.append(URLQueryItem(name: name, value: value))
+              components.queryItems = items
+          }
+
+          func build() -> URL? {
+              return components.url
+          }
+      }
+  changed_files:
+    User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+      }
+    UserAPI.swift: |
+      import Foundation
+
+      class UserAPI {
+          func fetchUsers() async throws -> [User] {
+              let url = URL(string: "https://api.example.com/users")!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return try JSONDecoder().decode([User].self, from: data)
+          }
+
+          func getUser(id: String) async throws -> User {
+              let users = try await fetchUsers()
+              guard let user = users.first(where: { $0.id == id }) else {
+                  throw NSError(domain: "UserAPI", code: 404)
+              }
+              return user
+          }
+      }
+    ImageDownloader.swift: |
+      import Foundation
+
+      class ImageDownloader {
+          func downloadImage(from urlString: String) async throws -> Data {
+              let url = URL(string: urlString)!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return data
+          }
+
+          func downloadThumbnail(from urlString: String) async throws -> Data {
+              let url = URL(string: "\(urlString)?size=thumb")!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return data
+          }
+      }
+    URLBuilder.swift: |
+      import Foundation
+
+      struct URLBuilder {
+          private var components: URLComponents
+
+          init(base: String) {
+              components = URLComponents(string: base) ?? URLComponents()
+          }
+
+          mutating func addQueryItem(name: String, value: String) {
+              var items = components.queryItems ?? []
+              items.append(URLQueryItem(name: name, value: value))
+              components.queryItems = items
+          }
+
+          func build() -> URL? {
+              return components.url
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userapi
+  selector:
+    path: UserAPI.swift
+    anchor: import Foundation
+- id: no_imagedownloader
+  selector:
+    path: ImageDownloader.swift
+- id: no_urlbuilder
+  selector:
+    path: URLBuilder.swift
+- id: no_global_0
+  selector:
+    anchor: ImageDownloader
+- id: no_global_1
+  selector:
+    anchor: downloadImage
+- id: no_global_2
+  selector:
+    anchor: downloadThumbnail
+- id: no_global_3
+  selector:
+    anchor: URLBuilder
+- id: no_global_4
+  selector:
+    anchor: addQueryItem
+- id: no_global_5
+  selector:
+    anchor: URLComponents
+oracle:
+  required:
+  - userapi
+  allowed: []
+  forbidden:
+  - no_imagedownloader
+  - no_urlbuilder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,310 @@
+name: jvm_and_compiled_052_scala_future
+repo:
+  initial_files:
+    ExpensiveComputation.scala: |
+      object ExpensiveComputation {
+        def compute(input: Int): Int = {
+          Thread.sleep(100)
+          input * 2
+        }
+
+        def computeString(input: String): String = {
+          Thread.sleep(100)
+          input.toUpperCase
+        }
+
+        def computeBatch(inputs: List[Int]): List[Int] = {
+          inputs.map(compute)
+        }
+      }
+    AsyncProcessor.scala: |
+      class AsyncProcessor {}
+    async/AsyncOrderProcessor.scala: |
+      import scala.concurrent.{Future, ExecutionContext}
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class AsyncOrderProcessor {
+        def processOrder(orderId: String): Future[String] = Future {
+          Thread.sleep(50)
+          s"processed:$orderId"
+        }
+
+        def processMany(orderIds: List[String]): Future[List[String]] = {
+          Future.sequence(orderIds.map(id => Future(s"processed:$id")))
+        }
+
+        def processCombined(orderId: String, userId: String): Future[(String, String)] = {
+          for {
+            order <- Future(s"order:$orderId")
+            user <- Future(s"user:$userId")
+          } yield (order, user)
+        }
+      }
+    aggregation/ResultAggregator.scala: |
+      import scala.concurrent.{Future, ExecutionContext}
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      object ResultAggregator {
+        def sumResults(futures: List[Future[Int]]): Future[Int] = {
+          Future.sequence(futures).map(_.sum)
+        }
+
+        def firstCompleted[T](futures: List[Future[T]]): Future[T] = {
+          Future.firstCompletedOf(futures)
+        }
+
+        def allSettled[T](futures: List[Future[T]]): Future[List[Either[Throwable, T]]] = {
+          Future.sequence(futures.map(_.map(Right(_)).recover { case e => Left(e) }))
+        }
+      }
+    scheduling/TaskScheduler.scala: |
+      import java.util.concurrent.{ScheduledExecutorService, Executors, TimeUnit}
+
+      object TaskScheduler {
+        private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(4)
+
+        def schedule(delay: Long, task: Runnable): Unit = {
+          executor.schedule(task, delay, TimeUnit.MILLISECONDS)
+        }
+
+        def scheduleRepeating(interval: Long, task: Runnable): Unit = {
+          executor.scheduleAtFixedRate(task, 0, interval, TimeUnit.MILLISECONDS)
+        }
+
+        def shutdown(): Unit = executor.shutdown()
+      }
+    extensions/FutureExtensions.scala: |
+      import scala.concurrent.{Future, ExecutionContext, Promise}
+      import scala.concurrent.duration._
+
+      object FutureExtensions {
+        implicit class RichFuture[T](future: Future[T]) {
+          def withTimeout(duration: FiniteDuration)(implicit ec: ExecutionContext): Future[T] = {
+            val promise = Promise[T]()
+            future.foreach(promise.trySuccess)
+            future.failed.foreach(promise.tryFailure)
+            promise.future
+          }
+
+          def retry(times: Int)(implicit ec: ExecutionContext): Future[T] = {
+            future.recoverWith {
+              case _ if times > 0 => retry(times - 1)
+            }
+          }
+        }
+      }
+  changed_files:
+    ExpensiveComputation.scala: |
+      object ExpensiveComputation {
+        def compute(input: Int): Int = {
+          Thread.sleep(100)
+          input * 2
+        }
+
+        def computeString(input: String): String = {
+          Thread.sleep(100)
+          input.toUpperCase
+        }
+
+        def computeBatch(inputs: List[Int]): List[Int] = {
+          inputs.map(compute)
+        }
+      }
+    AsyncProcessor.scala: |
+      import scala.concurrent.{Future, ExecutionContext}
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class AsyncProcessor {
+        def processAsync(input: Int): Future[Int] = Future {
+          ExpensiveComputation.compute(input)
+        }
+
+        def processMany(inputs: List[Int]): Future[List[Int]] = {
+          Future.sequence(inputs.map(i => Future(ExpensiveComputation.compute(i))))
+        }
+
+        def processCombined(a: Int, b: String): Future[(Int, String)] = {
+          for {
+            resultA <- Future(ExpensiveComputation.compute(a))
+            resultB <- Future(ExpensiveComputation.computeString(b))
+          } yield (resultA, resultB)
+        }
+      }
+    async/AsyncOrderProcessor.scala: |
+      import scala.concurrent.{Future, ExecutionContext}
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      class AsyncOrderProcessor {
+        def processOrder(orderId: String): Future[String] = Future {
+          Thread.sleep(50)
+          s"processed:$orderId"
+        }
+
+        def processMany(orderIds: List[String]): Future[List[String]] = {
+          Future.sequence(orderIds.map(id => Future(s"processed:$id")))
+        }
+
+        def processCombined(orderId: String, userId: String): Future[(String, String)] = {
+          for {
+            order <- Future(s"order:$orderId")
+            user <- Future(s"user:$userId")
+          } yield (order, user)
+        }
+      }
+    aggregation/ResultAggregator.scala: |
+      import scala.concurrent.{Future, ExecutionContext}
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      object ResultAggregator {
+        def sumResults(futures: List[Future[Int]]): Future[Int] = {
+          Future.sequence(futures).map(_.sum)
+        }
+
+        def firstCompleted[T](futures: List[Future[T]]): Future[T] = {
+          Future.firstCompletedOf(futures)
+        }
+
+        def allSettled[T](futures: List[Future[T]]): Future[List[Either[Throwable, T]]] = {
+          Future.sequence(futures.map(_.map(Right(_)).recover { case e => Left(e) }))
+        }
+      }
+    scheduling/TaskScheduler.scala: |
+      import java.util.concurrent.{ScheduledExecutorService, Executors, TimeUnit}
+
+      object TaskScheduler {
+        private val executor: ScheduledExecutorService = Executors.newScheduledThreadPool(4)
+
+        def schedule(delay: Long, task: Runnable): Unit = {
+          executor.schedule(task, delay, TimeUnit.MILLISECONDS)
+        }
+
+        def scheduleRepeating(interval: Long, task: Runnable): Unit = {
+          executor.scheduleAtFixedRate(task, 0, interval, TimeUnit.MILLISECONDS)
+        }
+
+        def shutdown(): Unit = executor.shutdown()
+      }
+    extensions/FutureExtensions.scala: |
+      import scala.concurrent.{Future, ExecutionContext, Promise}
+      import scala.concurrent.duration._
+
+      object FutureExtensions {
+        implicit class RichFuture[T](future: Future[T]) {
+          def withTimeout(duration: FiniteDuration)(implicit ec: ExecutionContext): Future[T] = {
+            val promise = Promise[T]()
+            future.foreach(promise.trySuccess)
+            future.failed.foreach(promise.tryFailure)
+            promise.future
+          }
+
+          def retry(times: Int)(implicit ec: ExecutionContext): Future[T] = {
+            future.recoverWith {
+              case _ if times > 0 => retry(times - 1)
+            }
+          }
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: asyncprocessor
+  selector:
+    path: AsyncProcessor.scala
+    anchor: ExpensiveComputation.compute(input)
+- id: asyncprocessor_1
+  selector:
+    path: AsyncProcessor.scala
+    anchor: Future.sequence(inputs.map
+- id: asyncprocessor_2
+  selector:
+    path: AsyncProcessor.scala
+    anchor: ExpensiveComputation.computeString(b)
+- id: expensivecomputation
+  selector:
+    path: ExpensiveComputation.scala
+    anchor: 'def compute(input: Int): Int'
+- id: expensivecomputation_1
+  selector:
+    path: ExpensiveComputation.scala
+    anchor: 'def computeString(input: String): String'
+- id: expensivecomputation_2
+  selector:
+    path: ExpensiveComputation.scala
+    anchor: input * 2
+- id: no_asyncorderprocessor
+  selector:
+    path: async/AsyncOrderProcessor.scala
+- id: no_resultaggregator
+  selector:
+    path: aggregation/ResultAggregator.scala
+- id: no_taskscheduler
+  selector:
+    path: scheduling/TaskScheduler.scala
+- id: no_futureextensions
+  selector:
+    path: extensions/FutureExtensions.scala
+- id: no_global_0
+  selector:
+    anchor: AsyncOrderProcessor
+- id: no_global_1
+  selector:
+    anchor: processOrder
+- id: no_global_2
+  selector:
+    anchor: 'processed:'
+- id: no_global_3
+  selector:
+    anchor: ResultAggregator
+- id: no_global_4
+  selector:
+    anchor: sumResults
+- id: no_global_5
+  selector:
+    anchor: firstCompleted
+- id: no_global_6
+  selector:
+    anchor: allSettled
+- id: no_global_7
+  selector:
+    anchor: TaskScheduler
+- id: no_global_8
+  selector:
+    anchor: ScheduledExecutorService
+- id: no_global_9
+  selector:
+    anchor: scheduleRepeating
+- id: no_global_10
+  selector:
+    anchor: FutureExtensions
+- id: no_global_11
+  selector:
+    anchor: RichFuture
+- id: no_global_12
+  selector:
+    anchor: withTimeout
+oracle:
+  required:
+  - asyncprocessor
+  - asyncprocessor_1
+  - asyncprocessor_2
+  - expensivecomputation
+  - expensivecomputation_1
+  - expensivecomputation_2
+  allowed: []
+  forbidden:
+  - no_asyncorderprocessor
+  - no_resultaggregator
+  - no_taskscheduler
+  - no_futureextensions
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

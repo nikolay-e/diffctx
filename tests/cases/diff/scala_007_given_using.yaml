@@ -1,0 +1,197 @@
+name: scala_007_given_using
+repo:
+  initial_files:
+    Ordering.scala: |
+      case class User(name: String, age: Int) {
+        def displayName: String = s"$name (age $age)"
+      }
+
+      object UserOrdering {
+        given Ordering[User] = Ordering.by(_.name)
+
+        given ageOrdering: Ordering[User] = Ordering.by(_.age)
+      }
+    UserSorter.scala: |
+      class UserSorter {}
+    Comparator.scala: |
+      trait Comparator[T] {
+        def compare(a: T, b: T): Int
+        def isEqual(a: T, b: T): Boolean = compare(a, b) == 0
+        def isLessThan(a: T, b: T): Boolean = compare(a, b) < 0
+      }
+
+      object Comparator {
+        def natural[T: Ordering]: Comparator[T] = new Comparator[T] {
+          def compare(a: T, b: T): Int = implicitly[Ordering[T]].compare(a, b)
+        }
+      }
+    UserFilter.scala: |
+      class UserFilter {
+        def filterByAge(users: List[User], minAge: Int): List[User] =
+          users.filter(_.age >= minAge)
+
+        def filterByNamePrefix(users: List[User], prefix: String): List[User] =
+          users.filter(_.name.startsWith(prefix))
+
+        def partition(users: List[User], predicate: User => Boolean): (List[User], List[User]) =
+          users.partition(predicate)
+
+        def distinctByName(users: List[User]): List[User] =
+          users.groupBy(_.name).values.map(_.head).toList
+      }
+    UserFormatter.scala: |
+      class UserFormatter {
+        def formatList(users: List[User]): String = {
+          users.map(_.displayName).mkString(", ")
+        }
+
+        def formatTable(users: List[User]): String = {
+          val header = f"${"Name"}%-20s ${"Age"}%5s"
+          val rows = users.map(u => f"${u.name}%-20s ${u.age}%5d")
+          (header :: rows).mkString("\n")
+        }
+      }
+    ProductOrdering.scala: |
+      case class Product(name: String, price: Double)
+
+      object ProductOrdering {
+        given Ordering[Product] = Ordering.by(_.name)
+
+        given priceOrdering: Ordering[Product] = Ordering.by(_.price)
+      }
+    SortSpec.scala: |
+      import UserOrdering.given
+
+      class SortSpec {
+        def testSortByName(): Unit = {
+          val sorter = new UserSorter
+          val users = List(User("Charlie", 30), User("Alice", 25), User("Bob", 35))
+          val sorted = sorter.sortByName(users)
+          assert(sorted.head.name == "Alice")
+        }
+
+        def testSortByAge(): Unit = {
+          val sorter = new UserSorter
+          val users = List(User("Charlie", 30), User("Alice", 25), User("Bob", 35))
+          val sorted = sorter.sortByAge(users)
+          assert(sorted.head.age == 25)
+        }
+      }
+  changed_files:
+    UserSorter.scala: |
+      import UserOrdering.given
+
+      class UserSorter {
+        def sortByName(users: List[User]): List[User] = {
+          users.sorted
+        }
+
+        def sortByAge(users: List[User]): List[User] = {
+          users.sorted(using UserOrdering.ageOrdering)
+        }
+
+        def findMin(users: List[User])(using ord: Ordering[User]): User = {
+          users.min
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: ordering
+  selector:
+    path: Ordering.scala
+    anchor: given Ordering[User] = Ordering.by(_.name)
+- id: ordering_1
+  selector:
+    path: Ordering.scala
+    anchor: 'given ageOrdering: Ordering[User] = Ordering.by(_.age)'
+- id: ordering_2
+  selector:
+    path: Ordering.scala
+    anchor: 'case class User(name: String, age: Int)'
+- id: no_comparator
+  selector:
+    path: Comparator.scala
+- id: no_userfilter
+  selector:
+    path: UserFilter.scala
+- id: no_userformatter
+  selector:
+    path: UserFormatter.scala
+- id: no_productordering
+  selector:
+    path: ProductOrdering.scala
+- id: no_sortspec
+  selector:
+    path: SortSpec.scala
+- id: no_global_0
+  selector:
+    anchor: trait Comparator
+- id: no_global_1
+  selector:
+    anchor: isEqual
+- id: no_global_2
+  selector:
+    anchor: isLessThan
+- id: no_global_3
+  selector:
+    anchor: class UserFilter
+- id: no_global_4
+  selector:
+    anchor: filterByAge
+- id: no_global_5
+  selector:
+    anchor: filterByNamePrefix
+- id: no_global_6
+  selector:
+    anchor: distinctByName
+- id: no_global_7
+  selector:
+    anchor: class UserFormatter
+- id: no_global_8
+  selector:
+    anchor: formatList
+- id: no_global_9
+  selector:
+    anchor: formatTable
+- id: no_global_10
+  selector:
+    anchor: object ProductOrdering
+- id: no_global_11
+  selector:
+    anchor: case class Product
+- id: no_global_12
+  selector:
+    anchor: priceOrdering
+- id: no_global_13
+  selector:
+    anchor: class SortSpec
+- id: no_global_14
+  selector:
+    anchor: testSortByName
+oracle:
+  required:
+  - ordering
+  - ordering_1
+  - ordering_2
+  allowed: []
+  forbidden:
+  - no_comparator
+  - no_userfilter
+  - no_userformatter
+  - no_productordering
+  - no_sortspec
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

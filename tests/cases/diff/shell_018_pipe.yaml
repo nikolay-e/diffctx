@@ -1,0 +1,84 @@
+name: shell_018_pipe
+repo:
+  initial_files:
+    analyze.sh: |
+      #!/bin/bash
+
+      cat data.csv | grep "Engineer"
+      echo "Done"
+    data.csv: |
+      name,age,role
+      John,25,Engineer
+      Jane,30,Manager
+      Bob,22,Developer
+      Alice,28,Engineer
+      Charlie,35,Director
+    scripts/import.sh: |
+      #!/bin/bash
+      API_URL="https://api.example.com/employees"
+      curl -sf "$API_URL" | jq -r '.[] | [.name,.age,.role] | @csv' > data.csv
+      echo "Imported $(wc -l < data.csv) records"
+    scripts/chart.sh: |
+      #!/bin/bash
+      gnuplot <<'PLOT'
+      set terminal png
+      set output "ages.png"
+      plot "analysis_output.txt" using 1:2 with lines
+      PLOT
+  changed_files:
+    analyze.sh: |
+      #!/bin/bash
+
+      echo "=== Engineers ==="
+      cat data.csv | grep "Engineer" | sort -t',' -k2 -n | head -10
+
+      echo "=== Error count ==="
+      find . -name "*.log" | xargs grep "ERROR" | wc -l
+
+      echo "=== Nginx PIDs ==="
+      ps aux | grep "[n]ginx" | awk '{print $2}'
+
+      echo "=== Max age ==="
+      cat data.csv | tail -n+2 | cut -d',' -f2 | sort -n | tail -1
+    data.csv: |
+      name,age,role
+      John,25,Engineer
+      Jane,30,Manager
+      Bob,22,Developer
+      Alice,28,Engineer
+      Charlie,35,Director
+    scripts/import.sh: |
+      #!/bin/bash
+      API_URL="https://api.example.com/employees"
+      curl -sf "$API_URL" | jq -r '.[] | [.name,.age,.role] | @csv' > data.csv
+      echo "Imported $(wc -l < data.csv) records"
+    scripts/chart.sh: |
+      #!/bin/bash
+      gnuplot <<'PLOT'
+      set terminal png
+      set output "ages.png"
+      plot "analysis_output.txt" using 1:2 with lines
+      PLOT
+  commit_message: Update files
+fragments:
+- id: data
+  selector:
+    path: data.csv
+    anchor: name,age,role
+- id: analyze_file
+  selector:
+    path: analyze.sh
+- id: no_import
+  selector:
+    path: scripts/import.sh
+- id: no_chart
+  selector:
+    path: scripts/chart.sh
+oracle:
+  required:
+  - data
+  - analyze_file
+  allowed: []
+  forbidden:
+  - no_import
+  - no_chart

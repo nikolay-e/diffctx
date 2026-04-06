@@ -1,0 +1,260 @@
+name: terraform_057_sensitive_variable
+repo:
+  initial_files:
+    variables.tf: |
+      variable "db_password" {
+        type = string
+      }
+
+      variable "db_host" {
+        type    = string
+        default = "db.internal"
+      }
+
+      variable "environment" {
+        type    = string
+        default = "production"
+      }
+    main.tf: |
+      resource "aws_db_instance" "main" {
+        identifier = "app-db"
+        engine     = "postgres"
+        password   = var.db_password
+        username   = "admin"
+
+        tags = {
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_lambda_function" "api" {
+        function_name = "api-handler"
+        runtime       = "python3.11"
+        handler       = "main.handler"
+        role          = aws_iam_role.lambda.arn
+        filename      = "lambda.zip"
+
+        environment {
+          variables = {
+            DB_HOST = var.db_host
+          }
+        }
+      }
+
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+      }
+    terraform.tfvars.example: |
+      db_password     = "CHANGEME"
+      db_host         = "db.internal"
+      api_key         = "CHANGEME"
+      ssl_certificate = "arn:aws:acm:..."
+    payment/secrets.tf: |
+      variable "stripe_api_key" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "sendgrid_token" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "payment_webhook_secret" {
+        type      = string
+        sensitive = true
+      }
+    secrets_manager.tf: |
+      resource "aws_secretsmanager_secret" "api_key" {
+        name = "app/api_key"
+      }
+
+      resource "aws_secretsmanager_secret" "ssl_certificate" {
+        name = "app/ssl_certificate"
+      }
+
+      resource "aws_secretsmanager_secret_version" "api_key" {
+        secret_id     = aws_secretsmanager_secret.api_key.id
+        secret_string = var.api_key
+      }
+    networking/vpc.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = "10.0.0.0/16"
+        enable_dns_hostnames = true
+      }
+
+      resource "aws_subnet" "private" {
+        count      = 2
+        vpc_id     = aws_vpc.main.id
+        cidr_block = cidrsubnet("10.0.0.0/16", 8, count.index + 100)
+      }
+    outputs.tf: |
+      output "db_endpoint" {
+        value = aws_db_instance.main.endpoint
+      }
+
+      output "db_connection_string" {
+        value     = "postgres://admin:${var.db_password}@${aws_db_instance.main.endpoint}/appdb"
+        sensitive = true
+      }
+
+      output "lambda_arn" {
+        value = aws_lambda_function.api.arn
+      }
+    ci/pipeline.tf: |
+      resource "aws_codebuild_project" "deploy" {
+        name = "deploy-pipeline"
+
+        environment {
+          type  = "LINUX_CONTAINER"
+          image = "aws/codebuild/standard:7.0"
+
+          environment_variable {
+            name  = "DB_PASSWORD"
+            value = var.db_password
+            type  = "PARAMETER_STORE"
+          }
+        }
+
+        source {
+          type     = "GITHUB"
+          location = "https://github.com/org/repo.git"
+        }
+      }
+  changed_files:
+    variables.tf: |
+      variable "db_password" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "db_host" {
+        type    = string
+        default = "db.internal"
+      }
+
+      variable "environment" {
+        type    = string
+        default = "production"
+      }
+
+      variable "api_key" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "ssl_certificate" {
+        type      = string
+        sensitive = true
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: sensitive = true
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: variable "api_key" {
+- id: variables_2
+  selector:
+    path: variables.tf
+    anchor: variable "ssl_certificate" {
+- id: variables_3
+  selector:
+    path: variables.tf
+    anchor: variable "db_password" {
+- id: main
+  selector:
+    path: main.tf
+    anchor: password   = var.db_password
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: DB_HOST = var.db_host
+- id: no_secrets
+  selector:
+    path: payment/secrets.tf
+- id: no_secrets_manager
+  selector:
+    path: secrets_manager.tf
+- id: no_vpc
+  selector:
+    path: networking/vpc.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_pipeline
+  selector:
+    path: ci/pipeline.tf
+- id: no_global_0
+  selector:
+    anchor: stripe_api_key
+- id: no_global_1
+  selector:
+    anchor: sendgrid_token
+- id: no_global_2
+  selector:
+    anchor: payment_webhook_secret
+- id: no_global_3
+  selector:
+    anchor: aws_secretsmanager_secret
+- id: no_global_4
+  selector:
+    anchor: app/api_key
+- id: no_global_5
+  selector:
+    anchor: app/ssl_certificate
+- id: no_global_6
+  selector:
+    anchor: 10.0.0.0/16
+- id: no_global_7
+  selector:
+    anchor: aws_subnet
+- id: no_global_8
+  selector:
+    anchor: output "db_connection_string"
+- id: no_global_9
+  selector:
+    anchor: output "lambda_arn"
+- id: no_global_10
+  selector:
+    anchor: aws_codebuild_project
+- id: no_global_11
+  selector:
+    anchor: PARAMETER_STORE
+oracle:
+  required:
+  - variables
+  - variables_1
+  - variables_2
+  - variables_3
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_secrets
+  - no_secrets_manager
+  - no_vpc
+  - no_outputs
+  - no_pipeline
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

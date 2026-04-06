@@ -1,0 +1,268 @@
+name: jvm_and_compiled_014_csharp_class_inheritance
+repo:
+  initial_files:
+    Models/Person.cs: |
+      namespace MyApp.Models
+      {
+          public class Person
+          {
+              public string Name { get; set; }
+              public int Age { get; set; }
+
+              public Person(string name, int age)
+              {
+                  Name = name;
+                  Age = age;
+              }
+
+              public override string ToString()
+              {
+                  return $"{Name} (age {Age})";
+              }
+          }
+      }
+    Interfaces/IWorker.cs: |
+      namespace MyApp.Interfaces
+      {
+          public interface IWorker
+          {
+              void Work();
+              decimal GetSalary();
+          }
+      }
+    Models/Employee.cs: |
+      namespace MyApp.Models
+      {
+          public class Employee { }
+      }
+    Models/Manager.cs: |
+      using MyApp.Interfaces;
+
+      namespace MyApp.Models
+      {
+          public class Manager : Person, IWorker
+          {
+              public string Team { get; set; }
+              public decimal Salary { get; set; }
+              public int DirectReports { get; set; }
+
+              public Manager(string name, int age, string team, decimal salary)
+                  : base(name, age)
+              {
+                  Team = team;
+                  Salary = salary;
+                  DirectReports = 0;
+              }
+
+              public void Work()
+              {
+                  Console.WriteLine($"{Name} is managing {Team} with {DirectReports} reports");
+              }
+
+              public decimal GetSalary() => Salary;
+          }
+      }
+    Services/EmployeeService.cs: |
+      using MyApp.Models;
+      using MyApp.Interfaces;
+
+      namespace MyApp.Services
+      {
+          public class EmployeeService
+          {
+              private readonly List<Employee> _employees = new();
+
+              public Employee Hire(string name, int age, string dept, decimal salary)
+              {
+                  var emp = new Employee(name, age, dept, salary);
+                  _employees.Add(emp);
+                  return emp;
+              }
+
+              public decimal TotalPayroll()
+              {
+                  return _employees.Sum(e => e.GetSalary());
+              }
+
+              public void AssignWork()
+              {
+                  foreach (var emp in _employees)
+                      emp.Work();
+              }
+          }
+      }
+    Interfaces/IPayable.cs: |
+      namespace MyApp.Interfaces
+      {
+          public interface IPayable
+          {
+              decimal GetPay();
+              string PaymentMethod { get; }
+          }
+      }
+    Tests/EmployeeTests.cs: |
+      using MyApp.Models;
+      using Xunit;
+
+      namespace MyApp.Tests
+      {
+          public class EmployeeTests
+          {
+              [Fact]
+              public void Constructor_SetsProperties()
+              {
+                  var emp = new Employee("Alice", 30, "Engineering", 90000m);
+                  Assert.Equal("Alice", emp.Name);
+                  Assert.Equal(30, emp.Age);
+                  Assert.Equal("Engineering", emp.Department);
+                  Assert.Equal(90000m, emp.Salary);
+              }
+
+              [Fact]
+              public void GetSalary_ReturnsSalary()
+              {
+                  var emp = new Employee("Bob", 25, "Sales", 60000m);
+                  Assert.Equal(60000m, emp.GetSalary());
+              }
+          }
+      }
+  changed_files:
+    Models/Employee.cs: |
+      using MyApp.Interfaces;
+
+      namespace MyApp.Models
+      {
+          public class Employee : Person, IWorker
+          {
+              public string Department { get; set; }
+              public decimal Salary { get; set; }
+
+              public Employee(string name, int age, string department, decimal salary)
+                  : base(name, age)
+              {
+                  Department = department;
+                  Salary = salary;
+              }
+
+              public void Work()
+              {
+                  Console.WriteLine($"{Name} is working in {Department}");
+              }
+
+              public decimal GetSalary() => Salary;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: employee
+  selector:
+    path: Models/Employee.cs
+    anchor: 'public class Employee : Person, IWorker'
+- id: employee_1
+  selector:
+    path: Models/Employee.cs
+    anchor: ': base(name, age)'
+- id: employee_2
+  selector:
+    path: Models/Employee.cs
+    anchor: public void Work()
+- id: employee_3
+  selector:
+    path: Models/Employee.cs
+    anchor: public decimal GetSalary()
+- id: person
+  selector:
+    path: Models/Person.cs
+    anchor: public Person(string name, int age)
+- id: person_1
+  selector:
+    path: Models/Person.cs
+    anchor: public string Name { get; set; }
+- id: iworker
+  selector:
+    path: Interfaces/IWorker.cs
+    anchor: void Work()
+- id: iworker_1
+  selector:
+    path: Interfaces/IWorker.cs
+    anchor: decimal GetSalary()
+- id: no_manager
+  selector:
+    path: Models/Manager.cs
+- id: no_employeeservice
+  selector:
+    path: Services/EmployeeService.cs
+- id: no_ipayable
+  selector:
+    path: Interfaces/IPayable.cs
+- id: no_employeetests
+  selector:
+    path: Tests/EmployeeTests.cs
+- id: no_global_0
+  selector:
+    anchor: class Manager
+- id: no_global_1
+  selector:
+    anchor: Team
+- id: no_global_2
+  selector:
+    anchor: DirectReports
+- id: no_global_3
+  selector:
+    anchor: managing
+- id: no_global_4
+  selector:
+    anchor: EmployeeService
+- id: no_global_5
+  selector:
+    anchor: TotalPayroll
+- id: no_global_6
+  selector:
+    anchor: AssignWork
+- id: no_global_7
+  selector:
+    anchor: IPayable
+- id: no_global_8
+  selector:
+    anchor: GetPay
+- id: no_global_9
+  selector:
+    anchor: PaymentMethod
+- id: no_global_10
+  selector:
+    anchor: EmployeeTests
+- id: no_global_11
+  selector:
+    anchor: '[Fact]'
+- id: no_global_12
+  selector:
+    anchor: Assert.Equal
+oracle:
+  required:
+  - employee
+  - employee_1
+  - employee_2
+  - employee_3
+  - person
+  - person_1
+  - iworker
+  - iworker_1
+  allowed: []
+  forbidden:
+  - no_manager
+  - no_employeeservice
+  - no_ipayable
+  - no_employeetests
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

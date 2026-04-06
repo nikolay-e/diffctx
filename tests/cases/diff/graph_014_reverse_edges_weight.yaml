@@ -1,0 +1,354 @@
+name: graph_014_reverse_edges_weight
+repo:
+  initial_files:
+    caller.py: |
+      from callee import helper, compute, validate
+      from processor import process_result, format_output
+
+      def main():
+          raw = helper()
+          computed = compute(raw)
+          validated = validate(computed)
+          processed = process_result(validated)
+          return format_output(processed)
+
+      def orchestrate():
+          results = []
+          for i in range(3):
+              result = main()
+              results.append(result)
+          return aggregate(results)
+
+      def aggregate(items):
+          return {"total": len(items), "items": items}
+    callee.py: |
+      def helper():
+          return fetch_data()
+
+      def fetch_data():
+          return {"raw": "data"}
+
+      def compute(data):
+          return {"computed": data}
+
+      def validate(data):
+          if not data:
+              raise ValueError("Invalid data")
+          return {"validated": data}
+
+      class DataSource:
+          def get(self):
+              return helper()
+
+          def get_computed(self):
+              return compute(self.get())
+    processor.py: |
+      def process_result(data):
+          transformed = transform(data)
+          enriched = enrich(transformed)
+          return finalize(enriched)
+
+      def transform(data):
+          return {"transformed": data}
+
+      def enrich(data):
+          data["enriched"] = True
+          return data
+
+      def finalize(data):
+          data["finalized"] = True
+          return data
+
+      def format_output(data):
+          import json
+          return json.dumps(data, indent=2)
+
+      class ResultProcessor:
+          def __init__(self):
+              self.cache = {}
+
+          def process(self, data):
+              key = str(data)
+              if key in self.cache:
+                  return self.cache[key]
+              result = process_result(data)
+              self.cache[key] = result
+              return result
+    garbage/reverse_caller_GARBAGE_GRAPH_nop001.py: |
+      def reverse_main_GARBAGE_GRAPH_nop001():
+          return reverse_helper_GARBAGE_GRAPH_nop001()
+
+      def reverse_helper_GARBAGE_GRAPH_nop001():
+          return "reversed"
+
+      def reverse_compute_GARBAGE_GRAPH_nop001(x):
+          return x * -1
+    garbage/chain_caller_GARBAGE_GRAPH_nop002.py: |
+      def chain_a_GARBAGE_GRAPH_nop002():
+          return chain_b_GARBAGE_GRAPH_nop002()
+
+      def chain_b_GARBAGE_GRAPH_nop002():
+          return chain_c_GARBAGE_GRAPH_nop002()
+
+      def chain_c_GARBAGE_GRAPH_nop002():
+          return "end of chain"
+    garbage/bidirectional_GARBAGE_GRAPH_nop003.py: |
+      def bidi_func_a_GARBAGE_GRAPH_nop003():
+          return bidi_func_b_GARBAGE_GRAPH_nop003()
+
+      def bidi_func_b_GARBAGE_GRAPH_nop003():
+          if should_recurse_GARBAGE_GRAPH_nop003():
+              return bidi_func_a_GARBAGE_GRAPH_nop003()
+          return "done"
+
+      def should_recurse_GARBAGE_GRAPH_nop003():
+          return False
+    garbage/alt_pipeline_GARBAGE_GRAPH_014.py: |
+      GARBAGE_GRAPH_014_ALT_CALLER_A = "alternate_caller_module"
+      GARBAGE_GRAPH_014_ALT_VERSION_B = "v2.0"
+
+      def invoke_pipeline_GARBAGE_GRAPH_014():
+          payload = fetch_payload_GARBAGE_GRAPH_014()
+          return render_payload_GARBAGE_GRAPH_014(payload)
+
+      def fetch_payload_GARBAGE_GRAPH_014():
+          return {"raw": "alt_data"}
+
+      def render_payload_GARBAGE_GRAPH_014(payload):
+          return str(payload)
+    garbage/cache_orch_GARBAGE_GRAPH_014.py: |
+      GARBAGE_GRAPH_014_CACHE_ORCH_C = "caching_orchestrator"
+      GARBAGE_GRAPH_014_CACHE_STRAT_D = "lru"
+
+      class ProviderGARBAGE_GRAPH_014:
+          def retrieve(self):
+              return {"cached": True}
+
+      class CacheRunnerGARBAGE_GRAPH_014:
+          def __init__(self):
+              self.store = {}
+
+          def execute(self, record):
+              return {"cached_result": record}
+
+      def invoke_cached_GARBAGE_GRAPH_014():
+          runner = CacheRunnerGARBAGE_GRAPH_014()
+          provider = ProviderGARBAGE_GRAPH_014()
+          record = provider.retrieve()
+          return runner.execute(record)
+  changed_files:
+    caller.py: |
+      from callee import helper, compute, validate, DataSource
+      from processor import process_result, format_output, ResultProcessor
+
+      def main():
+          raw = helper()
+          computed = compute(raw)
+          validated = validate(computed)
+          processed = process_result(validated)
+          return format_output(processed)
+
+      def main_with_caching():
+          processor = ResultProcessor()
+          source = DataSource()
+          raw = source.get_computed()
+          return processor.process(raw)
+
+      def orchestrate():
+          results = []
+          for i in range(3):
+              result = main()
+              results.append(result)
+          return aggregate(results)
+
+      def aggregate(items):
+          return {"total": len(items), "items": items}
+    callee.py: |
+      def helper():
+          return fetch_data()
+
+      def fetch_data():
+          return {"raw": "data"}
+
+      def compute(data):
+          return {"computed": data}
+
+      def validate(data):
+          if not data:
+              raise ValueError("Invalid data")
+          return {"validated": data}
+
+      class DataSource:
+          def get(self):
+              return helper()
+
+          def get_computed(self):
+              return compute(self.get())
+    processor.py: |
+      def process_result(data):
+          transformed = transform(data)
+          enriched = enrich(transformed)
+          return finalize(enriched)
+
+      def transform(data):
+          return {"transformed": data}
+
+      def enrich(data):
+          data["enriched"] = True
+          return data
+
+      def finalize(data):
+          data["finalized"] = True
+          return data
+
+      def format_output(data):
+          import json
+          return json.dumps(data, indent=2)
+
+      class ResultProcessor:
+          def __init__(self):
+              self.cache = {}
+
+          def process(self, data):
+              key = str(data)
+              if key in self.cache:
+                  return self.cache[key]
+              result = process_result(data)
+              self.cache[key] = result
+              return result
+    garbage/reverse_caller_GARBAGE_GRAPH_nop001.py: |
+      def reverse_main_GARBAGE_GRAPH_nop001():
+          return reverse_helper_GARBAGE_GRAPH_nop001()
+
+      def reverse_helper_GARBAGE_GRAPH_nop001():
+          return "reversed"
+
+      def reverse_compute_GARBAGE_GRAPH_nop001(x):
+          return x * -1
+    garbage/chain_caller_GARBAGE_GRAPH_nop002.py: |
+      def chain_a_GARBAGE_GRAPH_nop002():
+          return chain_b_GARBAGE_GRAPH_nop002()
+
+      def chain_b_GARBAGE_GRAPH_nop002():
+          return chain_c_GARBAGE_GRAPH_nop002()
+
+      def chain_c_GARBAGE_GRAPH_nop002():
+          return "end of chain"
+    garbage/bidirectional_GARBAGE_GRAPH_nop003.py: |
+      def bidi_func_a_GARBAGE_GRAPH_nop003():
+          return bidi_func_b_GARBAGE_GRAPH_nop003()
+
+      def bidi_func_b_GARBAGE_GRAPH_nop003():
+          if should_recurse_GARBAGE_GRAPH_nop003():
+              return bidi_func_a_GARBAGE_GRAPH_nop003()
+          return "done"
+
+      def should_recurse_GARBAGE_GRAPH_nop003():
+          return False
+    garbage/alt_pipeline_GARBAGE_GRAPH_014.py: |
+      GARBAGE_GRAPH_014_ALT_CALLER_A = "alternate_caller_module"
+      GARBAGE_GRAPH_014_ALT_VERSION_B = "v2.0"
+
+      def invoke_pipeline_GARBAGE_GRAPH_014():
+          payload = fetch_payload_GARBAGE_GRAPH_014()
+          return render_payload_GARBAGE_GRAPH_014(payload)
+
+      def fetch_payload_GARBAGE_GRAPH_014():
+          return {"raw": "alt_data"}
+
+      def render_payload_GARBAGE_GRAPH_014(payload):
+          return str(payload)
+    garbage/cache_orch_GARBAGE_GRAPH_014.py: |
+      GARBAGE_GRAPH_014_CACHE_ORCH_C = "caching_orchestrator"
+      GARBAGE_GRAPH_014_CACHE_STRAT_D = "lru"
+
+      class ProviderGARBAGE_GRAPH_014:
+          def retrieve(self):
+              return {"cached": True}
+
+      class CacheRunnerGARBAGE_GRAPH_014:
+          def __init__(self):
+              self.store = {}
+
+          def execute(self, record):
+              return {"cached_result": record}
+
+      def invoke_cached_GARBAGE_GRAPH_014():
+          runner = CacheRunnerGARBAGE_GRAPH_014()
+          provider = ProviderGARBAGE_GRAPH_014()
+          record = provider.retrieve()
+          return runner.execute(record)
+  commit_message: Update files
+fragments:
+- id: caller
+  selector:
+    path: caller.py
+    anchor: from callee import helper, compute, validate, DataSource
+- id: caller_1
+  selector:
+    path: caller.py
+    anchor: 'def main_with_caching():'
+- id: caller_2
+  selector:
+    path: caller.py
+    anchor: from processor import process_result, format_output, ResultProcessor
+- id: caller_3
+  selector:
+    path: caller.py
+    anchor: raw = source.get_computed()
+- id: no_reverse_caller_garbage_graph_nop001
+  selector:
+    path: garbage/reverse_caller_GARBAGE_GRAPH_nop001.py
+- id: no_chain_caller_garbage_graph_nop002
+  selector:
+    path: garbage/chain_caller_GARBAGE_GRAPH_nop002.py
+- id: no_bidirectional_garbage_graph_nop003
+  selector:
+    path: garbage/bidirectional_GARBAGE_GRAPH_nop003.py
+- id: no_alt_pipeline_garbage_graph_014
+  selector:
+    path: garbage/alt_pipeline_GARBAGE_GRAPH_014.py
+- id: no_cache_orch_garbage_graph_014
+  selector:
+    path: garbage/cache_orch_GARBAGE_GRAPH_014.py
+- id: no_global_0
+  selector:
+    anchor: bidirectional_GARBAGE_GRAPH_nop003.py
+- id: no_global_1
+  selector:
+    anchor: chain_caller_GARBAGE_GRAPH_nop002.py
+- id: no_global_2
+  selector:
+    anchor: reverse_caller_GARBAGE_GRAPH_nop001.py
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GRAPH_014_ALT_CALLER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GRAPH_014_ALT_VERSION_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GRAPH_014_CACHE_ORCH_C
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_GRAPH_014_CACHE_STRAT_D
+oracle:
+  required:
+  - caller
+  - caller_1
+  - caller_2
+  - caller_3
+  allowed: []
+  forbidden:
+  - no_reverse_caller_garbage_graph_nop001
+  - no_chain_caller_garbage_graph_nop002
+  - no_bidirectional_garbage_graph_nop003
+  - no_alt_pipeline_garbage_graph_014
+  - no_cache_orch_garbage_graph_014
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

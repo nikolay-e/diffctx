@@ -1,0 +1,105 @@
+name: terraform_035_count
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+      }
+    outputs.tf: |
+      output "instance_ids" {
+        value = aws_instance.web[*].id
+      }
+
+      output "instance_public_ips" {
+        value = aws_instance.web[*].public_ip
+      }
+    database/replicas.tf: |
+      variable "replica_count" {
+        default = 2
+      }
+
+      resource "aws_db_instance" "replica" {
+        count               = var.replica_count
+        replicate_source_db = aws_db_instance.primary.id
+        instance_class      = "db.t3.medium"
+
+        tags = {
+          Name = "replica-${count.index}"
+        }
+      }
+    scaling_policy.tf: |
+      resource "aws_autoscaling_policy" "scale_up" {
+        name                   = "scale-up"
+        autoscaling_group_name = aws_autoscaling_group.web.name
+        adjustment_type        = "ChangeInCapacity"
+        scaling_adjustment     = 1
+        cooldown               = 300
+      }
+
+      resource "aws_autoscaling_policy" "scale_down" {
+        name                   = "scale-down"
+        autoscaling_group_name = aws_autoscaling_group.web.name
+        adjustment_type        = "ChangeInCapacity"
+        scaling_adjustment     = -1
+        cooldown               = 300
+      }
+  changed_files:
+    main.tf: |
+      variable "instance_count" {
+        default = 3
+      }
+
+      resource "aws_instance" "web" {
+        count         = var.instance_count
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "web-${count.index}"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: outputs
+  selector:
+    path: outputs.tf
+    anchor: aws_instance.web[*].id
+- id: outputs_1
+  selector:
+    path: outputs.tf
+    anchor: output "instance_public_ips" {
+- id: no_replicas
+  selector:
+    path: database/replicas.tf
+- id: no_scaling_policy
+  selector:
+    path: scaling_policy.tf
+- id: no_global_0
+  selector:
+    anchor: replica_count
+- id: no_global_1
+  selector:
+    anchor: replicate_source_db
+- id: no_global_2
+  selector:
+    anchor: db.t3.medium
+- id: no_global_3
+  selector:
+    anchor: aws_autoscaling_policy
+- id: no_global_4
+  selector:
+    anchor: ChangeInCapacity
+oracle:
+  required:
+  - outputs
+  - outputs_1
+  allowed: []
+  forbidden:
+  - no_replicas
+  - no_scaling_policy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -21,7 +21,6 @@ _TRUST_REMOTE_CODE = os.getenv("TREEMAPPER_TRUST_REMOTE_CODE", "0") == "1"
 
 _TOP_K_NEIGHBORS = 10
 _MIN_SIMILARITY = 0.1
-_BACKWARD_WEIGHT_FACTOR = 0.7
 
 _EMBED_MODEL: SentenceTransformer | None = None
 _EMBED_LOCK = threading.Lock()
@@ -92,6 +91,5 @@ def _build_embedding_edges(
                 f2 = fragments[k_idx]
                 weight = clamp_weight_fn(score, f1.path, f2.path) * _EMBED_WEIGHT
                 edges[(f1.id, f2.id)] = max(edges.get((f1.id, f2.id), 0.0), weight)
-                edges[(f2.id, f1.id)] = max(edges.get((f2.id, f1.id), 0.0), weight * _BACKWARD_WEIGHT_FACTOR)
 
     return edges

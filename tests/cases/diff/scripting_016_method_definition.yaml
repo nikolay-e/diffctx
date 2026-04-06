@@ -1,0 +1,254 @@
+name: scripting_016_method_definition
+repo:
+  initial_files:
+    lib/processor.rb: |
+      class Processor
+        def process(data)
+          data.upcase
+        end
+
+        def batch_process(items)
+          items.map { |item| process(item) }
+        end
+
+        def can_process?(data)
+          data.is_a?(String) && !data.empty?
+        end
+      end
+    app.rb: |
+      puts 'Hello'
+    lib/formatter.rb: |
+      class Formatter
+        def format_title(text)
+          text.split(' ').map(&:capitalize).join(' ')
+        end
+
+        def format_slug(text)
+          text.downcase.gsub(/\s+/, '-').gsub(/[^a-z0-9\-]/, '')
+        end
+
+        def truncate(text, length = 50)
+          text.length > length ? text[0...length] + '...' : text
+        end
+
+        def pad(text, width, char = ' ')
+          text.ljust(width, char)
+        end
+      end
+    lib/sanitizer.rb: |
+      class Sanitizer
+        SPECIAL_CHARS = /[<>&"']/
+        WHITESPACE = /\s+/
+
+        def clean(input)
+          input.gsub(SPECIAL_CHARS, '')
+        end
+
+        def strip_tags(html)
+          html.gsub(/<\/?[^>]+>/, '')
+        end
+
+        def normalize_whitespace(text)
+          text.gsub(WHITESPACE, ' ').strip
+        end
+
+        def escape(text)
+          text.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+        end
+      end
+    lib/batch_runner.rb: |
+      require_relative 'processor'
+
+      class BatchRunner
+        def initialize(processor = Processor.new)
+          @processor = processor
+          @results = []
+        end
+
+        def run(items)
+          items.each do |item|
+            result = @processor.process(item)
+            @results << result
+          end
+          @results
+        end
+
+        def run_with_filter(items)
+          items.select { |item| @processor.can_process?(item) }
+               .map { |item| @processor.process(item) }
+        end
+
+        def result_count
+          @results.size
+        end
+      end
+    lib/transformer.rb: |
+      class Transformer
+        def process(input)
+          input.reverse
+        end
+
+        def transform_all(items)
+          items.map { |item| process(item) }
+        end
+
+        def chain(*operations)
+          operations.reduce(nil) do |result, op|
+            result ? process(result) : process(op)
+          end
+        end
+      end
+    lib/string_utils.rb: |
+      module StringUtils
+        def self.upcase_first(str)
+          str[0].upcase + str[1..]
+        end
+
+        def self.to_upper(str)
+          str.upcase
+        end
+
+        def self.to_lower(str)
+          str.downcase
+        end
+
+        def self.camelize(str)
+          str.split('_').map(&:capitalize).join
+        end
+      end
+  changed_files:
+    lib/processor.rb: |
+      class Processor
+        def process(data)
+          data.upcase
+        end
+
+        def batch_process(items)
+          items.map { |item| process(item) }
+        end
+
+        def can_process?(data)
+          data.is_a?(String) && !data.empty?
+        end
+      end
+    app.rb: |
+      require_relative 'lib/processor'
+
+      processor = Processor.new
+      result = processor.process("hello")
+      puts result
+  commit_message: Update files
+fragments:
+- id: processor
+  selector:
+    path: lib/processor.rb
+    anchor: class Processor
+- id: processor_1
+  selector:
+    path: lib/processor.rb
+    anchor: def process(data)
+- id: processor_2
+  selector:
+    path: lib/processor.rb
+    anchor: data.upcase
+- id: app
+  selector:
+    path: app.rb
+    anchor: Processor.new
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: processor.process("hello")
+- id: no_formatter
+  selector:
+    path: lib/formatter.rb
+- id: no_sanitizer
+  selector:
+    path: lib/sanitizer.rb
+- id: no_batch_runner
+  selector:
+    path: lib/batch_runner.rb
+- id: no_transformer
+  selector:
+    path: lib/transformer.rb
+- id: no_string_utils
+  selector:
+    path: lib/string_utils.rb
+- id: no_global_0
+  selector:
+    anchor: format_title
+- id: no_global_1
+  selector:
+    anchor: format_slug
+- id: no_global_2
+  selector:
+    anchor: truncate
+- id: no_global_3
+  selector:
+    anchor: pad
+- id: no_global_4
+  selector:
+    anchor: strip_tags
+- id: no_global_5
+  selector:
+    anchor: SPECIAL_CHARS
+- id: no_global_6
+  selector:
+    anchor: escape
+- id: no_global_7
+  selector:
+    anchor: BatchRunner
+- id: no_global_8
+  selector:
+    anchor: run_with_filter
+- id: no_global_9
+  selector:
+    anchor: result_count
+- id: no_global_10
+  selector:
+    anchor: Transformer
+- id: no_global_11
+  selector:
+    anchor: chain
+- id: no_global_12
+  selector:
+    anchor: input.reverse
+- id: no_global_13
+  selector:
+    anchor: StringUtils
+- id: no_global_14
+  selector:
+    anchor: camelize
+- id: no_global_15
+  selector:
+    anchor: to_upper
+oracle:
+  required:
+  - processor
+  - processor_1
+  - processor_2
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_sanitizer
+  - no_batch_runner
+  - no_transformer
+  - no_string_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

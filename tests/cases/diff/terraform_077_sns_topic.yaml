@@ -1,0 +1,140 @@
+name: terraform_077_sns_topic
+repo:
+  initial_files:
+    sns.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "alert-notifications"
+      }
+    src/notifications.py: |
+      import boto3
+
+      def publish_alert(topic_arn: str, message: str):
+          sns = boto3.client("sns")
+          sns.publish(TopicArn=topic_arn, Message=message)
+    garbage_sns_audit.tf: |
+      GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A = "audit-trail"
+      GARBAGE_TF_077_COMPLIANCE_MARKER_B = "soc2"
+
+      resource "aws_sns_topic" "audit" {
+        name         = "audit-notifications"
+        display_name = "Audit Trail"
+      }
+
+      resource "aws_sns_topic_subscription" "audit_sqs" {
+        topic_arn = aws_sns_topic.audit.arn
+        protocol  = "sqs"
+        endpoint  = aws_sqs_queue.audit_log.arn
+      }
+    garbage_config.py: |
+      GARBAGE_TF_077_CONFIG_MARKER_C = "app-settings"
+      GARBAGE_TF_077_ENV_MARKER_D = "production"
+
+      class AppConfig:
+          GARBAGE_TF_077_DEFAULTS_MARKER_E = True
+
+          def load(self, path: str) -> dict:
+              return {}
+  changed_files:
+    sns.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name         = "alert-notifications"
+        display_name = "System Alerts"
+      }
+
+      resource "aws_sns_topic_subscription" "email" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "email"
+        endpoint  = "alerts@example.com"
+      }
+    src/notifications.py: |
+      import boto3
+
+      def publish_alert(topic_arn: str, message: str):
+          sns = boto3.client("sns")
+          sns.publish(TopicArn=topic_arn, Message=message)
+    garbage_sns_audit.tf: |
+      GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A = "audit-trail"
+      GARBAGE_TF_077_COMPLIANCE_MARKER_B = "soc2"
+
+      resource "aws_sns_topic" "audit" {
+        name         = "audit-notifications"
+        display_name = "Audit Trail"
+      }
+
+      resource "aws_sns_topic_subscription" "audit_sqs" {
+        topic_arn = aws_sns_topic.audit.arn
+        protocol  = "sqs"
+        endpoint  = aws_sqs_queue.audit_log.arn
+      }
+    garbage_config.py: |
+      GARBAGE_TF_077_CONFIG_MARKER_C = "app-settings"
+      GARBAGE_TF_077_ENV_MARKER_D = "production"
+
+      class AppConfig:
+          GARBAGE_TF_077_DEFAULTS_MARKER_E = True
+
+          def load(self, path: str) -> dict:
+              return {}
+  commit_message: Update files
+fragments:
+- id: sns
+  selector:
+    path: sns.tf
+    anchor: display_name = "System Alerts"
+- id: sns_1
+  selector:
+    path: sns.tf
+    anchor: resource "aws_sns_topic_subscription" "email"
+- id: sns_2
+  selector:
+    path: sns.tf
+    anchor: protocol  = "email"
+- id: sns_3
+  selector:
+    path: sns.tf
+    anchor: endpoint  = "alerts@example.com"
+- id: sns_4
+  selector:
+    path: sns.tf
+    anchor: resource "aws_sns_topic" "alerts"
+- id: no_garbage_sns_audit
+  selector:
+    path: garbage_sns_audit.tf
+- id: no_garbage_config
+  selector:
+    path: garbage_config.py
+- id: no_notifications
+  selector:
+    path: src/notifications.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TF_077_COMPLIANCE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TF_077_CONFIG_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TF_077_ENV_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_TF_077_DEFAULTS_MARKER_E
+oracle:
+  required:
+  - sns
+  - sns_1
+  - sns_2
+  - sns_3
+  - sns_4
+  allowed: []
+  forbidden:
+  - no_garbage_sns_audit
+  - no_garbage_config
+  - no_notifications
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

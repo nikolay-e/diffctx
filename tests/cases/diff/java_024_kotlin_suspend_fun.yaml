@@ -1,0 +1,319 @@
+name: java_024_kotlin_suspend_fun
+repo:
+  initial_files:
+    src/main/kotlin/com/example/users/service/UserService.kt: |
+      package com.example.users.service
+
+      import com.example.users.model.User
+      import com.example.users.repository.UserRepository
+
+      class UserService(private val repository: UserRepository) {
+          suspend fun getUser(id: Long): User? {
+              return repository.findById(id)
+          }
+
+          suspend fun getAllUsers(): List<User> {
+              return repository.findAll()
+          }
+
+          suspend fun createUser(name: String, email: String): User {
+              val user = User(id = 0, name = name, email = email)
+              return repository.save(user)
+          }
+      }
+    src/main/kotlin/com/example/users/repository/UserRepository.kt: |
+      package com.example.users.repository
+
+      import com.example.users.model.User
+
+      interface UserRepository {
+          suspend fun findById(id: Long): User?
+          suspend fun findAll(): List<User>
+          suspend fun save(user: User): User
+          suspend fun deleteById(id: Long)
+      }
+    src/main/kotlin/com/example/users/controller/UserController.kt: |
+      package com.example.users.controller
+
+      import com.example.users.model.User
+      import com.example.users.service.UserService
+      import kotlinx.coroutines.runBlocking
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: Long): User? = runBlocking {
+              service.getUser(id)
+          }
+
+          fun getAllUsers(): List<User> = runBlocking {
+              service.getAllUsers()
+          }
+      }
+    src/main/kotlin/com/example/users/session/SessionManager.kt: |
+      package com.example.users.session
+
+      import kotlinx.coroutines.CoroutineScope
+      import kotlinx.coroutines.Dispatchers
+      import kotlinx.coroutines.delay
+      import kotlinx.coroutines.launch
+
+      class SessionManager {
+          private val scope = CoroutineScope(Dispatchers.Default)
+          private val sessions = mutableMapOf<String, Long>()
+
+          fun createSession(userId: String, ttlMs: Long = 3600_000) {
+              sessions[userId] = System.currentTimeMillis() + ttlMs
+              scope.launch {
+                  delay(ttlMs)
+                  sessions.remove(userId)
+              }
+          }
+
+          fun isActive(userId: String): Boolean {
+              val expiry = sessions[userId] ?: return false
+              return System.currentTimeMillis() < expiry
+          }
+
+          fun invalidate(userId: String) {
+              sessions.remove(userId)
+          }
+      }
+    src/main/kotlin/com/example/users/security/PasswordHasher.kt: |
+      package com.example.users.security
+
+      import java.security.MessageDigest
+      import java.security.SecureRandom
+      import java.util.Base64
+
+      class PasswordHasher {
+          private val random = SecureRandom()
+
+          fun hash(password: String): String {
+              val salt = ByteArray(16)
+              random.nextBytes(salt)
+              val digest = MessageDigest.getInstance("SHA-256")
+              digest.update(salt)
+              val hash = digest.digest(password.toByteArray())
+              val saltB64 = Base64.getEncoder().encodeToString(salt)
+              val hashB64 = Base64.getEncoder().encodeToString(hash)
+              return "$saltB64:$hashB64"
+          }
+
+          fun verify(password: String, stored: String): Boolean {
+              val parts = stored.split(":")
+              val salt = Base64.getDecoder().decode(parts[0])
+              val digest = MessageDigest.getInstance("SHA-256")
+              digest.update(salt)
+              val hash = digest.digest(password.toByteArray())
+              return Base64.getEncoder().encodeToString(hash) == parts[1]
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/example/users/service/UserService.kt: |
+      package com.example.users.service
+
+      import com.example.users.model.User
+      import com.example.users.repository.UserRepository
+      import kotlinx.coroutines.delay
+
+      class UserService(private val repository: UserRepository) {
+          suspend fun getUser(id: Long): User? {
+              return repository.findById(id)
+          }
+
+          suspend fun getAllUsers(): List<User> {
+              return repository.findAll()
+          }
+
+          suspend fun createUser(name: String, email: String): User {
+              val user = User(id = 0, name = name, email = email)
+              return repository.save(user)
+          }
+
+          suspend fun getUserWithRetry(id: Long, retries: Int = 3): User? {
+              repeat(retries) { attempt ->
+                  try {
+                      return repository.findById(id)
+                  } catch (e: Exception) {
+                      if (attempt == retries - 1) throw e
+                      delay(1000L * (attempt + 1))
+                  }
+              }
+              return null
+          }
+
+          suspend fun deleteUser(id: Long) {
+              repository.deleteById(id)
+          }
+      }
+    src/main/kotlin/com/example/users/repository/UserRepository.kt: |
+      package com.example.users.repository
+
+      import com.example.users.model.User
+
+      interface UserRepository {
+          suspend fun findById(id: Long): User?
+          suspend fun findAll(): List<User>
+          suspend fun save(user: User): User
+          suspend fun deleteById(id: Long)
+      }
+    src/main/kotlin/com/example/users/controller/UserController.kt: |
+      package com.example.users.controller
+
+      import com.example.users.model.User
+      import com.example.users.service.UserService
+      import kotlinx.coroutines.runBlocking
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: Long): User? = runBlocking {
+              service.getUser(id)
+          }
+
+          fun getAllUsers(): List<User> = runBlocking {
+              service.getAllUsers()
+          }
+      }
+    src/main/kotlin/com/example/users/session/SessionManager.kt: |
+      package com.example.users.session
+
+      import kotlinx.coroutines.CoroutineScope
+      import kotlinx.coroutines.Dispatchers
+      import kotlinx.coroutines.delay
+      import kotlinx.coroutines.launch
+
+      class SessionManager {
+          private val scope = CoroutineScope(Dispatchers.Default)
+          private val sessions = mutableMapOf<String, Long>()
+
+          fun createSession(userId: String, ttlMs: Long = 3600_000) {
+              sessions[userId] = System.currentTimeMillis() + ttlMs
+              scope.launch {
+                  delay(ttlMs)
+                  sessions.remove(userId)
+              }
+          }
+
+          fun isActive(userId: String): Boolean {
+              val expiry = sessions[userId] ?: return false
+              return System.currentTimeMillis() < expiry
+          }
+
+          fun invalidate(userId: String) {
+              sessions.remove(userId)
+          }
+      }
+    src/main/kotlin/com/example/users/security/PasswordHasher.kt: |
+      package com.example.users.security
+
+      import java.security.MessageDigest
+      import java.security.SecureRandom
+      import java.util.Base64
+
+      class PasswordHasher {
+          private val random = SecureRandom()
+
+          fun hash(password: String): String {
+              val salt = ByteArray(16)
+              random.nextBytes(salt)
+              val digest = MessageDigest.getInstance("SHA-256")
+              digest.update(salt)
+              val hash = digest.digest(password.toByteArray())
+              val saltB64 = Base64.getEncoder().encodeToString(salt)
+              val hashB64 = Base64.getEncoder().encodeToString(hash)
+              return "$saltB64:$hashB64"
+          }
+
+          fun verify(password: String, stored: String): Boolean {
+              val parts = stored.split(":")
+              val salt = Base64.getDecoder().decode(parts[0])
+              val digest = MessageDigest.getInstance("SHA-256")
+              digest.update(salt)
+              val hash = digest.digest(password.toByteArray())
+              return Base64.getEncoder().encodeToString(hash) == parts[1]
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: import kotlinx.coroutines.delay
+- id: userservice_1
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: suspend fun getUserWithRetry
+- id: userservice_2
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: repository.findById(id)
+- id: userservice_3
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: delay(1000L * (attempt + 1))
+- id: userservice_4
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: suspend fun deleteUser
+- id: userservice_5
+  selector:
+    path: src/main/kotlin/com/example/users/service/UserService.kt
+    anchor: repository.deleteById(id)
+- id: userrepository
+  selector:
+    path: src/main/kotlin/com/example/users/repository/UserRepository.kt
+    anchor: 'suspend fun findById(id: Long): User?'
+- id: userrepository_1
+  selector:
+    path: src/main/kotlin/com/example/users/repository/UserRepository.kt
+    anchor: 'suspend fun deleteById(id: Long)'
+- id: no_usercontroller
+  selector:
+    path: src/main/kotlin/com/example/users/controller/UserController.kt
+- id: no_sessionmanager
+  selector:
+    path: src/main/kotlin/com/example/users/session/SessionManager.kt
+- id: no_passwordhasher
+  selector:
+    path: src/main/kotlin/com/example/users/security/PasswordHasher.kt
+- id: no_global_0
+  selector:
+    anchor: UserController
+- id: no_global_1
+  selector:
+    anchor: runBlocking
+- id: no_global_2
+  selector:
+    anchor: SessionManager
+- id: no_global_3
+  selector:
+    anchor: createSession
+- id: no_global_4
+  selector:
+    anchor: CoroutineScope
+- id: no_global_5
+  selector:
+    anchor: PasswordHasher
+- id: no_global_6
+  selector:
+    anchor: MessageDigest
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - userservice_3
+  - userservice_4
+  - userservice_5
+  - userrepository
+  - userrepository_1
+  allowed: []
+  forbidden:
+  - no_usercontroller
+  - no_sessionmanager
+  - no_passwordhasher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

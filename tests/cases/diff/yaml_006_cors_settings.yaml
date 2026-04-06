@@ -1,0 +1,122 @@
+name: yaml_006_cors_settings
+repo:
+  initial_files:
+    config/api.yaml: |
+      cors:
+        allowed_origins:
+          - http://localhost:3000
+        allow_credentials: true
+    src/middleware.py: |
+      def setup_cors(app, origins: list[str], credentials: bool = True):
+          for origin in origins:
+              app.allow_origin(origin, credentials=credentials)
+    config/rate_limits.yaml: |
+      rate_limiting:
+        global:
+          requests_per_minute: 60
+          burst: 10
+        per_user:
+          requests_per_minute: 30
+          burst: 5
+    src/auth_middleware.py: |
+      from functools import wraps
+
+      def require_auth(f):
+          @wraps(f)
+          def decorated(*args, **kwargs):
+              token = kwargs.get("request").headers.get("Authorization")
+              if not token:
+                  return {"error": "Unauthorized"}, 401
+              return f(*args, **kwargs)
+          return decorated
+
+      def require_role(role: str):
+          def decorator(f):
+              @wraps(f)
+              def decorated(*args, **kwargs):
+                  user_role = kwargs.get("request").user.role
+                  if user_role != role:
+                      return {"error": "Forbidden"}, 403
+                  return f(*args, **kwargs)
+              return decorated
+          return decorator
+  changed_files:
+    config/api.yaml: |
+      cors:
+        allowed_origins:
+          - https://example.com
+          - https://api.example.com
+        allow_credentials: true
+    src/middleware.py: |
+      def setup_cors(app, origins: list[str], credentials: bool = True):
+          for origin in origins:
+              app.allow_origin(origin, credentials=credentials)
+    config/rate_limits.yaml: |
+      rate_limiting:
+        global:
+          requests_per_minute: 60
+          burst: 10
+        per_user:
+          requests_per_minute: 30
+          burst: 5
+    src/auth_middleware.py: |
+      from functools import wraps
+
+      def require_auth(f):
+          @wraps(f)
+          def decorated(*args, **kwargs):
+              token = kwargs.get("request").headers.get("Authorization")
+              if not token:
+                  return {"error": "Unauthorized"}, 401
+              return f(*args, **kwargs)
+          return decorated
+
+      def require_role(role: str):
+          def decorator(f):
+              @wraps(f)
+              def decorated(*args, **kwargs):
+                  user_role = kwargs.get("request").user.role
+                  if user_role != role:
+                      return {"error": "Forbidden"}, 403
+                  return f(*args, **kwargs)
+              return decorated
+          return decorator
+  commit_message: Update files
+fragments:
+- id: middleware
+  selector:
+    path: src/middleware.py
+    anchor: app.allow_origin(origin, credentials=credentials)
+- id: no_rate_limits
+  selector:
+    path: config/rate_limits.yaml
+- id: no_auth_middleware
+  selector:
+    path: src/auth_middleware.py
+- id: no_global_0
+  selector:
+    anchor: requests_per_minute
+- id: no_global_1
+  selector:
+    anchor: per_user
+- id: no_global_2
+  selector:
+    anchor: require_auth
+- id: no_global_3
+  selector:
+    anchor: require_role
+- id: no_global_4
+  selector:
+    anchor: Unauthorized
+oracle:
+  required:
+  - middleware
+  allowed: []
+  forbidden:
+  - no_rate_limits
+  - no_auth_middleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,143 @@
+name: dependencies_032_test_module_changed_find_test_module
+repo:
+  initial_files:
+    utils/formatting.py: |
+      def format_currency(amount):
+          return f"${amount:.2f}"
+    tests/utils/test_formatting.py: |
+      from utils.formatting import format_currency
+
+      def test_format_currency():
+          assert format_currency(10) == "$10.00"
+    utils/locale_formatting.py: |
+      GARBAGE_DEP032_LOCALE_FMT_A = "locale_formatting"
+      GARBAGE_DEP032_LOCALE_INIT_B = True
+
+      def format_currency(amount, locale="en_US"):
+          GARBAGE_DEP032_LOCALE_CONV_C = "converting"
+          symbols = {"en_US": "$", "de_DE": "EUR", "ja_JP": "JPY"}
+          sym = symbols.get(locale, "$")
+          return f"{sym}{amount:.2f}"
+    tests/utils/test_locale_formatting.py: |
+      from utils.locale_formatting import format_currency
+      GARBAGE_DEP032_LOCTEST_D = "locale_test_module"
+      GARBAGE_DEP032_LOCTEST_ASSERT_E = True
+
+      def test_format_currency():
+          GARBAGE_DEP032_LOCTEST_RUN_F = "running"
+          assert format_currency(10, "de_DE") == "EUR10.00"
+    utils/number_formatting.py: |
+      GARBAGE_DEP032_NUMFMT_G = "number_formatting"
+      GARBAGE_DEP032_NUMFMT_INIT_H = True
+
+      def format_percentage(value):
+          GARBAGE_DEP032_NUMFMT_PCT_I = "percent"
+          return f"{value:.1f}%"
+
+      def format_decimal(value, places=2):
+          return f"{value:.{places}f}"
+  changed_files:
+    utils/formatting.py: |
+      def format_currency(amount, symbol="$"):
+          return f"{symbol}{amount:.2f}"
+    tests/utils/test_formatting.py: |
+      from utils.formatting import format_currency
+
+      def test_format_currency():
+          assert format_currency(10) == "$10.00"
+    utils/locale_formatting.py: |
+      GARBAGE_DEP032_LOCALE_FMT_A = "locale_formatting"
+      GARBAGE_DEP032_LOCALE_INIT_B = True
+
+      def format_currency(amount, locale="en_US"):
+          GARBAGE_DEP032_LOCALE_CONV_C = "converting"
+          symbols = {"en_US": "$", "de_DE": "EUR", "ja_JP": "JPY"}
+          sym = symbols.get(locale, "$")
+          return f"{sym}{amount:.2f}"
+    tests/utils/test_locale_formatting.py: |
+      from utils.locale_formatting import format_currency
+      GARBAGE_DEP032_LOCTEST_D = "locale_test_module"
+      GARBAGE_DEP032_LOCTEST_ASSERT_E = True
+
+      def test_format_currency():
+          GARBAGE_DEP032_LOCTEST_RUN_F = "running"
+          assert format_currency(10, "de_DE") == "EUR10.00"
+    utils/number_formatting.py: |
+      GARBAGE_DEP032_NUMFMT_G = "number_formatting"
+      GARBAGE_DEP032_NUMFMT_INIT_H = True
+
+      def format_percentage(value):
+          GARBAGE_DEP032_NUMFMT_PCT_I = "percent"
+          return f"{value:.1f}%"
+
+      def format_decimal(value, places=2):
+          return f"{value:.{places}f}"
+  commit_message: Update files
+fragments:
+- id: formatting
+  selector:
+    path: utils/formatting.py
+    anchor: 'def format_currency(amount, symbol="$"):'
+- id: formatting_1
+  selector:
+    path: utils/formatting.py
+    anchor: return f"{symbol}{amount:.2f}"
+- id: test_formatting
+  selector:
+    path: tests/utils/test_formatting.py
+    anchor: 'def test_format_currency():'
+- id: no_locale_formatting
+  selector:
+    path: utils/locale_formatting.py
+- id: no_test_locale_formatting
+  selector:
+    path: tests/utils/test_locale_formatting.py
+- id: no_number_formatting
+  selector:
+    path: utils/number_formatting.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP032_LOCALE_FMT_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP032_LOCALE_INIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP032_LOCALE_CONV_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP032_LOCTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP032_LOCTEST_ASSERT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP032_LOCTEST_RUN_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP032_NUMFMT_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP032_NUMFMT_INIT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP032_NUMFMT_PCT_I
+oracle:
+  required:
+  - formatting
+  - formatting_1
+  - test_formatting
+  allowed: []
+  forbidden:
+  - no_locale_formatting
+  - no_test_locale_formatting
+  - no_number_formatting
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

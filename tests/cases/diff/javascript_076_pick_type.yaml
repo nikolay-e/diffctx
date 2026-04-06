@@ -1,0 +1,179 @@
+name: javascript_076_pick_type
+repo:
+  initial_files:
+    user.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          password: string;
+          createdAt: Date;
+      }
+    dto.ts: |
+      console.log('initial');
+    user-repository.ts: |
+      import { User } from './user';
+
+      const store: User[] = [];
+
+      export function saveUser(user: User): void {
+          store.push(user);
+      }
+
+      export function findUserById(id: string): User | undefined {
+          return store.find(u => u.id === id);
+      }
+
+      export function findUserByEmail(email: string): User | undefined {
+          return store.find(u => u.email === email);
+      }
+    user-serializer.ts: |
+      import { User } from './user';
+
+      export function serializeUserForApi(user: User): string {
+          return JSON.stringify({ id: user.id, name: user.name, email: user.email });
+      }
+
+      export function serializeUserForLog(user: User): string {
+          return `[User ${user.id}] ${user.name} <${user.email}>`;
+      }
+    admin-dto.ts: |
+      import { User } from './user';
+
+      type AdminView = Pick<User, 'id' | 'name' | 'email' | 'createdAt'>;
+
+      export function toAdminView(user: User): AdminView {
+          return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+      }
+  changed_files:
+    user.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          password: string;
+          createdAt: Date;
+      }
+    dto.ts: |
+      import { User } from './user';
+
+      type UserPublic = Pick<User, 'id' | 'name' | 'email'>;
+
+      function toPublic(user: User): UserPublic {
+          return { id: user.id, name: user.name, email: user.email };
+      }
+    user-repository.ts: |
+      import { User } from './user';
+
+      const store: User[] = [];
+
+      export function saveUser(user: User): void {
+          store.push(user);
+      }
+
+      export function findUserById(id: string): User | undefined {
+          return store.find(u => u.id === id);
+      }
+
+      export function findUserByEmail(email: string): User | undefined {
+          return store.find(u => u.email === email);
+      }
+    user-serializer.ts: |
+      import { User } from './user';
+
+      export function serializeUserForApi(user: User): string {
+          return JSON.stringify({ id: user.id, name: user.name, email: user.email });
+      }
+
+      export function serializeUserForLog(user: User): string {
+          return `[User ${user.id}] ${user.name} <${user.email}>`;
+      }
+    admin-dto.ts: |
+      import { User } from './user';
+
+      type AdminView = Pick<User, 'id' | 'name' | 'email' | 'createdAt'>;
+
+      export function toAdminView(user: User): AdminView {
+          return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+      }
+  commit_message: Update files
+fragments:
+- id: dto
+  selector:
+    path: dto.ts
+    anchor: import { User } from './user'
+- id: dto_1
+  selector:
+    path: dto.ts
+    anchor: type UserPublic = Pick<User, 'id' | 'name' | 'email'>
+- id: dto_2
+  selector:
+    path: dto.ts
+    anchor: 'return { id: user.id, name: user.name, email: user.email }'
+- id: user
+  selector:
+    path: user.ts
+    anchor: interface User {
+- id: user_1
+  selector:
+    path: user.ts
+    anchor: 'id: string'
+- id: user_2
+  selector:
+    path: user.ts
+    anchor: 'email: string'
+- id: user_3
+  selector:
+    path: user.ts
+    anchor: 'password: string'
+- id: no_user_repository
+  selector:
+    path: user-repository.ts
+- id: no_user_serializer
+  selector:
+    path: user-serializer.ts
+- id: no_admin_dto
+  selector:
+    path: admin-dto.ts
+- id: no_global_0
+  selector:
+    anchor: saveUser
+- id: no_global_1
+  selector:
+    anchor: findUserById
+- id: no_global_2
+  selector:
+    anchor: findUserByEmail
+- id: no_global_3
+  selector:
+    anchor: serializeUserForApi
+- id: no_global_4
+  selector:
+    anchor: serializeUserForLog
+- id: no_global_5
+  selector:
+    anchor: AdminView
+- id: no_global_6
+  selector:
+    anchor: toAdminView
+oracle:
+  required:
+  - dto
+  - dto_1
+  - dto_2
+  - user
+  - user_1
+  - user_2
+  - user_3
+  allowed: []
+  forbidden:
+  - no_user_repository
+  - no_user_serializer
+  - no_admin_dto
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

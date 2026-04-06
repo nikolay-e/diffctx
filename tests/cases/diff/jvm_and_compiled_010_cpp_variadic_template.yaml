@@ -1,0 +1,213 @@
+name: jvm_and_compiled_010_cpp_variadic_template
+repo:
+  initial_files:
+    include/logger.h: |
+      #pragma once
+      #include <iostream>
+      #include <sstream>
+
+      template<typename... Args>
+      void log(Args... args) {
+          std::ostringstream oss;
+          ((oss << args << " "), ...);
+          std::cout << oss.str() << std::endl;
+      }
+    src/app.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    include/format.h: |
+      #pragma once
+      #include <string>
+      #include <sstream>
+
+      template<typename T>
+      std::string toString(const T& value) {
+          std::ostringstream oss;
+          oss << value;
+          return oss.str();
+      }
+
+      template<typename... Args>
+      std::string format(const std::string& pattern, Args... args) {
+          std::string result = pattern;
+          int index = 0;
+          ((result.replace(result.find("{}"), 2, toString(args)), ++index), ...);
+          return result;
+      }
+    src/diagnostics.cpp: |
+      #include "logger.h"
+      #include <string>
+
+      class Diagnostics {
+          std::string component_;
+      public:
+          Diagnostics(const std::string& name) : component_(name) {}
+
+          void info(const std::string& message) {
+              log("[INFO]", component_, message);
+          }
+
+          void warn(const std::string& message) {
+              log("[WARN]", component_, message);
+          }
+
+          void error(const std::string& message, int code) {
+              log("[ERROR]", component_, message, "code:", code);
+          }
+      };
+    include/print.h: |
+      #pragma once
+      #include <iostream>
+      #include <sstream>
+
+      template<typename... Args>
+      void print_err(Args... args) {
+          std::ostringstream oss;
+          ((oss << args << " "), ...);
+          std::cerr << oss.str() << std::endl;
+      }
+
+      template<typename... Args>
+      void print_debug(Args... args) {
+          #ifdef DEBUG
+          std::ostringstream oss;
+          ((oss << "[DBG] " << args << " "), ...);
+          std::cerr << oss.str() << std::endl;
+          #endif
+      }
+    tests/logger_test.cpp: |
+      #include "logger.h"
+      #include <cassert>
+      #include <sstream>
+
+      void test_log_single_arg() {
+          std::ostringstream capture;
+          auto old = std::cout.rdbuf(capture.rdbuf());
+          log("hello");
+          std::cout.rdbuf(old);
+          assert(capture.str().find("hello") != std::string::npos);
+      }
+
+      void test_log_multiple_args() {
+          std::ostringstream capture;
+          auto old = std::cout.rdbuf(capture.rdbuf());
+          log("value:", 42, 3.14);
+          std::cout.rdbuf(old);
+          assert(capture.str().find("42") != std::string::npos);
+      }
+  changed_files:
+    src/app.cpp: |
+      #include "logger.h"
+
+      void process() {
+          log("Starting", "process", 42, 3.14);
+          log("Done");
+      }
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: src/app.cpp
+    anchor: '#include "logger.h"'
+- id: app_1
+  selector:
+    path: src/app.cpp
+    anchor: log("Starting", "process", 42, 3.14)
+- id: app_2
+  selector:
+    path: src/app.cpp
+    anchor: log("Done")
+- id: logger
+  selector:
+    path: include/logger.h
+    anchor: template<typename... Args>
+- id: logger_1
+  selector:
+    path: include/logger.h
+    anchor: void log(Args... args)
+- id: logger_2
+  selector:
+    path: include/logger.h
+    anchor: ((oss << args << " "), ...)
+- id: no_format
+  selector:
+    path: include/format.h
+- id: no_diagnostics
+  selector:
+    path: src/diagnostics.cpp
+- id: no_print
+  selector:
+    path: include/print.h
+- id: no_logger_test
+  selector:
+    path: tests/logger_test.cpp
+- id: no_global_0
+  selector:
+    anchor: format(const std::string
+- id: no_global_1
+  selector:
+    anchor: toString
+- id: no_global_2
+  selector:
+    anchor: result.replace
+- id: no_global_3
+  selector:
+    anchor: Diagnostics
+- id: no_global_4
+  selector:
+    anchor: component_
+- id: no_global_5
+  selector:
+    anchor: '[INFO]'
+- id: no_global_6
+  selector:
+    anchor: '[WARN]'
+- id: no_global_7
+  selector:
+    anchor: '[ERROR]'
+- id: no_global_8
+  selector:
+    anchor: print_err
+- id: no_global_9
+  selector:
+    anchor: print_debug
+- id: no_global_10
+  selector:
+    anchor: std::cerr
+- id: no_global_11
+  selector:
+    anchor: test_log_single_arg
+- id: no_global_12
+  selector:
+    anchor: test_log_multiple_args
+- id: no_global_13
+  selector:
+    anchor: rdbuf
+oracle:
+  required:
+  - app
+  - app_1
+  - app_2
+  - logger
+  - logger_1
+  - logger_2
+  allowed: []
+  forbidden:
+  - no_format
+  - no_diagnostics
+  - no_print
+  - no_logger_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

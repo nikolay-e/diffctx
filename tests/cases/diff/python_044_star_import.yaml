@@ -1,0 +1,194 @@
+name: python_044_star_import
+repo:
+  initial_files:
+    constants.py: |
+      MAX_RETRIES = 3
+      TIMEOUT_SECONDS = 30
+      BASE_URL = "https://api.example.com"
+      DEFAULT_HEADERS = {"Content-Type": "application/json"}
+      RATE_LIMIT = 100
+
+      __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+
+      def get_full_url(path: str) -> str:
+          return f"{BASE_URL}/{path.lstrip('/')}"
+    client.py: |
+      def call():
+          pass
+
+      def build_headers(extra: dict = None) -> dict:
+          headers = {}
+          if extra:
+              headers.update(extra)
+          return headers
+    integrations/oauth_client.py: |
+      from typing import Optional
+
+      class OAuthClient:
+          def __init__(self, client_id: str, client_secret: str, token_url: str):
+              self.client_id = client_id
+              self.client_secret = client_secret
+              self.token_url = token_url
+              self._access_token: Optional[str] = None
+
+          def authenticate(self) -> str:
+              self._access_token = f"token_{self.client_id}"
+              return self._access_token
+
+          def build_auth_headers(self) -> dict:
+              return {"Authorization": f"Bearer {self._access_token}"}
+
+          def call_api(self, endpoint: str, method: str = "GET") -> dict:
+              headers = self.build_auth_headers()
+              return {"url": endpoint, "method": method, "headers": headers}
+    storage/file_manager.py: |
+      from pathlib import Path
+
+      class FileManager:
+          def __init__(self, base_dir: str = "/tmp/uploads"):
+              self.base_dir = Path(base_dir)
+
+          def save(self, filename: str, content: bytes) -> Path:
+              path = self.base_dir / filename
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(content)
+              return path
+
+          def delete(self, filename: str) -> bool:
+              path = self.base_dir / filename
+              if path.exists():
+                  path.unlink()
+                  return True
+              return False
+  changed_files:
+    constants.py: |
+      MAX_RETRIES = 3
+      TIMEOUT_SECONDS = 30
+      BASE_URL = "https://api.example.com"
+      DEFAULT_HEADERS = {"Content-Type": "application/json"}
+      RATE_LIMIT = 100
+
+      __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+
+      def get_full_url(path: str) -> str:
+          return f"{BASE_URL}/{path.lstrip('/')}"
+    client.py: |
+      from constants import *
+
+      def call(endpoint: str, method: str = "GET") -> dict:
+          url = get_full_url(endpoint)
+          headers = build_headers(DEFAULT_HEADERS)
+          return {"url": url, "method": method, "headers": headers, "timeout": TIMEOUT_SECONDS}
+
+      def build_headers(extra: dict = None) -> dict:
+          headers = dict(DEFAULT_HEADERS)
+          if extra:
+              headers.update(extra)
+          return headers
+    integrations/oauth_client.py: |
+      from typing import Optional
+
+      class OAuthClient:
+          def __init__(self, client_id: str, client_secret: str, token_url: str):
+              self.client_id = client_id
+              self.client_secret = client_secret
+              self.token_url = token_url
+              self._access_token: Optional[str] = None
+
+          def authenticate(self) -> str:
+              self._access_token = f"token_{self.client_id}"
+              return self._access_token
+
+          def build_auth_headers(self) -> dict:
+              return {"Authorization": f"Bearer {self._access_token}"}
+
+          def call_api(self, endpoint: str, method: str = "GET") -> dict:
+              headers = self.build_auth_headers()
+              return {"url": endpoint, "method": method, "headers": headers}
+    storage/file_manager.py: |
+      from pathlib import Path
+
+      class FileManager:
+          def __init__(self, base_dir: str = "/tmp/uploads"):
+              self.base_dir = Path(base_dir)
+
+          def save(self, filename: str, content: bytes) -> Path:
+              path = self.base_dir / filename
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(content)
+              return path
+
+          def delete(self, filename: str) -> bool:
+              path = self.base_dir / filename
+              if path.exists():
+                  path.unlink()
+                  return True
+              return False
+  commit_message: Update files
+fragments:
+- id: client
+  selector:
+    path: client.py
+    anchor: from constants import *
+- id: client_1
+  selector:
+    path: client.py
+    anchor: 'def call(endpoint: str, method: str = "GET") -> dict:'
+- id: client_2
+  selector:
+    path: client.py
+    anchor: get_full_url(endpoint)
+- id: client_3
+  selector:
+    path: client.py
+    anchor: TIMEOUT_SECONDS
+- id: constants
+  selector:
+    path: constants.py
+    anchor: __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+- id: constants_1
+  selector:
+    path: constants.py
+    anchor: 'DEFAULT_HEADERS = {"Content-Type": "application/json"}'
+- id: no_oauth_client
+  selector:
+    path: integrations/oauth_client.py
+- id: no_file_manager
+  selector:
+    path: storage/file_manager.py
+- id: no_global_0
+  selector:
+    anchor: OAuthClient
+- id: no_global_1
+  selector:
+    anchor: build_auth_headers
+- id: no_global_2
+  selector:
+    anchor: call_api
+- id: no_global_3
+  selector:
+    anchor: _access_token
+- id: no_global_4
+  selector:
+    anchor: FileManager
+- id: no_global_5
+  selector:
+    anchor: write_bytes
+oracle:
+  required:
+  - client
+  - client_1
+  - client_2
+  - client_3
+  - constants
+  - constants_1
+  allowed: []
+  forbidden:
+  - no_oauth_client
+  - no_file_manager
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

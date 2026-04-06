@@ -1,0 +1,92 @@
+name: javascript_extended_001_cy_get
+repo:
+  initial_files:
+    selectors/form.ts: |
+      export const FORM_SELECTORS = {
+          nameInput: '[data-testid=name-input]',
+          emailInput: '[data-testid=email-input]',
+          submitButton: '[data-testid=submit-btn]',
+      };
+    cypress/e2e/form.cy.ts: |
+      console.log('placeholder');
+    api/api-handler.ts: |
+      export async function handleFormSubmit(data: { name: string; email: string }) {
+          const response = await fetch('/api/forms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+          });
+          if (!response.ok) throw new Error('Submit failed');
+          return response.json();
+      }
+    config/form.config.ts: |
+      export const FORM_CONFIG = {
+          maxNameLength: 100,
+          maxEmailLength: 255,
+          requiredFields: ['name', 'email'],
+          submitDebounceMs: 300,
+      };
+  changed_files:
+    selectors/form.ts: |
+      export const FORM_SELECTORS = {
+          nameInput: '[data-testid=name-input]',
+          emailInput: '[data-testid=email-input]',
+          submitButton: '[data-testid=submit-btn]',
+      };
+    cypress/e2e/form.cy.ts: |
+      import { FORM_SELECTORS } from '../../selectors/form';
+
+      describe('Contact Form', () => {
+          it('should submit form', () => {
+              cy.visit('/contact');
+              cy.get(FORM_SELECTORS.nameInput).type('John Doe');
+              cy.get(FORM_SELECTORS.emailInput).type('john@example.com');
+              cy.get(FORM_SELECTORS.submitButton).click();
+              cy.contains('Thank you').should('be.visible');
+          });
+      });
+    api/api-handler.ts: |
+      export async function handleFormSubmit(data: { name: string; email: string }) {
+          const response = await fetch('/api/forms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+          });
+          if (!response.ok) throw new Error('Submit failed');
+          return response.json();
+      }
+    config/form.config.ts: |
+      export const FORM_CONFIG = {
+          maxNameLength: 100,
+          maxEmailLength: 255,
+          requiredFields: ['name', 'email'],
+          submitDebounceMs: 300,
+      };
+  commit_message: Update files
+fragments:
+- id: form
+  selector:
+    path: selectors/form.ts
+    anchor: FORM_SELECTORS
+- id: form_1
+  selector:
+    path: selectors/form.ts
+    anchor: data-testid=name-input
+- id: no_global_0
+  selector:
+    anchor: handleFormSubmit
+- id: no_global_1
+  selector:
+    anchor: FORM_CONFIG
+- id: no_global_2
+  selector:
+    anchor: maxNameLength
+oracle:
+  required:
+  - form
+  - form_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2

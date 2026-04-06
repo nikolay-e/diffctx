@@ -1,0 +1,320 @@
+name: dependencies_004_forward_aliased_import
+repo:
+  initial_files:
+    utils/helper.py: |
+      def process(data: list) -> list:
+          return [x * 2 for x in data]
+
+      def transform(data: list, factor: float = 1.5) -> list:
+          return [x * factor for x in data]
+
+      def validate_input(data: list) -> bool:
+          return all(isinstance(x, (int, float)) for x in data)
+
+      class DataPipeline:
+          def __init__(self):
+              self.steps = []
+
+          def add_step(self, func) -> None:
+              self.steps.append(func)
+
+          def run(self, data: list) -> list:
+              result = data
+              for step in self.steps:
+                  result = step(result)
+              return result
+    app.py: |
+      def run():
+          pass
+    analytics/pipeline.py: |
+      from utils import helper as h
+      GARBAGE_DEP_004_ANALYTICS_IMPORT_C = "analytics_pipeline"
+      GARBAGE_DEP_004_ANALYTICS_BATCH_D = 1000
+
+      class AnalyticsPipeline:
+          GARBAGE_DEP_004_ANALYTICS_CLASS_E = True
+
+          def analyze(self, data: list) -> list:
+              if h.validate_input(data):
+                  return h.process(data)
+              return []
+
+          def transform_data(self, data: list) -> list:
+              return h.transform(data, factor=3.0)
+    utils/data_ops.py: |
+      GARBAGE_DEP_004_DATAOPS_MOD_F = "data_operations"
+      GARBAGE_DEP_004_DATAOPS_VER_G = "1.0"
+
+      def process(data: list) -> list:
+          GARBAGE_DEP_004_DATAOPS_PROC_H = True
+          return [str(x) for x in data]
+
+      def transform(data: list, factor: float = 2.0) -> list:
+          return [x + factor for x in data]
+
+      def validate_input(data: list) -> bool:
+          GARBAGE_DEP_004_DATAOPS_VALID_I = True
+          return len(data) > 0
+    utils/formatter.py: |
+      GARBAGE_DEP_004_FORMATTER_MOD_J = "formatting"
+      GARBAGE_DEP_004_FORMATTER_VER_K = "2.0"
+
+      def process(items: list) -> list:
+          return [f"[{x}]" for x in items]
+
+      class DataPipeline:
+          GARBAGE_DEP_004_FORMATTER_PIPE_L = True
+
+          def __init__(self):
+              self.steps = []
+
+          def run(self, data: list) -> list:
+              return data
+    garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py: |
+      def evaluate_position_GARBAGE_DEP_004_CHESS_A(board: list) -> float:
+          return sum(sum(row) for row in board)
+
+      def legal_moves_GARBAGE_DEP_004_CHESS_A(piece: str, position: tuple) -> list:
+          return [(position[0] + 1, position[1]), (position[0], position[1] + 1)]
+
+      class ChessBoard_GARBAGE_DEP_004_CHESS_A:
+          def __init__(self):
+              self.board = [[0] * 8 for _ in range(8)]
+
+          def place_piece(self, piece: str, row: int, col: int) -> None:
+              self.board[row][col] = piece
+    garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py: |
+      RATES_GARBAGE_DEP_004_CURRENCY_B = {"USD": 1.0, "EUR": 0.85, "GBP": 0.73}
+
+      def convert_GARBAGE_DEP_004_CURRENCY_B(amount: float, from_curr: str, to_curr: str) -> float:
+          usd = amount / RATES_GARBAGE_DEP_004_CURRENCY_B[from_curr]
+          return usd * RATES_GARBAGE_DEP_004_CURRENCY_B[to_curr]
+
+      class ExchangeService_GARBAGE_DEP_004_CURRENCY_B:
+          def __init__(self):
+              self.rates = RATES_GARBAGE_DEP_004_CURRENCY_B.copy()
+
+          def update_rate(self, currency: str, rate: float) -> None:
+              self.rates[currency] = rate
+  changed_files:
+    utils/helper.py: |
+      def process(data: list) -> list:
+          return [x * 2 for x in data]
+
+      def transform(data: list, factor: float = 1.5) -> list:
+          return [x * factor for x in data]
+
+      def validate_input(data: list) -> bool:
+          return all(isinstance(x, (int, float)) for x in data)
+
+      class DataPipeline:
+          def __init__(self):
+              self.steps = []
+
+          def add_step(self, func) -> None:
+              self.steps.append(func)
+
+          def run(self, data: list) -> list:
+              result = data
+              for step in self.steps:
+                  result = step(result)
+              return result
+    app.py: |
+      from utils import helper as h
+
+      def run():
+          data = [1, 2, 3, 4, 5]
+          if h.validate_input(data):
+              result = h.process(data)
+              transformed = h.transform(result, factor=2.0)
+              return transformed
+          return []
+    analytics/pipeline.py: |
+      from utils import helper as h
+      GARBAGE_DEP_004_ANALYTICS_IMPORT_C = "analytics_pipeline"
+      GARBAGE_DEP_004_ANALYTICS_BATCH_D = 1000
+
+      class AnalyticsPipeline:
+          GARBAGE_DEP_004_ANALYTICS_CLASS_E = True
+
+          def analyze(self, data: list) -> list:
+              if h.validate_input(data):
+                  return h.process(data)
+              return []
+
+          def transform_data(self, data: list) -> list:
+              return h.transform(data, factor=3.0)
+    utils/data_ops.py: |
+      GARBAGE_DEP_004_DATAOPS_MOD_F = "data_operations"
+      GARBAGE_DEP_004_DATAOPS_VER_G = "1.0"
+
+      def process(data: list) -> list:
+          GARBAGE_DEP_004_DATAOPS_PROC_H = True
+          return [str(x) for x in data]
+
+      def transform(data: list, factor: float = 2.0) -> list:
+          return [x + factor for x in data]
+
+      def validate_input(data: list) -> bool:
+          GARBAGE_DEP_004_DATAOPS_VALID_I = True
+          return len(data) > 0
+    utils/formatter.py: |
+      GARBAGE_DEP_004_FORMATTER_MOD_J = "formatting"
+      GARBAGE_DEP_004_FORMATTER_VER_K = "2.0"
+
+      def process(items: list) -> list:
+          return [f"[{x}]" for x in items]
+
+      class DataPipeline:
+          GARBAGE_DEP_004_FORMATTER_PIPE_L = True
+
+          def __init__(self):
+              self.steps = []
+
+          def run(self, data: list) -> list:
+              return data
+    garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py: |
+      def evaluate_position_GARBAGE_DEP_004_CHESS_A(board: list) -> float:
+          return sum(sum(row) for row in board)
+
+      def legal_moves_GARBAGE_DEP_004_CHESS_A(piece: str, position: tuple) -> list:
+          return [(position[0] + 1, position[1]), (position[0], position[1] + 1)]
+
+      class ChessBoard_GARBAGE_DEP_004_CHESS_A:
+          def __init__(self):
+              self.board = [[0] * 8 for _ in range(8)]
+
+          def place_piece(self, piece: str, row: int, col: int) -> None:
+              self.board[row][col] = piece
+    garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py: |
+      RATES_GARBAGE_DEP_004_CURRENCY_B = {"USD": 1.0, "EUR": 0.85, "GBP": 0.73}
+
+      def convert_GARBAGE_DEP_004_CURRENCY_B(amount: float, from_curr: str, to_curr: str) -> float:
+          usd = amount / RATES_GARBAGE_DEP_004_CURRENCY_B[from_curr]
+          return usd * RATES_GARBAGE_DEP_004_CURRENCY_B[to_curr]
+
+      class ExchangeService_GARBAGE_DEP_004_CURRENCY_B:
+          def __init__(self):
+              self.rates = RATES_GARBAGE_DEP_004_CURRENCY_B.copy()
+
+          def update_rate(self, currency: str, rate: float) -> None:
+              self.rates[currency] = rate
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.py
+    anchor: from utils import helper as h
+- id: app_1
+  selector:
+    path: app.py
+    anchor: data = [1, 2, 3, 4, 5]
+- id: app_2
+  selector:
+    path: app.py
+    anchor: h.validate_input(data)
+- id: app_3
+  selector:
+    path: app.py
+    anchor: h.process(data)
+- id: app_4
+  selector:
+    path: app.py
+    anchor: h.transform(result, factor=2.0)
+- id: app_5
+  selector:
+    path: app.py
+    anchor: 'def run():'
+- id: helper
+  selector:
+    path: utils/helper.py
+    anchor: 'def process(data: list) -> list:'
+- id: helper_1
+  selector:
+    path: utils/helper.py
+    anchor: 'def transform(data: list, factor: float = 1.5) -> list:'
+- id: helper_2
+  selector:
+    path: utils/helper.py
+    anchor: 'def validate_input(data: list) -> bool:'
+- id: no_pipeline
+  selector:
+    path: analytics/pipeline.py
+- id: no_data_ops
+  selector:
+    path: utils/data_ops.py
+- id: no_formatter
+  selector:
+    path: utils/formatter.py
+- id: no_chess_engine_garbage_dep_004_chess_a
+  selector:
+    path: garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py
+- id: no_currency_converter_garbage_dep_004_curre
+  selector:
+    path: garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_004_CHESS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_004_CURRENCY_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_004_ANALYTICS_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_004_ANALYTICS_BATCH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_004_ANALYTICS_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_004_DATAOPS_MOD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_004_DATAOPS_VER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_004_DATAOPS_PROC_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_004_DATAOPS_VALID_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_DEP_004_FORMATTER_MOD_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_DEP_004_FORMATTER_VER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_DEP_004_FORMATTER_PIPE_L
+oracle:
+  required:
+  - app
+  - app_1
+  - app_2
+  - app_3
+  - app_4
+  - app_5
+  - helper
+  - helper_1
+  - helper_2
+  allowed: []
+  forbidden:
+  - no_pipeline
+  - no_data_ops
+  - no_formatter
+  - no_chess_engine_garbage_dep_004_chess_a
+  - no_currency_converter_garbage_dep_004_curre
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

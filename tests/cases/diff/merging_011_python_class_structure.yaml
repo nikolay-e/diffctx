@@ -1,0 +1,47 @@
+name: merging_011_python_class_structure
+repo:
+  initial_files:
+    service.py: |
+      class Service:
+          def __init__(self):
+              self.data = []
+
+          def add(self, item):
+              self.data.append(item)
+
+          def remove(self, item):
+              self.data.remove(item)
+
+          def clear(self):
+              self.data = []
+  changed_files:
+    service.py: |
+      class Service:
+          def __init__(self):
+              self.data = []
+              self.count = 0
+
+          def add(self, item):
+              self.data.append(item)
+              self.count += 1
+
+          def remove(self, item):
+              self.data.remove(item)
+
+          def clear(self):
+              self.data = []
+              self.count = 0
+  commit_message: Update files
+fragments:
+- id: service_file
+  selector:
+    path: service.py
+- id: req_global_0
+  selector:
+    anchor: self.count = 0
+oracle:
+  required:
+  - service_file
+  - req_global_0
+  allowed: []
+  forbidden: []

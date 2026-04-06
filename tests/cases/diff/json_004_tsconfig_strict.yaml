@@ -1,0 +1,195 @@
+name: json_004_tsconfig_strict
+repo:
+  initial_files:
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "strict": false,
+          "target": "ES2020",
+          "module": "commonjs",
+          "outDir": "dist",
+          "rootDir": "src",
+          "esModuleInterop": true,
+          "skipLibCheck": true,
+          "resolveJsonModule": true
+        },
+        "include": ["src/**/*"],
+        "exclude": ["node_modules", "dist"]
+      }
+    src/app.ts: |
+      interface UserRecord {
+          id: number;
+          name: string;
+          email: string;
+          metadata?: Record<string, any>;
+      }
+
+      function processData(data: any) {
+          return data.value;
+      }
+
+      function findUser(users: UserRecord[], predicate: any): UserRecord | undefined {
+          return users.find(predicate);
+      }
+
+      function transformRecords(records: any[]): UserRecord[] {
+          return records.map(r => ({
+              id: r.id,
+              name: r.name || 'Unknown',
+              email: r.email || '',
+              metadata: r.extra,
+          }));
+      }
+
+      function mergeConfigs(base: any, override: any): any {
+          return { ...base, ...override };
+      }
+
+      export { processData, findUser, transformRecords, mergeConfigs };
+    src/database.ts: |
+      import { processData, transformRecords } from './app';
+
+      interface DatabaseConfig {
+          host: string;
+          port: number;
+          database: string;
+      }
+
+      class DatabaseClient {
+          private config: DatabaseConfig;
+
+          constructor(config: DatabaseConfig) {
+              this.config = config;
+          }
+
+          async query(sql: string, params: any[]): Promise<any[]> {
+              console.log(`Executing: ${sql} with ${params.length} params`);
+              return [];
+          }
+
+          async fetchUsers(): Promise<any[]> {
+              const raw = await this.query('SELECT * FROM users', []);
+              return transformRecords(raw);
+          }
+      }
+
+      export { DatabaseClient, DatabaseConfig };
+    package.json: |
+      {
+        "name": "ts-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "typecheck": "tsc --noEmit"
+        },
+        "devDependencies": {
+          "typescript": "^5.2.0"
+        }
+      }
+    .eslintrc.json: |
+      {
+        "parser": "@typescript-eslint/parser",
+        "plugins": ["@typescript-eslint"],
+        "extends": [
+          "eslint:recommended",
+          "plugin:@typescript-eslint/recommended"
+        ],
+        "rules": {
+          "@typescript-eslint/no-explicit-any": "warn"
+        }
+      }
+    jest.config.json: |
+      {
+        "preset": "ts-jest",
+        "testEnvironment": "node",
+        "testMatch": ["**/*.test.ts"],
+        "transform": {
+          "^.+\\.ts$": "ts-jest"
+        }
+      }
+  changed_files:
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "strict": true,
+          "target": "ES2022",
+          "module": "commonjs",
+          "noImplicitAny": true,
+          "outDir": "dist",
+          "rootDir": "src",
+          "esModuleInterop": true,
+          "skipLibCheck": true,
+          "resolveJsonModule": true
+        },
+        "include": ["src/**/*"],
+        "exclude": ["node_modules", "dist"]
+      }
+  commit_message: Update files
+fragments:
+- id: tsconfig
+  selector:
+    path: tsconfig.json
+    anchor: '"strict": true'
+- id: tsconfig_1
+  selector:
+    path: tsconfig.json
+    anchor: '"target": "ES2022"'
+- id: tsconfig_2
+  selector:
+    path: tsconfig.json
+    anchor: '"noImplicitAny": true'
+- id: no_package
+  selector:
+    path: package.json
+- id: no_eslintrc
+  selector:
+    path: .eslintrc.json
+- id: no_jest_config
+  selector:
+    path: jest.config.json
+- id: no_global_0
+  selector:
+    anchor: typecheck
+- id: no_global_1
+  selector:
+    anchor: tsc --noEmit
+- id: no_global_2
+  selector:
+    anchor: '"typescript": "^5.2.0"'
+- id: no_global_3
+  selector:
+    anchor: '@typescript-eslint/parser'
+- id: no_global_4
+  selector:
+    anchor: no-explicit-any
+- id: no_global_5
+  selector:
+    anchor: '@typescript-eslint/recommended'
+- id: no_global_6
+  selector:
+    anchor: ts-jest
+- id: no_global_7
+  selector:
+    anchor: testMatch
+- id: no_global_8
+  selector:
+    anchor: testEnvironment
+oracle:
+  required:
+  - tsconfig
+  - tsconfig_1
+  - tsconfig_2
+  allowed: []
+  forbidden:
+  - no_package
+  - no_eslintrc
+  - no_jest_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

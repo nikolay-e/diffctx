@@ -1,50 +1,36 @@
 from __future__ import annotations
 
 import difflib
-import math
 from dataclasses import dataclass, field
-
-NOISE_PENALTY_WEIGHT = 0.50
-GARBAGE_PENALTY_WEIGHT = 0.50
-ENRICHMENT_ALPHA = 0.15
 
 
 @dataclass
 class ScoreBreakdown:
-    diff_covered: bool
+    required_hits: int = 0
+    required_total: int = 0
+    missing_required: list[str] = field(default_factory=list)
+
+    forbidden_hits: int = 0
+    forbidden_total: int = 0
+    present_forbidden: list[str] = field(default_factory=list)
+
+    diff_covered: bool = True
     uncovered_lines: list[str] = field(default_factory=list)
-
-    expected_hits: int = 0
-    expected_total: int = 0
-    expected_details: list[tuple[str, bool]] = field(default_factory=list)
-
-    noise_hits: int = 0
-    noise_total: int = 0
-    noise_details: list[tuple[str, bool]] = field(default_factory=list)
-
-    garbage_hits: int = 0
-    garbage_total: int = 0
 
     diff_tokens: int = 0
     context_tokens: int = 0
 
     @property
-    def recall(self) -> float:
-        if self.expected_total == 0:
+    def required_recall(self) -> float:
+        if self.required_total == 0:
             return 1.0
-        return self.expected_hits / self.expected_total
+        return self.required_hits / self.required_total
 
     @property
-    def noise_rate(self) -> float:
-        if self.noise_total == 0:
+    def forbidden_rate(self) -> float:
+        if self.forbidden_total == 0:
             return 0.0
-        return self.noise_hits / self.noise_total
-
-    @property
-    def garbage_rate(self) -> float:
-        if self.garbage_total == 0:
-            return 0.0
-        return self.garbage_hits / self.garbage_total
+        return self.forbidden_hits / self.forbidden_total
 
     @property
     def enrichment(self) -> float:
@@ -53,34 +39,12 @@ class ScoreBreakdown:
         return self.context_tokens / self.diff_tokens
 
     @property
-    def efficiency_factor(self) -> float:
-        if self.enrichment <= 1.0:
-            return 1.0
-        return 1.0 / (1.0 + ENRICHMENT_ALPHA * math.log(self.enrichment))
+    def score(self) -> float:
+        return round(100.0 * self.required_recall * (1.0 - self.forbidden_rate), 1)
 
     @property
-    def score(self) -> float:
-        if not self.diff_covered:
-            return 0.0
-        noise_factor = max(0.0, 1.0 - NOISE_PENALTY_WEIGHT * self.noise_rate)
-        garbage_factor = max(0.0, 1.0 - GARBAGE_PENALTY_WEIGHT * self.garbage_rate)
-        return round(100.0 * self.recall * noise_factor * garbage_factor * self.efficiency_factor, 1)
-
-
-def _match_path_loose(candidate: str, target: str) -> bool:
-    return candidate == target or candidate.endswith(f"/{target}") or target.endswith(f"/{candidate}") or target in candidate
-
-
-def _should_skip_file(
-    path: str,
-    expected_files: set[str] | None,
-    excluded_files: set[str] | None,
-) -> bool:
-    if excluded_files and any(_match_path_loose(path, ex) for ex in excluded_files):
-        return True
-    if expected_files and not any(_match_path_loose(path, ef) for ef in expected_files):
-        return True
-    return False
+    def passed(self) -> bool:
+        return not self.missing_required and not self.present_forbidden
 
 
 def _extract_added_lines(initial_content: str, changed_content: str) -> list[str]:
@@ -97,13 +61,9 @@ def _extract_added_lines(initial_content: str, changed_content: str) -> list[str
 def compute_diff_lines(
     initial_files: dict[str, str],
     changed_files: dict[str, str],
-    expected_files: set[str] | None = None,
-    excluded_files: set[str] | None = None,
 ) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for path, changed_content in changed_files.items():
-        if _should_skip_file(path, expected_files, excluded_files):
-            continue
         initial_content = initial_files.get(path, "")
         if initial_content == changed_content:
             continue

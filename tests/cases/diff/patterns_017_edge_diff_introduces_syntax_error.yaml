@@ -1,0 +1,126 @@
+name: patterns_017_edge_diff_introduces_syntax_error
+repo:
+  initial_files:
+    test.py: |
+      def valid():
+          return 1
+    utils/syntax_checker.py: |
+      import ast
+
+      SUPPORTED_PYTHON_VERSIONS = ["3.10", "3.11", "3.12"]
+
+      class SyntaxChecker:
+          def check_file(self, filepath: str) -> bool:
+              try:
+                  with open(filepath) as f:
+                      ast.parse(f.read())
+                  return True
+              except SyntaxError:
+                  return False
+
+          def get_error_details(self, filepath: str) -> dict | None:
+              try:
+                  with open(filepath) as f:
+                      ast.parse(f.read())
+                  return None
+              except SyntaxError as e:
+                  return {"line": e.lineno, "offset": e.offset, "msg": e.msg}
+    utils/code_linter.py: |
+      LINT_RULES = ["E501", "W291", "E302", "E303"]
+      MAX_LINE_LENGTH = 120
+
+      class CodeLinter:
+          def lint_file(self, filepath: str) -> list[dict]:
+              return []
+
+          def lint_string(self, source: str) -> list[dict]:
+              violations = []
+              for i, line in enumerate(source.splitlines(), 1):
+                  if len(line) > MAX_LINE_LENGTH:
+                      violations.append({"line": i, "rule": "E501", "msg": "Line too long"})
+              return violations
+  changed_files:
+    test.py: |
+      def broken(
+          return 1
+    utils/syntax_checker.py: |
+      import ast
+
+      SUPPORTED_PYTHON_VERSIONS = ["3.10", "3.11", "3.12"]
+
+      class SyntaxChecker:
+          def check_file(self, filepath: str) -> bool:
+              try:
+                  with open(filepath) as f:
+                      ast.parse(f.read())
+                  return True
+              except SyntaxError:
+                  return False
+
+          def get_error_details(self, filepath: str) -> dict | None:
+              try:
+                  with open(filepath) as f:
+                      ast.parse(f.read())
+                  return None
+              except SyntaxError as e:
+                  return {"line": e.lineno, "offset": e.offset, "msg": e.msg}
+    utils/code_linter.py: |
+      LINT_RULES = ["E501", "W291", "E302", "E303"]
+      MAX_LINE_LENGTH = 120
+
+      class CodeLinter:
+          def lint_file(self, filepath: str) -> list[dict]:
+              return []
+
+          def lint_string(self, source: str) -> list[dict]:
+              violations = []
+              for i, line in enumerate(source.splitlines(), 1):
+                  if len(line) > MAX_LINE_LENGTH:
+                      violations.append({"line": i, "rule": "E501", "msg": "Line too long"})
+              return violations
+  commit_message: Update files
+fragments:
+- id: test_file
+  selector:
+    path: test.py
+- id: req_global_0
+  selector:
+    anchor: def broken(
+- id: no_syntax_checker
+  selector:
+    path: utils/syntax_checker.py
+- id: no_code_linter
+  selector:
+    path: utils/code_linter.py
+- id: no_global_0
+  selector:
+    anchor: SyntaxChecker
+- id: no_global_1
+  selector:
+    anchor: SUPPORTED_PYTHON_VERSIONS
+- id: no_global_2
+  selector:
+    anchor: get_error_details
+- id: no_global_3
+  selector:
+    anchor: CodeLinter
+- id: no_global_4
+  selector:
+    anchor: LINT_RULES
+- id: no_global_5
+  selector:
+    anchor: MAX_LINE_LENGTH
+oracle:
+  required:
+  - test_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_syntax_checker
+  - no_code_linter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

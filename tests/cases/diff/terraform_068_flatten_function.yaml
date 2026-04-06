@@ -1,0 +1,388 @@
+name: terraform_068_flatten_function
+repo:
+  initial_files:
+    main.tf: |
+      variable "subnet_groups" {
+        type = map(object({
+          cidrs = list(string)
+        }))
+        default = {
+          public = {
+            cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+          }
+          private = {
+            cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+          }
+        }
+      }
+
+      locals {
+        all_cidrs = flatten([
+          for group in var.subnet_groups : group.cidrs
+        ])
+      }
+
+      resource "aws_security_group" "main" {
+        name   = "app-main-sg"
+        vpc_id = aws_vpc.main.id
+      }
+
+      resource "aws_security_group_rule" "allow_internal" {
+        type              = "ingress"
+        from_port         = 0
+        to_port           = 65535
+        protocol          = "tcp"
+        cidr_blocks       = local.all_cidrs
+        security_group_id = aws_security_group.main.id
+      }
+    networking/subnets.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = "10.0.0.0/16"
+        enable_dns_hostnames = true
+
+        tags = { Name = "app-vpc" }
+      }
+
+      resource "aws_subnet" "groups" {
+        for_each = {
+          for pair in flatten([
+            for name, group in var.subnet_groups : [
+              for idx, cidr in group.cidrs : {
+                key  = "${name}-${idx}"
+                cidr = cidr
+                name = name
+              }
+            ]
+          ]) : pair.key => pair
+        }
+
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = each.value.cidr
+        availability_zone = element(data.aws_availability_zones.available.names, index(keys(var.subnet_groups), each.value.name) % length(data.aws_availability_zones.available.names))
+
+        tags = {
+          Name  = "app-${each.key}"
+          Group = each.value.name
+        }
+      }
+
+      data "aws_availability_zones" "available" {
+        state = "available"
+      }
+    alb/listeners.tf: |
+      resource "aws_lb" "app" {
+        name               = "app-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = [for s in aws_subnet.groups : s.id if s.tags["Group"] == "public"]
+        security_groups    = [aws_security_group.main.id]
+      }
+
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.app.arn
+        port              = 443
+        protocol          = "HTTPS"
+        certificate_arn   = aws_acm_certificate.app.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+      }
+    networking/route_tables.tf: |
+      resource "aws_route_table" "groups" {
+        for_each = var.subnet_groups
+
+        vpc_id = aws_vpc.main.id
+
+        tags = {
+          Name = "rt-${each.key}"
+        }
+      }
+
+      resource "aws_route" "nat" {
+        for_each = {
+          for name, _ in var.subnet_groups : name => name
+          if name != "public"
+        }
+
+        route_table_id         = aws_route_table.groups[each.key].id
+        destination_cidr_block = "0.0.0.0/0"
+        nat_gateway_id         = aws_nat_gateway.main.id
+      }
+
+      resource "aws_route" "igw" {
+        route_table_id         = aws_route_table.groups["public"].id
+        destination_cidr_block = "0.0.0.0/0"
+        gateway_id             = aws_internet_gateway.main.id
+      }
+
+      resource "aws_route_table_association" "groups" {
+        for_each = aws_subnet.groups
+
+        subnet_id      = each.value.id
+        route_table_id = aws_route_table.groups[each.value.tags["Group"]].id
+      }
+    security/sg_rules.tf: |
+      resource "aws_security_group_rule" "allow_https" {
+        type              = "ingress"
+        from_port         = 443
+        to_port           = 443
+        protocol          = "tcp"
+        cidr_blocks       = ["0.0.0.0/0"]
+        security_group_id = aws_security_group.main.id
+      }
+
+      resource "aws_security_group_rule" "allow_postgres" {
+        type                     = "ingress"
+        from_port                = 5432
+        to_port                  = 5432
+        protocol                 = "tcp"
+        source_security_group_id = aws_security_group.main.id
+        security_group_id        = aws_security_group.database.id
+      }
+
+      resource "aws_security_group_rule" "allow_outbound" {
+        type              = "egress"
+        from_port         = 0
+        to_port           = 0
+        protocol          = "-1"
+        cidr_blocks       = ["0.0.0.0/0"]
+        security_group_id = aws_security_group.main.id
+      }
+    networking/nacl.tf: |
+      resource "aws_network_acl" "private" {
+        vpc_id     = aws_vpc.main.id
+        subnet_ids = [for s in aws_subnet.groups : s.id if s.tags["Group"] == "private"]
+
+        ingress {
+          protocol   = "tcp"
+          rule_no    = 100
+          action     = "allow"
+          cidr_block = "10.0.1.0/24"
+          from_port  = 0
+          to_port    = 65535
+        }
+
+        ingress {
+          protocol   = "tcp"
+          rule_no    = 200
+          action     = "allow"
+          cidr_block = "10.0.2.0/24"
+          from_port  = 0
+          to_port    = 65535
+        }
+
+        egress {
+          protocol   = "-1"
+          rule_no    = 100
+          action     = "allow"
+          cidr_block = "0.0.0.0/0"
+          from_port  = 0
+          to_port    = 0
+        }
+      }
+    terraform.tfvars: |
+      subnet_groups = {
+        public = {
+          cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+        }
+        private = {
+          cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+        }
+        database = {
+          cidrs = ["10.0.30.0/24", "10.0.31.0/24"]
+        }
+      }
+    database/rds.tf: |
+      resource "aws_db_subnet_group" "main" {
+        name       = "main-db-subnet-group"
+        subnet_ids = var.database_subnet_ids
+
+        tags = {
+          Name = "Main DB Subnet Group"
+        }
+      }
+
+      resource "aws_db_instance" "main" {
+        identifier           = "app-database"
+        engine               = "postgres"
+        engine_version       = "15.4"
+        instance_class       = "db.t3.medium"
+        db_subnet_group_name = aws_db_subnet_group.main.name
+        vpc_security_group_ids = [aws_security_group.database.id]
+        allocated_storage    = 20
+      }
+  changed_files:
+    main.tf: |
+      variable "subnet_groups" {
+        type = map(object({
+          cidrs = list(string)
+        }))
+        default = {
+          public = {
+            cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+          }
+          private = {
+            cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+          }
+          database = {
+            cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
+          }
+        }
+      }
+
+      locals {
+        all_cidrs = flatten([
+          for group in var.subnet_groups : group.cidrs
+        ])
+
+        public_cidrs = flatten([
+          for name, group in var.subnet_groups : group.cidrs
+          if name == "public"
+        ])
+      }
+
+      resource "aws_security_group" "main" {
+        name   = "app-main-sg"
+        vpc_id = aws_vpc.main.id
+      }
+
+      resource "aws_security_group_rule" "allow_internal" {
+        type              = "ingress"
+        from_port         = 0
+        to_port           = 65535
+        protocol          = "tcp"
+        cidr_blocks       = local.all_cidrs
+        security_group_id = aws_security_group.main.id
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: if name == "public"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: cidr_blocks       = local.all_cidrs
+- id: subnets
+  selector:
+    path: networking/subnets.tf
+    anchor: for name, group in var.subnet_groups
+- id: subnets_1
+  selector:
+    path: networking/subnets.tf
+    anchor: cidr_block        = each.value.cidr
+- id: subnets_2
+  selector:
+    path: networking/subnets.tf
+    anchor: Group = each.value.name
+- id: listeners
+  selector:
+    path: alb/listeners.tf
+    anchor: if s.tags["Group"] == "public"
+- id: listeners_1
+  selector:
+    path: alb/listeners.tf
+    anchor: security_groups    = [aws_security_group.main.id]
+- id: no_route_tables
+  selector:
+    path: networking/route_tables.tf
+- id: no_sg_rules
+  selector:
+    path: security/sg_rules.tf
+- id: no_nacl
+  selector:
+    path: networking/nacl.tf
+- id: no_terraform
+  selector:
+    path: terraform.tfvars
+- id: no_rds
+  selector:
+    path: database/rds.tf
+- id: no_global_0
+  selector:
+    anchor: rt-${each.key}
+- id: no_global_1
+  selector:
+    anchor: nat_gateway_id
+- id: no_global_2
+  selector:
+    anchor: aws_internet_gateway
+- id: no_global_3
+  selector:
+    anchor: aws_route_table_association
+- id: no_global_4
+  selector:
+    anchor: allow_https
+- id: no_global_5
+  selector:
+    anchor: allow_postgres
+- id: no_global_6
+  selector:
+    anchor: allow_outbound
+- id: no_global_7
+  selector:
+    anchor: source_security_group_id
+- id: no_global_8
+  selector:
+    anchor: aws_network_acl
+- id: no_global_9
+  selector:
+    anchor: rule_no
+- id: no_global_10
+  selector:
+    anchor: 10.0.30.0/24
+- id: no_global_11
+  selector:
+    anchor: 10.0.31.0/24
+- id: no_global_12
+  selector:
+    anchor: aws_db_subnet_group
+- id: no_global_13
+  selector:
+    anchor: aws_db_instance
+- id: no_global_14
+  selector:
+    anchor: database_subnet_ids
+- id: no_global_15
+  selector:
+    anchor: db.t3.medium
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - subnets
+  - subnets_1
+  - subnets_2
+  - listeners
+  - listeners_1
+  allowed: []
+  forbidden:
+  - no_route_tables
+  - no_sg_rules
+  - no_nacl
+  - no_terraform
+  - no_rds
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

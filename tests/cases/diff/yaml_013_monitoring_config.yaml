@@ -1,0 +1,153 @@
+name: yaml_013_monitoring_config
+repo:
+  initial_files:
+    config/monitoring.yaml: |
+      metrics:
+        enabled: true
+        port: 9090
+    src/metrics.py: |
+      from prometheus_client import start_http_server, Counter, Histogram
+
+      REQUEST_COUNT = Counter("requests_total", "Total requests")
+      REQUEST_LATENCY = Histogram("request_latency_seconds", "Request latency")
+
+      def start_metrics_server(port: int = 9090):
+          start_http_server(port)
+
+      def record_request(method: str, path: str, duration: float):
+          REQUEST_COUNT.inc()
+          REQUEST_LATENCY.observe(duration)
+    config/alerting.yaml: |
+      alerting:
+        receivers:
+          - name: slack
+            webhook_url: https://hooks.slack.com/services/xxx
+          - name: pagerduty
+            routing_key: pd-service-key
+        rules:
+          - alert: HighErrorRate
+            expr: rate(errors_total[5m]) > 0.1
+            for: 5m
+            severity: critical
+    src/health_check.py: |
+      from datetime import datetime
+
+      class HealthCheck:
+          def __init__(self):
+              self._checks: dict[str, callable] = {}
+              self.start_time = datetime.utcnow()
+
+          def register(self, name: str, check_fn):
+              self._checks[name] = check_fn
+
+          def run(self) -> dict:
+              results = {}
+              for name, check_fn in self._checks.items():
+                  try:
+                      check_fn()
+                      results[name] = "healthy"
+                  except Exception as e:
+                      results[name] = f"unhealthy: {e}"
+              return {
+                  "status": "healthy" if all(v == "healthy" for v in results.values()) else "unhealthy",
+                  "checks": results,
+                  "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+              }
+  changed_files:
+    config/monitoring.yaml: |
+      metrics:
+        enabled: true
+        port: 8080
+        path: /metrics
+    src/metrics.py: |
+      from prometheus_client import start_http_server, Counter, Histogram
+
+      REQUEST_COUNT = Counter("requests_total", "Total requests")
+      REQUEST_LATENCY = Histogram("request_latency_seconds", "Request latency")
+
+      def start_metrics_server(port: int = 9090):
+          start_http_server(port)
+
+      def record_request(method: str, path: str, duration: float):
+          REQUEST_COUNT.inc()
+          REQUEST_LATENCY.observe(duration)
+    config/alerting.yaml: |
+      alerting:
+        receivers:
+          - name: slack
+            webhook_url: https://hooks.slack.com/services/xxx
+          - name: pagerduty
+            routing_key: pd-service-key
+        rules:
+          - alert: HighErrorRate
+            expr: rate(errors_total[5m]) > 0.1
+            for: 5m
+            severity: critical
+    src/health_check.py: |
+      from datetime import datetime
+
+      class HealthCheck:
+          def __init__(self):
+              self._checks: dict[str, callable] = {}
+              self.start_time = datetime.utcnow()
+
+          def register(self, name: str, check_fn):
+              self._checks[name] = check_fn
+
+          def run(self) -> dict:
+              results = {}
+              for name, check_fn in self._checks.items():
+                  try:
+                      check_fn()
+                      results[name] = "healthy"
+                  except Exception as e:
+                      results[name] = f"unhealthy: {e}"
+              return {
+                  "status": "healthy" if all(v == "healthy" for v in results.values()) else "unhealthy",
+                  "checks": results,
+                  "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+              }
+  commit_message: Update files
+fragments:
+- id: metrics
+  selector:
+    path: src/metrics.py
+    anchor: start_http_server(port)
+- id: metrics_1
+  selector:
+    path: src/metrics.py
+    anchor: 'port: int = 9090'
+- id: no_alerting
+  selector:
+    path: config/alerting.yaml
+- id: no_health_check
+  selector:
+    path: src/health_check.py
+- id: no_global_0
+  selector:
+    anchor: HighErrorRate
+- id: no_global_1
+  selector:
+    anchor: pagerduty
+- id: no_global_2
+  selector:
+    anchor: routing_key
+- id: no_global_3
+  selector:
+    anchor: HealthCheck
+- id: no_global_4
+  selector:
+    anchor: uptime_seconds
+oracle:
+  required:
+  - metrics
+  - metrics_1
+  allowed: []
+  forbidden:
+  - no_alerting
+  - no_health_check
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

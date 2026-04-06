@@ -1,0 +1,190 @@
+name: dependencies_043_transitive_thin_wrapper
+repo:
+  initial_files:
+    app.py: |
+      from wrapper import process_data
+
+      def main():
+          result = process_data()
+          print(result)
+    wrapper.py: |
+      from core import transform
+
+      def process_data():
+          return transform()
+    core.py: |
+      def transform(data=None, mode="default"):
+          if data is None:
+              data = []
+          if mode == "default":
+              return [x * 2 for x in data]
+          elif mode == "reverse":
+              return list(reversed(data))
+          return data
+    cli/runner.py: |
+      from wrapper import process_data
+      GARBAGE_DEP_043_CLI_RUNNER_A = "cli_runner"
+      GARBAGE_DEP_043_CLI_ENTRY_B = True
+
+      def run_cli(args: list) -> None:
+          GARBAGE_DEP_043_CLI_EXEC_C = "executing"
+          result = process_data()
+          print(f"CLI result: {result}")
+    utils/transform.py: |
+      GARBAGE_DEP_043_UTIL_XFORM_D = "util_transform"
+      GARBAGE_DEP_043_UTIL_VER_E = "2.0"
+
+      def transform(items, key=None):
+          GARBAGE_DEP_043_UTIL_APPLY_F = "applying"
+          if key:
+              return sorted(items, key=key)
+          return items
+    garbage/geology_GARBAGE_DEP_043_GEO_G.py: |
+      GARBAGE_DEP_043_GEO_G = "stratigraphy"
+
+      def classify_rock(mineral_content: dict) -> str:
+          return "igneous" if "quartz" in mineral_content else "sedimentary"
+
+      class Fossil_GARBAGE_DEP_043_GEO_G:
+          def __init__(self, era: str, species: str):
+              self.era = era
+              self.species = species
+    garbage/knitting_GARBAGE_DEP_043_KNIT_H.py: |
+      GARBAGE_DEP_043_KNIT_H = "pattern_design"
+
+      def calculate_yarn(length_cm: float, gauge: int) -> float:
+          return length_cm * gauge / 100.0
+
+      class Pattern_GARBAGE_DEP_043_KNIT_H:
+          def __init__(self, name: str, difficulty: int):
+              self.name = name
+              self.difficulty = difficulty
+  changed_files:
+    app.py: |
+      from wrapper import process_data
+
+      def main():
+          raw = [1, 2, 3, 4, 5]
+          result = process_data(data=raw, mode="reverse")
+          formatted = ", ".join(str(x) for x in result)
+          print(f"Processed: {formatted}")
+    wrapper.py: |
+      from core import transform
+
+      def process_data(data=None, mode="default"):
+          return transform(data=data, mode=mode)
+    core.py: |
+      def transform(data=None, mode="default"):
+          if data is None:
+              data = []
+          if mode == "default":
+              return [x * 2 for x in data]
+          elif mode == "reverse":
+              return list(reversed(data))
+          return data
+    cli/runner.py: |
+      from wrapper import process_data
+      GARBAGE_DEP_043_CLI_RUNNER_A = "cli_runner"
+      GARBAGE_DEP_043_CLI_ENTRY_B = True
+
+      def run_cli(args: list) -> None:
+          GARBAGE_DEP_043_CLI_EXEC_C = "executing"
+          result = process_data()
+          print(f"CLI result: {result}")
+    utils/transform.py: |
+      GARBAGE_DEP_043_UTIL_XFORM_D = "util_transform"
+      GARBAGE_DEP_043_UTIL_VER_E = "2.0"
+
+      def transform(items, key=None):
+          GARBAGE_DEP_043_UTIL_APPLY_F = "applying"
+          if key:
+              return sorted(items, key=key)
+          return items
+    garbage/geology_GARBAGE_DEP_043_GEO_G.py: |
+      GARBAGE_DEP_043_GEO_G = "stratigraphy"
+
+      def classify_rock(mineral_content: dict) -> str:
+          return "igneous" if "quartz" in mineral_content else "sedimentary"
+
+      class Fossil_GARBAGE_DEP_043_GEO_G:
+          def __init__(self, era: str, species: str):
+              self.era = era
+              self.species = species
+    garbage/knitting_GARBAGE_DEP_043_KNIT_H.py: |
+      GARBAGE_DEP_043_KNIT_H = "pattern_design"
+
+      def calculate_yarn(length_cm: float, gauge: int) -> float:
+          return length_cm * gauge / 100.0
+
+      class Pattern_GARBAGE_DEP_043_KNIT_H:
+          def __init__(self, name: str, difficulty: int):
+              self.name = name
+              self.difficulty = difficulty
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.py
+    anchor: process_data
+- id: wrapper
+  selector:
+    path: wrapper.py
+    anchor: from core import transform
+- id: req_global_0
+  selector:
+    anchor: def transform
+- id: no_runner
+  selector:
+    path: cli/runner.py
+- id: no_transform
+  selector:
+    path: utils/transform.py
+- id: no_geology_garbage_dep_043_geo_g
+  selector:
+    path: garbage/geology_GARBAGE_DEP_043_GEO_G.py
+- id: no_knitting_garbage_dep_043_knit_h
+  selector:
+    path: garbage/knitting_GARBAGE_DEP_043_KNIT_H.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_043_GEO_G
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_043_KNIT_H
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_043_CLI_RUNNER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_043_CLI_ENTRY_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_043_CLI_EXEC_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_043_UTIL_XFORM_D
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_043_UTIL_VER_E
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_043_UTIL_APPLY_F
+oracle:
+  required:
+  - app
+  - wrapper
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_runner
+  - no_transform
+  - no_geology_garbage_dep_043_geo_g
+  - no_knitting_garbage_dep_043_knit_h
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

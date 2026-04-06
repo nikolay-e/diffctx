@@ -1,0 +1,113 @@
+name: javascript_028_spread_objects
+repo:
+  initial_files:
+    defaults.ts: |
+      export const defaults = {
+          theme: 'light',
+          language: 'en',
+      };
+
+      export const overrides = {
+          theme: 'dark',
+      };
+    config.ts: |
+      console.log('initial');
+    theme-constants.ts: |
+      export const THEMES = {
+          light: { bg: '#ffffff', fg: '#000000' },
+          dark: { bg: '#1a1a1a', fg: '#f0f0f0' },
+      };
+
+      export function getThemeColors(name: string) {
+          return THEMES[name as keyof typeof THEMES] ?? THEMES.light;
+      }
+    i18n.ts: |
+      const translations: Record<string, Record<string, string>> = {
+          en: { greeting: 'Hello', farewell: 'Goodbye' },
+          fr: { greeting: 'Bonjour', farewell: 'Au revoir' },
+      };
+
+      export function translate(key: string, locale: string = 'en'): string {
+          return translations[locale]?.[key] ?? key;
+      }
+  changed_files:
+    defaults.ts: |
+      export const defaults = {
+          theme: 'light',
+          language: 'en',
+      };
+
+      export const overrides = {
+          theme: 'dark',
+      };
+    config.ts: |
+      import { defaults, overrides } from './defaults';
+
+      export const config = {
+          ...defaults,
+          ...overrides,
+          version: '1.0',
+      };
+    theme-constants.ts: |
+      export const THEMES = {
+          light: { bg: '#ffffff', fg: '#000000' },
+          dark: { bg: '#1a1a1a', fg: '#f0f0f0' },
+      };
+
+      export function getThemeColors(name: string) {
+          return THEMES[name as keyof typeof THEMES] ?? THEMES.light;
+      }
+    i18n.ts: |
+      const translations: Record<string, Record<string, string>> = {
+          en: { greeting: 'Hello', farewell: 'Goodbye' },
+          fr: { greeting: 'Bonjour', farewell: 'Au revoir' },
+      };
+
+      export function translate(key: string, locale: string = 'en'): string {
+          return translations[locale]?.[key] ?? key;
+      }
+  commit_message: Update files
+fragments:
+- id: defaults
+  selector:
+    path: defaults.ts
+    anchor: 'theme: ''light'''
+- id: defaults_1
+  selector:
+    path: defaults.ts
+    anchor: 'theme: ''dark'''
+- id: defaults_2
+  selector:
+    path: defaults.ts
+    anchor: 'language: ''en'''
+- id: no_theme_constants
+  selector:
+    path: theme-constants.ts
+- id: no_i18n
+  selector:
+    path: i18n.ts
+- id: no_global_0
+  selector:
+    anchor: THEMES
+- id: no_global_1
+  selector:
+    anchor: getThemeColors
+- id: no_global_2
+  selector:
+    anchor: translate
+- id: no_global_3
+  selector:
+    anchor: translations
+oracle:
+  required:
+  - defaults
+  - defaults_1
+  - defaults_2
+  allowed: []
+  forbidden:
+  - no_theme_constants
+  - no_i18n
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,144 @@
+name: relations_005_integration_test_covers_endpoint
+repo:
+  initial_files:
+    api/users.py: |
+      def list_users():
+          return [{"id": 1, "name": "Alice"}]
+    tests/integration/test_api.py: |
+      from api.users import list_users
+
+      def test_list_users_endpoint():
+          users = list_users()
+          assert len(users) == 1
+          assert users[0]["name"] == "Alice"
+    api/products.py: |
+      def list_products(category=None):
+          products = [
+              {"id": 1, "name": "Widget", "category": "tools", "price": 9.99},
+              {"id": 2, "name": "Gadget", "category": "electronics", "price": 29.99},
+          ]
+          if category:
+              return [p for p in products if p["category"] == category]
+          return products
+
+      def get_product(product_id):
+          products = list_products()
+          for p in products:
+              if p["id"] == product_id:
+                  return p
+          return None
+    utils/pagination_helper.py: |
+      def paginate(items, page=1, per_page=20):
+          start = (page - 1) * per_page
+          end = start + per_page
+          return {
+              "items": items[start:end],
+              "page": page,
+              "per_page": per_page,
+              "total": len(items),
+              "total_pages": (len(items) + per_page - 1) // per_page,
+          }
+
+      def get_page_info(total, page, per_page):
+          return {
+              "has_next": page * per_page < total,
+              "has_prev": page > 1,
+          }
+  changed_files:
+    api/users.py: |
+      def list_users(page=1, limit=10):
+          users = [{"id": 1, "name": "Alice"}]
+          return users[(page-1)*limit:page*limit]
+    tests/integration/test_api.py: |
+      from api.users import list_users
+
+      def test_list_users_endpoint():
+          users = list_users()
+          assert len(users) == 1
+          assert users[0]["name"] == "Alice"
+    api/products.py: |
+      def list_products(category=None):
+          products = [
+              {"id": 1, "name": "Widget", "category": "tools", "price": 9.99},
+              {"id": 2, "name": "Gadget", "category": "electronics", "price": 29.99},
+          ]
+          if category:
+              return [p for p in products if p["category"] == category]
+          return products
+
+      def get_product(product_id):
+          products = list_products()
+          for p in products:
+              if p["id"] == product_id:
+                  return p
+          return None
+    utils/pagination_helper.py: |
+      def paginate(items, page=1, per_page=20):
+          start = (page - 1) * per_page
+          end = start + per_page
+          return {
+              "items": items[start:end],
+              "page": page,
+              "per_page": per_page,
+              "total": len(items),
+              "total_pages": (len(items) + per_page - 1) // per_page,
+          }
+
+      def get_page_info(total, page, per_page):
+          return {
+              "has_next": page * per_page < total,
+              "has_prev": page > 1,
+          }
+  commit_message: Update files
+fragments:
+- id: users
+  selector:
+    path: api/users.py
+    anchor: 'def list_users(page=1, limit=10):'
+- id: users_1
+  selector:
+    path: api/users.py
+    anchor: return users[(page-1)*limit:page*limit]
+- id: test_api
+  selector:
+    path: tests/integration/test_api.py
+    anchor: from api.users import list_users
+- id: no_products
+  selector:
+    path: api/products.py
+- id: no_pagination_helper
+  selector:
+    path: utils/pagination_helper.py
+- id: no_global_0
+  selector:
+    anchor: list_products
+- id: no_global_1
+  selector:
+    anchor: get_product
+- id: no_global_2
+  selector:
+    anchor: Widget
+- id: no_global_3
+  selector:
+    anchor: paginate
+- id: no_global_4
+  selector:
+    anchor: get_page_info
+- id: no_global_5
+  selector:
+    anchor: total_pages
+oracle:
+  required:
+  - users
+  - users_1
+  - test_api
+  allowed: []
+  forbidden:
+  - no_products
+  - no_pagination_helper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

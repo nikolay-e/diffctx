@@ -1,0 +1,355 @@
+name: rust_026_box_dyn_trait
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod plugin;
+      pub mod middleware;
+      pub mod hook;
+      pub mod extension;
+      pub mod plugin_loader;
+    src/plugin.rs: |
+      pub trait Plugin {
+          fn name(&self) -> &str;
+          fn execute(&self);
+      }
+
+      pub struct PluginManager {
+          plugins: Vec<Box<dyn Plugin>>,
+      }
+
+      impl PluginManager {
+          pub fn new() -> Self {
+              Self { plugins: vec![] }
+          }
+
+          pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+              self.plugins.push(plugin);
+          }
+
+          pub fn list_plugins(&self) -> Vec<&str> {
+              self.plugins.iter().map(|p| p.name()).collect()
+          }
+      }
+
+      pub struct LogPlugin {
+          label: String,
+      }
+
+      impl LogPlugin {
+          pub fn new(label: &str) -> Self {
+              Self { label: label.to_string() }
+          }
+      }
+
+      impl Plugin for LogPlugin {
+          fn name(&self) -> &str {
+              &self.label
+          }
+
+          fn execute(&self) {
+              println!("LogPlugin [{}] executed", self.label);
+          }
+      }
+    src/main.rs: |
+      use crate::plugin::{LogPlugin, Plugin, PluginManager};
+
+      fn main() {
+          let mut manager = PluginManager::new();
+          manager.register(Box::new(LogPlugin::new("startup")));
+          manager.register(Box::new(LogPlugin::new("shutdown")));
+
+          for name in manager.list_plugins() {
+              println!("Loaded: {}", name);
+          }
+      }
+    src/middleware.rs: |
+      pub trait Middleware {
+          fn name(&self) -> &str;
+          fn process(&self, request: &str) -> String;
+          fn priority(&self) -> i32 { 0 }
+      }
+
+      pub struct MiddlewareChain {
+          layers: Vec<Box<dyn Middleware>>,
+      }
+
+      impl MiddlewareChain {
+          pub fn new() -> Self {
+              Self { layers: Vec::new() }
+          }
+
+          pub fn add(&mut self, layer: Box<dyn Middleware>) {
+              self.layers.push(layer);
+              self.layers.sort_by_key(|m| std::cmp::Reverse(m.priority()));
+          }
+
+          pub fn execute(&self, request: &str) -> String {
+              let mut result = request.to_string();
+              for layer in &self.layers {
+                  result = layer.process(&result);
+              }
+              result
+          }
+
+          pub fn find_by_name(&self, name: &str) -> Option<&dyn Middleware> {
+              self.layers.iter().find(|m| m.name() == name).map(|m| m.as_ref())
+          }
+      }
+    src/hook.rs: |
+      pub type HookFn = Box<dyn Fn(&str)>;
+
+      pub struct HookRegistry {
+          hooks: Vec<(String, HookFn)>,
+      }
+
+      impl HookRegistry {
+          pub fn new() -> Self {
+              Self { hooks: Vec::new() }
+          }
+
+          pub fn register(&mut self, event: &str, callback: HookFn) {
+              self.hooks.push((event.to_string(), callback));
+          }
+
+          pub fn trigger(&self, event: &str, data: &str) {
+              for (name, callback) in &self.hooks {
+                  if name == event {
+                      callback(data);
+                  }
+              }
+          }
+
+          pub fn registered_events(&self) -> Vec<&str> {
+              self.hooks.iter().map(|(name, _)| name.as_str()).collect()
+          }
+      }
+    src/extension.rs: |
+      pub trait Extension: Send + Sync {
+          fn name(&self) -> &str;
+          fn load(&self);
+          fn unload(&self);
+          fn priority(&self) -> i32 { 0 }
+      }
+
+      pub struct ExtensionRegistry {
+          extensions: Vec<Box<dyn Extension>>,
+      }
+
+      impl ExtensionRegistry {
+          pub fn new() -> Self {
+              Self { extensions: Vec::new() }
+          }
+
+          pub fn register(&mut self, ext: Box<dyn Extension>) {
+              self.extensions.push(ext);
+          }
+
+          pub fn load_all(&self) {
+              for ext in &self.extensions {
+                  println!("Loading extension: {}", ext.name());
+                  ext.load();
+              }
+          }
+
+          pub fn find_extension(&self, name: &str) -> Option<&dyn Extension> {
+              self.extensions.iter().find(|e| e.name() == name).map(|e| e.as_ref())
+          }
+      }
+    src/plugin_loader.rs: |
+      use crate::plugin::{LogPlugin, PluginManager};
+
+      pub fn load_default_plugins(manager: &mut PluginManager) {
+          manager.register(Box::new(LogPlugin::new("default-logger")));
+          manager.register(Box::new(LogPlugin::new("audit-logger")));
+      }
+
+      pub fn load_from_config(manager: &mut PluginManager, config: &[&str]) {
+          for name in config {
+              manager.register(Box::new(LogPlugin::new(name)));
+          }
+      }
+    tests/plugin_test.rs: |
+      use crate::plugin::{LogPlugin, Plugin, PluginManager};
+
+      #[test]
+      fn test_register_and_list() {
+          let mut manager = PluginManager::new();
+          manager.register(Box::new(LogPlugin::new("test")));
+          assert_eq!(manager.list_plugins(), vec!["test"]);
+      }
+
+      #[test]
+      fn test_execute_all() {
+          let mut manager = PluginManager::new();
+          manager.register(Box::new(LogPlugin::new("a")));
+          manager.register(Box::new(LogPlugin::new("b")));
+          manager.execute_all();
+      }
+  changed_files:
+    src/plugin.rs: |
+      pub trait Plugin: Send + Sync {
+          fn name(&self) -> &str;
+          fn execute(&self);
+          fn priority(&self) -> i32 { 0 }
+      }
+
+      pub struct PluginManager {
+          plugins: Vec<Box<dyn Plugin>>,
+      }
+
+      impl PluginManager {
+          pub fn new() -> Self {
+              Self { plugins: vec![] }
+          }
+
+          pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+              self.plugins.push(plugin);
+              self.plugins.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+          }
+
+          pub fn list_plugins(&self) -> Vec<&str> {
+              self.plugins.iter().map(|p| p.name()).collect()
+          }
+
+          pub fn execute_all(&self) {
+              for plugin in &self.plugins {
+                  println!("Running plugin: {}", plugin.name());
+                  plugin.execute();
+              }
+          }
+
+          pub fn find_plugin(&self, name: &str) -> Option<&dyn Plugin> {
+              self.plugins.iter().find(|p| p.name() == name).map(|p| p.as_ref())
+          }
+      }
+
+      pub struct LogPlugin {
+          label: String,
+      }
+
+      impl LogPlugin {
+          pub fn new(label: &str) -> Self {
+              Self { label: label.to_string() }
+          }
+      }
+
+      impl Plugin for LogPlugin {
+          fn name(&self) -> &str {
+              &self.label
+          }
+
+          fn execute(&self) {
+              println!("LogPlugin [{}] executed", self.label);
+          }
+
+          fn priority(&self) -> i32 {
+              10
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: plugin
+  selector:
+    path: src/plugin.rs
+    anchor: 'pub trait Plugin: Send + Sync'
+- id: plugin_1
+  selector:
+    path: src/plugin.rs
+    anchor: self.plugins.sort_by_key(|p| std::cmp::Reverse(p.priority()))
+- id: plugin_2
+  selector:
+    path: src/plugin.rs
+    anchor: pub fn find_plugin
+- id: main
+  selector:
+    path: src/main.rs
+    anchor: PluginManager::new()
+- id: main_1
+  selector:
+    path: src/main.rs
+    anchor: LogPlugin::new("startup")
+- id: no_middleware
+  selector:
+    path: src/middleware.rs
+- id: no_hook
+  selector:
+    path: src/hook.rs
+- id: no_extension
+  selector:
+    path: src/extension.rs
+- id: no_plugin_loader
+  selector:
+    path: src/plugin_loader.rs
+- id: no_plugin_test
+  selector:
+    path: tests/plugin_test.rs
+- id: no_global_0
+  selector:
+    anchor: MiddlewareChain
+- id: no_global_1
+  selector:
+    anchor: trait Middleware
+- id: no_global_2
+  selector:
+    anchor: find_by_name
+- id: no_global_3
+  selector:
+    anchor: HookRegistry
+- id: no_global_4
+  selector:
+    anchor: HookFn
+- id: no_global_5
+  selector:
+    anchor: registered_events
+- id: no_global_6
+  selector:
+    anchor: trait Extension
+- id: no_global_7
+  selector:
+    anchor: ExtensionRegistry
+- id: no_global_8
+  selector:
+    anchor: load_all
+- id: no_global_9
+  selector:
+    anchor: find_extension
+- id: no_global_10
+  selector:
+    anchor: load_default_plugins
+- id: no_global_11
+  selector:
+    anchor: load_from_config
+- id: no_global_12
+  selector:
+    anchor: test_register_and_list
+- id: no_global_13
+  selector:
+    anchor: test_execute_all
+oracle:
+  required:
+  - plugin
+  - plugin_1
+  - plugin_2
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_hook
+  - no_extension
+  - no_plugin_loader
+  - no_plugin_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

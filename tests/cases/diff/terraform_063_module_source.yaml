@@ -1,0 +1,84 @@
+name: terraform_063_module_source
+repo:
+  initial_files:
+    modules/vpc/main.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = var.cidr_block
+        enable_dns_hostnames = var.enable_dns
+
+        tags = {
+          Name = "main-vpc"
+        }
+      }
+    modules/vpc/variables.tf: |
+      variable "cidr_block" {
+        type = string
+      }
+
+      variable "enable_dns" {
+        type    = bool
+        default = false
+      }
+    main.tf: |
+      module "vpc" {
+        source     = "./modules/vpc"
+        cidr_block = "10.0.0.0/16"
+      }
+    modules/database/main.tf: |
+      resource "aws_db_subnet_group" "main" {
+        name       = "db-subnet-group"
+        subnet_ids = var.subnet_ids
+      }
+    outputs.tf: |
+      output "vpc_id" {
+        value = module.vpc.vpc_id
+      }
+  changed_files:
+    main.tf: |
+      module "vpc" {
+        source     = "./modules/vpc"
+        cidr_block = "10.1.0.0/16"
+        enable_dns = true
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: cidr_block = "10.1.0.0/16"
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: enable_dns = true
+- id: variables
+  selector:
+    path: modules/vpc/variables.tf
+    anchor: variable "cidr_block" {
+- id: variables_1
+  selector:
+    path: modules/vpc/variables.tf
+    anchor: variable "enable_dns" {
+- id: no_main
+  selector:
+    path: modules/database/main.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_global_0
+  selector:
+    anchor: db-subnet-group
+- id: no_global_1
+  selector:
+    anchor: output "vpc_id" {
+oracle:
+  required:
+  - main
+  - main_1
+  - variables
+  - variables_1
+  allowed: []
+  forbidden:
+  - no_main
+  - no_outputs
+  - no_global_0
+  - no_global_1

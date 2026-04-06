@@ -1,0 +1,267 @@
+name: terraform_007_rds_instance
+repo:
+  initial_files:
+    database.tf: |
+      resource "aws_db_instance" "placeholder" {
+        identifier          = "placeholder"
+        engine              = "postgres"
+        instance_class      = "db.t3.micro"
+        skip_final_snapshot = true
+      }
+    variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+    database_replica.tf: |
+      resource "aws_db_instance" "replica" {
+        identifier          = "${var.environment}-replica-db"
+        engine              = "postgres"
+        engine_version      = "15.4"
+        instance_class      = var.replica_instance_class
+        replicate_source_db = "arn:aws:rds:us-east-1:123456789:db:source-db"
+        storage_encrypted   = true
+        skip_final_snapshot = true
+      }
+
+      resource "aws_db_parameter_group" "postgres_replica" {
+        family = "postgres15"
+        name   = "${var.environment}-postgres-replica-params"
+
+        parameter {
+          name  = "log_connections"
+          value = "1"
+        }
+      }
+    staging_database.tf: |
+      resource "aws_db_instance" "staging" {
+        identifier          = "staging-main-db"
+        engine              = "postgres"
+        engine_version      = "15.4"
+        instance_class      = var.staging_db_instance_class
+        allocated_storage   = 20
+        storage_type        = "gp3"
+        skip_final_snapshot = true
+        deletion_protection = false
+      }
+    monitoring/dashboard.tf: |
+      resource "aws_cloudwatch_dashboard" "main" {
+        dashboard_name = "${var.environment}-overview"
+        dashboard_body = jsonencode({
+          widgets = [{
+            type   = "metric"
+            width  = 6
+            height = 6
+            properties = {
+              metrics = [["AWS/EC2", "CPUUtilization"]]
+              title   = "EC2 CPU"
+            }
+          }]
+        })
+      }
+  changed_files:
+    database.tf: |
+      resource "aws_db_subnet_group" "main" {
+        name       = "${var.environment}-db-subnet-group"
+        subnet_ids = var.private_subnet_ids
+      }
+
+      resource "aws_db_parameter_group" "postgres" {
+        family = "postgres15"
+        name   = "${var.environment}-postgres-params"
+
+        parameter {
+          name  = "log_connections"
+          value = "1"
+        }
+
+        parameter {
+          name  = "log_disconnections"
+          value = "1"
+        }
+      }
+
+      resource "aws_db_instance" "main" {
+        identifier               = "${var.environment}-main-db"
+        engine                   = "postgres"
+        engine_version           = "15.4"
+        instance_class           = var.db_instance_class
+        allocated_storage        = 100
+        max_allocated_storage    = 500
+        storage_type             = "gp3"
+        storage_encrypted        = true
+        kms_key_id               = var.kms_key_arn
+        db_subnet_group_name     = aws_db_subnet_group.main.name
+        vpc_security_group_ids   = [aws_security_group.rds.id]
+        parameter_group_name     = aws_db_parameter_group.postgres.name
+        username                 = var.db_username
+        password                 = var.db_password
+        multi_az                 = var.environment == "prod"
+        backup_retention_period  = 30
+        deletion_protection      = var.environment == "prod"
+        skip_final_snapshot      = var.environment != "prod"
+      }
+
+      resource "aws_security_group" "rds" {
+        name        = "${var.environment}-rds-sg"
+        description = "Security group for RDS PostgreSQL"
+        vpc_id      = var.vpc_id
+
+        ingress {
+          from_port       = 5432
+          to_port         = 5432
+          protocol        = "tcp"
+          security_groups = [var.app_security_group_id]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    variables.tf: |
+      variable "environment" {
+        type = string
+      }
+
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "private_subnet_ids" {
+        type = list(string)
+      }
+
+      variable "db_instance_class" {
+        type    = string
+        default = "db.t3.medium"
+      }
+
+      variable "db_username" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "db_password" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "kms_key_arn" {
+        type = string
+      }
+
+      variable "app_security_group_id" {
+        type = string
+      }
+    database_replica.tf: |
+      resource "aws_db_instance" "replica" {
+        identifier          = "${var.environment}-replica-db"
+        engine              = "postgres"
+        engine_version      = "15.4"
+        instance_class      = var.replica_instance_class
+        replicate_source_db = "arn:aws:rds:us-east-1:123456789:db:source-db"
+        storage_encrypted   = true
+        skip_final_snapshot = true
+      }
+
+      resource "aws_db_parameter_group" "postgres_replica" {
+        family = "postgres15"
+        name   = "${var.environment}-postgres-replica-params"
+
+        parameter {
+          name  = "log_connections"
+          value = "1"
+        }
+      }
+    staging_database.tf: |
+      resource "aws_db_instance" "staging" {
+        identifier          = "staging-main-db"
+        engine              = "postgres"
+        engine_version      = "15.4"
+        instance_class      = var.staging_db_instance_class
+        allocated_storage   = 20
+        storage_type        = "gp3"
+        skip_final_snapshot = true
+        deletion_protection = false
+      }
+    monitoring/dashboard.tf: |
+      resource "aws_cloudwatch_dashboard" "main" {
+        dashboard_name = "${var.environment}-overview"
+        dashboard_body = jsonencode({
+          widgets = [{
+            type   = "metric"
+            width  = 6
+            height = 6
+            properties = {
+              metrics = [["AWS/EC2", "CPUUtilization"]]
+              title   = "EC2 CPU"
+            }
+          }]
+        })
+      }
+  commit_message: Update files
+fragments:
+- id: database
+  selector:
+    path: database.tf
+    anchor: engine                   = "postgres"
+- id: database_1
+  selector:
+    path: database.tf
+    anchor: instance_class           = var.db_instance_class
+- id: database_2
+  selector:
+    path: database.tf
+    anchor: vpc_security_group_ids   = [aws_security_group.rds.id]
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "db_instance_class" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: variable "app_security_group_id" {
+- id: no_database_replica
+  selector:
+    path: database_replica.tf
+- id: no_staging_database
+  selector:
+    path: staging_database.tf
+- id: no_dashboard
+  selector:
+    path: monitoring/dashboard.tf
+- id: no_global_0
+  selector:
+    anchor: replica-db
+- id: no_global_1
+  selector:
+    anchor: replicate_source_db
+- id: no_global_2
+  selector:
+    anchor: staging_db_instance_class
+- id: no_global_3
+  selector:
+    anchor: staging-main-db
+- id: no_global_4
+  selector:
+    anchor: aws_cloudwatch_dashboard
+oracle:
+  required:
+  - database
+  - database_1
+  - database_2
+  - variables
+  - variables_1
+  allowed: []
+  forbidden:
+  - no_database_replica
+  - no_staging_database
+  - no_dashboard
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

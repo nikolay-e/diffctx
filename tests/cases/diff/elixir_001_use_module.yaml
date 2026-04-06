@@ -1,0 +1,290 @@
+name: elixir_001_use_module
+repo:
+  initial_files:
+    lib/myapp/workers/order_processor.ex: |
+      defmodule MyApp.Workers.OrderProcessor do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{orders: [], processed_count: 0}}
+        end
+
+        @impl true
+        def handle_call(:get_count, _from, state) do
+          {:reply, state.processed_count, state}
+        end
+
+        @impl true
+        def handle_cast({:enqueue, order}, state) do
+          {:noreply, %{state | orders: state.orders ++ [order]}}
+        end
+      end
+    lib/myapp/workers/order_supervisor.ex: |
+      defmodule MyApp.Workers.OrderSupervisor do
+        use Supervisor
+
+        def start_link(init_arg) do
+          Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_init_arg) do
+          children = [
+            {MyApp.Workers.OrderProcessor, []},
+            {MyApp.Workers.EmailSender, []}
+          ]
+
+          Supervisor.init(children, strategy: :one_for_one, max_restarts: 3)
+        end
+      end
+    lib/myapp/workers/email_sender.ex: |
+      defmodule MyApp.Workers.EmailSender do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{queue: [], sent_count: 0}}
+        end
+
+        @impl true
+        def handle_cast({:send, email}, state) do
+          new_state = %{state | queue: state.queue ++ [email], sent_count: state.sent_count + 1}
+          {:noreply, new_state}
+        end
+
+        def garbage_dart_001_a, do: "GARBAGE_ELIXIR_001_A_MAILER"
+        def garbage_dart_001_b, do: "GARBAGE_ELIXIR_001_B_SMTP"
+      end
+    lib/myapp/workers/metrics_collector.ex: |
+      defmodule MyApp.Workers.MetricsCollector do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{metrics: %{}}}
+        end
+
+        @impl true
+        def handle_cast({:record, key, value}, state) do
+          metrics = Map.update(state.metrics, key, value, &(&1 + value))
+          {:noreply, %{state | metrics: metrics}}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_001_C_COUNTER"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_001_D_HISTOGRAM"
+      end
+    lib/myapp/schemas/order.ex: |
+      defmodule MyApp.Schemas.Order do
+        use Ecto.Schema
+
+        schema "orders" do
+          field :item_name, :string
+          field :quantity, :integer
+          field :total_price, :decimal
+          field :status, :string, default: "pending"
+
+          timestamps()
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_001_E_SCHEMA"
+      end
+  changed_files:
+    lib/myapp/workers/order_processor.ex: |
+      defmodule MyApp.Workers.OrderProcessor do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{orders: [], processed_count: 0}}
+        end
+
+        @impl true
+        def handle_call(:get_count, _from, state) do
+          {:reply, state.processed_count, state}
+        end
+
+        @impl true
+        def handle_call(:process_batch, _from, state) do
+          results = Enum.map(state.orders, fn order ->
+            process_single_order(order)
+          end)
+
+          new_count = state.processed_count + length(results)
+          summary = %{processed: length(results), total: new_count}
+
+          {:reply, summary, %{state | orders: [], processed_count: new_count}}
+        end
+
+        @impl true
+        def handle_cast({:enqueue, order}, state) do
+          {:noreply, %{state | orders: state.orders ++ [order]}}
+        end
+
+        defp process_single_order(order) do
+          %{order | status: "completed"}
+        end
+      end
+    lib/myapp/workers/order_supervisor.ex: |
+      defmodule MyApp.Workers.OrderSupervisor do
+        use Supervisor
+
+        def start_link(init_arg) do
+          Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_init_arg) do
+          children = [
+            {MyApp.Workers.OrderProcessor, []},
+            {MyApp.Workers.EmailSender, []}
+          ]
+
+          Supervisor.init(children, strategy: :one_for_one, max_restarts: 3)
+        end
+      end
+    lib/myapp/workers/email_sender.ex: |
+      defmodule MyApp.Workers.EmailSender do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{queue: [], sent_count: 0}}
+        end
+
+        @impl true
+        def handle_cast({:send, email}, state) do
+          new_state = %{state | queue: state.queue ++ [email], sent_count: state.sent_count + 1}
+          {:noreply, new_state}
+        end
+
+        def garbage_dart_001_a, do: "GARBAGE_ELIXIR_001_A_MAILER"
+        def garbage_dart_001_b, do: "GARBAGE_ELIXIR_001_B_SMTP"
+      end
+    lib/myapp/workers/metrics_collector.ex: |
+      defmodule MyApp.Workers.MetricsCollector do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          {:ok, %{metrics: %{}}}
+        end
+
+        @impl true
+        def handle_cast({:record, key, value}, state) do
+          metrics = Map.update(state.metrics, key, value, &(&1 + value))
+          {:noreply, %{state | metrics: metrics}}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_001_C_COUNTER"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_001_D_HISTOGRAM"
+      end
+    lib/myapp/schemas/order.ex: |
+      defmodule MyApp.Schemas.Order do
+        use Ecto.Schema
+
+        schema "orders" do
+          field :item_name, :string
+          field :quantity, :integer
+          field :total_price, :decimal
+          field :status, :string, default: "pending"
+
+          timestamps()
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_001_E_SCHEMA"
+      end
+  commit_message: Update files
+fragments:
+- id: order_processor
+  selector:
+    path: lib/myapp/workers/order_processor.ex
+    anchor: handle_call(:process_batch
+- id: order_processor_1
+  selector:
+    path: lib/myapp/workers/order_processor.ex
+    anchor: process_single_order(order)
+- id: order_supervisor
+  selector:
+    path: lib/myapp/workers/order_supervisor.ex
+    anchor: '{MyApp.Workers.OrderProcessor, []}'
+- id: order_supervisor_1
+  selector:
+    path: lib/myapp/workers/order_supervisor.ex
+    anchor: 'strategy: :one_for_one'
+- id: no_email_sender
+  selector:
+    path: lib/myapp/workers/email_sender.ex
+- id: no_metrics_collector
+  selector:
+    path: lib/myapp/workers/metrics_collector.ex
+- id: no_order
+  selector:
+    path: lib/myapp/schemas/order.ex
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ELIXIR_001_A_MAILER
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ELIXIR_001_B_SMTP
+- id: no_global_2
+  selector:
+    anchor: EmailSender
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ELIXIR_001_C_COUNTER
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ELIXIR_001_D_HISTOGRAM
+- id: no_global_5
+  selector:
+    anchor: MetricsCollector
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ELIXIR_001_E_SCHEMA
+- id: no_global_7
+  selector:
+    anchor: use Ecto.Schema
+oracle:
+  required:
+  - order_processor
+  - order_processor_1
+  - order_supervisor
+  - order_supervisor_1
+  allowed: []
+  forbidden:
+  - no_email_sender
+  - no_metrics_collector
+  - no_order
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

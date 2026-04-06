@@ -1,0 +1,141 @@
+name: yaml_010_email_config
+repo:
+  initial_files:
+    config/email.yaml: |
+      email:
+        smtp_host: localhost
+        smtp_port: 25
+        from_address: noreply@example.com
+    src/mailer.py: |
+      import smtplib
+      from email.mime.text import MIMEText
+
+      class Mailer:
+          def __init__(self, host: str, port: int, from_addr: str):
+              self.host = host
+              self.port = port
+              self.from_addr = from_addr
+
+          def send(self, to: str, subject: str, body: str):
+              msg = MIMEText(body)
+              msg["Subject"] = subject
+              msg["From"] = self.from_addr
+              msg["To"] = to
+              with smtplib.SMTP(self.host, self.port) as server:
+                  server.send_message(msg)
+    config/notifications.yaml: |
+      notifications:
+        push:
+          provider: firebase
+          api_key: fcm-server-key
+          default_ttl: 86400
+        channels:
+          - email
+          - push
+          - sms
+    src/template_renderer.py: |
+      from string import Template
+
+      class TemplateRenderer:
+          def __init__(self, template_dir: str = "templates"):
+              self.template_dir = template_dir
+              self._cache: dict[str, Template] = {}
+
+          def render(self, template_name: str, context: dict) -> str:
+              if template_name not in self._cache:
+                  with open(f"{self.template_dir}/{template_name}") as f:
+                      self._cache[template_name] = Template(f.read())
+              return self._cache[template_name].substitute(context)
+
+          def clear_cache(self):
+              self._cache.clear()
+  changed_files:
+    config/email.yaml: |
+      email:
+        smtp_host: smtp.sendgrid.net
+        smtp_port: 587
+        from_address: noreply@example.com
+        use_tls: true
+    src/mailer.py: |
+      import smtplib
+      from email.mime.text import MIMEText
+
+      class Mailer:
+          def __init__(self, host: str, port: int, from_addr: str):
+              self.host = host
+              self.port = port
+              self.from_addr = from_addr
+
+          def send(self, to: str, subject: str, body: str):
+              msg = MIMEText(body)
+              msg["Subject"] = subject
+              msg["From"] = self.from_addr
+              msg["To"] = to
+              with smtplib.SMTP(self.host, self.port) as server:
+                  server.send_message(msg)
+    config/notifications.yaml: |
+      notifications:
+        push:
+          provider: firebase
+          api_key: fcm-server-key
+          default_ttl: 86400
+        channels:
+          - email
+          - push
+          - sms
+    src/template_renderer.py: |
+      from string import Template
+
+      class TemplateRenderer:
+          def __init__(self, template_dir: str = "templates"):
+              self.template_dir = template_dir
+              self._cache: dict[str, Template] = {}
+
+          def render(self, template_name: str, context: dict) -> str:
+              if template_name not in self._cache:
+                  with open(f"{self.template_dir}/{template_name}") as f:
+                      self._cache[template_name] = Template(f.read())
+              return self._cache[template_name].substitute(context)
+
+          def clear_cache(self):
+              self._cache.clear()
+  commit_message: Update files
+fragments:
+- id: mailer
+  selector:
+    path: src/mailer.py
+    anchor: smtplib.SMTP(self.host, self.port)
+- id: mailer_1
+  selector:
+    path: src/mailer.py
+    anchor: server.send_message(msg)
+- id: no_notifications
+  selector:
+    path: config/notifications.yaml
+- id: no_template_renderer
+  selector:
+    path: src/template_renderer.py
+- id: no_global_0
+  selector:
+    anchor: firebase
+- id: no_global_1
+  selector:
+    anchor: fcm-server-key
+- id: no_global_2
+  selector:
+    anchor: TemplateRenderer
+- id: no_global_3
+  selector:
+    anchor: clear_cache
+oracle:
+  required:
+  - mailer
+  - mailer_1
+  allowed: []
+  forbidden:
+  - no_notifications
+  - no_template_renderer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

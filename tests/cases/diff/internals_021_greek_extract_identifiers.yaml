@@ -1,0 +1,24 @@
+name: internals_021_greek_extract_identifiers
+repo:
+  initial_files:
+    greek_ident.py: |
+      def placeholder():
+          pass
+  changed_files:
+    greek_ident.py: |
+      def calculate_Δ(θ, φ):
+          return θ * cos(φ)
+  commit_message: Update files
+fragments:
+- id: greek_ident_file
+  selector:
+    path: greek_ident.py
+- id: req_global_0
+  selector:
+    anchor: 'def calculate_Δ(θ, φ):'
+oracle:
+  required:
+  - greek_ident_file
+  - req_global_0
+  allowed: []
+  forbidden: []

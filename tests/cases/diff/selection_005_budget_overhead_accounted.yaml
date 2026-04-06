@@ -1,0 +1,333 @@
+name: selection_005_budget_overhead_accounted
+repo:
+  initial_files:
+    rate_limiter.py: |
+      from token_bucket import TokenBucket
+
+      class RateLimiter:
+          def __init__(self, capacity, refill_rate):
+              self.bucket = TokenBucket(capacity, refill_rate)
+              self.window_start = 0
+
+          def check_rate(self, timestamp):
+              self.bucket.refill()
+              if self.bucket.consume(1):
+                  return True
+              return False
+    token_bucket.py: |
+      class TokenBucket:
+          def __init__(self, capacity, refill_rate):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens = capacity
+              self.last_refill = 0
+
+          def consume(self, count):
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+
+          def refill(self):
+              self.tokens = min(self.capacity, self.tokens + self.refill_rate)
+
+          def available(self):
+              return self.tokens
+
+          def is_empty(self):
+              return self.tokens <= 0
+    circuit_breaker.py: |
+      class CircuitBreaker:
+          CLOSED = "closed"
+          OPEN = "open"
+          HALF_OPEN = "half_open"
+
+          def __init__(self, failure_threshold=5, recovery_timeout=30):
+              self.state = self.CLOSED
+              self.failure_count = 0
+              self.failure_threshold = failure_threshold
+              self.recovery_timeout = recovery_timeout
+              self.last_failure_time = None
+
+          def record_success(self):
+              self.failure_count = 0
+              self.state = self.CLOSED
+
+          def record_failure(self):
+              self.failure_count += 1
+              if self.failure_count >= self.failure_threshold:
+                  self.state = self.OPEN
+
+          def allow_request(self):
+              return self.state != self.OPEN
+
+          def reset(self):
+              self.failure_count = 0
+              self.state = self.CLOSED
+              self.last_failure_time = None
+    retry_policy.py: |
+      import time
+
+      class RetryPolicy:
+          def __init__(self, max_retries=3, base_delay=1.0, backoff_factor=2.0):
+              self.max_retries = max_retries
+              self.base_delay = base_delay
+              self.backoff_factor = backoff_factor
+
+          def execute(self, func, *args, **kwargs):
+              last_error = None
+              for attempt in range(self.max_retries):
+                  try:
+                      return func(*args, **kwargs)
+                  except Exception as exc:
+                      last_error = exc
+                      delay = self.base_delay * (self.backoff_factor ** attempt)
+                      time.sleep(delay)
+              raise last_error
+
+          def compute_delay(self, attempt):
+              return self.base_delay * (self.backoff_factor ** attempt)
+
+          def should_retry(self, error):
+              return not isinstance(error, (KeyboardInterrupt, SystemExit))
+    throttle_middleware.py: |
+      from token_bucket import TokenBucket
+
+      class ThrottleMiddleware:
+          def __init__(self, requests_per_second):
+              self.bucket = TokenBucket(requests_per_second, requests_per_second)
+              self.rejected_count = 0
+
+          def process_request(self, request):
+              self.bucket.refill()
+              if not self.bucket.consume(1):
+                  self.rejected_count += 1
+                  return {"status": 429, "message": "Too many requests"}
+              return None
+
+          def get_stats(self):
+              return {
+                  "available_tokens": self.bucket.available(),
+                  "rejected": self.rejected_count,
+              }
+
+          def reset_stats(self):
+              self.rejected_count = 0
+    leaky_bucket.py: |
+      import time
+
+      class LeakyBucket:
+          def __init__(self, capacity, leak_rate):
+              self.capacity = capacity
+              self.leak_rate = leak_rate
+              self.water = 0
+              self.last_leak = time.time()
+
+          def consume(self, amount=1):
+              self._leak()
+              if self.water + amount <= self.capacity:
+                  self.water += amount
+                  return True
+              return False
+
+          def refill(self):
+              self.water = 0
+              self.last_leak = time.time()
+
+          def available(self):
+              self._leak()
+              return self.capacity - self.water
+
+          def _leak(self):
+              now = time.time()
+              elapsed = now - self.last_leak
+              leaked = elapsed * self.leak_rate
+              self.water = max(0, self.water - leaked)
+              self.last_leak = now
+    metrics_collector.py: |
+      from collections import defaultdict
+
+      class MetricsCollector:
+          def __init__(self):
+              self.counters = defaultdict(int)
+              self.gauges = {}
+
+          def increment(self, name, value=1):
+              self.counters[name] += value
+
+          def set_gauge(self, name, value):
+              self.gauges[name] = value
+
+          def record_rate_limit(self, limiter_name, allowed):
+              label = f"rate_limiter.{limiter_name}"
+              if allowed:
+                  self.increment(f"{label}.allowed")
+              else:
+                  self.increment(f"{label}.rejected")
+
+          def get_all(self):
+              return {"counters": dict(self.counters), "gauges": dict(self.gauges)}
+  changed_files:
+    rate_limiter.py: |
+      from token_bucket import TokenBucket
+
+      class RateLimiter:
+          def __init__(self, capacity, refill_rate, window_seconds=60):
+              self.bucket = TokenBucket(capacity, refill_rate)
+              self.window_start = 0
+              self.window_seconds = window_seconds
+              self.request_count = 0
+
+          def check_rate(self, timestamp):
+              if timestamp - self.window_start > self.window_seconds:
+                  self.reset_window(timestamp)
+              self.bucket.refill()
+              if self.bucket.consume(1):
+                  self.request_count += 1
+                  return True
+              return False
+
+          def reset_window(self, timestamp):
+              self.window_start = timestamp
+              self.request_count = 0
+              self.bucket.refill()
+    token_bucket.py: |
+      class TokenBucket:
+          def __init__(self, capacity, refill_rate):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens = capacity
+              self.last_refill = 0
+
+          def consume(self, count):
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+
+          def refill(self):
+              self.tokens = min(self.capacity, self.tokens + self.refill_rate)
+
+          def available(self):
+              return self.tokens
+
+          def is_empty(self):
+              return self.tokens <= 0
+  commit_message: Update files
+fragments:
+- id: rate_limiter
+  selector:
+    path: rate_limiter.py
+    anchor: def check_rate(self, timestamp)
+- id: rate_limiter_1
+  selector:
+    path: rate_limiter.py
+    anchor: def reset_window(self, timestamp)
+- id: token_bucket
+  selector:
+    path: token_bucket.py
+    anchor: def consume(self, count)
+- id: token_bucket_1
+  selector:
+    path: token_bucket.py
+    anchor: def refill(self)
+- id: no_circuit_breaker
+  selector:
+    path: circuit_breaker.py
+- id: no_retry_policy
+  selector:
+    path: retry_policy.py
+- id: no_throttle_middleware
+  selector:
+    path: throttle_middleware.py
+- id: no_leaky_bucket
+  selector:
+    path: leaky_bucket.py
+- id: no_metrics_collector
+  selector:
+    path: metrics_collector.py
+- id: no_global_0
+  selector:
+    anchor: CircuitBreaker
+- id: no_global_1
+  selector:
+    anchor: record_success
+- id: no_global_2
+  selector:
+    anchor: record_failure
+- id: no_global_3
+  selector:
+    anchor: allow_request
+- id: no_global_4
+  selector:
+    anchor: RetryPolicy
+- id: no_global_5
+  selector:
+    anchor: compute_delay
+- id: no_global_6
+  selector:
+    anchor: backoff_factor
+- id: no_global_7
+  selector:
+    anchor: should_retry
+- id: no_global_8
+  selector:
+    anchor: ThrottleMiddleware
+- id: no_global_9
+  selector:
+    anchor: process_request
+- id: no_global_10
+  selector:
+    anchor: rejected_count
+- id: no_global_11
+  selector:
+    anchor: get_stats
+- id: no_global_12
+  selector:
+    anchor: LeakyBucket
+- id: no_global_13
+  selector:
+    anchor: leak_rate
+- id: no_global_14
+  selector:
+    anchor: _leak
+- id: no_global_15
+  selector:
+    anchor: MetricsCollector
+- id: no_global_16
+  selector:
+    anchor: record_rate_limit
+- id: no_global_17
+  selector:
+    anchor: set_gauge
+oracle:
+  required:
+  - rate_limiter
+  - rate_limiter_1
+  - token_bucket
+  - token_bucket_1
+  allowed: []
+  forbidden:
+  - no_circuit_breaker
+  - no_retry_policy
+  - no_throttle_middleware
+  - no_leaky_bucket
+  - no_metrics_collector
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

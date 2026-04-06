@@ -1,0 +1,156 @@
+name: comprehensive_011_monorepo_workspace_packages
+repo:
+  initial_files:
+    package.json: |
+      {
+          "name": "monorepo",
+          "private": true,
+          "workspaces": ["packages/*"]
+      }
+    packages/core/package.json: |
+      {
+          "name": "@myorg/core",
+          "version": "1.0.0",
+          "main": "dist/index.js"
+      }
+    packages/core/src/index.ts: |
+      export function coreFunction(): string {
+          return "core";
+      }
+
+      export function coreHelper(input: string): string {
+          return input.toUpperCase();
+      }
+    packages/web/package.json: |
+      {
+          "name": "@myorg/web",
+          "version": "1.0.0",
+          "dependencies": {
+              "@myorg/core": "workspace:*"
+          }
+      }
+    packages/web/src/app.ts: |
+      import { coreFunction } from '@myorg/core';
+
+      export function renderApp(): string {
+        const label = coreFunction();
+        return `<div>${label}</div>`;
+      }
+
+      export function renderHeader(title: string): string {
+        return `<header><h1>${title}</h1></header>`;
+      }
+    build-scripts/build-all.ts: |
+      import { execSync } from 'child_process';
+
+      const packages = ['core', 'web'];
+
+      function buildPackage(name: string): void {
+        console.log(`Building ${name}...`);
+        execSync(`npm run build`, { cwd: `packages/${name}` });
+      }
+
+      function buildAll(): void {
+        packages.forEach(buildPackage);
+        console.log('All packages built successfully.');
+      }
+
+      buildAll();
+    packages/core/tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2022",
+          "module": "NodeNext",
+          "strict": true,
+          "outDir": "dist",
+          "declaration": true
+        },
+        "include": ["src"]
+      }
+  changed_files:
+    packages/api/package.json: |
+      {
+          "name": "@myorg/api",
+          "version": "1.0.0",
+          "dependencies": {
+              "@myorg/core": "workspace:*"
+          }
+      }
+    packages/api/src/index.ts: |
+      import { coreFunction, coreHelper } from '@myorg/core';
+
+      export function apiHandler(input: string) {
+          const base = coreFunction();
+          const processed = coreHelper(input);
+          return `${base}: ${processed}`;
+      }
+  commit_message: Update files
+fragments:
+- id: index
+  selector:
+    path: packages/api/src/index.ts
+    anchor: import { coreFunction, coreHelper } from '@myorg/core'
+- id: index_1
+  selector:
+    path: packages/api/src/index.ts
+    anchor: function apiHandler
+- id: index_2
+  selector:
+    path: packages/core/src/index.ts
+    anchor: 'function coreFunction(): string'
+- id: index_3
+  selector:
+    path: packages/core/src/index.ts
+    anchor: 'function coreHelper(input: string): string'
+- id: package_file
+  selector:
+    path: packages/api/package.json
+- id: no_app
+  selector:
+    path: packages/web/src/app.ts
+- id: no_package
+  selector:
+    path: packages/web/package.json
+- id: no_build_all
+  selector:
+    path: build-scripts/build-all.ts
+- id: no_tsconfig
+  selector:
+    path: packages/core/tsconfig.json
+- id: no_global_0
+  selector:
+    anchor: renderApp
+- id: no_global_1
+  selector:
+    anchor: renderHeader
+- id: no_global_2
+  selector:
+    anchor: buildPackage
+- id: no_global_3
+  selector:
+    anchor: buildAll
+- id: no_global_4
+  selector:
+    anchor: execSync
+- id: no_global_5
+  selector:
+    anchor: declaration
+oracle:
+  required:
+  - index
+  - index_1
+  - index_2
+  - index_3
+  - package_file
+  allowed: []
+  forbidden:
+  - no_app
+  - no_package
+  - no_build_all
+  - no_tsconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

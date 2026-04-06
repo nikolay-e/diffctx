@@ -1,0 +1,129 @@
+name: cicd_and_docs_029_gitlab_cache
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      build:
+        script:
+          - npm ci
+          - npm run build
+    package.json: |
+      {
+        "name": "gitlab-cache-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc"
+        }
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "outDir": "./dist"
+        }
+      }
+    garbage_cache_backend.ts: |
+      const GARBAGE_CICD_DOCS_029_BACKEND_MARKER_A = "redis";
+      const GARBAGE_CICD_DOCS_029_STORAGE_MARKER_B = "local";
+
+      class GarbageCacheBackend {
+        static GARBAGE_CICD_DOCS_029_TTL_MARKER_C = 3600;
+        store(): void {}
+      }
+    garbage_cache_invalidator.ts: |
+      const GARBAGE_CICD_DOCS_029_INVALIDATE_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_029_PURGE_MARKER_E = "all";
+
+      class GarbageCacheInvalidator {
+        static GARBAGE_CICD_DOCS_029_CASCADE_MARKER_F = true;
+        invalidate(): void {}
+      }
+  changed_files:
+    .gitlab-ci.yml: |
+      build:
+        script:
+          - npm ci
+          - npm run build
+        cache:
+          key: $CI_COMMIT_REF_SLUG
+          paths:
+            - node_modules/
+          policy: pull-push
+    package.json: |
+      {
+        "name": "gitlab-cache-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc"
+        }
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "outDir": "./dist"
+        }
+      }
+    garbage_cache_backend.ts: |
+      const GARBAGE_CICD_DOCS_029_BACKEND_MARKER_A = "redis";
+      const GARBAGE_CICD_DOCS_029_STORAGE_MARKER_B = "local";
+
+      class GarbageCacheBackend {
+        static GARBAGE_CICD_DOCS_029_TTL_MARKER_C = 3600;
+        store(): void {}
+      }
+    garbage_cache_invalidator.ts: |
+      const GARBAGE_CICD_DOCS_029_INVALIDATE_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_029_PURGE_MARKER_E = "all";
+
+      class GarbageCacheInvalidator {
+        static GARBAGE_CICD_DOCS_029_CASCADE_MARKER_F = true;
+        invalidate(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'key: $CI_COMMIT_REF_SLUG'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_BACKEND_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_CASCADE_MARKER_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_INVALIDATE_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_PURGE_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_STORAGE_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_029_TTL_MARKER_C
+- id: no_global_6
+  selector:
+    anchor: garbage_cache_backend.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_cache_invalidator.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

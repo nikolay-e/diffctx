@@ -1,0 +1,249 @@
+name: scripting_003_trait
+repo:
+  initial_files:
+    src/Services/Service.php: |
+      <?php
+      namespace App\Services;
+
+      class Service {
+      }
+    src/Traits/LoggingTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait LoggingTrait {
+          private array $logEntries = [];
+
+          public function log(string $message, string $level = 'INFO'): void {
+              $entry = sprintf("[%s] %s: %s", date('Y-m-d H:i:s'), $level, $message);
+              $this->logEntries[] = $entry;
+              echo $entry . "\n";
+          }
+
+          public function logError(string $message): void {
+              $this->log($message, 'ERROR');
+          }
+
+          public function logWarning(string $message): void {
+              $this->log($message, 'WARNING');
+          }
+
+          public function getLogEntries(): array {
+              return $this->logEntries;
+          }
+
+          public function clearLog(): void {
+              $this->logEntries = [];
+          }
+      }
+    src/Traits/CacheTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait CacheTrait {
+          private array $cache = [];
+
+          public function cacheGet(string $key): mixed {
+              return $this->cache[$key] ?? null;
+          }
+
+          public function cacheSet(string $key, mixed $value, int $ttl = 3600): void {
+              $this->cache[$key] = ['value' => $value, 'expires' => time() + $ttl];
+          }
+
+          public function cacheFlush(): void {
+              $this->cache = [];
+          }
+      }
+    src/Traits/EventEmitterTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait EventEmitterTrait {
+          private array $listeners = [];
+
+          public function on(string $event, callable $callback): void {
+              $this->listeners[$event][] = $callback;
+          }
+
+          public function emit(string $event, array $data = []): void {
+              foreach ($this->listeners[$event] ?? [] as $callback) {
+                  $callback($data);
+              }
+          }
+
+          public function removeListeners(string $event): void {
+              unset($this->listeners[$event]);
+          }
+      }
+    src/Services/NotificationService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Traits\LoggingTrait;
+
+      class NotificationService {
+          use LoggingTrait;
+
+          private array $recipients = [];
+
+          public function addRecipient(string $email): void {
+              $this->recipients[] = $email;
+              $this->log("Added recipient: $email");
+          }
+
+          public function send(string $message): void {
+              foreach ($this->recipients as $email) {
+                  $this->log("Sending to $email: $message");
+              }
+              if (empty($this->recipients)) {
+                  $this->logError("No recipients configured");
+              }
+          }
+      }
+    src/Services/QueueService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Traits\LoggingTrait;
+
+      class QueueService {
+          use LoggingTrait;
+
+          private array $queue = [];
+
+          public function push(mixed $item): void {
+              $this->queue[] = $item;
+              $this->log("Item added to queue, size: " . count($this->queue));
+          }
+
+          public function pop(): mixed {
+              if (empty($this->queue)) {
+                  $this->logError("Cannot pop from empty queue");
+                  return null;
+              }
+              return array_shift($this->queue);
+          }
+      }
+    src/Formatters/JsonFormatter.php: |
+      <?php
+      namespace App\Formatters;
+
+      class JsonFormatter {
+          public static function format(array $data): string {
+              return json_encode($data, JSON_PRETTY_PRINT);
+          }
+
+          public static function decode(string $json): array {
+              return json_decode($json, true) ?? [];
+          }
+      }
+  changed_files:
+    src/Services/Service.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Traits\LoggingTrait;
+
+      class Service {
+          use LoggingTrait;
+
+          public function process(array $data): array {
+              $this->log("Processing started with " . count($data) . " items");
+              $result = array_filter($data, fn($item) => $item !== null);
+              if (count($result) < count($data)) {
+                  $this->logError("Filtered out " . (count($data) - count($result)) . " null items");
+              }
+              $this->log("Processing completed, " . count($result) . " valid items");
+              return $result;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: loggingtrait
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: 'public function log(string $message, string $level = ''INFO''): void'
+- id: loggingtrait_1
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: 'public function logError(string $message): void'
+- id: loggingtrait_2
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: $this->logEntries[] = $entry
+- id: no_cachetrait
+  selector:
+    path: src/Traits/CacheTrait.php
+- id: no_eventemittertrait
+  selector:
+    path: src/Traits/EventEmitterTrait.php
+- id: no_notificationservice
+  selector:
+    path: src/Services/NotificationService.php
+- id: no_queueservice
+  selector:
+    path: src/Services/QueueService.php
+- id: no_jsonformatter
+  selector:
+    path: src/Formatters/JsonFormatter.php
+- id: no_global_0
+  selector:
+    anchor: trait CacheTrait
+- id: no_global_1
+  selector:
+    anchor: cacheGet
+- id: no_global_2
+  selector:
+    anchor: cacheFlush
+- id: no_global_3
+  selector:
+    anchor: trait EventEmitterTrait
+- id: no_global_4
+  selector:
+    anchor: emit
+- id: no_global_5
+  selector:
+    anchor: removeListeners
+- id: no_global_6
+  selector:
+    anchor: class NotificationService
+- id: no_global_7
+  selector:
+    anchor: addRecipient
+- id: no_global_8
+  selector:
+    anchor: class QueueService
+- id: no_global_9
+  selector:
+    anchor: Cannot pop from empty queue
+- id: no_global_10
+  selector:
+    anchor: class JsonFormatter
+- id: no_global_11
+  selector:
+    anchor: JSON_PRETTY_PRINT
+oracle:
+  required:
+  - loggingtrait
+  - loggingtrait_1
+  - loggingtrait_2
+  allowed: []
+  forbidden:
+  - no_cachetrait
+  - no_eventemittertrait
+  - no_notificationservice
+  - no_queueservice
+  - no_jsonformatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

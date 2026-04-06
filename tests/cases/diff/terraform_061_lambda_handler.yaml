@@ -1,0 +1,104 @@
+name: terraform_061_lambda_handler
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_lambda_function" "api" {
+        filename      = "lambda.zip"
+        function_name = "api-handler"
+        handler       = "src/api.handler"
+        runtime       = "nodejs18.x"
+        role          = aws_iam_role.lambda_exec.arn
+      }
+    src/api.ts: |
+      export const handler = async (event: any) => {
+        return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+      };
+    iam.tf: |
+      resource "aws_iam_role" "lambda_exec" {
+        name = "api-lambda-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+    worker/lambda.tf: |
+      resource "aws_lambda_function" "worker" {
+        filename      = "worker.zip"
+        function_name = "worker-handler"
+        handler       = "src/worker.handler"
+        runtime       = "nodejs18.x"
+        role          = aws_iam_role.worker_exec.arn
+        timeout       = 300
+      }
+    monitoring/alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+        alarm_name          = "lambda-error-rate"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "Errors"
+        namespace           = "AWS/Lambda"
+        period              = 300
+        statistic           = "Sum"
+        threshold           = 5
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_lambda_function" "api" {
+        filename      = "lambda.zip"
+        function_name = "api-handler-v2"
+        handler       = "src/api.handler"
+        runtime       = "nodejs20.x"
+        memory_size   = 512
+        role          = aws_iam_role.lambda_exec.arn
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: function_name = "api-handler-v2"
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: runtime       = "nodejs20.x"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: memory_size   = 512
+- id: api
+  selector:
+    path: src/api.ts
+    anchor: export const handler
+- id: iam
+  selector:
+    path: iam.tf
+    anchor: resource "aws_iam_role" "lambda_exec" {
+- id: no_lambda
+  selector:
+    path: worker/lambda.tf
+- id: no_alarms
+  selector:
+    path: monitoring/alarms.tf
+- id: no_global_0
+  selector:
+    anchor: worker-handler
+- id: no_global_1
+  selector:
+    anchor: lambda-error-rate
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - api
+  - iam
+  allowed: []
+  forbidden:
+  - no_lambda
+  - no_alarms
+  - no_global_0
+  - no_global_1

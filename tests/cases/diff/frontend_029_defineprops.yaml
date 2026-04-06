@@ -1,0 +1,107 @@
+name: frontend_029_defineprops
+repo:
+  initial_files:
+    types.ts: |
+      export interface CardProps {
+          title: string;
+          description?: string;
+          imageUrl?: string;
+          tags?: string[];
+      }
+
+      export interface CardAction {
+          label: string;
+          handler: () => void;
+      }
+
+      // vue_garbage_marker_004
+    Card.vue: |
+      <template>
+          <div>Initial</div>
+      </template>
+
+      <script setup lang="ts">
+      </script>
+  changed_files:
+    types.ts: |
+      export interface CardProps {
+          title: string;
+          description?: string;
+          imageUrl?: string;
+          tags?: string[];
+      }
+
+      export interface CardAction {
+          label: string;
+          handler: () => void;
+      }
+
+      // vue_garbage_marker_004
+    Card.vue: |
+      <template>
+          <div class="card">
+              <img v-if="imageUrl" :src="imageUrl" :alt="title" />
+              <h3>{{ title }}</h3>
+              <p v-if="description">{{ description }}</p>
+              <div v-if="tags?.length" class="tags">
+                  <span v-for="tag in tags" :key="tag" class="tag">{{ tag }}</span>
+              </div>
+          </div>
+      </template>
+
+      <script setup lang="ts">
+      import type { CardProps } from './types';
+
+      const props = defineProps<CardProps>();
+
+      const hasImage = computed(() => !!props.imageUrl);
+      const tagCount = computed(() => props.tags?.length ?? 0);
+      </script>
+    CardGrid.vue: |
+      <template>
+          <div class="card-grid">
+              <Card
+                  v-for="item in items"
+                  :key="item.id"
+                  :title="item.title"
+                  :description="item.description"
+                  :imageUrl="item.imageUrl"
+                  :tags="item.tags"
+              />
+          </div>
+      </template>
+
+      <script setup lang="ts">
+      import Card from './Card.vue';
+      import type { CardProps } from './types';
+
+      interface CardItem extends CardProps {
+          id: string;
+      }
+
+      defineProps<{
+          items: CardItem[];
+      }>();
+      </script>
+  commit_message: Update files
+fragments:
+- id: card_file
+  selector:
+    path: Card.vue
+- id: cardgrid_file
+  selector:
+    path: CardGrid.vue
+- id: req_global_0
+  selector:
+    anchor: <div class="card">
+- id: req_global_1
+  selector:
+    anchor: <div class="card-grid">
+oracle:
+  required:
+  - card_file
+  - cardgrid_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

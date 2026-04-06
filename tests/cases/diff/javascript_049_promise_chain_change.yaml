@@ -1,0 +1,107 @@
+name: javascript_049_promise_chain_change
+repo:
+  initial_files:
+    api.ts: |
+      export function fetchData(): Promise<{ data: string }> {
+          return fetch('/api/data').then(res => res.json());
+      }
+    consumer.ts: |
+      import { fetchData } from './api';
+
+      fetchData().then(result => {
+          console.log(result.data);
+      });
+    api-types.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+          message: string;
+      }
+
+      export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+          page: number;
+          totalPages: number;
+      }
+    retry-fetch.ts: |
+      export async function retryFetch(url: string, retries: number = 3): Promise<Response> {
+          for (let i = 0; i < retries; i++) {
+              try { return await fetch(url); }
+              catch (e) { if (i === retries - 1) throw e; }
+          }
+          throw new Error('Unreachable');
+      }
+  changed_files:
+    api.ts: |
+      export function fetchData(): Promise<{ data: string; metadata: { timestamp: number } }> {
+          return fetch('/api/data')
+              .then(res => res.json())
+              .then(data => ({
+                  ...data,
+                  metadata: { timestamp: Date.now() },
+              }));
+      }
+    consumer.ts: |
+      import { fetchData } from './api';
+
+      fetchData().then(result => {
+          console.log(result.data);
+      });
+    api-types.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+          message: string;
+      }
+
+      export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+          page: number;
+          totalPages: number;
+      }
+    retry-fetch.ts: |
+      export async function retryFetch(url: string, retries: number = 3): Promise<Response> {
+          for (let i = 0; i < retries; i++) {
+              try { return await fetch(url); }
+              catch (e) { if (i === retries - 1) throw e; }
+          }
+          throw new Error('Unreachable');
+      }
+  commit_message: Update files
+fragments:
+- id: consumer
+  selector:
+    path: consumer.ts
+    anchor: import { fetchData } from './api'
+- id: consumer_1
+  selector:
+    path: consumer.ts
+    anchor: result.data
+- id: no_api_types
+  selector:
+    path: api-types.ts
+- id: no_retry_fetch
+  selector:
+    path: retry-fetch.ts
+- id: no_global_0
+  selector:
+    anchor: ApiResponse
+- id: no_global_1
+  selector:
+    anchor: PaginatedResponse
+- id: no_global_2
+  selector:
+    anchor: totalPages
+- id: no_global_3
+  selector:
+    anchor: retryFetch
+oracle:
+  required:
+  - consumer
+  - consumer_1
+  allowed: []
+  forbidden:
+  - no_api_types
+  - no_retry_fetch
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

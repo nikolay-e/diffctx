@@ -1,0 +1,26 @@
+name: internals_030_thai_long_comment
+repo:
+  initial_files:
+    thai_long.py: |
+      def placeholder():
+          pass
+  changed_files:
+    thai_long.py: |
+      # ภาษาไทยไม่มีช่องว่างระหว่างคำ สามารถเขียนต่อเนื่องกันได้ยาวมาก
+      # อีกบรรทัดหนึ่งของความคิดเห็นภาษาไทย
+      def process_items(data_list):
+          return [item for item in data_list]
+  commit_message: Update files
+fragments:
+- id: thai_long_file
+  selector:
+    path: thai_long.py
+- id: req_global_0
+  selector:
+    anchor: 'def process_items(data_list):'
+oracle:
+  required:
+  - thai_long_file
+  - req_global_0
+  allowed: []
+  forbidden: []

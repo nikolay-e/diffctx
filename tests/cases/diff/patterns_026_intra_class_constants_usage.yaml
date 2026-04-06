@@ -1,0 +1,155 @@
+name: patterns_026_intra_class_constants_usage
+repo:
+  initial_files:
+    config.py: |
+      class APIConfig:
+          BASE_URL = "https://api.example.com"
+          TIMEOUT = 30
+          MAX_RETRIES = 3
+
+          def get_endpoint(self, path):
+              return f"{self.BASE_URL}/{path}"
+
+          def get_with_retry(self, url):
+              for i in range(self.MAX_RETRIES):
+                  try:
+                      return self._fetch(url)
+                  except Exception:
+                      if i == self.MAX_RETRIES - 1:
+                          raise
+              return None
+
+          def _fetch(self, url):
+              pass
+    db_config.py: |
+      class DatabaseConfig:
+          DB_HOST = "localhost"
+          DB_PORT = 5432
+          TIMEOUT = 30
+          MAX_RETRIES = 5
+
+          def get_connection_string(self):
+              return f"postgresql://{self.DB_HOST}:{self.DB_PORT}/app"
+
+          def connect_with_retry(self):
+              for i in range(self.MAX_RETRIES):
+                  try:
+                      return self._connect()
+                  except Exception:
+                      if i == self.MAX_RETRIES - 1:
+                          raise
+              return None
+
+          def _connect(self):
+              pass
+    http_client.py: |
+      class HttpClient:
+          def __init__(self, base_url):
+              self.base_url = base_url
+
+          def get(self, path):
+              url = f"{self.base_url}/{path}"
+              return self._request("GET", url)
+
+          def post(self, path, data):
+              url = f"{self.base_url}/{path}"
+              return self._request("POST", url, data)
+
+          def _request(self, method, url, data=None):
+              pass
+  changed_files:
+    config.py: |
+      class APIConfig:
+          BASE_URL = "https://api.v2.example.com"
+          TIMEOUT = 30
+          MAX_RETRIES = 3
+
+          def get_endpoint(self, path):
+              return f"{self.BASE_URL}/{path}"
+
+          def get_with_retry(self, url):
+              for i in range(self.MAX_RETRIES):
+                  try:
+                      return self._fetch(url)
+                  except Exception:
+                      if i == self.MAX_RETRIES - 1:
+                          raise
+              return None
+
+          def _fetch(self, url):
+              pass
+    db_config.py: |
+      class DatabaseConfig:
+          DB_HOST = "localhost"
+          DB_PORT = 5432
+          TIMEOUT = 30
+          MAX_RETRIES = 5
+
+          def get_connection_string(self):
+              return f"postgresql://{self.DB_HOST}:{self.DB_PORT}/app"
+
+          def connect_with_retry(self):
+              for i in range(self.MAX_RETRIES):
+                  try:
+                      return self._connect()
+                  except Exception:
+                      if i == self.MAX_RETRIES - 1:
+                          raise
+              return None
+
+          def _connect(self):
+              pass
+    http_client.py: |
+      class HttpClient:
+          def __init__(self, base_url):
+              self.base_url = base_url
+
+          def get(self, path):
+              url = f"{self.base_url}/{path}"
+              return self._request("GET", url)
+
+          def post(self, path, data):
+              url = f"{self.base_url}/{path}"
+              return self._request("POST", url, data)
+
+          def _request(self, method, url, data=None):
+              pass
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: config.py
+    anchor: BASE_URL = "https://api.v2.example.com"
+- id: no_db_config
+  selector:
+    path: db_config.py
+- id: no_http_client
+  selector:
+    path: http_client.py
+- id: no_global_0
+  selector:
+    anchor: DatabaseConfig
+- id: no_global_1
+  selector:
+    anchor: DB_HOST
+- id: no_global_2
+  selector:
+    anchor: get_connection_string
+- id: no_global_3
+  selector:
+    anchor: HttpClient
+- id: no_global_4
+  selector:
+    anchor: _request
+oracle:
+  required:
+  - config
+  allowed: []
+  forbidden:
+  - no_db_config
+  - no_http_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,106 @@
+name: javascript_010_spy_on_method
+repo:
+  initial_files:
+    logger.ts: |
+      export const logger = {
+          log: (message: string) => console.log(message),
+          error: (message: string) => console.error(message),
+      };
+    app.ts: |
+      import { logger } from './logger';
+
+      export function processData(data: string) {
+          logger.log(`Processing: ${data}`);
+          return data.toUpperCase();
+      }
+    app.test.ts: |
+      console.log('initial');
+    formatter.ts: |
+      export function formatCurrency(amount: number, currency: string = 'USD'): string {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+      }
+
+      export function formatDate(date: Date): string {
+          return date.toISOString().split('T')[0];
+      }
+    error-handler.ts: |
+      import { logger } from './logger';
+
+      export function handleError(error: Error): void {
+          logger.error(`Unhandled: ${error.message}`);
+      }
+  changed_files:
+    logger.ts: |
+      export const logger = {
+          log: (message: string) => console.log(message),
+          error: (message: string) => console.error(message),
+      };
+    app.ts: |
+      import { logger } from './logger';
+
+      export function processData(data: string) {
+          logger.log(`Processing: ${data}`);
+          return data.toUpperCase();
+      }
+    app.test.ts: |
+      import { processData } from './app';
+      import { logger } from './logger';
+
+      describe('App', () => {
+          it('should log when processing', () => {
+              const spy = jest.spyOn(logger, 'log');
+              processData('test');
+              expect(spy).toHaveBeenCalledWith('Processing: test');
+              spy.mockRestore();
+          });
+      });
+    formatter.ts: |
+      export function formatCurrency(amount: number, currency: string = 'USD'): string {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+      }
+
+      export function formatDate(date: Date): string {
+          return date.toISOString().split('T')[0];
+      }
+    error-handler.ts: |
+      import { logger } from './logger';
+
+      export function handleError(error: Error): void {
+          logger.error(`Unhandled: ${error.message}`);
+      }
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.ts
+    anchor: 'logger.log(`Processing: ${data}`)'
+- id: logger
+  selector:
+    path: logger.ts
+    anchor: 'log: (message: string) => console.log(message)'
+- id: no_formatter
+  selector:
+    path: formatter.ts
+- id: no_error_handler
+  selector:
+    path: error-handler.ts
+- id: no_global_0
+  selector:
+    anchor: formatCurrency
+- id: no_global_1
+  selector:
+    anchor: formatDate
+- id: no_global_2
+  selector:
+    anchor: handleError
+oracle:
+  required:
+  - app
+  - logger
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_error_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2

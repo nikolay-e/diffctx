@@ -1,0 +1,117 @@
+name: javascript_034_intl_date_format
+repo:
+  initial_files:
+    locale.ts: |
+      export const localeConfig = {
+          locale: 'en-US',
+          options: {
+              year: 'numeric' as const,
+              month: 'long' as const,
+              day: 'numeric' as const,
+          },
+      };
+    formatter.ts: |
+      console.log('initial');
+    number-format.ts: |
+      export function formatCurrency(amount: number, currency: string = 'USD'): string {
+          return new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency,
+          }).format(amount);
+      }
+
+      export function formatPercent(value: number): string {
+          return new Intl.NumberFormat('en-US', { style: 'percent' }).format(value);
+      }
+    timezone-utils.ts: |
+      export function toUTC(date: Date): Date {
+          return new Date(date.toISOString());
+      }
+
+      export function getTimezoneOffset(timezone: string): number {
+          const now = new Date();
+          const formatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' });
+          return now.getTimezoneOffset();
+      }
+  changed_files:
+    locale.ts: |
+      export const localeConfig = {
+          locale: 'en-US',
+          options: {
+              year: 'numeric' as const,
+              month: 'long' as const,
+              day: 'numeric' as const,
+          },
+      };
+    formatter.ts: |
+      import { localeConfig } from './locale';
+
+      export function formatDate(date: Date): string {
+          const formatter = new Intl.DateTimeFormat(localeConfig.locale, localeConfig.options);
+          return formatter.format(date);
+      }
+    number-format.ts: |
+      export function formatCurrency(amount: number, currency: string = 'USD'): string {
+          return new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency,
+          }).format(amount);
+      }
+
+      export function formatPercent(value: number): string {
+          return new Intl.NumberFormat('en-US', { style: 'percent' }).format(value);
+      }
+    timezone-utils.ts: |
+      export function toUTC(date: Date): Date {
+          return new Date(date.toISOString());
+      }
+
+      export function getTimezoneOffset(timezone: string): number {
+          const now = new Date();
+          const formatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' });
+          return now.getTimezoneOffset();
+      }
+  commit_message: Update files
+fragments:
+- id: locale
+  selector:
+    path: locale.ts
+    anchor: localeConfig
+- id: locale_1
+  selector:
+    path: locale.ts
+    anchor: '''en-US'''
+- id: no_number_format
+  selector:
+    path: number-format.ts
+- id: no_timezone_utils
+  selector:
+    path: timezone-utils.ts
+- id: no_global_0
+  selector:
+    anchor: formatCurrency
+- id: no_global_1
+  selector:
+    anchor: formatPercent
+- id: no_global_2
+  selector:
+    anchor: NumberFormat
+- id: no_global_3
+  selector:
+    anchor: toUTC
+- id: no_global_4
+  selector:
+    anchor: getTimezoneOffset
+oracle:
+  required:
+  - locale
+  - locale_1
+  allowed: []
+  forbidden:
+  - no_number_format
+  - no_timezone_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

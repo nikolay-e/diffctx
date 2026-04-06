@@ -1,0 +1,154 @@
+name: csharp_025_idisposable
+repo:
+  initial_files:
+    Resources/FileResource.cs: |
+      namespace MyApp.Resources;
+
+      public class FileResource : IDisposable
+      {
+          private readonly StreamWriter _writer;
+          private bool _disposed;
+
+          public FileResource(string path)
+          {
+              _writer = new StreamWriter(path);
+          }
+
+          public void Write(string content)
+          {
+              ObjectDisposedException.ThrowIf(_disposed, this);
+              _writer.Write(content);
+          }
+
+          public void Dispose()
+          {
+              if (!_disposed)
+              {
+                  _writer.Dispose();
+                  _disposed = true;
+              }
+          }
+      }
+    Services/FileService.cs: |
+      namespace MyApp.Services;
+
+      public class FileService { }
+    Unrelated/MetricsFlusher.cs: |
+      namespace MyApp.Unrelated;
+
+      public class MetricsFlusher
+      {
+          private const string GARBAGE_CS_025_METRICS_FLUSHER_A = "metrics_flusher_marker";
+
+          public void Flush() => _ = GARBAGE_CS_025_METRICS_FLUSHER_A;
+      }
+    Unrelated/IndexRebuilder.cs: |
+      namespace MyApp.Unrelated;
+
+      public class IndexRebuilder
+      {
+          public const string GARBAGE_CS_025_INDEX_REBUILDER_B = "index_rebuilder_marker";
+
+          public void Rebuild() => _ = GARBAGE_CS_025_INDEX_REBUILDER_B;
+      }
+  changed_files:
+    Resources/FileResource.cs: |
+      namespace MyApp.Resources;
+
+      public class FileResource : IDisposable
+      {
+          private readonly StreamWriter _writer;
+          private bool _disposed;
+
+          public FileResource(string path)
+          {
+              _writer = new StreamWriter(path);
+          }
+
+          public void Write(string content)
+          {
+              ObjectDisposedException.ThrowIf(_disposed, this);
+              _writer.Write(content);
+          }
+
+          public void Dispose()
+          {
+              if (!_disposed)
+              {
+                  _writer.Dispose();
+                  _disposed = true;
+              }
+          }
+      }
+    Services/FileService.cs: |
+      using MyApp.Resources;
+
+      namespace MyApp.Services;
+
+      public class FileService
+      {
+          public void WriteToFile(string path, string content)
+          {
+              using var resource = new FileResource(path);
+              resource.Write(content);
+          }
+
+          public void WriteMultiple(string path, string[] lines)
+          {
+              using (var resource = new FileResource(path))
+              {
+                  foreach (var line in lines)
+                  {
+                      resource.Write(line);
+                  }
+              }
+          }
+      }
+    Unrelated/MetricsFlusher.cs: |
+      namespace MyApp.Unrelated;
+
+      public class MetricsFlusher
+      {
+          private const string GARBAGE_CS_025_METRICS_FLUSHER_A = "metrics_flusher_marker";
+
+          public void Flush() => _ = GARBAGE_CS_025_METRICS_FLUSHER_A;
+      }
+    Unrelated/IndexRebuilder.cs: |
+      namespace MyApp.Unrelated;
+
+      public class IndexRebuilder
+      {
+          public const string GARBAGE_CS_025_INDEX_REBUILDER_B = "index_rebuilder_marker";
+
+          public void Rebuild() => _ = GARBAGE_CS_025_INDEX_REBUILDER_B;
+      }
+  commit_message: Update files
+fragments:
+- id: fileservice_file
+  selector:
+    path: Services/FileService.cs
+- id: req_global_0
+  selector:
+    anchor: public class FileService
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_025_INDEX_REBUILDER_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_025_METRICS_FLUSHER_A
+- id: no_global_2
+  selector:
+    anchor: IndexRebuilder.cs
+- id: no_global_3
+  selector:
+    anchor: MetricsFlusher.cs
+oracle:
+  required:
+  - fileservice_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

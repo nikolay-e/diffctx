@@ -1,0 +1,225 @@
+name: ansible_001_role_task_handler
+repo:
+  initial_files:
+    roles/nginx/tasks/main.yml: |
+      ---
+      - name: Install nginx
+        ansible.builtin.apt:
+          name: nginx
+          state: present
+        become: true
+
+      - name: Deploy nginx configuration
+        ansible.builtin.template:
+          src: nginx.conf.j2
+          dest: /etc/nginx/nginx.conf
+          owner: root
+          group: root
+          mode: "0644"
+        notify: Restart nginx
+    roles/nginx/handlers/main.yml: |
+      ---
+      - name: Restart nginx
+        ansible.builtin.systemd:
+          name: nginx
+          state: restarted
+          daemon_reload: true
+        become: true
+
+      - name: Reload nginx
+        ansible.builtin.systemd:
+          name: nginx
+          state: reloaded
+        become: true
+    roles/nginx/templates/nginx.conf.j2: |
+      worker_processes auto;
+      events {
+          worker_connections 1024;
+      }
+      http {
+          include /etc/nginx/mime.types;
+          server {
+              listen 80;
+              server_name {{ server_name }};
+              root {{ document_root }};
+          }
+      }
+    roles/postgres/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_A install postgresql
+        ansible.builtin.apt:
+          name: postgresql
+          state: present
+        become: true
+
+      - name: GARBAGE_ANS_001_B start postgresql
+        ansible.builtin.systemd:
+          name: postgresql
+          state: started
+          enabled: true
+        become: true
+    roles/postgres/handlers/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_C restart postgresql
+        ansible.builtin.systemd:
+          name: postgresql
+          state: restarted
+        become: true
+    roles/redis/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_D install redis
+        ansible.builtin.apt:
+          name: redis-server
+          state: present
+        become: true
+    site.yml: |
+      ---
+      - hosts: webservers
+        roles:
+          - nginx
+      - hosts: dbservers
+        roles:
+          - postgres
+      - hosts: cacheservers
+        GARBAGE_ANS_001_E: true
+        roles:
+          - redis
+  changed_files:
+    roles/nginx/tasks/main.yml: |
+      ---
+      - name: Install nginx
+        ansible.builtin.apt:
+          name: nginx
+          state: present
+        become: true
+
+      - name: Deploy nginx configuration
+        ansible.builtin.template:
+          src: nginx.conf.j2
+          dest: /etc/nginx/nginx.conf
+          owner: root
+          group: root
+          mode: "0644"
+        notify: Restart nginx
+
+      - name: Enable nginx site
+        ansible.builtin.file:
+          src: /etc/nginx/sites-available/default
+          dest: /etc/nginx/sites-enabled/default
+          state: link
+        notify: Reload nginx
+    roles/nginx/handlers/main.yml: |
+      ---
+      - name: Restart nginx
+        ansible.builtin.systemd:
+          name: nginx
+          state: restarted
+          daemon_reload: true
+        become: true
+
+      - name: Reload nginx
+        ansible.builtin.systemd:
+          name: nginx
+          state: reloaded
+        become: true
+    roles/nginx/templates/nginx.conf.j2: |
+      worker_processes auto;
+      events {
+          worker_connections 1024;
+      }
+      http {
+          include /etc/nginx/mime.types;
+          server {
+              listen 80;
+              server_name {{ server_name }};
+              root {{ document_root }};
+          }
+      }
+    roles/postgres/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_A install postgresql
+        ansible.builtin.apt:
+          name: postgresql
+          state: present
+        become: true
+
+      - name: GARBAGE_ANS_001_B start postgresql
+        ansible.builtin.systemd:
+          name: postgresql
+          state: started
+          enabled: true
+        become: true
+    roles/postgres/handlers/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_C restart postgresql
+        ansible.builtin.systemd:
+          name: postgresql
+          state: restarted
+        become: true
+    roles/redis/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_001_D install redis
+        ansible.builtin.apt:
+          name: redis-server
+          state: present
+        become: true
+    site.yml: |
+      ---
+      - hosts: webservers
+        roles:
+          - nginx
+      - hosts: dbservers
+        roles:
+          - postgres
+      - hosts: cacheservers
+        GARBAGE_ANS_001_E: true
+        roles:
+          - redis
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: roles/nginx/handlers/main.yml
+    anchor: Reload nginx
+- id: main_1
+  selector:
+    path: roles/nginx/handlers/main.yml
+    anchor: 'state: reloaded'
+- id: no_main
+  selector:
+    path: roles/postgres/tasks/main.yml
+- id: no_main_1
+  selector:
+    path: roles/postgres/handlers/main.yml
+- id: no_main_2
+  selector:
+    path: roles/redis/tasks/main.yml
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ANS_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ANS_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ANS_001_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ANS_001_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ANS_001_E
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_main
+  - no_main_1
+  - no_main_2
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

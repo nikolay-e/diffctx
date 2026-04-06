@@ -1,0 +1,135 @@
+name: javascript_050_class_method_change
+repo:
+  initial_files:
+    base.ts: |
+      export class BaseService {
+          protected log(message: string) {
+              console.log(message);
+          }
+
+          process(data: string): string {
+              this.log(`Processing: ${data}`);
+              return data.toUpperCase();
+          }
+      }
+    derived.ts: |
+      import { BaseService } from './base';
+
+      export class ExtendedService extends BaseService {
+          process(data: string): string {
+              const result = super.process(data);
+              return `[Extended] ${result}`;
+          }
+      }
+    garbage_payments.ts: |
+      const GARBAGE_JS_050_PAYMENT_MARKER_A = "payments";
+      const GARBAGE_JS_050_INVOICE_MARKER_B = true;
+
+      class PaymentGateway {
+          static GARBAGE_JS_050_PAYMENT_CLASS_C = "gateway";
+
+          charge(amount: number, currency: string): boolean {
+              return false;
+          }
+      }
+    garbage_encryption.ts: |
+      const GARBAGE_JS_050_ENCRYPT_MARKER_D = "encryption";
+      const GARBAGE_JS_050_CIPHER_MARKER_E = 256;
+
+      class CipherService {
+          static GARBAGE_JS_050_ENCRYPT_CLASS_F = true;
+
+          encrypt(plaintext: string): string {
+              return plaintext;
+          }
+      }
+  changed_files:
+    base.ts: |
+      export class BaseService {
+          protected log(message: string, level: 'info' | 'warn' | 'error' = 'info') {
+              console[level](message);
+          }
+
+          process(data: string, options?: { prefix?: string }): string {
+              this.log(`Processing: ${data}`, 'info');
+              const result = data.toUpperCase();
+              return options?.prefix ? `${options.prefix}${result}` : result;
+          }
+      }
+    derived.ts: |
+      import { BaseService } from './base';
+
+      export class ExtendedService extends BaseService {
+          process(data: string): string {
+              const result = super.process(data);
+              return `[Extended] ${result}`;
+          }
+      }
+    garbage_payments.ts: |
+      const GARBAGE_JS_050_PAYMENT_MARKER_A = "payments";
+      const GARBAGE_JS_050_INVOICE_MARKER_B = true;
+
+      class PaymentGateway {
+          static GARBAGE_JS_050_PAYMENT_CLASS_C = "gateway";
+
+          charge(amount: number, currency: string): boolean {
+              return false;
+          }
+      }
+    garbage_encryption.ts: |
+      const GARBAGE_JS_050_ENCRYPT_MARKER_D = "encryption";
+      const GARBAGE_JS_050_CIPHER_MARKER_E = 256;
+
+      class CipherService {
+          static GARBAGE_JS_050_ENCRYPT_CLASS_F = true;
+
+          encrypt(plaintext: string): string {
+              return plaintext;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: base_file
+  selector:
+    path: base.ts
+- id: req_global_0
+  selector:
+    anchor: class BaseService {
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_JS_050_CIPHER_MARKER_E
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_JS_050_ENCRYPT_CLASS_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_JS_050_ENCRYPT_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_JS_050_INVOICE_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_JS_050_PAYMENT_CLASS_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_JS_050_PAYMENT_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: garbage_encryption.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_payments.ts
+oracle:
+  required:
+  - base_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

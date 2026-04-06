@@ -1,0 +1,259 @@
+name: php_012_constructor_promotion
+repo:
+  initial_files:
+    src/Config/DatabaseConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class DatabaseConfig {
+          public function __construct(
+              private readonly string $host,
+              private readonly int $port,
+              private readonly string $database,
+              private readonly string $username,
+              private readonly bool $ssl = false
+          ) {}
+
+          public function getDsn(): string {
+              $scheme = $this->ssl ? 'pgsql' : 'mysql';
+              return "{$scheme}:host={$this->host};port={$this->port};dbname={$this->database}";
+          }
+
+          public function getHost(): string {
+              return $this->host;
+          }
+
+          public function getPort(): int {
+              return $this->port;
+          }
+      }
+    src/Services/ConnectionManager.php: |
+      <?php
+      namespace App\Services;
+
+      class ConnectionManager {
+          public function getStatus(): string {
+              return 'disconnected';
+          }
+      }
+    src/Config/CacheConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class CacheConfig {
+          public function __construct(
+              private readonly string $driver,
+              private readonly string $host,
+              private readonly int $port,
+              private readonly int $ttl = 3600
+          ) {}
+
+          public function getDsn(): string {
+              return "{$this->driver}://{$this->host}:{$this->port}";
+          }
+
+          public function getTtl(): int {
+              return $this->ttl;
+          }
+      }
+    src/Services/SessionManager.php: |
+      <?php
+      namespace App\Services;
+
+      class SessionManager {
+          private string $sessionId;
+
+          public function __construct(string $sessionId) {
+              $this->sessionId = $sessionId;
+          }
+
+          public function connect(): string {
+              return "Session {$this->sessionId} started";
+          }
+
+          public function getStatus(): string {
+              return 'active';
+          }
+      }
+    src/Config/RedisConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class RedisConfig {
+          public function __construct(
+              private readonly string $host,
+              private readonly int $port = 6379,
+              private readonly ?string $password = null
+          ) {}
+
+          public function getDsn(): string {
+              $auth = $this->password ? ":{$this->password}@" : '';
+              return "redis://{$auth}{$this->host}:{$this->port}";
+          }
+      }
+  changed_files:
+    src/Config/DatabaseConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class DatabaseConfig {
+          public function __construct(
+              private readonly string $host,
+              private readonly int $port,
+              private readonly string $database,
+              private readonly string $username,
+              private readonly bool $ssl = false
+          ) {}
+
+          public function getDsn(): string {
+              $scheme = $this->ssl ? 'pgsql' : 'mysql';
+              return "{$scheme}:host={$this->host};port={$this->port};dbname={$this->database}";
+          }
+
+          public function getHost(): string {
+              return $this->host;
+          }
+
+          public function getPort(): int {
+              return $this->port;
+          }
+      }
+    src/Services/ConnectionManager.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Config\DatabaseConfig;
+
+      class ConnectionManager {
+          private DatabaseConfig $config;
+
+          public function __construct(DatabaseConfig $config) {
+              $this->config = $config;
+          }
+
+          public function connect(): string {
+              $dsn = $this->config->getDsn();
+              return "Connected to {$this->config->getHost()}:{$this->config->getPort()}";
+          }
+
+          public function getStatus(): string {
+              return 'connected';
+          }
+      }
+    src/Config/CacheConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class CacheConfig {
+          public function __construct(
+              private readonly string $driver,
+              private readonly string $host,
+              private readonly int $port,
+              private readonly int $ttl = 3600
+          ) {}
+
+          public function getDsn(): string {
+              return "{$this->driver}://{$this->host}:{$this->port}";
+          }
+
+          public function getTtl(): int {
+              return $this->ttl;
+          }
+      }
+    src/Services/SessionManager.php: |
+      <?php
+      namespace App\Services;
+
+      class SessionManager {
+          private string $sessionId;
+
+          public function __construct(string $sessionId) {
+              $this->sessionId = $sessionId;
+          }
+
+          public function connect(): string {
+              return "Session {$this->sessionId} started";
+          }
+
+          public function getStatus(): string {
+              return 'active';
+          }
+      }
+    src/Config/RedisConfig.php: |
+      <?php
+      namespace App\Config;
+
+      class RedisConfig {
+          public function __construct(
+              private readonly string $host,
+              private readonly int $port = 6379,
+              private readonly ?string $password = null
+          ) {}
+
+          public function getDsn(): string {
+              $auth = $this->password ? ":{$this->password}@" : '';
+              return "redis://{$auth}{$this->host}:{$this->port}";
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: connectionmanager
+  selector:
+    path: src/Services/ConnectionManager.php
+    anchor: $this->config->getDsn()
+- id: connectionmanager_1
+  selector:
+    path: src/Services/ConnectionManager.php
+    anchor: use App\Config\DatabaseConfig
+- id: databaseconfig
+  selector:
+    path: src/Config/DatabaseConfig.php
+    anchor: 'public function getDsn(): string'
+- id: databaseconfig_1
+  selector:
+    path: src/Config/DatabaseConfig.php
+    anchor: 'public function getHost(): string'
+- id: no_cacheconfig
+  selector:
+    path: src/Config/CacheConfig.php
+- id: no_sessionmanager
+  selector:
+    path: src/Services/SessionManager.php
+- id: no_redisconfig
+  selector:
+    path: src/Config/RedisConfig.php
+- id: no_global_0
+  selector:
+    anchor: CacheConfig
+- id: no_global_1
+  selector:
+    anchor: SessionManager
+- id: no_global_2
+  selector:
+    anchor: RedisConfig
+- id: no_global_3
+  selector:
+    anchor: class CacheConfig
+- id: no_global_4
+  selector:
+    anchor: class SessionManager
+- id: no_global_5
+  selector:
+    anchor: class RedisConfig
+oracle:
+  required:
+  - connectionmanager
+  - connectionmanager_1
+  - databaseconfig
+  - databaseconfig_1
+  allowed: []
+  forbidden:
+  - no_cacheconfig
+  - no_sessionmanager
+  - no_redisconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

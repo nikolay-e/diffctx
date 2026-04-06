@@ -1,0 +1,151 @@
+name: dependencies_021_reverse_multiple_callers_method
+repo:
+  initial_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+
+          def get_display_name(self) -> str:
+              return self.name
+    views/profile.py: |
+      from models.user import User
+
+      def render_profile(user: User) -> str:
+          name = user.get_display_name()
+          return f"<h1>{name}</h1>"
+    views/header.py: |
+      from models.user import User
+
+      def render_header(user: User) -> str:
+          display = user.get_display_name()
+          return f"<span>{display}</span>"
+    emails/welcome.py: |
+      from models.user import User
+
+      def send_welcome_email(user: User) -> None:
+          name = user.get_display_name()
+          print(f"Welcome, {name}!")
+    admin/user.py: |
+      GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
+      GARBAGE_DEP_021_ADMIN_MOD_B = True
+
+      class User:
+          def __init__(self, name: str, email: str, title: str = ""):
+              self.name = name
+              self.email = email
+              self.title = title
+
+          def get_display_name(self, include_title: bool = False) -> str:
+              GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
+              if include_title and self.title:
+                  return f"{self.title} {self.name}"
+              return self.name
+    views/sidebar.py: |
+      GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
+      GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
+
+      def render_sidebar(items: list) -> str:
+          GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
+          return "<aside>" + "".join(items) + "</aside>"
+  changed_files:
+    models/user.py: |
+      class User:
+          def __init__(self, name: str, email: str, title: str = ""):
+              self.name = name
+              self.email = email
+              self.title = title
+
+          def get_display_name(self, include_title: bool = False) -> str:
+              if include_title and self.title:
+                  return f"{self.title} {self.name}"
+              return self.name
+    views/profile.py: |
+      from models.user import User
+
+      def render_profile(user: User) -> str:
+          name = user.get_display_name()
+          return f"<h1>{name}</h1>"
+    views/header.py: |
+      from models.user import User
+
+      def render_header(user: User) -> str:
+          display = user.get_display_name()
+          return f"<span>{display}</span>"
+    emails/welcome.py: |
+      from models.user import User
+
+      def send_welcome_email(user: User) -> None:
+          name = user.get_display_name()
+          print(f"Welcome, {name}!")
+    admin/user.py: |
+      GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
+      GARBAGE_DEP_021_ADMIN_MOD_B = True
+
+      class User:
+          def __init__(self, name: str, email: str, title: str = ""):
+              self.name = name
+              self.email = email
+              self.title = title
+
+          def get_display_name(self, include_title: bool = False) -> str:
+              GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
+              if include_title and self.title:
+                  return f"{self.title} {self.name}"
+              return self.name
+    views/sidebar.py: |
+      GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
+      GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
+
+      def render_sidebar(items: list) -> str:
+          GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
+          return "<aside>" + "".join(items) + "</aside>"
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: models/user.py
+    anchor: 'def __init__(self, name: str, email: str, title: str = ""):'
+- id: user_1
+  selector:
+    path: models/user.py
+    anchor: 'def get_display_name(self, include_title: bool = False) -> str:'
+- id: no_user
+  selector:
+    path: admin/user.py
+- id: no_sidebar
+  selector:
+    path: views/sidebar.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_021_ADMIN_USER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_021_ADMIN_MOD_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_021_ADMIN_DISP_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_021_SIDEBAR_MOD_G
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_021_SIDEBAR_NAV_H
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_021_SIDEBAR_RENDER_I
+oracle:
+  required:
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_user
+  - no_sidebar
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

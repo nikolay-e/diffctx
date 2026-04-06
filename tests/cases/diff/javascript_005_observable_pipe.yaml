@@ -1,0 +1,113 @@
+name: javascript_005_observable_pipe
+repo:
+  initial_files:
+    transformers.ts: |
+      export function filterActive<T extends { active: boolean }>(items: T[]): T[] {
+          return items.filter(item => item.active);
+      }
+    list.component.ts: |
+      console.log('initial');
+    sort-utils.ts: |
+      export function sortByName<T extends { name: string }>(items: T[]): T[] {
+          return [...items].sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      export function sortById<T extends { id: string }>(items: T[]): T[] {
+          return [...items].sort((a, b) => a.id.localeCompare(b.id));
+      }
+    item.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      @Injectable({ providedIn: 'root' })
+      export class ItemService {
+          constructor(private http: HttpClient) {}
+
+          getItems(): Observable<any[]> {
+              return this.http.get<any[]>('/api/items');
+          }
+      }
+  changed_files:
+    transformers.ts: |
+      export function filterActive<T extends { active: boolean }>(items: T[]): T[] {
+          return items.filter(item => item.active);
+      }
+    list.component.ts: |
+      import { Component } from '@angular/core';
+      import { Observable, of } from 'rxjs';
+      import { map } from 'rxjs/operators';
+      import { filterActive } from './transformers';
+
+      interface Item {
+          id: string;
+          name: string;
+          active: boolean;
+      }
+
+      @Component({
+          selector: 'app-list',
+          template: `<div *ngFor="let item of items$ | async">{{ item.name }}</div>`
+      })
+      export class ListComponent {
+          items$: Observable<Item[]> = of([
+              { id: '1', name: 'Item 1', active: true },
+              { id: '2', name: 'Item 2', active: false },
+          ]).pipe(map(filterActive));
+      }
+    sort-utils.ts: |
+      export function sortByName<T extends { name: string }>(items: T[]): T[] {
+          return [...items].sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      export function sortById<T extends { id: string }>(items: T[]): T[] {
+          return [...items].sort((a, b) => a.id.localeCompare(b.id));
+      }
+    item.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+
+      @Injectable({ providedIn: 'root' })
+      export class ItemService {
+          constructor(private http: HttpClient) {}
+
+          getItems(): Observable<any[]> {
+              return this.http.get<any[]>('/api/items');
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: transformers
+  selector:
+    path: transformers.ts
+    anchor: 'function filterActive<T extends { active: boolean }>'
+- id: no_sort_utils
+  selector:
+    path: sort-utils.ts
+- id: no_item_service
+  selector:
+    path: item.service.ts
+- id: no_global_0
+  selector:
+    anchor: sortByName
+- id: no_global_1
+  selector:
+    anchor: sortById
+- id: no_global_2
+  selector:
+    anchor: ItemService
+- id: no_global_3
+  selector:
+    anchor: getItems
+oracle:
+  required:
+  - transformers
+  allowed: []
+  forbidden:
+  - no_sort_utils
+  - no_item_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

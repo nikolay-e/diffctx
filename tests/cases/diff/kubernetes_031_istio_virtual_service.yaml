@@ -1,0 +1,418 @@
+name: kubernetes_031_istio_virtual_service
+repo:
+  initial_files:
+    k8s/base/deployment-v1.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: product-service-v1
+        namespace: production
+        labels:
+          app: product-service
+          version: v1
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: product-service
+            version: v1
+        template:
+          metadata:
+            labels:
+              app: product-service
+              version: v1
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: product
+              image: registry.example.com/product-service:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/base/deployment-v2.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: product-service-v2
+        namespace: production
+        labels:
+          app: product-service
+          version: v2
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: product-service
+            version: v2
+        template:
+          metadata:
+            labels:
+              app: product-service
+              version: v2
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: product
+              image: registry.example.com/product-service:v2.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: product-service
+        namespace: production
+      spec:
+        selector:
+          app: product-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/destination-rule.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: DestinationRule
+      metadata:
+        name: product-service
+        namespace: production
+      spec:
+        host: product-service
+        trafficPolicy:
+          connectionPool:
+            tcp:
+              maxConnections: 100
+            http:
+              h2UpgradePolicy: UPGRADE
+        subsets:
+        - name: v1
+          labels:
+            version: v1
+        - name: v2
+          labels:
+            version: v2
+    k8s/base/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: product-service
+        namespace: production
+      spec:
+        hosts:
+        - product-service
+        - product.example.com
+        gateways:
+        - product-gateway
+        - mesh
+    k8s/gateway/ambassador-mapping.yaml: |
+      apiVersion: getambassador.io/v3alpha1
+      kind: Mapping
+      metadata:
+        name: catalog-service
+        namespace: ambassador
+      spec:
+        hostname: catalog.example.com
+        prefix: /api/catalog/
+        service: catalog-service.catalog:80
+        timeout_ms: 5000
+        retry_policy:
+          retry_on: 5xx
+          num_retries: 3
+    k8s/gateway/kong-ingress.yaml: |
+      apiVersion: configuration.konghq.com/v1
+      kind: KongIngress
+      metadata:
+        name: inventory-rate-limit
+        namespace: kong
+      proxy:
+        protocol: http
+        connect_timeout: 10000
+      route:
+        strip_path: true
+        protocols:
+        - https
+  changed_files:
+    k8s/base/deployment-v1.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: product-service-v1
+        namespace: production
+        labels:
+          app: product-service
+          version: v1
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: product-service
+            version: v1
+        template:
+          metadata:
+            labels:
+              app: product-service
+              version: v1
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: product
+              image: registry.example.com/product-service:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/base/deployment-v2.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: product-service-v2
+        namespace: production
+        labels:
+          app: product-service
+          version: v2
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: product-service
+            version: v2
+        template:
+          metadata:
+            labels:
+              app: product-service
+              version: v2
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: product
+              image: registry.example.com/product-service:v2.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: product-service
+        namespace: production
+      spec:
+        selector:
+          app: product-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/destination-rule.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: DestinationRule
+      metadata:
+        name: product-service
+        namespace: production
+      spec:
+        host: product-service
+        trafficPolicy:
+          connectionPool:
+            tcp:
+              maxConnections: 100
+            http:
+              h2UpgradePolicy: UPGRADE
+        subsets:
+        - name: v1
+          labels:
+            version: v1
+        - name: v2
+          labels:
+            version: v2
+    k8s/base/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: product-service
+        namespace: production
+        labels:
+          app: product-service
+      spec:
+        hosts:
+        - product-service
+        - product.example.com
+        gateways:
+        - product-gateway
+        - mesh
+        http:
+        - match:
+          - headers:
+              x-canary:
+                exact: "true"
+          route:
+          - destination:
+              host: product-service
+              subset: v2
+            weight: 100
+        - match:
+          - uri:
+              prefix: /api/v2
+          route:
+          - destination:
+              host: product-service
+              subset: v2
+            weight: 100
+        - route:
+          - destination:
+              host: product-service
+              subset: v1
+            weight: 90
+          - destination:
+              host: product-service
+              subset: v2
+            weight: 10
+          retries:
+            attempts: 3
+            perTryTimeout: 2s
+          timeout: 10s
+    k8s/gateway/ambassador-mapping.yaml: |
+      apiVersion: getambassador.io/v3alpha1
+      kind: Mapping
+      metadata:
+        name: catalog-service
+        namespace: ambassador
+      spec:
+        hostname: catalog.example.com
+        prefix: /api/catalog/
+        service: catalog-service.catalog:80
+        timeout_ms: 5000
+        retry_policy:
+          retry_on: 5xx
+          num_retries: 3
+    k8s/gateway/kong-ingress.yaml: |
+      apiVersion: configuration.konghq.com/v1
+      kind: KongIngress
+      metadata:
+        name: inventory-rate-limit
+        namespace: kong
+      proxy:
+        protocol: http
+        connect_timeout: 10000
+      route:
+        strip_path: true
+        protocols:
+        - https
+  commit_message: Update files
+fragments:
+- id: virtual_service
+  selector:
+    path: k8s/base/virtual-service.yaml
+    anchor: x-canary
+- id: virtual_service_1
+  selector:
+    path: k8s/base/virtual-service.yaml
+    anchor: 'subset: v1'
+- id: virtual_service_2
+  selector:
+    path: k8s/base/virtual-service.yaml
+    anchor: 'weight: 90'
+- id: virtual_service_3
+  selector:
+    path: k8s/base/virtual-service.yaml
+    anchor: 'perTryTimeout: 2s'
+- id: destination_rule
+  selector:
+    path: k8s/base/destination-rule.yaml
+    anchor: 'name: v1'
+- id: destination_rule_1
+  selector:
+    path: k8s/base/destination-rule.yaml
+    anchor: 'name: v2'
+- id: destination_rule_2
+  selector:
+    path: k8s/base/destination-rule.yaml
+    anchor: 'version: v1'
+- id: no_deployment_v1
+  selector:
+    path: k8s/base/deployment-v1.yaml
+- id: no_deployment_v2
+  selector:
+    path: k8s/base/deployment-v2.yaml
+- id: no_service
+  selector:
+    path: k8s/base/service.yaml
+- id: no_ambassador_mapping
+  selector:
+    path: k8s/gateway/ambassador-mapping.yaml
+- id: no_kong_ingress
+  selector:
+    path: k8s/gateway/kong-ingress.yaml
+- id: no_global_0
+  selector:
+    anchor: product-service:v1.0.0
+- id: no_global_1
+  selector:
+    anchor: sidecar.istio.io/inject
+- id: no_global_2
+  selector:
+    anchor: product-service:v2.0.0
+- id: no_global_3
+  selector:
+    anchor: 'targetPort: 8080'
+- id: no_global_4
+  selector:
+    anchor: catalog-service
+- id: no_global_5
+  selector:
+    anchor: catalog.example.com
+- id: no_global_6
+  selector:
+    anchor: 'timeout_ms: 5000'
+- id: no_global_7
+  selector:
+    anchor: inventory-rate-limit
+- id: no_global_8
+  selector:
+    anchor: KongIngress
+- id: no_global_9
+  selector:
+    anchor: strip_path
+oracle:
+  required:
+  - virtual_service
+  - virtual_service_1
+  - virtual_service_2
+  - virtual_service_3
+  - destination_rule
+  - destination_rule_1
+  - destination_rule_2
+  allowed: []
+  forbidden:
+  - no_deployment_v1
+  - no_deployment_v2
+  - no_service
+  - no_ambassador_mapping
+  - no_kong_ingress
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

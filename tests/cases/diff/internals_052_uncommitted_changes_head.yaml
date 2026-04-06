@@ -1,0 +1,31 @@
+name: internals_052_uncommitted_changes_head
+repo:
+  initial_files:
+    base.py: |
+      def base_func():
+          return "base"
+  changed_files:
+    base.py: |
+      def base_func():
+          return "modified"
+
+      def new_func():
+          return "new"
+  commit_message: Update files
+fragments:
+- id: base_file
+  selector:
+    path: base.py
+- id: req_global_0
+  selector:
+    anchor: return "modified"
+- id: req_global_1
+  selector:
+    anchor: 'def new_func():'
+oracle:
+  required:
+  - base_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

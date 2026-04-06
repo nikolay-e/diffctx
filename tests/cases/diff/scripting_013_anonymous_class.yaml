@@ -1,0 +1,224 @@
+name: scripting_013_anonymous_class
+repo:
+  initial_files:
+    src/Handler.php: |
+      <?php
+      interface Handler {
+          public function handle(mixed $data): mixed;
+      }
+    src/app.php: |
+      <?php
+      echo "Hello";
+    src/Transformer.php: |
+      <?php
+      class Transformer {
+          public function lowercase(string $input): string {
+              return strtolower($input);
+          }
+
+          public function reverse(string $input): string {
+              return strrev($input);
+          }
+
+          public function trim(string $input): string {
+              return trim($input);
+          }
+
+          public function replace(string $input, string $search, string $replace): string {
+              return str_replace($search, $replace, $input);
+          }
+      }
+    src/Pipeline.php: |
+      <?php
+      class Pipeline {
+          private array $stages = [];
+
+          public function pipe(callable $stage): self {
+              $this->stages[] = $stage;
+              return $this;
+          }
+
+          public function process(mixed $payload): mixed {
+              $result = $payload;
+              foreach ($this->stages as $stage) {
+                  $result = $stage($result);
+              }
+              return $result;
+          }
+
+          public function count(): int {
+              return count($this->stages);
+          }
+      }
+    src/Dispatcher.php: |
+      <?php
+      require_once 'Handler.php';
+
+      class Dispatcher {
+          private array $handlers = [];
+
+          public function register(string $event, Handler $handler): void {
+              $this->handlers[$event][] = $handler;
+          }
+
+          public function dispatch(string $event, mixed $data): array {
+              $results = [];
+              foreach ($this->handlers[$event] ?? [] as $handler) {
+                  $results[] = $handler->handle($data);
+              }
+              return $results;
+          }
+
+          public function hasHandlers(string $event): bool {
+              return !empty($this->handlers[$event]);
+          }
+      }
+    src/Processor.php: |
+      <?php
+      require_once 'Handler.php';
+
+      class Processor implements Handler {
+          public function handle(mixed $data): mixed {
+              if (is_string($data)) {
+                  return strtolower($data);
+              }
+              if (is_array($data)) {
+                  return array_map('strtolower', $data);
+              }
+              return $data;
+          }
+
+          public function batchHandle(array $items): array {
+              return array_map([$this, 'handle'], $items);
+          }
+      }
+    src/lib/HandlerFactory.php: |
+      <?php
+      require_once __DIR__ . '/../Handler.php';
+
+      class HandlerFactory {
+          private array $registry = [];
+
+          public function register(string $type, string $className): void {
+              $this->registry[$type] = $className;
+          }
+
+          public function create(string $type): Handler {
+              $class = $this->registry[$type] ?? null;
+              if (!$class) {
+                  throw new \RuntimeException("Unknown handler type: $type");
+              }
+              return new $class();
+          }
+      }
+  changed_files:
+    src/Handler.php: |
+      <?php
+      interface Handler {
+          public function handle(mixed $data): mixed;
+      }
+    src/app.php: |
+      <?php
+      require_once 'Handler.php';
+
+      $handler = new class implements Handler {
+          public function handle(mixed $data): mixed {
+              return strtoupper($data);
+          }
+      };
+
+      echo $handler->handle('hello');
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: src/Handler.php
+    anchor: interface Handler
+- id: handler_1
+  selector:
+    path: src/Handler.php
+    anchor: 'public function handle(mixed $data): mixed'
+- id: app
+  selector:
+    path: src/app.php
+    anchor: implements Handler
+- id: app_1
+  selector:
+    path: src/app.php
+    anchor: strtoupper
+- id: no_transformer
+  selector:
+    path: src/Transformer.php
+- id: no_pipeline
+  selector:
+    path: src/Pipeline.php
+- id: no_dispatcher
+  selector:
+    path: src/Dispatcher.php
+- id: no_processor
+  selector:
+    path: src/Processor.php
+- id: no_handlerfactory
+  selector:
+    path: src/lib/HandlerFactory.php
+- id: no_global_0
+  selector:
+    anchor: lowercase
+- id: no_global_1
+  selector:
+    anchor: strrev
+- id: no_global_2
+  selector:
+    anchor: replace
+- id: no_global_3
+  selector:
+    anchor: $this->stages
+- id: no_global_4
+  selector:
+    anchor: pipe
+- id: no_global_5
+  selector:
+    anchor: Dispatcher
+- id: no_global_6
+  selector:
+    anchor: dispatch
+- id: no_global_7
+  selector:
+    anchor: hasHandlers
+- id: no_global_8
+  selector:
+    anchor: class Processor implements
+- id: no_global_9
+  selector:
+    anchor: batchHandle
+- id: no_global_10
+  selector:
+    anchor: HandlerFactory
+- id: no_global_11
+  selector:
+    anchor: Unknown handler type
+oracle:
+  required:
+  - handler
+  - handler_1
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_transformer
+  - no_pipeline
+  - no_dispatcher
+  - no_processor
+  - no_handlerfactory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,150 @@
+name: javascript_063_custom_hook
+repo:
+  initial_files:
+    src/hooks/useApi.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useApi<T>(url: string) {
+          const [data, setData] = useState<T | null>(null);
+          const [loading, setLoading] = useState(true);
+          const [error, setError] = useState<Error | null>(null);
+
+          useEffect(() => {
+              fetch(url)
+                  .then(res => res.json())
+                  .then(setData)
+                  .catch(setError)
+                  .finally(() => setLoading(false));
+          }, [url]);
+
+          return { data, loading, error };
+      }
+    src/components/UserList.tsx: |
+      export function UserList() {
+          return <div>Placeholder</div>;
+      }
+    src/hooks/useLocalStorage.ts: |
+      import { useState } from 'react';
+
+      export function useLocalStorage<T>(key: string, initialValue: T): [T, (v: T) => void] {
+          const [value, setValue] = useState<T>(() => {
+              try {
+                  const stored = localStorage.getItem(key);
+                  return stored ? JSON.parse(stored) : initialValue;
+              } catch { return initialValue; }
+          });
+          const setAndStore = (v: T) => {
+              setValue(v);
+              localStorage.setItem(key, JSON.stringify(v));
+          };
+          return [value, setAndStore];
+      }
+    src/components/UserCard.tsx: |
+      interface UserCardProps {
+          name: string;
+          email: string;
+      }
+
+      export function UserCard({ name, email }: UserCardProps) {
+          return (
+              <div className="user-card">
+                  <h3>{name}</h3>
+                  <p>{email}</p>
+              </div>
+          );
+      }
+  changed_files:
+    src/hooks/useApi.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useApi<T>(url: string) {
+          const [data, setData] = useState<T | null>(null);
+          const [loading, setLoading] = useState(true);
+          const [error, setError] = useState<Error | null>(null);
+
+          useEffect(() => {
+              fetch(url)
+                  .then(res => res.json())
+                  .then(setData)
+                  .catch(setError)
+                  .finally(() => setLoading(false));
+          }, [url]);
+
+          return { data, loading, error };
+      }
+    src/components/UserList.tsx: |
+      import { useApi } from '../hooks/useApi';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      export function UserList() {
+          const { data, loading, error } = useApi<User[]>('/api/users');
+          if (loading) return <div>Loading...</div>;
+          if (error) return <div>Error: {error.message}</div>;
+          return <ul>{data?.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+      }
+    src/hooks/useLocalStorage.ts: |
+      import { useState } from 'react';
+
+      export function useLocalStorage<T>(key: string, initialValue: T): [T, (v: T) => void] {
+          const [value, setValue] = useState<T>(() => {
+              try {
+                  const stored = localStorage.getItem(key);
+                  return stored ? JSON.parse(stored) : initialValue;
+              } catch { return initialValue; }
+          });
+          const setAndStore = (v: T) => {
+              setValue(v);
+              localStorage.setItem(key, JSON.stringify(v));
+          };
+          return [value, setAndStore];
+      }
+    src/components/UserCard.tsx: |
+      interface UserCardProps {
+          name: string;
+          email: string;
+      }
+
+      export function UserCard({ name, email }: UserCardProps) {
+          return (
+              <div className="user-card">
+                  <h3>{name}</h3>
+                  <p>{email}</p>
+              </div>
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: useapi
+  selector:
+    path: src/hooks/useApi.ts
+    anchor: return { data, loading, error }
+- id: useapi_1
+  selector:
+    path: src/hooks/useApi.ts
+    anchor: function useApi
+- id: no_global_0
+  selector:
+    anchor: useLocalStorage
+- id: no_global_1
+  selector:
+    anchor: localStorage
+- id: no_global_2
+  selector:
+    anchor: UserCardProps
+- id: no_global_3
+  selector:
+    anchor: user-card
+oracle:
+  required:
+  - useapi
+  - useapi_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

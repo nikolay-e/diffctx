@@ -1,0 +1,261 @@
+name: haskell_001_import_qualified
+repo:
+  initial_files:
+    src/Types.hs: |
+      module Types
+        ( UserId
+        , UserName
+        , UserProfile(..)
+        ) where
+
+      import Data.Text (Text)
+
+      type UserId = Int
+
+      type UserName = Text
+
+      data UserProfile = UserProfile
+        { profileId   :: UserId
+        , profileName :: UserName
+        , profileAge  :: Int
+        }
+    src/Lookup.hs: |
+      module Lookup
+        ( lookupUser
+        ) where
+
+      import qualified Data.Map as Map
+      import Types (UserId, UserProfile(..))
+
+      type UserStore = Map.Map UserId UserProfile
+
+      lookupUser :: UserStore -> UserId -> Maybe UserProfile
+      lookupUser store uid = Map.lookup uid store
+    src/Cache.hs: |
+      module Cache
+        ( insertCache
+        , lookupCache
+        ) where
+
+      import qualified Data.Map as Map
+      GARBAGE_HS_001_CACHE_MARKER_A = "cache"
+      GARBAGE_HS_001_CACHE_STORE_B = True
+
+      type CacheMap = Map.Map String String
+
+      insertCache :: CacheMap -> String -> String -> CacheMap
+      insertCache m k v = Map.insert k v m
+
+      lookupCache :: CacheMap -> String -> Maybe String
+      lookupCache = Map.lookup
+    src/Validator.hs: |
+      module Validator
+        ( validateProfile
+        ) where
+
+      import Types (UserProfile(..), UserName)
+      import Data.Text (null)
+      GARBAGE_HS_001_VALIDATOR_MARKER_C = "validator"
+      GARBAGE_HS_001_VALIDATE_CHECK_D = True
+
+      validateProfile :: UserProfile -> Bool
+      validateProfile p = not (Data.Text.null (profileName p)) && profileAge p > 0
+    src/Logger.hs: |
+      module Logger
+        ( logInfo
+        , logError
+        ) where
+
+      GARBAGE_HS_001_LOGGER_MARKER_E = "logger"
+      GARBAGE_HS_001_LOG_LEVEL_F = "INFO"
+
+      logInfo :: String -> IO ()
+      logInfo msg = putStrLn ("[INFO] " ++ msg)
+
+      logError :: String -> IO ()
+      logError msg = putStrLn ("[ERROR] " ++ msg)
+    src/Config.hs: |
+      module Config
+        ( AppConfig(..)
+        , loadConfig
+        ) where
+
+      GARBAGE_HS_001_CONFIG_MARKER_G = "config"
+      GARBAGE_HS_001_ENV_MARKER_H = "production"
+
+      data AppConfig = AppConfig
+        { configPort :: Int
+        , configHost :: String
+        }
+
+      loadConfig :: IO AppConfig
+      loadConfig = return (AppConfig 8080 "localhost")
+  changed_files:
+    src/Types.hs: |
+      module Types
+        ( UserId
+        , UserName
+        , UserProfile(..)
+        ) where
+
+      import Data.Text (Text)
+
+      type UserId = Int
+
+      type UserName = Text
+
+      data UserProfile = UserProfile
+        { profileId   :: UserId
+        , profileName :: UserName
+        , profileAge  :: Int
+        }
+    src/Lookup.hs: |
+      module Lookup
+        ( lookupUser
+        , lookupUsersByAge
+        ) where
+
+      import qualified Data.Map as Map
+      import Types (UserId, UserProfile(..))
+
+      type UserStore = Map.Map UserId UserProfile
+
+      lookupUser :: UserStore -> UserId -> Maybe UserProfile
+      lookupUser store uid = Map.lookup uid store
+
+      lookupUsersByAge :: UserStore -> Int -> [UserProfile]
+      lookupUsersByAge store minAge =
+        filter (\p -> profileAge p >= minAge) (Map.elems store)
+    src/Cache.hs: |
+      module Cache
+        ( insertCache
+        , lookupCache
+        ) where
+
+      import qualified Data.Map as Map
+      GARBAGE_HS_001_CACHE_MARKER_A = "cache"
+      GARBAGE_HS_001_CACHE_STORE_B = True
+
+      type CacheMap = Map.Map String String
+
+      insertCache :: CacheMap -> String -> String -> CacheMap
+      insertCache m k v = Map.insert k v m
+
+      lookupCache :: CacheMap -> String -> Maybe String
+      lookupCache = Map.lookup
+    src/Validator.hs: |
+      module Validator
+        ( validateProfile
+        ) where
+
+      import Types (UserProfile(..), UserName)
+      import Data.Text (null)
+      GARBAGE_HS_001_VALIDATOR_MARKER_C = "validator"
+      GARBAGE_HS_001_VALIDATE_CHECK_D = True
+
+      validateProfile :: UserProfile -> Bool
+      validateProfile p = not (Data.Text.null (profileName p)) && profileAge p > 0
+    src/Logger.hs: |
+      module Logger
+        ( logInfo
+        , logError
+        ) where
+
+      GARBAGE_HS_001_LOGGER_MARKER_E = "logger"
+      GARBAGE_HS_001_LOG_LEVEL_F = "INFO"
+
+      logInfo :: String -> IO ()
+      logInfo msg = putStrLn ("[INFO] " ++ msg)
+
+      logError :: String -> IO ()
+      logError msg = putStrLn ("[ERROR] " ++ msg)
+    src/Config.hs: |
+      module Config
+        ( AppConfig(..)
+        , loadConfig
+        ) where
+
+      GARBAGE_HS_001_CONFIG_MARKER_G = "config"
+      GARBAGE_HS_001_ENV_MARKER_H = "production"
+
+      data AppConfig = AppConfig
+        { configPort :: Int
+        , configHost :: String
+        }
+
+      loadConfig :: IO AppConfig
+      loadConfig = return (AppConfig 8080 "localhost")
+  commit_message: Update files
+fragments:
+- id: lookup
+  selector:
+    path: src/Lookup.hs
+    anchor: 'lookupUsersByAge :: UserStore -> Int -> [UserProfile]'
+- id: lookup_1
+  selector:
+    path: src/Lookup.hs
+    anchor: profileAge p >= minAge
+- id: types
+  selector:
+    path: src/Types.hs
+    anchor: data UserProfile = UserProfile
+- id: types_1
+  selector:
+    path: src/Types.hs
+    anchor: 'profileAge  :: Int'
+- id: no_cache
+  selector:
+    path: src/Cache.hs
+- id: no_validator
+  selector:
+    path: src/Validator.hs
+- id: no_logger
+  selector:
+    path: src/Logger.hs
+- id: no_config
+  selector:
+    path: src/Config.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_HS_001_CACHE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_HS_001_CACHE_STORE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HS_001_VALIDATOR_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_HS_001_VALIDATE_CHECK_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_HS_001_LOGGER_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_HS_001_LOG_LEVEL_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_HS_001_CONFIG_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_HS_001_ENV_MARKER_H
+oracle:
+  required:
+  - lookup
+  - lookup_1
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_validator
+  - no_logger
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

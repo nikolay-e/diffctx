@@ -1,0 +1,221 @@
+name: python_031_typeddict_usage
+repo:
+  initial_files:
+    types.py: |
+      from typing import TypedDict, Optional
+
+      class DatabaseConfig(TypedDict):
+          host: str
+          port: int
+          name: str
+          user: str
+          password: str
+
+      class AppConfig(TypedDict):
+          debug: bool
+          timeout: int
+          host: str
+          port: int
+          database: DatabaseConfig
+          log_level: Optional[str]
+
+      class ServerConfig(TypedDict, total=False):
+          workers: int
+          max_connections: int
+          ssl_enabled: bool
+    loader.py: |
+      import json
+
+      def load_config():
+          pass
+
+      def merge_configs(base: dict, override: dict) -> dict:
+          result = dict(base)
+          result.update(override)
+          return result
+    schema_validator.py: |
+      from typing import Dict, Any, List, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class SchemaError:
+          path: str
+          message: str
+
+      class SchemaValidator:
+          def __init__(self, schema: Dict[str, Any]):
+              self._schema = schema
+
+          def validate(self, data: Dict[str, Any]) -> List[SchemaError]:
+              errors = []
+              for field, field_type in self._schema.items():
+                  if field not in data:
+                      errors.append(SchemaError(field, f"Missing required field: {field}"))
+                  elif not isinstance(data[field], field_type):
+                      errors.append(SchemaError(field, f"Expected {field_type.__name__}"))
+              return errors
+    config_merger.py: |
+      from typing import Dict, Any, Optional
+
+      def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+          result = base.copy()
+          for key, value in override.items():
+              if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                  result[key] = deep_merge(result[key], value)
+              else:
+                  result[key] = value
+          return result
+
+      class ConfigMerger:
+          def __init__(self, base: Dict[str, Any]):
+              self._base = base
+
+          def merge(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
+              return deep_merge(self._base, overrides)
+  changed_files:
+    types.py: |
+      from typing import TypedDict, Optional
+
+      class DatabaseConfig(TypedDict):
+          host: str
+          port: int
+          name: str
+          user: str
+          password: str
+
+      class AppConfig(TypedDict):
+          debug: bool
+          timeout: int
+          host: str
+          port: int
+          database: DatabaseConfig
+          log_level: Optional[str]
+
+      class ServerConfig(TypedDict, total=False):
+          workers: int
+          max_connections: int
+          ssl_enabled: bool
+    loader.py: |
+      import json
+      from types import AppConfig, DatabaseConfig
+
+      def load_config(path: str) -> AppConfig:
+          with open(path) as f:
+              raw = json.load(f)
+          db_config: DatabaseConfig = raw["database"]
+          return AppConfig(
+              debug=raw.get("debug", False),
+              timeout=raw.get("timeout", 30),
+              host=raw.get("host", "localhost"),
+              port=raw.get("port", 8080),
+              database=db_config,
+              log_level=raw.get("log_level"),
+          )
+
+      def merge_configs(base: dict, override: dict) -> dict:
+          result = dict(base)
+          result.update(override)
+          return result
+    schema_validator.py: |
+      from typing import Dict, Any, List, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class SchemaError:
+          path: str
+          message: str
+
+      class SchemaValidator:
+          def __init__(self, schema: Dict[str, Any]):
+              self._schema = schema
+
+          def validate(self, data: Dict[str, Any]) -> List[SchemaError]:
+              errors = []
+              for field, field_type in self._schema.items():
+                  if field not in data:
+                      errors.append(SchemaError(field, f"Missing required field: {field}"))
+                  elif not isinstance(data[field], field_type):
+                      errors.append(SchemaError(field, f"Expected {field_type.__name__}"))
+              return errors
+    config_merger.py: |
+      from typing import Dict, Any, Optional
+
+      def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+          result = base.copy()
+          for key, value in override.items():
+              if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                  result[key] = deep_merge(result[key], value)
+              else:
+                  result[key] = value
+          return result
+
+      class ConfigMerger:
+          def __init__(self, base: Dict[str, Any]):
+              self._base = base
+
+          def merge(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
+              return deep_merge(self._base, overrides)
+  commit_message: Update files
+fragments:
+- id: loader
+  selector:
+    path: loader.py
+    anchor: from types import AppConfig, DatabaseConfig
+- id: loader_1
+  selector:
+    path: loader.py
+    anchor: 'def load_config(path: str) -> AppConfig:'
+- id: loader_2
+  selector:
+    path: loader.py
+    anchor: 'db_config: DatabaseConfig'
+- id: types
+  selector:
+    path: types.py
+    anchor: class AppConfig(TypedDict)
+- id: types_1
+  selector:
+    path: types.py
+    anchor: class DatabaseConfig(TypedDict)
+- id: types_2
+  selector:
+    path: types.py
+    anchor: 'database: DatabaseConfig'
+- id: no_schema_validator
+  selector:
+    path: schema_validator.py
+- id: no_config_merger
+  selector:
+    path: config_merger.py
+- id: no_global_0
+  selector:
+    anchor: SchemaValidator
+- id: no_global_1
+  selector:
+    anchor: SchemaError
+- id: no_global_2
+  selector:
+    anchor: Missing required field
+- id: no_global_3
+  selector:
+    anchor: ConfigMerger
+- id: no_global_4
+  selector:
+    anchor: deep_merge
+oracle:
+  required:
+  - loader
+  - loader_1
+  - loader_2
+  - types
+  - types_1
+  - types_2
+  allowed: []
+  forbidden:
+  - no_schema_validator
+  - no_config_merger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

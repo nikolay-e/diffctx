@@ -1,0 +1,278 @@
+name: typescript_001_user_service_refactor
+repo:
+  initial_files:
+    src/types/user.ts: |
+      export interface UserDTO {
+        id: string;
+        email: string;
+        firstName: string;
+        lastName: string;
+        role: 'admin' | 'user' | 'guest';
+      }
+
+      export interface User {
+        id: string;
+        email: string;
+        fullName: string;
+        role: 'admin' | 'user' | 'guest';
+      }
+
+      export type CreateUserInput = Omit<UserDTO, 'id'>;
+      export type UpdateUserInput = Partial<Omit<UserDTO, 'id'>>;
+    src/api/client.ts: |
+      export interface ApiResponse<T> {
+        data: T;
+        status: number;
+        message?: string;
+      }
+
+      export class ApiClient {
+        private baseUrl: string;
+        private headers: Record<string, string>;
+
+        constructor(baseUrl: string, authToken?: string) {
+          this.baseUrl = baseUrl;
+          this.headers = {
+            'Content-Type': 'application/json',
+            ...(authToken && { Authorization: `Bearer ${authToken}` }),
+          };
+        }
+
+        async get<T>(endpoint: string): Promise<T> {
+          const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            headers: this.headers,
+          });
+          return response.json();
+        }
+
+        async post<T, U>(endpoint: string, body: U): Promise<T> {
+          const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: this.headers,
+            body: JSON.stringify(body),
+          });
+          return response.json();
+        }
+      }
+    src/services/userService.ts: |
+      console.log('placeholder');
+    src/services/notification-service.ts: |
+      interface Notification {
+        id: string;
+        recipientId: string;
+        subject: string;
+        body: string;
+        sentAt: Date | null;
+      }
+
+      export class NotificationService {
+        private queue: Notification[] = [];
+
+        async send(recipientId: string, subject: string, body: string): Promise<void> {
+          const notification: Notification = {
+            id: crypto.randomUUID(),
+            recipientId,
+            subject,
+            body,
+            sentAt: null,
+          };
+          this.queue.push(notification);
+        }
+
+        async flush(): Promise<number> {
+          const pending = this.queue.filter(n => n.sentAt === null);
+          for (const n of pending) {
+            n.sentAt = new Date();
+          }
+          return pending.length;
+        }
+
+        getPendingCount(): number {
+          return this.queue.filter(n => n.sentAt === null).length;
+        }
+      }
+    src/middleware/auth-middleware.ts: |
+      interface TokenPayload {
+        sub: string;
+        exp: number;
+        iat: number;
+        roles: string[];
+      }
+
+      export function authMiddleware(req: any, res: any, next: any): void {
+        const header = req.headers['authorization'];
+        if (!header?.startsWith('Bearer ')) {
+          res.status(401).json({ error: 'Missing token' });
+          return;
+        }
+        const token = header.slice(7);
+        try {
+          const payload = decodeToken(token);
+          if (payload.exp < Date.now() / 1000) {
+            res.status(401).json({ error: 'Token expired' });
+            return;
+          }
+          req.user = payload;
+          next();
+        } catch {
+          res.status(403).json({ error: 'Invalid token' });
+        }
+      }
+
+      function decodeToken(token: string): TokenPayload {
+        return { sub: 'user-1', exp: Date.now() / 1000 + 3600, iat: Date.now() / 1000, roles: ['user'] };
+      }
+    vendor/analytics-sdk/index.ts: |
+      export function trackEvent(name: string, data: Record<string, unknown>): void {
+        console.log(`[analytics] ${name}`, data);
+      }
+    docs/architecture/overview.md: |
+      # Architecture Overview
+      The application follows a layered service architecture.
+  changed_files:
+    src/services/userService.ts: |
+      import { User, UserDTO, CreateUserInput, UpdateUserInput } from '../types/user';
+      import { ApiClient } from '../api/client';
+
+      export class UserService {
+        private client: ApiClient;
+
+        constructor(client: ApiClient) {
+          this.client = client;
+        }
+
+        async getUser(id: string): Promise<User> {
+          const dto = await this.client.get<UserDTO>(`/users/${id}`);
+          return this.mapDtoToUser(dto);
+        }
+
+        async getAllUsers(): Promise<User[]> {
+          const dtos = await this.client.get<UserDTO[]>('/users');
+          return dtos.map((dto) => this.mapDtoToUser(dto));
+        }
+
+        async createUser(input: CreateUserInput): Promise<User> {
+          const dto = await this.client.post<UserDTO, CreateUserInput>('/users', input);
+          return this.mapDtoToUser(dto);
+        }
+
+        private mapDtoToUser(dto: UserDTO): User {
+          return {
+            id: dto.id,
+            email: dto.email,
+            fullName: `${dto.firstName} ${dto.lastName}`,
+            role: dto.role,
+          };
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: src/services/userService.ts
+    anchor: import { User, UserDTO, CreateUserInput, UpdateUserInput } from '../types/user'
+- id: userservice_1
+  selector:
+    path: src/services/userService.ts
+    anchor: 'async getUser(id: string): Promise<User>'
+- id: userservice_2
+  selector:
+    path: src/services/userService.ts
+    anchor: 'mapDtoToUser(dto: UserDTO): User'
+- id: user
+  selector:
+    path: src/types/user.ts
+    anchor: interface UserDTO
+- id: user_1
+  selector:
+    path: src/types/user.ts
+    anchor: 'firstName: string'
+- id: user_2
+  selector:
+    path: src/types/user.ts
+    anchor: interface User
+- id: user_3
+  selector:
+    path: src/types/user.ts
+    anchor: 'fullName: string'
+- id: client
+  selector:
+    path: src/api/client.ts
+    anchor: 'async get<T>(endpoint: string)'
+- id: client_1
+  selector:
+    path: src/api/client.ts
+    anchor: 'async post<T, U>(endpoint: string'
+- id: no_notification_service
+  selector:
+    path: src/services/notification-service.ts
+- id: no_auth_middleware
+  selector:
+    path: src/middleware/auth-middleware.ts
+- id: no_index
+  selector:
+    path: vendor/analytics-sdk/index.ts
+- id: no_overview
+  selector:
+    path: docs/architecture/overview.md
+- id: no_global_0
+  selector:
+    anchor: NotificationService
+- id: no_global_1
+  selector:
+    anchor: recipientId
+- id: no_global_2
+  selector:
+    anchor: flush
+- id: no_global_3
+  selector:
+    anchor: getPendingCount
+- id: no_global_4
+  selector:
+    anchor: authMiddleware
+- id: no_global_5
+  selector:
+    anchor: TokenPayload
+- id: no_global_6
+  selector:
+    anchor: decodeToken
+- id: no_global_7
+  selector:
+    anchor: Token expired
+- id: no_global_8
+  selector:
+    anchor: trackEvent
+- id: no_global_9
+  selector:
+    anchor: '[analytics]'
+- id: no_global_10
+  selector:
+    anchor: layered service architecture
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - user
+  - user_1
+  - user_2
+  - user_3
+  - client
+  - client_1
+  allowed: []
+  forbidden:
+  - no_notification_service
+  - no_auth_middleware
+  - no_index
+  - no_overview
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

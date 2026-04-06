@@ -1,0 +1,272 @@
+name: scala_001_case_class
+repo:
+  initial_files:
+    src/models/User.scala: |
+      package models
+
+      case class User(id: Long, name: String, age: Int, email: String) {
+        def isAdult: Boolean = age >= 18
+
+        def displayName: String = s"$name (id=$id)"
+
+        def withEmail(newEmail: String): User = copy(email = newEmail)
+      }
+
+      object User {
+        def apply(name: String): User = User(0L, name, 0, "")
+
+        def fromTuple(t: (Long, String, Int, String)): User =
+          User(t._1, t._2, t._3, t._4)
+
+        val anonymous: User = User(0L, "Anonymous", 0, "anon@example.com")
+      }
+    src/services/UserService.scala: |
+      package services
+
+      import models.User
+
+      class UserService {
+        private var users: Map[Long, User] = Map.empty
+        private var nextId: Long = 1L
+
+        def findById(id: Long): Option[User] = users.get(id)
+
+        def findAll(): List[User] = users.values.toList
+      }
+    src/models/Product.scala: |
+      package models
+
+      case class Product(id: Long, name: String, price: Double, category: String) {
+        def isExpensive: Boolean = price > 100.0
+
+        def displayPrice: String = f"$$$price%.2f"
+
+        def withDiscount(percent: Double): Product =
+          copy(price = price * (1.0 - percent / 100.0))
+      }
+
+      object Product {
+        def apply(name: String, price: Double): Product =
+          Product(0L, name, price, "general")
+
+        val placeholder: Product = Product(0L, "N/A", 0.0, "none")
+      }
+    src/models/Order.scala: |
+      package models
+
+      case class Order(id: Long, userId: Long, total: Double, status: String) {
+        def isCompleted: Boolean = status == "completed"
+        def isPending: Boolean = status == "pending"
+        def withStatus(newStatus: String): Order = copy(status = newStatus)
+      }
+
+      object Order {
+        def create(userId: Long, total: Double): Order =
+          Order(0L, userId, total, "pending")
+      }
+    src/services/NotificationService.scala: |
+      package services
+
+      class NotificationService {
+        private var subscribers: List[String] = List.empty
+
+        def subscribe(email: String): Unit = {
+          subscribers = email :: subscribers
+        }
+
+        def notifyAll(message: String): Unit = {
+          subscribers.foreach(email => println(s"Notifying $email: $message"))
+        }
+
+        def subscriberCount: Int = subscribers.length
+      }
+    src/services/ProductService.scala: |
+      package services
+
+      import models.Product
+
+      class ProductService {
+        private var products: Map[Long, Product] = Map.empty
+        private var nextId: Long = 1L
+
+        def createProduct(name: String, price: Double, category: String): Product = {
+          val product = Product(nextId, name, price, category)
+          products = products + (nextId -> product)
+          nextId += 1
+          product
+        }
+
+        def updatePrice(id: Long, newPrice: Double): Option[Product] = {
+          products.get(id).map { product =>
+            val updated = product.copy(price = newPrice)
+            products = products + (id -> updated)
+            updated
+          }
+        }
+
+        def deleteProduct(id: Long): Boolean = {
+          val existed = products.contains(id)
+          products = products - id
+          existed
+        }
+      }
+    src/controllers/UserController.scala: |
+      package controllers
+
+      import services.UserService
+      import models.User
+
+      class UserController(service: UserService) {
+        def handleCreate(name: String, age: Int, email: String): User = {
+          service.createUser(name, age, email)
+        }
+
+        def handleUpdateEmail(id: Long, newEmail: String): Option[User] = {
+          service.updateEmail(id, newEmail)
+        }
+
+        def handleDelete(id: Long): Boolean = {
+          service.deleteUser(id)
+        }
+      }
+  changed_files:
+    src/services/UserService.scala: |
+      package services
+
+      import models.User
+
+      class UserService {
+        private var users: Map[Long, User] = Map.empty
+        private var nextId: Long = 1L
+
+        def findById(id: Long): Option[User] = users.get(id)
+
+        def findAll(): List[User] = users.values.toList
+
+        def createUser(name: String, age: Int, email: String): User = {
+          val user = User(nextId, name, age, email)
+          users = users + (nextId -> user)
+          nextId += 1
+          user
+        }
+
+        def updateEmail(id: Long, newEmail: String): Option[User] = {
+          users.get(id).map { user =>
+            val updated = user.copy(email = newEmail)
+            users = users + (id -> updated)
+            updated
+          }
+        }
+
+        def deleteUser(id: Long): Boolean = {
+          val existed = users.contains(id)
+          users = users - id
+          existed
+        }
+
+        def compareUsers(u1: User, u2: User): Boolean = u1 == u2
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: src/models/User.scala
+    anchor: 'case class User(id: Long, name: String, age: Int, email: String)'
+- id: user_1
+  selector:
+    path: src/models/User.scala
+    anchor: 'def withEmail(newEmail: String): User = copy(email = newEmail)'
+- id: no_product
+  selector:
+    path: src/models/Product.scala
+- id: no_order
+  selector:
+    path: src/models/Order.scala
+- id: no_notificationservice
+  selector:
+    path: src/services/NotificationService.scala
+- id: no_productservice
+  selector:
+    path: src/services/ProductService.scala
+- id: no_usercontroller
+  selector:
+    path: src/controllers/UserController.scala
+- id: no_global_0
+  selector:
+    anchor: case class Product
+- id: no_global_1
+  selector:
+    anchor: isExpensive
+- id: no_global_2
+  selector:
+    anchor: withDiscount
+- id: no_global_3
+  selector:
+    anchor: displayPrice
+- id: no_global_4
+  selector:
+    anchor: case class Order
+- id: no_global_5
+  selector:
+    anchor: isCompleted
+- id: no_global_6
+  selector:
+    anchor: withStatus
+- id: no_global_7
+  selector:
+    anchor: class NotificationService
+- id: no_global_8
+  selector:
+    anchor: subscriberCount
+- id: no_global_9
+  selector:
+    anchor: notifyAll
+- id: no_global_10
+  selector:
+    anchor: class ProductService
+- id: no_global_11
+  selector:
+    anchor: createProduct
+- id: no_global_12
+  selector:
+    anchor: updatePrice
+- id: no_global_13
+  selector:
+    anchor: deleteProduct
+- id: no_global_14
+  selector:
+    anchor: class UserController
+- id: no_global_15
+  selector:
+    anchor: handleCreate
+- id: no_global_16
+  selector:
+    anchor: handleUpdateEmail
+oracle:
+  required:
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_product
+  - no_order
+  - no_notificationservice
+  - no_productservice
+  - no_usercontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

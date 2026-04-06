@@ -1,0 +1,455 @@
+name: jvm_and_compiled_029_java_entity_relations
+repo:
+  initial_files:
+    src/main/java/com/example/Order.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.util.List;
+
+      @Entity
+      @Table(name = "orders")
+      public class Order {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @ManyToOne
+          @JoinColumn(name = "customer_id")
+          private Customer customer;
+
+          @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+          private List<OrderItem> items;
+      }
+    src/main/java/com/example/Customer.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.util.List;
+
+      @Entity
+      @Table(name = "customers")
+      public class Customer {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          private String name;
+          private String email;
+
+          @OneToMany(mappedBy = "customer")
+          private List<Order> orders;
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getEmail() { return email; }
+      }
+    src/main/java/com/example/OrderStatus.java: |
+      package com.example;
+
+      public enum OrderStatus {
+          PENDING,
+          CONFIRMED,
+          SHIPPED,
+          DELIVERED,
+          CANCELLED;
+
+          public boolean isTerminal() {
+              return this == DELIVERED || this == CANCELLED;
+          }
+      }
+    src/main/java/com/example/Product.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "products")
+      public class Product {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          private String name;
+
+          @Column(precision = 10, scale = 2)
+          private BigDecimal price;
+
+          private String category;
+          private boolean available;
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public BigDecimal getPrice() { return price; }
+      }
+    src/main/java/com/example/OrderRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface OrderRepository extends JpaRepository<Order, Long> {
+          List<Order> findByCustomerId(Long customerId);
+          List<Order> findByStatus(OrderStatus status);
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class OrderService {
+          private final OrderRepository orderRepository;
+
+          public OrderService(OrderRepository orderRepository) {
+              this.orderRepository = orderRepository;
+          }
+
+          public Order createOrder(Customer customer) {
+              Order order = new Order();
+              return orderRepository.save(order);
+          }
+
+          public List<Order> getOrdersByCustomer(Long customerId) {
+              return orderRepository.findByCustomerId(customerId);
+          }
+      }
+    src/main/java/com/example/OrderItem.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "order_items")
+      public class OrderItem {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @ManyToOne
+          @JoinColumn(name = "order_id")
+          private Order order;
+
+          @ManyToOne
+          @JoinColumn(name = "product_id")
+          private Product product;
+
+          private int quantity;
+          private BigDecimal unitPrice;
+
+          public Long getId() { return id; }
+          public Order getOrder() { return order; }
+      }
+    src/main/java/com/example/AuditEntity.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @MappedSuperclass
+      public abstract class AuditEntity {
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          @Column(name = "updated_at")
+          private LocalDateTime updatedAt;
+
+          @PrePersist
+          protected void onCreate() { createdAt = LocalDateTime.now(); }
+
+          @PreUpdate
+          protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+      }
+  changed_files:
+    src/main/java/com/example/Order.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.util.List;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "orders")
+      public class Order {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @ManyToOne
+          @JoinColumn(name = "customer_id")
+          private Customer customer;
+
+          @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+          private List<OrderItem> items;
+
+          @Column(name = "total_amount")
+          private BigDecimal totalAmount;
+
+          @Enumerated(EnumType.STRING)
+          private OrderStatus status;
+      }
+    src/main/java/com/example/Customer.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.util.List;
+
+      @Entity
+      @Table(name = "customers")
+      public class Customer {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          private String name;
+          private String email;
+
+          @OneToMany(mappedBy = "customer")
+          private List<Order> orders;
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public String getEmail() { return email; }
+      }
+    src/main/java/com/example/OrderStatus.java: |
+      package com.example;
+
+      public enum OrderStatus {
+          PENDING,
+          CONFIRMED,
+          SHIPPED,
+          DELIVERED,
+          CANCELLED;
+
+          public boolean isTerminal() {
+              return this == DELIVERED || this == CANCELLED;
+          }
+      }
+    src/main/java/com/example/Product.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "products")
+      public class Product {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          private String name;
+
+          @Column(precision = 10, scale = 2)
+          private BigDecimal price;
+
+          private String category;
+          private boolean available;
+
+          public Long getId() { return id; }
+          public String getName() { return name; }
+          public BigDecimal getPrice() { return price; }
+      }
+    src/main/java/com/example/OrderRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface OrderRepository extends JpaRepository<Order, Long> {
+          List<Order> findByCustomerId(Long customerId);
+          List<Order> findByStatus(OrderStatus status);
+      }
+    src/main/java/com/example/OrderService.java: |
+      package com.example;
+
+      import org.springframework.stereotype.Service;
+      import java.util.List;
+
+      @Service
+      public class OrderService {
+          private final OrderRepository orderRepository;
+
+          public OrderService(OrderRepository orderRepository) {
+              this.orderRepository = orderRepository;
+          }
+
+          public Order createOrder(Customer customer) {
+              Order order = new Order();
+              return orderRepository.save(order);
+          }
+
+          public List<Order> getOrdersByCustomer(Long customerId) {
+              return orderRepository.findByCustomerId(customerId);
+          }
+      }
+    src/main/java/com/example/OrderItem.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "order_items")
+      public class OrderItem {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @ManyToOne
+          @JoinColumn(name = "order_id")
+          private Order order;
+
+          @ManyToOne
+          @JoinColumn(name = "product_id")
+          private Product product;
+
+          private int quantity;
+          private BigDecimal unitPrice;
+
+          public Long getId() { return id; }
+          public Order getOrder() { return order; }
+      }
+    src/main/java/com/example/AuditEntity.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @MappedSuperclass
+      public abstract class AuditEntity {
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          @Column(name = "updated_at")
+          private LocalDateTime updatedAt;
+
+          @PrePersist
+          protected void onCreate() { createdAt = LocalDateTime.now(); }
+
+          @PreUpdate
+          protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+      }
+  commit_message: Update files
+fragments:
+- id: order
+  selector:
+    path: src/main/java/com/example/Order.java
+    anchor: '@Column(name = "total_amount")'
+- id: order_1
+  selector:
+    path: src/main/java/com/example/Order.java
+    anchor: '@Enumerated(EnumType.STRING)'
+- id: order_2
+  selector:
+    path: src/main/java/com/example/Order.java
+    anchor: private OrderStatus status
+- id: order_3
+  selector:
+    path: src/main/java/com/example/Order.java
+    anchor: import java.math.BigDecimal
+- id: customer
+  selector:
+    path: src/main/java/com/example/Customer.java
+    anchor: '@OneToMany(mappedBy = "customer")'
+- id: customer_1
+  selector:
+    path: src/main/java/com/example/Customer.java
+    anchor: private List<Order> orders
+- id: no_product
+  selector:
+    path: src/main/java/com/example/Product.java
+- id: no_orderrepository
+  selector:
+    path: src/main/java/com/example/OrderRepository.java
+- id: no_orderservice
+  selector:
+    path: src/main/java/com/example/OrderService.java
+- id: no_orderitem
+  selector:
+    path: src/main/java/com/example/OrderItem.java
+- id: no_auditentity
+  selector:
+    path: src/main/java/com/example/AuditEntity.java
+- id: no_global_0
+  selector:
+    anchor: products
+- id: no_global_1
+  selector:
+    anchor: available
+- id: no_global_2
+  selector:
+    anchor: category
+- id: no_global_3
+  selector:
+    anchor: OrderRepository
+- id: no_global_4
+  selector:
+    anchor: findByCustomerId
+- id: no_global_5
+  selector:
+    anchor: findByStatus
+- id: no_global_6
+  selector:
+    anchor: OrderService
+- id: no_global_7
+  selector:
+    anchor: createOrder
+- id: no_global_8
+  selector:
+    anchor: getOrdersByCustomer
+- id: no_global_9
+  selector:
+    anchor: OrderItem
+- id: no_global_10
+  selector:
+    anchor: order_items
+- id: no_global_11
+  selector:
+    anchor: unitPrice
+- id: no_global_12
+  selector:
+    anchor: AuditEntity
+- id: no_global_13
+  selector:
+    anchor: '@PrePersist'
+- id: no_global_14
+  selector:
+    anchor: '@PreUpdate'
+oracle:
+  required:
+  - order
+  - order_1
+  - order_2
+  - order_3
+  - customer
+  - customer_1
+  allowed: []
+  forbidden:
+  - no_product
+  - no_orderrepository
+  - no_orderservice
+  - no_orderitem
+  - no_auditentity
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

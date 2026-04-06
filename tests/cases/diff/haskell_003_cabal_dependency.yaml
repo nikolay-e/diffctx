@@ -1,0 +1,238 @@
+name: haskell_003_cabal_dependency
+repo:
+  initial_files:
+    myapp.cabal: |
+      cabal-version: 2.4
+      name:          myapp
+      version:       0.1.0.0
+      build-type:    Simple
+
+      executable myapp
+        main-is:       Main.hs
+        hs-source-dirs: src
+        build-depends:
+          base       >= 4.14 && < 5
+          , text     >= 1.2
+          , containers >= 0.6
+        default-language: Haskell2010
+    src/Main.hs: |
+      module Main where
+
+      import Data.Text (Text, pack)
+      import qualified Data.Map as Map
+
+      main :: IO ()
+      main = do
+        let greeting = pack "Hello, World!"
+        putStrLn (show greeting)
+    src/Database.hs: |
+      module Database
+        ( connect
+        , query
+        ) where
+
+      import Data.Text (Text)
+
+      connect :: Text -> IO ()
+      connect host = putStrLn ("Connecting to " ++ show host)
+
+      query :: Text -> IO [Text]
+      query sql = return []
+    stack.yaml: |
+      resolver: lts-20.0
+      packages:
+        - .
+      GARBAGE_HS_003_STACK_MARKER_A: true
+      GARBAGE_HS_003_RESOLVER_MARKER_B: "lts"
+    src/Formatter.hs: |
+      module Formatter
+        ( formatOutput
+        ) where
+
+      import Data.Text (Text, pack, unpack, toUpper)
+      GARBAGE_HS_003_FORMATTER_MARKER_C = "formatter"
+      GARBAGE_HS_003_FORMAT_OUT_D = True
+
+      formatOutput :: Text -> Text
+      formatOutput = toUpper
+    src/Registry.hs: |
+      module Registry
+        ( registerItem
+        ) where
+
+      import qualified Data.Map as Map
+      GARBAGE_HS_003_REGISTRY_MARKER_E = "registry"
+      GARBAGE_HS_003_STORE_MARKER_F = True
+
+      type Registry = Map.Map String Int
+
+      registerItem :: Registry -> String -> Int -> Registry
+      registerItem reg k v = Map.insert k v reg
+    src/Constants.hs: |
+      module Constants where
+
+      GARBAGE_HS_003_CONST_MARKER_G = "constants"
+      GARBAGE_HS_003_VERSION_MARKER_H = "0.1.0"
+
+      defaultPort :: Int
+      defaultPort = 8080
+
+      maxRetries :: Int
+      maxRetries = 3
+  changed_files:
+    myapp.cabal: |
+      cabal-version: 2.4
+      name:          myapp
+      version:       0.1.0.0
+      build-type:    Simple
+
+      executable myapp
+        main-is:       Main.hs
+        hs-source-dirs: src
+        build-depends:
+          base       >= 4.14 && < 5
+          , text     >= 1.2
+          , containers >= 0.6
+          , aeson    >= 2.0
+        default-language: Haskell2010
+    src/Main.hs: |
+      module Main where
+
+      import Data.Text (Text, pack)
+      import qualified Data.Map as Map
+
+      main :: IO ()
+      main = do
+        let greeting = pack "Hello, World!"
+        putStrLn (show greeting)
+    src/Database.hs: |
+      module Database
+        ( connect
+        , query
+        , queryJson
+        ) where
+
+      import Data.Text (Text)
+      import Data.Aeson (Value, decode)
+      import qualified Data.ByteString.Lazy as BL
+
+      connect :: Text -> IO ()
+      connect host = putStrLn ("Connecting to " ++ show host)
+
+      query :: Text -> IO [Text]
+      query sql = return []
+
+      queryJson :: Text -> IO (Maybe Value)
+      queryJson sql = do
+        let raw = BL.empty
+        return (decode raw)
+    stack.yaml: |
+      resolver: lts-20.0
+      packages:
+        - .
+      GARBAGE_HS_003_STACK_MARKER_A: true
+      GARBAGE_HS_003_RESOLVER_MARKER_B: "lts"
+    src/Formatter.hs: |
+      module Formatter
+        ( formatOutput
+        ) where
+
+      import Data.Text (Text, pack, unpack, toUpper)
+      GARBAGE_HS_003_FORMATTER_MARKER_C = "formatter"
+      GARBAGE_HS_003_FORMAT_OUT_D = True
+
+      formatOutput :: Text -> Text
+      formatOutput = toUpper
+    src/Registry.hs: |
+      module Registry
+        ( registerItem
+        ) where
+
+      import qualified Data.Map as Map
+      GARBAGE_HS_003_REGISTRY_MARKER_E = "registry"
+      GARBAGE_HS_003_STORE_MARKER_F = True
+
+      type Registry = Map.Map String Int
+
+      registerItem :: Registry -> String -> Int -> Registry
+      registerItem reg k v = Map.insert k v reg
+    src/Constants.hs: |
+      module Constants where
+
+      GARBAGE_HS_003_CONST_MARKER_G = "constants"
+      GARBAGE_HS_003_VERSION_MARKER_H = "0.1.0"
+
+      defaultPort :: Int
+      defaultPort = 8080
+
+      maxRetries :: Int
+      maxRetries = 3
+  commit_message: Update files
+fragments:
+- id: myapp
+  selector:
+    path: myapp.cabal
+    anchor: ', aeson    >= 2.0'
+- id: database
+  selector:
+    path: src/Database.hs
+    anchor: import Data.Aeson (Value, decode)
+- id: database_1
+  selector:
+    path: src/Database.hs
+    anchor: 'queryJson :: Text -> IO (Maybe Value)'
+- id: no_stack
+  selector:
+    path: stack.yaml
+- id: no_formatter
+  selector:
+    path: src/Formatter.hs
+- id: no_registry
+  selector:
+    path: src/Registry.hs
+- id: no_constants
+  selector:
+    path: src/Constants.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_HS_003_STACK_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_HS_003_RESOLVER_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HS_003_FORMATTER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_HS_003_FORMAT_OUT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_HS_003_REGISTRY_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_HS_003_STORE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_HS_003_CONST_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_HS_003_VERSION_MARKER_H
+oracle:
+  required:
+  - myapp
+  - database
+  - database_1
+  allowed: []
+  forbidden:
+  - no_stack
+  - no_formatter
+  - no_registry
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

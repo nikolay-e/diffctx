@@ -1,0 +1,151 @@
+name: frontend_024_utility_types
+repo:
+  initial_files:
+    src/models.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          password: string;
+          createdAt: Date;
+          updatedAt: Date;
+      }
+
+      export interface Product {
+          id: string;
+          name: string;
+          price: number;
+          description: string;
+          category: string;
+          inStock: boolean;
+      }
+    src/dtos.ts: |
+      console.log('initial');
+    src/types/config.ts: |
+      export interface AppConfig {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug: boolean;
+      }
+
+      export type PartialConfig = Partial<AppConfig>;
+      export type RequiredConfig = Pick<AppConfig, 'apiUrl' | 'timeout'>;
+    src/mappers/user.ts: |
+      interface UserInput {
+          name: string;
+          email: string;
+          password: string;
+      }
+
+      export function toUserOutput(input: UserInput & { id: string }) {
+          return {
+              id: input.id,
+              name: input.name,
+              email: input.email,
+              displayName: input.name.split(' ')[0],
+          };
+      }
+  changed_files:
+    src/models.ts: |
+      export interface User {
+          id: string;
+          name: string;
+          email: string;
+          password: string;
+          createdAt: Date;
+          updatedAt: Date;
+      }
+
+      export interface Product {
+          id: string;
+          name: string;
+          price: number;
+          description: string;
+          category: string;
+          inStock: boolean;
+      }
+    src/dtos.ts: |
+      import { User, Product } from './models';
+
+      export type UserDTO = Omit<User, 'password'>;
+
+      export type CreateUserDTO = Pick<User, 'name' | 'email' | 'password'>;
+
+      export type UpdateUserDTO = Partial<Pick<User, 'name' | 'email'>>;
+
+      export type UserResponse = Readonly<UserDTO>;
+
+      export type ProductPreview = Pick<Product, 'id' | 'name' | 'price'>;
+
+      export type ProductUpdate = Partial<Omit<Product, 'id'>>;
+    src/types/config.ts: |
+      export interface AppConfig {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug: boolean;
+      }
+
+      export type PartialConfig = Partial<AppConfig>;
+      export type RequiredConfig = Pick<AppConfig, 'apiUrl' | 'timeout'>;
+    src/mappers/user.ts: |
+      interface UserInput {
+          name: string;
+          email: string;
+          password: string;
+      }
+
+      export function toUserOutput(input: UserInput & { id: string }) {
+          return {
+              id: input.id,
+              name: input.name,
+              email: input.email,
+              displayName: input.name.split(' ')[0],
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: models
+  selector:
+    path: src/models.ts
+    anchor: interface User {
+- id: models_1
+  selector:
+    path: src/models.ts
+    anchor: 'password: string'
+- id: models_2
+  selector:
+    path: src/models.ts
+    anchor: interface Product {
+- id: no_config
+  selector:
+    path: src/types/config.ts
+- id: no_user
+  selector:
+    path: src/mappers/user.ts
+- id: no_global_0
+  selector:
+    anchor: AppConfig
+- id: no_global_1
+  selector:
+    anchor: PartialConfig
+- id: no_global_2
+  selector:
+    anchor: toUserOutput
+- id: no_global_3
+  selector:
+    anchor: displayName
+oracle:
+  required:
+  - models
+  - models_1
+  - models_2
+  allowed: []
+  forbidden:
+  - no_config
+  - no_user
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

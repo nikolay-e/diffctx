@@ -1,0 +1,199 @@
+name: helm_042_alias
+repo:
+  initial_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      dependencies:
+        - name: postgresql
+          version: 12.0.0
+          repository: https://charts.bitnami.com/bitnami
+    values.yaml: |
+      postgresql:
+        auth:
+          postgresPassword: secret123
+          database: myapp_db
+        primary:
+          persistence:
+            size: 10Gi
+    values-staging.yaml: |
+      postgresql:
+        auth:
+          postgresPassword: staging-pass
+          database: myapp_staging
+        primary:
+          persistence:
+            size: 1Gi
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: myapp
+                env:
+                  - name: DB_HOST
+                    value: {{ .Values.postgresql.host | default "localhost" }}
+                  - name: DB_NAME
+                    value: {{ .Values.postgresql.auth.database }}
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        type: ClusterIP
+        ports:
+          - port: 80
+            targetPort: http
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+    charts/external/Chart.yaml: |
+      apiVersion: v2
+      name: external-service
+      version: 2.0.0
+      description: External API integration chart
+  changed_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      dependencies:
+        - name: postgresql
+          version: 12.0.0
+          repository: https://charts.bitnami.com/bitnami
+          alias: postgres
+    values.yaml: |
+      postgresql:
+        auth:
+          postgresPassword: secret123
+          database: myapp_db
+        primary:
+          persistence:
+            size: 10Gi
+    values-staging.yaml: |
+      postgresql:
+        auth:
+          postgresPassword: staging-pass
+          database: myapp_staging
+        primary:
+          persistence:
+            size: 1Gi
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        template:
+          spec:
+            containers:
+              - name: myapp
+                env:
+                  - name: DB_HOST
+                    value: {{ .Values.postgresql.host | default "localhost" }}
+                  - name: DB_NAME
+                    value: {{ .Values.postgresql.auth.database }}
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        type: ClusterIP
+        ports:
+          - port: 80
+            targetPort: http
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+    charts/external/Chart.yaml: |
+      apiVersion: v2
+      name: external-service
+      version: 2.0.0
+      description: External API integration chart
+  commit_message: Update files
+fragments:
+- id: chart
+  selector:
+    path: Chart.yaml
+    anchor: 'alias: postgres'
+- id: values
+  selector:
+    path: values.yaml
+    anchor: 'postgresql:'
+- id: values_1
+  selector:
+    path: values.yaml
+    anchor: 'postgresPassword: secret123'
+- id: values_2
+  selector:
+    path: values.yaml
+    anchor: 'database: myapp_db'
+- id: deployment
+  selector:
+    path: templates/deployment.yaml
+    anchor: .Values.postgresql.host
+- id: deployment_1
+  selector:
+    path: templates/deployment.yaml
+    anchor: .Values.postgresql.auth.database
+- id: no_values_staging
+  selector:
+    path: values-staging.yaml
+- id: no_service
+  selector:
+    path: templates/service.yaml
+- id: no_helpers
+  selector:
+    path: templates/_helpers.tpl
+- id: no_chart
+  selector:
+    path: charts/external/Chart.yaml
+- id: no_global_0
+  selector:
+    anchor: staging-pass
+- id: no_global_1
+  selector:
+    anchor: myapp_staging
+- id: no_global_2
+  selector:
+    anchor: 'size: 1Gi'
+- id: no_global_3
+  selector:
+    anchor: 'targetPort: http'
+- id: no_global_4
+  selector:
+    anchor: myapp.fullname
+- id: no_global_5
+  selector:
+    anchor: external-service
+- id: no_global_6
+  selector:
+    anchor: External API integration
+oracle:
+  required:
+  - chart
+  - values
+  - values_1
+  - values_2
+  - deployment
+  - deployment_1
+  allowed: []
+  forbidden:
+  - no_values_staging
+  - no_service
+  - no_helpers
+  - no_chart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

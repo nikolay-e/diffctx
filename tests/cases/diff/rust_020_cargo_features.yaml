@@ -1,0 +1,311 @@
+name: rust_020_cargo_features
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "0.1.0"
+      edition = "2021"
+      authors = ["Developer <dev@example.com>"]
+      description = "A sample application"
+
+      [features]
+      default = []
+      async = ["tokio"]
+
+      [dependencies]
+      tokio = { version = "1", optional = true }
+    src/lib.rs: |
+      #[cfg(feature = "async")]
+      pub mod async_utils {
+          pub async fn fetch() -> String {
+              "data".to_string()
+          }
+
+          pub async fn delay(ms: u64) {
+              tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+          }
+      }
+
+      pub fn sync_fetch() -> String {
+          "sync data".to_string()
+      }
+
+      pub fn version() -> &'static str {
+          env!("CARGO_PKG_VERSION")
+      }
+    src/telemetry.rs: |
+      use std::collections::HashMap;
+      use std::time::Instant;
+
+      pub struct MetricsCollector {
+          counters: HashMap<String, u64>,
+          start_time: Instant,
+      }
+
+      impl MetricsCollector {
+          pub fn new() -> Self {
+              Self {
+                  counters: HashMap::new(),
+                  start_time: Instant::now(),
+              }
+          }
+
+          pub fn increment(&mut self, name: &str) {
+              *self.counters.entry(name.to_string()).or_insert(0) += 1;
+          }
+
+          pub fn get(&self, name: &str) -> u64 {
+              *self.counters.get(name).unwrap_or(&0)
+          }
+
+          pub fn uptime_secs(&self) -> u64 {
+              self.start_time.elapsed().as_secs()
+          }
+      }
+    src/config.rs: |
+      use std::collections::HashMap;
+
+      pub struct AppConfig {
+          pub name: String,
+          pub settings: HashMap<String, String>,
+      }
+
+      impl AppConfig {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  name: name.to_string(),
+                  settings: HashMap::new(),
+              }
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.settings.insert(key.to_string(), value.to_string());
+          }
+      }
+
+      #[cfg(feature = "serde")]
+      mod serde_support {
+          use super::AppConfig;
+          use serde::{Deserialize, Serialize};
+
+          impl AppConfig {
+              pub fn to_json(&self) -> Result<String, serde_json::Error> {
+                  serde_json::to_string(self)
+              }
+
+              pub fn from_json(json: &str) -> Result<AppConfig, serde_json::Error> {
+                  serde_json::from_str(json)
+              }
+          }
+      }
+    benches/benchmarks.rs: |
+      fn main() {
+          println!("Benchmark placeholder");
+      }
+    src/compat.rs: |
+      #[cfg(all(feature = "async", feature = "serde"))]
+      pub async fn fetch_and_serialize() -> String {
+          let data = crate::async_utils::fetch().await;
+          format!("serialized: {}", data)
+      }
+
+      #[cfg(feature = "serde")]
+      pub fn serialize_version() -> String {
+          format!("v{}", crate::version())
+      }
+
+      pub fn check_features() -> Vec<&'static str> {
+          let mut features = Vec::new();
+          #[cfg(feature = "async")]
+          features.push("async");
+          #[cfg(feature = "serde")]
+          features.push("serde");
+          features
+      }
+    tests/feature_tests.rs: |
+      #[cfg(feature = "serde")]
+      #[test]
+      fn test_serialization() {
+          let config = myapp::serialization::Config {
+              name: "test".to_string(),
+              value: 42,
+          };
+          let json = myapp::serialization::to_json(&config).unwrap();
+          assert!(json.contains("test"));
+      }
+
+      #[cfg(feature = "async")]
+      #[tokio::test]
+      async fn test_fetch_with_timeout() {
+          let result = myapp::async_utils::fetch_with_timeout(1000).await;
+          assert!(result.is_some());
+      }
+  changed_files:
+    Cargo.toml: |
+      [package]
+      name = "myapp"
+      version = "0.2.0"
+      edition = "2021"
+      authors = ["Developer <dev@example.com>"]
+      description = "A sample application with features"
+
+      [features]
+      default = []
+      async = ["tokio"]
+      serde = ["dep:serde", "dep:serde_json"]
+      full = ["async", "serde"]
+
+      [dependencies]
+      tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros"] }
+      serde = { version = "1", optional = true, features = ["derive"] }
+      serde_json = { version = "1", optional = true }
+
+      [dev-dependencies]
+      criterion = "0.5"
+
+      [[bench]]
+      name = "benchmarks"
+      harness = false
+    src/lib.rs: |
+      #[cfg(feature = "async")]
+      pub mod async_utils {
+          pub async fn fetch() -> String {
+              "data".to_string()
+          }
+
+          pub async fn delay(ms: u64) {
+              tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+          }
+
+          pub async fn fetch_with_timeout(timeout_ms: u64) -> Option<String> {
+              tokio::time::timeout(
+                  tokio::time::Duration::from_millis(timeout_ms),
+                  fetch(),
+              )
+              .await
+              .ok()
+          }
+      }
+
+      #[cfg(feature = "serde")]
+      pub mod serialization {
+          use serde::{Deserialize, Serialize};
+
+          #[derive(Debug, Clone, Serialize, Deserialize)]
+          pub struct Config {
+              pub name: String,
+              pub value: i64,
+          }
+
+          pub fn to_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+              serde_json::to_string(value)
+          }
+
+          pub fn from_json<T: for<'de> Deserialize<'de>>(json: &str) -> Result<T, serde_json::Error> {
+              serde_json::from_str(json)
+          }
+      }
+
+      pub fn sync_fetch() -> String {
+          "sync data".to_string()
+      }
+
+      pub fn version() -> &'static str {
+          env!("CARGO_PKG_VERSION")
+      }
+
+      pub fn features() -> Vec<&'static str> {
+          let mut features = Vec::new();
+          #[cfg(feature = "async")]
+          features.push("async");
+          #[cfg(feature = "serde")]
+          features.push("serde");
+          features
+      }
+  commit_message: Update files
+fragments:
+- id: cargo
+  selector:
+    path: Cargo.toml
+    anchor: serde = ["dep:serde", "dep:serde_json"]
+- id: cargo_1
+  selector:
+    path: Cargo.toml
+    anchor: full = ["async", "serde"]
+- id: lib
+  selector:
+    path: src/lib.rs
+    anchor: '#[cfg(feature = "serde")]'
+- id: lib_1
+  selector:
+    path: src/lib.rs
+    anchor: pub mod serialization
+- id: no_telemetry
+  selector:
+    path: src/telemetry.rs
+- id: no_config
+  selector:
+    path: src/config.rs
+- id: no_benchmarks
+  selector:
+    path: benches/benchmarks.rs
+- id: no_compat
+  selector:
+    path: src/compat.rs
+- id: no_feature_tests
+  selector:
+    path: tests/feature_tests.rs
+- id: no_global_0
+  selector:
+    anchor: MetricsCollector
+- id: no_global_1
+  selector:
+    anchor: uptime_secs
+- id: no_global_2
+  selector:
+    anchor: struct AppConfig
+- id: no_global_3
+  selector:
+    anchor: serde_support
+- id: no_global_4
+  selector:
+    anchor: Benchmark placeholder
+- id: no_global_5
+  selector:
+    anchor: fetch_and_serialize
+- id: no_global_6
+  selector:
+    anchor: serialize_version
+- id: no_global_7
+  selector:
+    anchor: check_features
+- id: no_global_8
+  selector:
+    anchor: test_serialization
+- id: no_global_9
+  selector:
+    anchor: test_fetch_with_timeout
+oracle:
+  required:
+  - cargo
+  - cargo_1
+  - lib
+  - lib_1
+  allowed: []
+  forbidden:
+  - no_telemetry
+  - no_config
+  - no_benchmarks
+  - no_compat
+  - no_feature_tests
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

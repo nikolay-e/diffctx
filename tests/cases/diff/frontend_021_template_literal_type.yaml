@@ -1,0 +1,86 @@
+name: frontend_021_template_literal_type
+repo:
+  initial_files:
+    src/events.ts: |
+      export type EventCategory = 'user' | 'system' | 'api';
+      export type EventAction = 'created' | 'updated' | 'deleted';
+    src/template_types.ts: |
+      console.log('initial');
+    src/types/routes.ts: |
+      export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+      export interface RouteDefinition {
+          method: HttpMethod;
+          path: string;
+          handler: string;
+      }
+    src/config/constants.ts: |
+      export const SUPPORTED_FORMATS = ['json', 'xml', 'csv'] as const;
+      export type SupportedFormat = typeof SUPPORTED_FORMATS[number];
+  changed_files:
+    src/events.ts: |
+      export type EventCategory = 'user' | 'system' | 'api';
+      export type EventAction = 'created' | 'updated' | 'deleted';
+    src/template_types.ts: |
+      import { EventCategory, EventAction } from './events';
+
+      export type EventName = `${EventCategory}:${EventAction}`;
+
+      export type Getters<T> = {
+          [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];
+      };
+
+      export type Setters<T> = {
+          [K in keyof T as `set${Capitalize<string & K>}`]: (value: T[K]) => void;
+      };
+    src/types/routes.ts: |
+      export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+      export interface RouteDefinition {
+          method: HttpMethod;
+          path: string;
+          handler: string;
+      }
+    src/config/constants.ts: |
+      export const SUPPORTED_FORMATS = ['json', 'xml', 'csv'] as const;
+      export type SupportedFormat = typeof SUPPORTED_FORMATS[number];
+  commit_message: Update files
+fragments:
+- id: events
+  selector:
+    path: src/events.ts
+    anchor: type EventCategory = 'user' | 'system' | 'api'
+- id: events_1
+  selector:
+    path: src/events.ts
+    anchor: type EventAction = 'created' | 'updated' | 'deleted'
+- id: no_routes
+  selector:
+    path: src/types/routes.ts
+- id: no_constants
+  selector:
+    path: src/config/constants.ts
+- id: no_global_0
+  selector:
+    anchor: RouteDefinition
+- id: no_global_1
+  selector:
+    anchor: HttpMethod
+- id: no_global_2
+  selector:
+    anchor: SUPPORTED_FORMATS
+- id: no_global_3
+  selector:
+    anchor: SupportedFormat
+oracle:
+  required:
+  - events
+  - events_1
+  allowed: []
+  forbidden:
+  - no_routes
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

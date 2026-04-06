@@ -1,0 +1,143 @@
+name: dependencies_035_test_fixture_changed_find_using_tests
+repo:
+  initial_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def mock_api():
+          return {"status": "ok"}
+    tests/test_client.py: |
+      def test_fetch(mock_api):
+          assert mock_api["status"] == "ok"
+    tests/test_sync.py: |
+      def test_sync(mock_api):
+          assert mock_api["status"] == "ok"
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP035_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP035_INTEG_FIXTURE_B = True
+
+      @pytest.fixture
+      def mock_api():
+          GARBAGE_DEP035_INTEG_MOCKAPI_C = "integration_mock"
+          return {"status": "ok", "version": "3.0", "integration": True}
+    tests/test_auth.py: |
+      GARBAGE_DEP035_AUTHTEST_D = "auth_test_module"
+      GARBAGE_DEP035_AUTHTEST_INIT_E = True
+
+      def test_auth_check(mock_api):
+          GARBAGE_DEP035_AUTHTEST_RUN_F = "running"
+          assert mock_api["status"] == "ok"
+    tests/test_cache.py: |
+      GARBAGE_DEP035_CACHETEST_G = "cache_test_module"
+      GARBAGE_DEP035_CACHETEST_INIT_H = True
+
+      def test_cache_status(mock_api):
+          GARBAGE_DEP035_CACHETEST_RUN_I = "running"
+          assert "status" in mock_api
+  changed_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def mock_api():
+          return {"status": "ok", "version": "2.0"}
+    tests/test_client.py: |
+      def test_fetch(mock_api):
+          assert mock_api["status"] == "ok"
+    tests/test_sync.py: |
+      def test_sync(mock_api):
+          assert mock_api["status"] == "ok"
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP035_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP035_INTEG_FIXTURE_B = True
+
+      @pytest.fixture
+      def mock_api():
+          GARBAGE_DEP035_INTEG_MOCKAPI_C = "integration_mock"
+          return {"status": "ok", "version": "3.0", "integration": True}
+    tests/test_auth.py: |
+      GARBAGE_DEP035_AUTHTEST_D = "auth_test_module"
+      GARBAGE_DEP035_AUTHTEST_INIT_E = True
+
+      def test_auth_check(mock_api):
+          GARBAGE_DEP035_AUTHTEST_RUN_F = "running"
+          assert mock_api["status"] == "ok"
+    tests/test_cache.py: |
+      GARBAGE_DEP035_CACHETEST_G = "cache_test_module"
+      GARBAGE_DEP035_CACHETEST_INIT_H = True
+
+      def test_cache_status(mock_api):
+          GARBAGE_DEP035_CACHETEST_RUN_I = "running"
+          assert "status" in mock_api
+  commit_message: Update files
+fragments:
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: 'return {"status": "ok", "version": "2.0"}'
+- id: conftest_1
+  selector:
+    path: tests/conftest.py
+    anchor: 'def mock_api():'
+- id: conftest_2
+  selector:
+    path: tests/conftest.py
+    anchor: '@pytest.fixture'
+- id: no_conftest
+  selector:
+    path: tests/integration/conftest.py
+- id: no_test_auth
+  selector:
+    path: tests/test_auth.py
+- id: no_test_cache
+  selector:
+    path: tests/test_cache.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP035_INTEG_CONFTEST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP035_INTEG_FIXTURE_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP035_INTEG_MOCKAPI_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP035_AUTHTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP035_AUTHTEST_INIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP035_AUTHTEST_RUN_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP035_CACHETEST_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP035_CACHETEST_INIT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP035_CACHETEST_RUN_I
+oracle:
+  required:
+  - conftest
+  - conftest_1
+  - conftest_2
+  allowed: []
+  forbidden:
+  - no_conftest
+  - no_test_auth
+  - no_test_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

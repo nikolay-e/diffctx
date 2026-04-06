@@ -1,0 +1,165 @@
+name: javascript_extended_024_response_json
+repo:
+  initial_files:
+    src/handlers/data-handler.ts: |
+      import { Request, Response } from 'express';
+
+      export function getDataHandler(req: Request, res: Response) {
+          res.json({ message: 'placeholder' });
+      }
+    src/services/response-service.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          success: boolean;
+          timestamp: number;
+      }
+
+      export function createResponse<T>(data: T): ApiResponse<T> {
+          return { data, success: true, timestamp: Date.now() };
+      }
+    src/handlers/status-handler.ts: |
+      import { Request, Response } from 'express';
+      import { createResponse } from '../services/response-service';
+
+      export function getStatusHandler(req: Request, res: Response) {
+          const status = { healthy: true, version: '1.0.0' };
+          res.json(createResponse(status));
+      }
+    src/services/logging-service.ts: |
+      interface LogEntry {
+          method: string;
+          path: string;
+          statusCode: number;
+          durationMs: number;
+          timestamp: Date;
+      }
+
+      const logs: LogEntry[] = [];
+
+      export function logRequest(method: string, path: string, statusCode: number, durationMs: number): void {
+          logs.push({ method, path, statusCode, durationMs, timestamp: new Date() });
+      }
+
+      export function getRecentLogs(limit: number = 100): LogEntry[] {
+          return logs.slice(-limit);
+      }
+    src/middleware/error-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function globalErrorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
+          console.error('Unhandled error:', err.message);
+          res.status(500).json({ error: 'Internal server error' });
+      }
+
+      export function notFoundHandler(req: Request, res: Response): void {
+          res.status(404).json({ error: 'Not found', path: req.path });
+      }
+  changed_files:
+    src/handlers/data-handler.ts: |
+      import { Request, Response } from 'express';
+      import { createResponse } from '../services/response-service';
+
+      export function getDataHandler(req: Request, res: Response) {
+          const data = { message: 'Hello', items: [1, 2, 3] };
+          res.json(createResponse(data));
+      }
+    src/services/response-service.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          success: boolean;
+          timestamp: number;
+      }
+
+      export function createResponse<T>(data: T): ApiResponse<T> {
+          return { data, success: true, timestamp: Date.now() };
+      }
+    src/handlers/status-handler.ts: |
+      import { Request, Response } from 'express';
+      import { createResponse } from '../services/response-service';
+
+      export function getStatusHandler(req: Request, res: Response) {
+          const status = { healthy: true, version: '1.0.0' };
+          res.json(createResponse(status));
+      }
+    src/services/logging-service.ts: |
+      interface LogEntry {
+          method: string;
+          path: string;
+          statusCode: number;
+          durationMs: number;
+          timestamp: Date;
+      }
+
+      const logs: LogEntry[] = [];
+
+      export function logRequest(method: string, path: string, statusCode: number, durationMs: number): void {
+          logs.push({ method, path, statusCode, durationMs, timestamp: new Date() });
+      }
+
+      export function getRecentLogs(limit: number = 100): LogEntry[] {
+          return logs.slice(-limit);
+      }
+    src/middleware/error-handler.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function globalErrorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
+          console.error('Unhandled error:', err.message);
+          res.status(500).json({ error: 'Internal server error' });
+      }
+
+      export function notFoundHandler(req: Request, res: Response): void {
+          res.status(404).json({ error: 'Not found', path: req.path });
+      }
+  commit_message: Update files
+fragments:
+- id: response_service
+  selector:
+    path: src/services/response-service.ts
+    anchor: ApiResponse
+- id: response_service_1
+  selector:
+    path: src/services/response-service.ts
+    anchor: createResponse
+- id: response_service_2
+  selector:
+    path: src/services/response-service.ts
+    anchor: 'success: true'
+- id: no_logging_service
+  selector:
+    path: src/services/logging-service.ts
+- id: no_error_handler
+  selector:
+    path: src/middleware/error-handler.ts
+- id: no_global_0
+  selector:
+    anchor: LogEntry
+- id: no_global_1
+  selector:
+    anchor: logRequest
+- id: no_global_2
+  selector:
+    anchor: getRecentLogs
+- id: no_global_3
+  selector:
+    anchor: globalErrorHandler
+- id: no_global_4
+  selector:
+    anchor: notFoundHandler
+- id: no_global_5
+  selector:
+    anchor: Internal server error
+oracle:
+  required:
+  - response_service
+  - response_service_1
+  - response_service_2
+  allowed: []
+  forbidden:
+  - no_logging_service
+  - no_error_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

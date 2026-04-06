@@ -1,0 +1,180 @@
+name: javascript_extended_033_forward_ref
+repo:
+  initial_files:
+    src/form/Input.tsx: |
+      import { forwardRef } from 'react';
+
+      interface InputProps {
+          label: string;
+          type?: string;
+      }
+
+      export const Input = forwardRef<HTMLInputElement, InputProps>(
+          ({ label, type = 'text' }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <input ref={ref} type={type} />
+              </div>
+          )
+      );
+    src/form/Form.tsx: |
+      console.log('initial');
+    src/form/select.tsx: |
+      interface SelectOption {
+          value: string;
+          label: string;
+      }
+
+      interface SelectProps {
+          options: SelectOption[];
+          value: string;
+          onChange: (value: string) => void;
+          placeholder?: string;
+      }
+
+      export function Select({ options, value, onChange, placeholder }: SelectProps) {
+          return (
+              <select value={value} onChange={e => onChange(e.target.value)}>
+                  {placeholder && <option value="">{placeholder}</option>}
+                  {options.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+              </select>
+          );
+      }
+    src/validation/rules.ts: |
+      type ValidationRule = (value: string) => string | null;
+
+      export const required: ValidationRule = (value) =>
+          value.trim() ? null : 'This field is required';
+
+      export const minLength = (min: number): ValidationRule => (value) =>
+          value.length >= min ? null : `Must be at least ${min} characters`;
+
+      export const emailFormat: ValidationRule = (value) =>
+          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email format';
+
+      export function validate(value: string, rules: ValidationRule[]): string[] {
+          return rules.map(rule => rule(value)).filter((msg): msg is string => msg !== null);
+      }
+  changed_files:
+    src/form/Input.tsx: |
+      import { forwardRef } from 'react';
+
+      interface InputProps {
+          label: string;
+          type?: string;
+      }
+
+      export const Input = forwardRef<HTMLInputElement, InputProps>(
+          ({ label, type = 'text' }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <input ref={ref} type={type} />
+              </div>
+          )
+      );
+    src/form/Form.tsx: |
+      import { useRef } from 'react';
+      import { Input } from './Input';
+
+      export function Form() {
+          const emailRef = useRef<HTMLInputElement>(null);
+
+          const handleSubmit = () => {
+              emailRef.current?.focus();
+          };
+
+          return (
+              <form onSubmit={handleSubmit}>
+                  <Input ref={emailRef} label="Email" type="email" />
+              </form>
+          );
+      }
+    src/form/select.tsx: |
+      interface SelectOption {
+          value: string;
+          label: string;
+      }
+
+      interface SelectProps {
+          options: SelectOption[];
+          value: string;
+          onChange: (value: string) => void;
+          placeholder?: string;
+      }
+
+      export function Select({ options, value, onChange, placeholder }: SelectProps) {
+          return (
+              <select value={value} onChange={e => onChange(e.target.value)}>
+                  {placeholder && <option value="">{placeholder}</option>}
+                  {options.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+              </select>
+          );
+      }
+    src/validation/rules.ts: |
+      type ValidationRule = (value: string) => string | null;
+
+      export const required: ValidationRule = (value) =>
+          value.trim() ? null : 'This field is required';
+
+      export const minLength = (min: number): ValidationRule => (value) =>
+          value.length >= min ? null : `Must be at least ${min} characters`;
+
+      export const emailFormat: ValidationRule = (value) =>
+          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email format';
+
+      export function validate(value: string, rules: ValidationRule[]): string[] {
+          return rules.map(rule => rule(value)).filter((msg): msg is string => msg !== null);
+      }
+  commit_message: Update files
+fragments:
+- id: input
+  selector:
+    path: src/form/Input.tsx
+    anchor: forwardRef
+- id: input_1
+  selector:
+    path: src/form/Input.tsx
+    anchor: InputProps
+- id: input_2
+  selector:
+    path: src/form/Input.tsx
+    anchor: ref
+- id: no_select
+  selector:
+    path: src/form/select.tsx
+- id: no_rules
+  selector:
+    path: src/validation/rules.ts
+- id: no_global_0
+  selector:
+    anchor: SelectOption
+- id: no_global_1
+  selector:
+    anchor: SelectProps
+- id: no_global_2
+  selector:
+    anchor: ValidationRule
+- id: no_global_3
+  selector:
+    anchor: emailFormat
+- id: no_global_4
+  selector:
+    anchor: validate
+oracle:
+  required:
+  - input
+  - input_1
+  - input_2
+  allowed: []
+  forbidden:
+  - no_select
+  - no_rules
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,207 @@
+name: java_023_application_properties
+repo:
+  initial_files:
+    src/main/resources/application.properties: |
+      server.port=8080
+      spring.application.name=order-service
+      spring.datasource.url=jdbc:postgresql://localhost:5432/orders
+      spring.datasource.username=app
+      spring.datasource.password=${DB_PASSWORD}
+      spring.jpa.hibernate.ddl-auto=validate
+      spring.jpa.show-sql=false
+      logging.level.root=INFO
+      logging.level.com.example=DEBUG
+    src/main/java/com/example/orders/config/DataSourceConfig.java: |
+      package com.example.orders.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.context.annotation.Configuration;
+
+      @Configuration
+      public class DataSourceConfig {
+          @Value("${spring.datasource.url}")
+          private String datasourceUrl;
+
+          @Value("${server.port}")
+          private int serverPort;
+
+          public String getDatasourceUrl() {
+              return datasourceUrl;
+          }
+
+          public int getServerPort() {
+              return serverPort;
+          }
+      }
+    src/main/java/com/example/orders/OrderApplication.java: |
+      package com.example.orders;
+
+      import org.springframework.boot.SpringApplication;
+      import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+      @SpringBootApplication
+      public class OrderApplication {
+          public static void main(String[] args) {
+              SpringApplication.run(OrderApplication.class, args);
+          }
+      }
+    src/main/java/com/example/orders/controller/OrderController.java: |
+      package com.example.orders.controller;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.Map;
+
+      @RestController
+      @RequestMapping("/api/orders")
+      public class OrderController {
+          @Value("${spring.application.name}")
+          private String appName;
+
+          @GetMapping("/health")
+          public Map<String, String> health() {
+              return Map.of("service", appName, "status", "UP");
+          }
+
+          @PostMapping
+          public Map<String, String> createOrder(@RequestBody Map<String, Object> body) {
+              return Map.of("orderId", "ORD-" + System.currentTimeMillis());
+          }
+      }
+  changed_files:
+    src/main/resources/application.properties: |
+      server.port=8080
+      spring.application.name=order-service
+      spring.datasource.url=jdbc:postgresql://localhost:5432/orders
+      spring.datasource.username=app
+      spring.datasource.password=${DB_PASSWORD}
+      spring.jpa.hibernate.ddl-auto=validate
+      spring.jpa.show-sql=false
+      logging.level.root=INFO
+      logging.level.com.example=DEBUG
+      spring.cache.type=redis
+      spring.data.redis.host=${REDIS_HOST:localhost}
+      spring.data.redis.port=${REDIS_PORT:6379}
+      spring.data.redis.timeout=2000
+    src/main/java/com/example/orders/config/DataSourceConfig.java: |
+      package com.example.orders.config;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.context.annotation.Configuration;
+
+      @Configuration
+      public class DataSourceConfig {
+          @Value("${spring.datasource.url}")
+          private String datasourceUrl;
+
+          @Value("${server.port}")
+          private int serverPort;
+
+          public String getDatasourceUrl() {
+              return datasourceUrl;
+          }
+
+          public int getServerPort() {
+              return serverPort;
+          }
+      }
+    src/main/java/com/example/orders/OrderApplication.java: |
+      package com.example.orders;
+
+      import org.springframework.boot.SpringApplication;
+      import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+      @SpringBootApplication
+      public class OrderApplication {
+          public static void main(String[] args) {
+              SpringApplication.run(OrderApplication.class, args);
+          }
+      }
+    src/main/java/com/example/orders/controller/OrderController.java: |
+      package com.example.orders.controller;
+
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.web.bind.annotation.*;
+      import java.util.Map;
+
+      @RestController
+      @RequestMapping("/api/orders")
+      public class OrderController {
+          @Value("${spring.application.name}")
+          private String appName;
+
+          @GetMapping("/health")
+          public Map<String, String> health() {
+              return Map.of("service", appName, "status", "UP");
+          }
+
+          @PostMapping
+          public Map<String, String> createOrder(@RequestBody Map<String, Object> body) {
+              return Map.of("orderId", "ORD-" + System.currentTimeMillis());
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: application
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.cache.type=redis
+- id: application_1
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.data.redis.host
+- id: application_2
+  selector:
+    path: src/main/resources/application.properties
+    anchor: spring.data.redis.port
+- id: no_orderapplication
+  selector:
+    path: src/main/java/com/example/orders/OrderApplication.java
+- id: no_datasourceconfig
+  selector:
+    path: src/main/java/com/example/orders/config/DataSourceConfig.java
+- id: no_ordercontroller
+  selector:
+    path: src/main/java/com/example/orders/controller/OrderController.java
+- id: no_global_0
+  selector:
+    anchor: OrderApplication
+- id: no_global_1
+  selector:
+    anchor: SpringApplication.run
+- id: no_global_2
+  selector:
+    anchor: DataSourceConfig
+- id: no_global_3
+  selector:
+    anchor: getDatasourceUrl
+- id: no_global_4
+  selector:
+    anchor: getServerPort
+- id: no_global_5
+  selector:
+    anchor: OrderController
+- id: no_global_6
+  selector:
+    anchor: createOrder
+- id: no_global_7
+  selector:
+    anchor: /api/orders
+oracle:
+  required:
+  - application
+  - application_1
+  - application_2
+  allowed: []
+  forbidden:
+  - no_orderapplication
+  - no_datasourceconfig
+  - no_ordercontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

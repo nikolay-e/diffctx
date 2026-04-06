@@ -1,0 +1,433 @@
+name: shell_025_shebang
+repo:
+  initial_files:
+    lib/bash-utils.sh: |
+      #!/bin/bash
+
+      create_map() {
+          local -n map_ref=$1
+          shift
+          while [[ $# -ge 2 ]]; do
+              map_ref[$1]="$2"
+              shift 2
+          done
+      }
+
+      get_map_value() {
+          local -n map_ref=$1
+          local key=$2
+          if [[ -v map_ref[$key] ]]; then
+              echo "${map_ref[$key]}"
+          else
+              echo ""
+              return 1
+          fi
+      }
+
+      map_keys() {
+          local -n map_ref=$1
+          echo "${!map_ref[@]}"
+      }
+    runner.sh: |
+      #!/bin/bash
+      source ./lib/bash-utils.sh
+
+      echo "Running application"
+      echo "Bash version: $BASH_VERSION"
+    posix-utils.sh: |
+      #!/bin/sh
+
+      join_strings() {
+          local separator=$1
+          shift
+          local result=""
+          for item in "$@"; do
+              if [ -z "$result" ]; then
+                  result="$item"
+              else
+                  result="${result}${separator}${item}"
+              fi
+          done
+          echo "$result"
+      }
+
+      to_lower() {
+          echo "$1" | tr '[:upper:]' '[:lower:]'
+      }
+
+      file_exists() {
+          [ -f "$1" ]
+      }
+    zsh-compat.sh: |
+      #!/bin/bash
+
+      is_zsh() {
+          [[ -n "$ZSH_VERSION" ]]
+      }
+
+      ensure_bash_compat() {
+          if is_zsh; then
+              emulate -L bash
+          fi
+      }
+
+      portable_readlink() {
+          if command -v greadlink > /dev/null; then
+              greadlink -f "$1"
+          elif command -v readlink > /dev/null; then
+              readlink -f "$1"
+          else
+              echo "$1"
+          fi
+      }
+    scripts/config_loader.sh: |
+      #!/usr/bin/env bash
+      source ./lib/bash-utils.sh
+
+      if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+          echo "Config loader requires bash 4+"
+          exit 1
+      fi
+
+      declare -A app_config
+      create_map app_config \
+          db_host "localhost" \
+          db_port "5432" \
+          db_name "myapp" \
+          cache_ttl "300"
+
+      echo "Database: $(get_map_value app_config db_host):$(get_map_value app_config db_port)"
+      echo "DB Name: $(get_map_value app_config db_name)"
+      echo "Cache TTL: $(get_map_value app_config cache_ttl)s"
+    scripts/version_check.sh: |
+      #!/bin/bash
+
+      check_bash_version() {
+          local required_major=${1:-4}
+          local required_minor=${2:-0}
+          local current_major="${BASH_VERSINFO[0]}"
+          local current_minor="${BASH_VERSINFO[1]}"
+
+          if [[ "$current_major" -lt "$required_major" ]] || \
+             [[ "$current_major" -eq "$required_major" && "$current_minor" -lt "$required_minor" ]]; then
+              echo "FAIL: Bash ${required_major}.${required_minor}+ required, found ${current_major}.${current_minor}"
+              return 1
+          fi
+          echo "OK: Bash ${current_major}.${current_minor} meets ${required_major}.${required_minor}+"
+          return 0
+      }
+
+      check_bash_version 4 3 || exit 1
+      echo "All version checks passed"
+    lib/array-utils.sh: |
+      #!/bin/bash
+
+      array_push() {
+          local -n arr_ref=$1
+          shift
+          arr_ref+=("$@")
+      }
+
+      array_pop() {
+          local -n arr_ref=$1
+          local last_index=$(( ${#arr_ref[@]} - 1 ))
+          if [[ $last_index -ge 0 ]]; then
+              echo "${arr_ref[$last_index]}"
+              unset "arr_ref[$last_index]"
+          fi
+      }
+
+      array_contains() {
+          local -n arr_ref=$1
+          local needle=$2
+          for item in "${arr_ref[@]}"; do
+              [[ "$item" == "$needle" ]] && return 0
+          done
+          return 1
+      }
+
+      array_join() {
+          local -n arr_ref=$1
+          local sep=${2:-,}
+          local result=""
+          for item in "${arr_ref[@]}"; do
+              result="${result:+${result}${sep}}${item}"
+          done
+          echo "$result"
+      }
+  changed_files:
+    lib/bash-utils.sh: |
+      #!/bin/bash
+
+      create_map() {
+          local -n map_ref=$1
+          shift
+          while [[ $# -ge 2 ]]; do
+              map_ref[$1]="$2"
+              shift 2
+          done
+      }
+
+      get_map_value() {
+          local -n map_ref=$1
+          local key=$2
+          if [[ -v map_ref[$key] ]]; then
+              echo "${map_ref[$key]}"
+          else
+              echo ""
+              return 1
+          fi
+      }
+
+      map_keys() {
+          local -n map_ref=$1
+          echo "${!map_ref[@]}"
+      }
+    runner.sh: |
+      #!/usr/bin/env bash
+      source ./lib/bash-utils.sh
+
+      if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+          echo "Bash 4.0+ required, found: $BASH_VERSION"
+          exit 1
+      fi
+
+      declare -A settings
+      create_map settings host localhost port 8080 debug true
+
+      echo "Running application with Bash $BASH_VERSION"
+      echo "Host: $(get_map_value settings host)"
+      echo "Port: $(get_map_value settings port)"
+    posix-utils.sh: |
+      #!/bin/sh
+
+      join_strings() {
+          local separator=$1
+          shift
+          local result=""
+          for item in "$@"; do
+              if [ -z "$result" ]; then
+                  result="$item"
+              else
+                  result="${result}${separator}${item}"
+              fi
+          done
+          echo "$result"
+      }
+
+      to_lower() {
+          echo "$1" | tr '[:upper:]' '[:lower:]'
+      }
+
+      file_exists() {
+          [ -f "$1" ]
+      }
+    zsh-compat.sh: |
+      #!/bin/bash
+
+      is_zsh() {
+          [[ -n "$ZSH_VERSION" ]]
+      }
+
+      ensure_bash_compat() {
+          if is_zsh; then
+              emulate -L bash
+          fi
+      }
+
+      portable_readlink() {
+          if command -v greadlink > /dev/null; then
+              greadlink -f "$1"
+          elif command -v readlink > /dev/null; then
+              readlink -f "$1"
+          else
+              echo "$1"
+          fi
+      }
+    scripts/config_loader.sh: |
+      #!/usr/bin/env bash
+      source ./lib/bash-utils.sh
+
+      if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+          echo "Config loader requires bash 4+"
+          exit 1
+      fi
+
+      declare -A app_config
+      create_map app_config \
+          db_host "localhost" \
+          db_port "5432" \
+          db_name "myapp" \
+          cache_ttl "300"
+
+      echo "Database: $(get_map_value app_config db_host):$(get_map_value app_config db_port)"
+      echo "DB Name: $(get_map_value app_config db_name)"
+      echo "Cache TTL: $(get_map_value app_config cache_ttl)s"
+    scripts/version_check.sh: |
+      #!/bin/bash
+
+      check_bash_version() {
+          local required_major=${1:-4}
+          local required_minor=${2:-0}
+          local current_major="${BASH_VERSINFO[0]}"
+          local current_minor="${BASH_VERSINFO[1]}"
+
+          if [[ "$current_major" -lt "$required_major" ]] || \
+             [[ "$current_major" -eq "$required_major" && "$current_minor" -lt "$required_minor" ]]; then
+              echo "FAIL: Bash ${required_major}.${required_minor}+ required, found ${current_major}.${current_minor}"
+              return 1
+          fi
+          echo "OK: Bash ${current_major}.${current_minor} meets ${required_major}.${required_minor}+"
+          return 0
+      }
+
+      check_bash_version 4 3 || exit 1
+      echo "All version checks passed"
+    lib/array-utils.sh: |
+      #!/bin/bash
+
+      array_push() {
+          local -n arr_ref=$1
+          shift
+          arr_ref+=("$@")
+      }
+
+      array_pop() {
+          local -n arr_ref=$1
+          local last_index=$(( ${#arr_ref[@]} - 1 ))
+          if [[ $last_index -ge 0 ]]; then
+              echo "${arr_ref[$last_index]}"
+              unset "arr_ref[$last_index]"
+          fi
+      }
+
+      array_contains() {
+          local -n arr_ref=$1
+          local needle=$2
+          for item in "${arr_ref[@]}"; do
+              [[ "$item" == "$needle" ]] && return 0
+          done
+          return 1
+      }
+
+      array_join() {
+          local -n arr_ref=$1
+          local sep=${2:-,}
+          local result=""
+          for item in "${arr_ref[@]}"; do
+              result="${result:+${result}${sep}}${item}"
+          done
+          echo "$result"
+      }
+  commit_message: Update files
+fragments:
+- id: bash_utils
+  selector:
+    path: lib/bash-utils.sh
+    anchor: create_map()
+- id: bash_utils_1
+  selector:
+    path: lib/bash-utils.sh
+    anchor: get_map_value()
+- id: bash_utils_2
+  selector:
+    path: lib/bash-utils.sh
+    anchor: local -n map_ref
+- id: runner
+  selector:
+    path: runner.sh
+    anchor: create_map settings
+- id: runner_1
+  selector:
+    path: runner.sh
+    anchor: get_map_value settings
+- id: runner_2
+  selector:
+    path: runner.sh
+    anchor: BASH_VERSINFO
+- id: no_posix_utils
+  selector:
+    path: posix-utils.sh
+- id: no_zsh_compat
+  selector:
+    path: zsh-compat.sh
+- id: no_config_loader
+  selector:
+    path: scripts/config_loader.sh
+- id: no_version_check
+  selector:
+    path: scripts/version_check.sh
+- id: no_array_utils
+  selector:
+    path: lib/array-utils.sh
+- id: no_global_0
+  selector:
+    anchor: join_strings
+- id: no_global_1
+  selector:
+    anchor: to_lower
+- id: no_global_2
+  selector:
+    anchor: file_exists
+- id: no_global_3
+  selector:
+    anchor: is_zsh
+- id: no_global_4
+  selector:
+    anchor: ensure_bash_compat
+- id: no_global_5
+  selector:
+    anchor: portable_readlink
+- id: no_global_6
+  selector:
+    anchor: Config loader requires
+- id: no_global_7
+  selector:
+    anchor: app_config
+- id: no_global_8
+  selector:
+    anchor: Cache TTL
+- id: no_global_9
+  selector:
+    anchor: check_bash_version
+- id: no_global_10
+  selector:
+    anchor: All version checks passed
+- id: no_global_11
+  selector:
+    anchor: array_push
+- id: no_global_12
+  selector:
+    anchor: array_pop
+- id: no_global_13
+  selector:
+    anchor: array_contains
+oracle:
+  required:
+  - bash_utils
+  - bash_utils_1
+  - bash_utils_2
+  - runner
+  - runner_1
+  - runner_2
+  allowed: []
+  forbidden:
+  - no_posix_utils
+  - no_zsh_compat
+  - no_config_loader
+  - no_version_check
+  - no_array_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

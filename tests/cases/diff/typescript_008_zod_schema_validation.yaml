@@ -1,0 +1,322 @@
+name: typescript_008_zod_schema_validation
+repo:
+  initial_files:
+    src/schemas/common.ts: |
+      import { z } from 'zod';
+
+      export const uuidSchema = z.string().uuid();
+      export const emailSchema = z.string().email();
+      export const dateSchema = z.coerce.date();
+
+      export const addressSchema = z.object({
+        street: z.string().min(1),
+        city: z.string().min(1),
+        state: z.string().length(2),
+        postalCode: z.string().regex(/^\d{5}$/),
+        country: z.string().length(2).default('US'),
+      });
+
+      export const moneySchema = z.object({
+        amount: z.number().nonnegative(),
+        currency: z.enum(['USD', 'EUR', 'GBP']),
+      });
+
+      export type Address = z.infer<typeof addressSchema>;
+      export type Money = z.infer<typeof moneySchema>;
+    src/schemas/user.ts: |
+      import { z } from 'zod';
+      import { uuidSchema, emailSchema, addressSchema } from './common';
+
+      export const userRoleSchema = z.enum(['admin', 'user', 'guest']);
+
+      export const userSchema = z.object({
+        id: uuidSchema,
+        email: emailSchema,
+        firstName: z.string().min(1).max(50),
+        lastName: z.string().min(1).max(50),
+        role: userRoleSchema,
+        address: addressSchema.optional(),
+      });
+
+      export type UserRole = z.infer<typeof userRoleSchema>;
+      export type User = z.infer<typeof userSchema>;
+    src/schemas/order.ts: |
+      console.log('placeholder');
+    src/unrelated/billing.ts: |
+      // GARBAGE_TS_008_BILLING_001 - billing calculations
+      import { z } from 'zod';
+
+      export const GARBAGE_TS_008_TAX_RATES_002 = {
+        US: 0.08,
+        CA: 0.13,
+        UK: 0.20,
+      } as const;
+
+      export const GARBAGE_TS_008_billingPeriodSchema_003 = z.enum(['monthly', 'yearly']);
+
+      export class GARBAGE_TS_008_BillingCalculator_004 {
+        private readonly GARBAGE_TS_008_PRECISION_005 = 2;
+
+        calculateSubtotal(items: Array<{ quantity: number; unitPrice: number }>): number {
+          return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+        }
+
+        calculateTax(subtotal: number, countryCode: keyof typeof GARBAGE_TS_008_TAX_RATES_002): number {
+          const rate = GARBAGE_TS_008_TAX_RATES_002[countryCode] || 0;
+          return Number((subtotal * rate).toFixed(this.GARBAGE_TS_008_PRECISION_005));
+        }
+      }
+
+      export const GARBAGE_TS_008_billingCalculator_006 = new GARBAGE_TS_008_BillingCalculator_004();
+    src/unrelated/reports.ts: |
+      // GARBAGE_TS_008_REPORTS_007 - report generation
+      import { z } from 'zod';
+
+      export const GARBAGE_TS_008_reportTypeSchema_008 = z.enum(['sales', 'inventory', 'financial']);
+
+      export interface GARBAGE_TS_008_ReportResult_009 {
+        id: string;
+        type: z.infer<typeof GARBAGE_TS_008_reportTypeSchema_008>;
+        generatedAt: Date;
+        data: unknown;
+      }
+
+      export class GARBAGE_TS_008_ReportGenerator_010 {
+        private readonly GARBAGE_TS_008_MAX_ROWS_011 = 10000;
+
+        async generate(type: string): Promise<GARBAGE_TS_008_ReportResult_009> {
+          return {
+            id: 'report_' + Date.now(),
+            type: type as z.infer<typeof GARBAGE_TS_008_reportTypeSchema_008>,
+            generatedAt: new Date(),
+            data: [],
+          };
+        }
+      }
+
+      export const GARBAGE_TS_008_reportGenerator_012 = new GARBAGE_TS_008_ReportGenerator_010();
+  changed_files:
+    src/schemas/common.ts: |
+      import { z } from 'zod';
+
+      export const uuidSchema = z.string().uuid();
+      export const emailSchema = z.string().email();
+      export const dateSchema = z.coerce.date();
+
+      export const addressSchema = z.object({
+        street: z.string().min(1),
+        city: z.string().min(1),
+        state: z.string().length(2),
+        postalCode: z.string().regex(/^\d{5}$/),
+        country: z.string().length(2).default('US'),
+      });
+
+      export const moneySchema = z.object({
+        amount: z.number().nonnegative(),
+        currency: z.enum(['USD', 'EUR', 'GBP']),
+      });
+
+      export type Address = z.infer<typeof addressSchema>;
+      export type Money = z.infer<typeof moneySchema>;
+    src/schemas/user.ts: |
+      import { z } from 'zod';
+      import { uuidSchema, emailSchema, addressSchema } from './common';
+
+      export const userRoleSchema = z.enum(['admin', 'user', 'guest']);
+
+      export const userSchema = z.object({
+        id: uuidSchema,
+        email: emailSchema,
+        firstName: z.string().min(1).max(50),
+        lastName: z.string().min(1).max(50),
+        role: userRoleSchema,
+        address: addressSchema.optional(),
+      });
+
+      export type UserRole = z.infer<typeof userRoleSchema>;
+      export type User = z.infer<typeof userSchema>;
+    src/schemas/order.ts: |
+      import { z } from 'zod';
+      import { uuidSchema, dateSchema, addressSchema, moneySchema } from './common';
+      import { userSchema } from './user';
+
+      export const orderStatusSchema = z.enum([
+        'pending',
+        'confirmed',
+        'shipped',
+        'delivered',
+        'cancelled',
+      ]);
+
+      export const orderLineItemSchema = z.object({
+        id: uuidSchema,
+        description: z.string().min(1),
+        quantity: z.number().positive(),
+        unitPrice: z.number().nonnegative(),
+        total: z.number().nonnegative(),
+      });
+
+      export const orderSchema = z.object({
+        id: uuidSchema,
+        status: orderStatusSchema,
+        customer: z.object({
+          name: z.string().min(1),
+          email: z.string().email(),
+          billingAddress: addressSchema,
+        }),
+        lineItems: z.array(orderLineItemSchema).min(1),
+        subtotal: moneySchema,
+        total: moneySchema,
+        createdAt: dateSchema,
+      });
+
+      export type OrderStatus = z.infer<typeof orderStatusSchema>;
+      export type OrderLineItem = z.infer<typeof orderLineItemSchema>;
+      export type Order = z.infer<typeof orderSchema>;
+
+      export function validateOrder(data: unknown): { success: true; data: Order } | { success: false; errors: z.ZodError } {
+        const result = orderSchema.safeParse(data);
+        if (result.success) {
+          return { success: true, data: result.data };
+        }
+        return { success: false, errors: result.error };
+      }
+
+      export function calculateOrderTotals(lineItems: OrderLineItem[], currency: 'USD' | 'EUR' | 'GBP') {
+        const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
+        return {
+          subtotal: { amount: subtotal, currency },
+          total: { amount: subtotal, currency },
+        };
+      }
+    src/unrelated/billing.ts: |
+      // GARBAGE_TS_008_BILLING_001 - billing calculations
+      import { z } from 'zod';
+
+      export const GARBAGE_TS_008_TAX_RATES_002 = {
+        US: 0.08,
+        CA: 0.13,
+        UK: 0.20,
+      } as const;
+
+      export const GARBAGE_TS_008_billingPeriodSchema_003 = z.enum(['monthly', 'yearly']);
+
+      export class GARBAGE_TS_008_BillingCalculator_004 {
+        private readonly GARBAGE_TS_008_PRECISION_005 = 2;
+
+        calculateSubtotal(items: Array<{ quantity: number; unitPrice: number }>): number {
+          return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+        }
+
+        calculateTax(subtotal: number, countryCode: keyof typeof GARBAGE_TS_008_TAX_RATES_002): number {
+          const rate = GARBAGE_TS_008_TAX_RATES_002[countryCode] || 0;
+          return Number((subtotal * rate).toFixed(this.GARBAGE_TS_008_PRECISION_005));
+        }
+      }
+
+      export const GARBAGE_TS_008_billingCalculator_006 = new GARBAGE_TS_008_BillingCalculator_004();
+    src/unrelated/reports.ts: |
+      // GARBAGE_TS_008_REPORTS_007 - report generation
+      import { z } from 'zod';
+
+      export const GARBAGE_TS_008_reportTypeSchema_008 = z.enum(['sales', 'inventory', 'financial']);
+
+      export interface GARBAGE_TS_008_ReportResult_009 {
+        id: string;
+        type: z.infer<typeof GARBAGE_TS_008_reportTypeSchema_008>;
+        generatedAt: Date;
+        data: unknown;
+      }
+
+      export class GARBAGE_TS_008_ReportGenerator_010 {
+        private readonly GARBAGE_TS_008_MAX_ROWS_011 = 10000;
+
+        async generate(type: string): Promise<GARBAGE_TS_008_ReportResult_009> {
+          return {
+            id: 'report_' + Date.now(),
+            type: type as z.infer<typeof GARBAGE_TS_008_reportTypeSchema_008>,
+            generatedAt: new Date(),
+            data: [],
+          };
+        }
+      }
+
+      export const GARBAGE_TS_008_reportGenerator_012 = new GARBAGE_TS_008_ReportGenerator_010();
+  commit_message: Update files
+fragments:
+- id: order_file
+  selector:
+    path: src/schemas/order.ts
+- id: req_global_0
+  selector:
+    anchor: orderStatusSchema = z.enum([
+- id: req_global_1
+  selector:
+    anchor: orderLineItemSchema = z.object({
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TS_008_BILLING_001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TS_008_BillingCalculator_004
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TS_008_MAX_ROWS_011
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TS_008_PRECISION_005
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_TS_008_REPORTS_007
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_TS_008_ReportGenerator_010
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_TS_008_ReportResult_009
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_TS_008_TAX_RATES_002
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_TS_008_TAX_RATES_002[countryCode
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_TS_008_billingCalculator_006
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_TS_008_billingPeriodSchema_003
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_TS_008_reportGenerator_012
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_TS_008_reportTypeSchema_008
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_TS_008_reportTypeSchema_008>
+- id: no_global_14
+  selector:
+    anchor: reports.ts
+oracle:
+  required:
+  - order_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

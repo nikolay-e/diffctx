@@ -1,0 +1,200 @@
+name: python_039_relative_import
+repo:
+  initial_files:
+    package/__init__.py: ''
+    package/models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class User:
+          user_id: int
+          name: str
+          email: str
+          role: str = "member"
+
+          def is_admin(self) -> bool:
+              return self.role == "admin"
+
+          def display_name(self) -> str:
+              return self.name or self.email.split("@")[0]
+
+          def has_verified_email(self) -> bool:
+              return "@" in self.email and "." in self.email
+    package/models/__init__.py: |
+      from .user import User
+    package/services/user_service.py: |
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def list_users(self):
+              return self.repository.find_all()
+
+          def find_admins(self):
+              pass
+    package/services/notification_service.py: |
+      from typing import Optional
+
+      class NotificationService:
+          def __init__(self, smtp_host: str, smtp_port: int = 587):
+              self.smtp_host = smtp_host
+              self.smtp_port = smtp_port
+              self._templates: dict[str, str] = {}
+
+          def send_welcome_email(self, user_email: str, user_name: str) -> bool:
+              subject = f"Welcome, {user_name}!"
+              return self._send(user_email, subject, "welcome")
+
+          def send_admin_notification(self, admin_email: str, event: str) -> bool:
+              subject = f"Admin Alert: {event}"
+              return self._send(admin_email, subject, "admin_alert")
+
+          def _send(self, to: str, subject: str, template: str) -> bool:
+              return True
+    package/middleware/auth_middleware.py: |
+      from typing import Optional
+
+      class AuthMiddleware:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def authenticate(self, token: str) -> Optional[dict]:
+              if not token:
+                  return None
+              return {"user_id": 1, "role": "admin"}
+
+          def require_role(self, role: str, user_context: dict) -> bool:
+              return user_context.get("role") == role
+  changed_files:
+    package/__init__.py: ''
+    package/models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class User:
+          user_id: int
+          name: str
+          email: str
+          role: str = "member"
+
+          def is_admin(self) -> bool:
+              return self.role == "admin"
+
+          def display_name(self) -> str:
+              return self.name or self.email.split("@")[0]
+
+          def has_verified_email(self) -> bool:
+              return "@" in self.email and "." in self.email
+    package/models/__init__.py: |
+      from .user import User
+    package/services/user_service.py: |
+      from ..models.user import User
+
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def list_users(self):
+              return self.repository.find_all()
+
+          def find_admins(self) -> list[User]:
+              all_users = self.repository.find_all()
+              return [u for u in all_users if u.is_admin()]
+    package/services/notification_service.py: |
+      from typing import Optional
+
+      class NotificationService:
+          def __init__(self, smtp_host: str, smtp_port: int = 587):
+              self.smtp_host = smtp_host
+              self.smtp_port = smtp_port
+              self._templates: dict[str, str] = {}
+
+          def send_welcome_email(self, user_email: str, user_name: str) -> bool:
+              subject = f"Welcome, {user_name}!"
+              return self._send(user_email, subject, "welcome")
+
+          def send_admin_notification(self, admin_email: str, event: str) -> bool:
+              subject = f"Admin Alert: {event}"
+              return self._send(admin_email, subject, "admin_alert")
+
+          def _send(self, to: str, subject: str, template: str) -> bool:
+              return True
+    package/middleware/auth_middleware.py: |
+      from typing import Optional
+
+      class AuthMiddleware:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def authenticate(self, token: str) -> Optional[dict]:
+              if not token:
+                  return None
+              return {"user_id": 1, "role": "admin"}
+
+          def require_role(self, role: str, user_context: dict) -> bool:
+              return user_context.get("role") == role
+  commit_message: Update files
+fragments:
+- id: user_service
+  selector:
+    path: package/services/user_service.py
+    anchor: from ..models.user import User
+- id: user_service_1
+  selector:
+    path: package/services/user_service.py
+    anchor: 'def find_admins(self) -> list[User]:'
+- id: user_service_2
+  selector:
+    path: package/services/user_service.py
+    anchor: u.is_admin()
+- id: user
+  selector:
+    path: package/models/user.py
+    anchor: def is_admin(self) -> bool
+- id: user_1
+  selector:
+    path: package/models/user.py
+    anchor: return self.role == "admin"
+- id: no_notification_service
+  selector:
+    path: package/services/notification_service.py
+- id: no_auth_middleware
+  selector:
+    path: package/middleware/auth_middleware.py
+- id: no_global_0
+  selector:
+    anchor: NotificationService
+- id: no_global_1
+  selector:
+    anchor: send_welcome_email
+- id: no_global_2
+  selector:
+    anchor: send_admin_notification
+- id: no_global_3
+  selector:
+    anchor: AuthMiddleware
+- id: no_global_4
+  selector:
+    anchor: require_role
+- id: no_global_5
+  selector:
+    anchor: secret_key
+oracle:
+  required:
+  - user_service
+  - user_service_1
+  - user_service_2
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_notification_service
+  - no_auth_middleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

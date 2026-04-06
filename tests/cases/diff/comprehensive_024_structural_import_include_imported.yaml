@@ -1,0 +1,45 @@
+name: comprehensive_024_structural_import_include_imported
+repo:
+  initial_files:
+    helpers.py: |
+      def normalize(data):
+          return [x.strip() for x in data]
+
+      def validate(data):
+          return all(x for x in data)
+    processor.py: |
+      def process(data):
+          return data
+  changed_files:
+    helpers.py: |
+      def normalize(data):
+          return [x.strip() for x in data]
+
+      def validate(data):
+          return all(x for x in data)
+    processor.py: |
+      from helpers import normalize, validate
+
+      def process(data):
+          data = normalize(data)
+          if validate(data):
+              return data
+          return []
+  commit_message: Update files
+fragments:
+- id: processor_file
+  selector:
+    path: processor.py
+- id: req_global_0
+  selector:
+    anchor: from helpers import normalize, validate
+- id: req_global_1
+  selector:
+    anchor: data = normalize(data)
+oracle:
+  required:
+  - processor_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

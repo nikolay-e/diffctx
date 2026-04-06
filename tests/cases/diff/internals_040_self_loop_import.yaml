@@ -1,0 +1,26 @@
+name: internals_040_self_loop_import
+repo:
+  initial_files:
+    self_import.py: |
+      def placeholder():
+          pass
+  changed_files:
+    self_import.py: |
+      from self_import import helper
+
+      def main():
+          helper()
+  commit_message: Update files
+fragments:
+- id: self_import_file
+  selector:
+    path: self_import.py
+- id: req_global_0
+  selector:
+    anchor: from self_import import helper
+oracle:
+  required:
+  - self_import_file
+  - req_global_0
+  allowed: []
+  forbidden: []

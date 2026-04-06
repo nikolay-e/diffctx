@@ -1,0 +1,232 @@
+name: php_013_anonymous_class
+repo:
+  initial_files:
+    src/Contracts/Handler.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface Handler {
+          public function handle(mixed $data): mixed;
+          public function supports(string $type): bool;
+      }
+    src/Pipeline/Pipeline.php: |
+      <?php
+      namespace App\Pipeline;
+
+      use App\Contracts\Handler;
+
+      class Pipeline {
+          private array $handlers = [];
+
+          public function addHandler(Handler $handler): self {
+              $this->handlers[] = $handler;
+              return $this;
+          }
+
+          public function process(mixed $data, string $type): mixed {
+              foreach ($this->handlers as $handler) {
+                  if ($handler->supports($type)) {
+                      $data = $handler->handle($data);
+                  }
+              }
+              return $data;
+          }
+      }
+    src/Pipeline/Middleware.php: |
+      <?php
+      namespace App\Pipeline;
+
+      class Middleware {
+          private array $stack = [];
+
+          public function addMiddleware(callable $middleware): self {
+              $this->stack[] = $middleware;
+              return $this;
+          }
+
+          public function process(mixed $request): mixed {
+              foreach ($this->stack as $middleware) {
+                  $request = $middleware($request);
+              }
+              return $request;
+          }
+
+          public function supports(string $contentType): bool {
+              return $contentType === 'application/json';
+          }
+      }
+    src/Events/EventDispatcher.php: |
+      <?php
+      namespace App\Events;
+
+      class EventDispatcher {
+          private array $listeners = [];
+
+          public function addListener(string $event, callable $handler): void {
+              $this->listeners[$event][] = $handler;
+          }
+
+          public function dispatch(string $event, mixed $data): mixed {
+              foreach ($this->listeners[$event] ?? [] as $handler) {
+                  $data = $handler($data);
+              }
+              return $data;
+          }
+
+          public function supports(string $event): bool {
+              return isset($this->listeners[$event]);
+          }
+      }
+  changed_files:
+    src/Contracts/Handler.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface Handler {
+          public function handle(mixed $data): mixed;
+          public function supports(string $type): bool;
+      }
+    src/Pipeline/Pipeline.php: |
+      <?php
+      namespace App\Pipeline;
+
+      use App\Contracts\Handler;
+
+      class Pipeline {
+          private array $handlers = [];
+
+          public function addHandler(Handler $handler): self {
+              $this->handlers[] = $handler;
+              return $this;
+          }
+
+          public function process(mixed $data, string $type): mixed {
+              foreach ($this->handlers as $handler) {
+                  if ($handler->supports($type)) {
+                      $data = $handler->handle($data);
+                  }
+              }
+              return $data;
+          }
+
+          public function addInlineHandler(string $type, callable $callback): self {
+              $this->handlers[] = new class($type, $callback) implements Handler {
+                  public function __construct(
+                      private string $supportedType,
+                      private $callback
+                  ) {}
+
+                  public function handle(mixed $data): mixed {
+                      return ($this->callback)($data);
+                  }
+
+                  public function supports(string $type): bool {
+                      return $type === $this->supportedType;
+                  }
+              };
+              return $this;
+          }
+      }
+    src/Pipeline/Middleware.php: |
+      <?php
+      namespace App\Pipeline;
+
+      class Middleware {
+          private array $stack = [];
+
+          public function addMiddleware(callable $middleware): self {
+              $this->stack[] = $middleware;
+              return $this;
+          }
+
+          public function process(mixed $request): mixed {
+              foreach ($this->stack as $middleware) {
+                  $request = $middleware($request);
+              }
+              return $request;
+          }
+
+          public function supports(string $contentType): bool {
+              return $contentType === 'application/json';
+          }
+      }
+    src/Events/EventDispatcher.php: |
+      <?php
+      namespace App\Events;
+
+      class EventDispatcher {
+          private array $listeners = [];
+
+          public function addListener(string $event, callable $handler): void {
+              $this->listeners[$event][] = $handler;
+          }
+
+          public function dispatch(string $event, mixed $data): mixed {
+              foreach ($this->listeners[$event] ?? [] as $handler) {
+                  $data = $handler($data);
+              }
+              return $data;
+          }
+
+          public function supports(string $event): bool {
+              return isset($this->listeners[$event]);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: pipeline
+  selector:
+    path: src/Pipeline/Pipeline.php
+    anchor: new class($type, $callback) implements Handler
+- id: pipeline_1
+  selector:
+    path: src/Pipeline/Pipeline.php
+    anchor: public function addInlineHandler
+- id: handler
+  selector:
+    path: src/Contracts/Handler.php
+    anchor: 'public function handle(mixed $data): mixed'
+- id: handler_1
+  selector:
+    path: src/Contracts/Handler.php
+    anchor: 'public function supports(string $type): bool'
+- id: no_middleware
+  selector:
+    path: src/Pipeline/Middleware.php
+- id: no_eventdispatcher
+  selector:
+    path: src/Events/EventDispatcher.php
+- id: no_global_0
+  selector:
+    anchor: Middleware
+- id: no_global_1
+  selector:
+    anchor: EventDispatcher
+- id: no_global_2
+  selector:
+    anchor: class Middleware
+- id: no_global_3
+  selector:
+    anchor: class EventDispatcher
+- id: no_global_4
+  selector:
+    anchor: addMiddleware
+- id: no_global_5
+  selector:
+    anchor: addListener
+oracle:
+  required:
+  - pipeline
+  - pipeline_1
+  - handler
+  - handler_1
+  allowed: []
+  forbidden:
+  - no_middleware
+  - no_eventdispatcher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

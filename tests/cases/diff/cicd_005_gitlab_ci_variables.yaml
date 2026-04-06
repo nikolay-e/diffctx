@@ -1,0 +1,438 @@
+name: cicd_005_gitlab_ci_variables
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      image: python:3.11-slim
+
+      variables:
+        DATABASE_URL: postgres://localhost/test
+        PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+      cache:
+        paths:
+          - .pip-cache/
+          - venv/
+
+      stages:
+        - test
+        - deploy
+
+      before_script:
+        - python -m venv venv
+        - source venv/bin/activate
+        - pip install -e ".[dev]"
+
+      test:
+        stage: test
+        script:
+          - pytest
+    src/config.py: |
+      import os
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class DatabaseConfig:
+          url: str
+          pool_size: int = 5
+          max_overflow: int = 10
+          echo: bool = False
+
+      @dataclass
+      class CacheConfig:
+          url: Optional[str] = None
+          ttl: int = 3600
+          prefix: str = "app:"
+
+      @dataclass
+      class AppConfig:
+          database: DatabaseConfig
+          cache: CacheConfig
+          debug: bool = False
+          environment: str = "development"
+
+      def load_config() -> AppConfig:
+          database_url = os.getenv("DATABASE_URL", "sqlite:///local.db")
+
+          database = DatabaseConfig(
+              url=database_url,
+              pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+              echo=os.getenv("DB_ECHO", "false").lower() == "true",
+          )
+
+          cache = CacheConfig(
+              url=os.getenv("REDIS_URL"),
+              ttl=int(os.getenv("CACHE_TTL", "3600")),
+          )
+
+          return AppConfig(
+              database=database,
+              cache=cache,
+              debug=os.getenv("DEBUG", "false").lower() == "true",
+              environment=os.getenv("ENVIRONMENT", "development"),
+          )
+    src/database.py: |
+      from sqlalchemy import create_engine
+      from sqlalchemy.orm import sessionmaker, Session
+      from contextlib import contextmanager
+      from typing import Generator
+
+      from .config import DatabaseConfig
+
+      class Database:
+          def __init__(self, config: DatabaseConfig):
+              self.engine = create_engine(
+                  config.url,
+                  pool_size=config.pool_size,
+                  max_overflow=config.max_overflow,
+                  echo=config.echo,
+              )
+              self.SessionLocal = sessionmaker(
+                  autocommit=False,
+                  autoflush=False,
+                  bind=self.engine,
+              )
+
+          @contextmanager
+          def session(self) -> Generator[Session, None, None]:
+              session = self.SessionLocal()
+              try:
+                  yield session
+                  session.commit()
+              except Exception:
+                  session.rollback()
+                  raise
+              finally:
+                  session.close()
+    garbage_logging.py: |
+      GARBAGE_CICD_005_LOG_MARKER_A = "debug"
+      GARBAGE_CICD_005_FORMAT_MARKER_B = "json"
+
+      class GarbageLogHandler:
+          GARBAGE_CICD_005_LEVEL_MARKER_C = "INFO"
+
+          def log(self, msg: str) -> None:
+              print(msg)
+    garbage_metrics.py: |
+      GARBAGE_CICD_005_METRIC_MARKER_D = "prometheus"
+      GARBAGE_CICD_005_PORT_MARKER_E = 9090
+
+      class GarbageMetricsCollector:
+          GARBAGE_CICD_005_ENABLED_MARKER_F = True
+
+          def collect(self) -> dict:
+              return {}
+    .gitlab-ci.staging.yml: |
+      GARBAGE_CICD_005_STAGING_G = "staging_ci"
+      GARBAGE_CICD_005_STGCI_H = "staging_pipeline"
+
+      image: python:3.11-slim
+
+      variables:
+        DATABASE_URL: postgres://staging-db/staging
+        REDIS_URL: redis://staging-redis:6379
+        PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+      stages:
+        - test
+
+      test:
+        stage: test
+        script:
+          - pytest --tb=short -q
+    scripts/db_setup.py: |
+      GARBAGE_CICD_005_DBSETUP_I = "db_setup_script"
+      GARBAGE_CICD_005_ENVREAD_J = "env_reader"
+
+      import os
+
+      def setup_database():
+          database_url = os.getenv("DATABASE_URL", "sqlite:///local.db")
+          redis_url = os.getenv("REDIS_URL")
+          print(f"Setting up database at {database_url}")
+          if redis_url:
+              print(f"Redis cache at {redis_url}")
+
+      if __name__ == "__main__":
+          setup_database()
+    .env.example: |
+      GARBAGE_CICD_005_ENVEX_K=env_template
+      GARBAGE_CICD_005_TEMPLATE_L=example_config
+
+      DATABASE_URL=postgres://localhost/dev
+      REDIS_URL=redis://localhost:6379
+      CI_DEBUG=false
+      DB_POOL_SIZE=5
+      CACHE_TTL=3600
+      ENVIRONMENT=development
+  changed_files:
+    .gitlab-ci.yml: |
+      image: python:3.11-slim
+
+      variables:
+        DATABASE_URL: postgres://db/prod
+        REDIS_URL: redis://redis:6379
+        CI_DEBUG: "true"
+        PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+      cache:
+        paths:
+          - .pip-cache/
+          - venv/
+
+      stages:
+        - test
+        - deploy
+
+      before_script:
+        - python -m venv venv
+        - source venv/bin/activate
+        - pip install -e ".[dev]"
+
+      test:
+        stage: test
+        script:
+          - pytest --tb=short
+    src/config.py: |
+      import os
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class DatabaseConfig:
+          url: str
+          pool_size: int = 5
+          max_overflow: int = 10
+          echo: bool = False
+
+      @dataclass
+      class CacheConfig:
+          url: Optional[str] = None
+          ttl: int = 3600
+          prefix: str = "app:"
+
+      @dataclass
+      class AppConfig:
+          database: DatabaseConfig
+          cache: CacheConfig
+          debug: bool = False
+          environment: str = "development"
+
+      def load_config() -> AppConfig:
+          database_url = os.getenv("DATABASE_URL", "sqlite:///local.db")
+
+          database = DatabaseConfig(
+              url=database_url,
+              pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+              echo=os.getenv("DB_ECHO", "false").lower() == "true",
+          )
+
+          cache = CacheConfig(
+              url=os.getenv("REDIS_URL"),
+              ttl=int(os.getenv("CACHE_TTL", "3600")),
+          )
+
+          return AppConfig(
+              database=database,
+              cache=cache,
+              debug=os.getenv("CI_DEBUG", "false").lower() == "true",
+              environment=os.getenv("ENVIRONMENT", "development"),
+          )
+    src/database.py: |
+      from sqlalchemy import create_engine
+      from sqlalchemy.orm import sessionmaker, Session
+      from contextlib import contextmanager
+      from typing import Generator
+
+      from .config import DatabaseConfig
+
+      class Database:
+          def __init__(self, config: DatabaseConfig):
+              self.engine = create_engine(
+                  config.url,
+                  pool_size=config.pool_size,
+                  max_overflow=config.max_overflow,
+                  echo=config.echo,
+              )
+              self.SessionLocal = sessionmaker(
+                  autocommit=False,
+                  autoflush=False,
+                  bind=self.engine,
+              )
+
+          @contextmanager
+          def session(self) -> Generator[Session, None, None]:
+              session = self.SessionLocal()
+              try:
+                  yield session
+                  session.commit()
+              except Exception:
+                  session.rollback()
+                  raise
+              finally:
+                  session.close()
+    garbage_logging.py: |
+      GARBAGE_CICD_005_LOG_MARKER_A = "debug"
+      GARBAGE_CICD_005_FORMAT_MARKER_B = "json"
+
+      class GarbageLogHandler:
+          GARBAGE_CICD_005_LEVEL_MARKER_C = "INFO"
+
+          def log(self, msg: str) -> None:
+              print(msg)
+    garbage_metrics.py: |
+      GARBAGE_CICD_005_METRIC_MARKER_D = "prometheus"
+      GARBAGE_CICD_005_PORT_MARKER_E = 9090
+
+      class GarbageMetricsCollector:
+          GARBAGE_CICD_005_ENABLED_MARKER_F = True
+
+          def collect(self) -> dict:
+              return {}
+    .gitlab-ci.staging.yml: |
+      GARBAGE_CICD_005_STAGING_G = "staging_ci"
+      GARBAGE_CICD_005_STGCI_H = "staging_pipeline"
+
+      image: python:3.11-slim
+
+      variables:
+        DATABASE_URL: postgres://staging-db/staging
+        REDIS_URL: redis://staging-redis:6379
+        PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+      stages:
+        - test
+
+      test:
+        stage: test
+        script:
+          - pytest --tb=short -q
+    scripts/db_setup.py: |
+      GARBAGE_CICD_005_DBSETUP_I = "db_setup_script"
+      GARBAGE_CICD_005_ENVREAD_J = "env_reader"
+
+      import os
+
+      def setup_database():
+          database_url = os.getenv("DATABASE_URL", "sqlite:///local.db")
+          redis_url = os.getenv("REDIS_URL")
+          print(f"Setting up database at {database_url}")
+          if redis_url:
+              print(f"Redis cache at {redis_url}")
+
+      if __name__ == "__main__":
+          setup_database()
+    .env.example: |
+      GARBAGE_CICD_005_ENVEX_K=env_template
+      GARBAGE_CICD_005_TEMPLATE_L=example_config
+
+      DATABASE_URL=postgres://localhost/dev
+      REDIS_URL=redis://localhost:6379
+      CI_DEBUG=false
+      DB_POOL_SIZE=5
+      CACHE_TTL=3600
+      ENVIRONMENT=development
+  commit_message: Update files
+fragments:
+- id: gitlab_ci
+  selector:
+    path: .gitlab-ci.yml
+    anchor: 'DATABASE_URL: postgres://db/prod'
+- id: gitlab_ci_1
+  selector:
+    path: .gitlab-ci.yml
+    anchor: 'REDIS_URL: redis://redis:6379'
+- id: gitlab_ci_2
+  selector:
+    path: .gitlab-ci.yml
+    anchor: 'CI_DEBUG: "true"'
+- id: gitlab_ci_3
+  selector:
+    path: .gitlab-ci.yml
+    anchor: '- pytest --tb=short'
+- id: config
+  selector:
+    path: src/config.py
+    anchor: os.getenv("CI_DEBUG", "false")
+- id: config_1
+  selector:
+    path: src/config.py
+    anchor: def load_config
+- id: no_garbage_logging
+  selector:
+    path: garbage_logging.py
+- id: no_garbage_metrics
+  selector:
+    path: garbage_metrics.py
+- id: no_gitlab_ci_staging
+  selector:
+    path: .gitlab-ci.staging.yml
+- id: no_db_setup
+  selector:
+    path: scripts/db_setup.py
+- id: no_env
+  selector:
+    path: .env.example
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_005_LOG_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_005_FORMAT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_005_LEVEL_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_005_METRIC_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_005_PORT_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_005_ENABLED_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD_005_STAGING_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD_005_STGCI_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD_005_DBSETUP_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD_005_ENVREAD_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_CICD_005_ENVEX_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_CICD_005_TEMPLATE_L
+oracle:
+  required:
+  - gitlab_ci
+  - gitlab_ci_1
+  - gitlab_ci_2
+  - gitlab_ci_3
+  - config
+  - config_1
+  allowed: []
+  forbidden:
+  - no_garbage_logging
+  - no_garbage_metrics
+  - no_gitlab_ci_staging
+  - no_db_setup
+  - no_env
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

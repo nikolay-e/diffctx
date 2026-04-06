@@ -1,0 +1,159 @@
+name: javascript_extended_032_custom_hook
+repo:
+  initial_files:
+    src/hooks/useApi.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useApi<T>(url: string) {
+          const [data, setData] = useState<T | null>(null);
+          const [loading, setLoading] = useState(true);
+          const [error, setError] = useState<Error | null>(null);
+
+          useEffect(() => {
+              fetch(url)
+                  .then(res => res.json())
+                  .then(setData)
+                  .catch(setError)
+                  .finally(() => setLoading(false));
+          }, [url]);
+
+          return { data, loading, error };
+      }
+    src/components/UserList.tsx: |
+      console.log('initial');
+    src/db/connection.ts: |
+      interface ConnectionConfig {
+          host: string;
+          port: number;
+          database: string;
+      }
+
+      let pool: ConnectionConfig | null = null;
+
+      export function initConnection(config: ConnectionConfig): void {
+          pool = config;
+      }
+
+      export function getConnection(): ConnectionConfig {
+          if (!pool) throw new Error('Database not initialized');
+          return pool;
+      }
+    src/logger/index.ts: |
+      type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function createLogger(namespace: string) {
+          return {
+              debug: (msg: string) => log('debug', namespace, msg),
+              info: (msg: string) => log('info', namespace, msg),
+              warn: (msg: string) => log('warn', namespace, msg),
+              error: (msg: string) => log('error', namespace, msg),
+          };
+      }
+
+      function log(level: LogLevel, namespace: string, msg: string): void {
+          console.log(`[${level}] ${namespace}: ${msg}`);
+      }
+  changed_files:
+    src/hooks/useApi.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useApi<T>(url: string) {
+          const [data, setData] = useState<T | null>(null);
+          const [loading, setLoading] = useState(true);
+          const [error, setError] = useState<Error | null>(null);
+
+          useEffect(() => {
+              fetch(url)
+                  .then(res => res.json())
+                  .then(setData)
+                  .catch(setError)
+                  .finally(() => setLoading(false));
+          }, [url]);
+
+          return { data, loading, error };
+      }
+    src/components/UserList.tsx: |
+      import { useApi } from '../hooks/useApi';
+
+      interface User {
+          id: string;
+          name: string;
+      }
+
+      export function UserList() {
+          const { data, loading, error } = useApi<User[]>('/api/users');
+          if (loading) return <div>Loading...</div>;
+          if (error) return <div>Error: {error.message}</div>;
+          return <ul>{data?.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+      }
+    src/db/connection.ts: |
+      interface ConnectionConfig {
+          host: string;
+          port: number;
+          database: string;
+      }
+
+      let pool: ConnectionConfig | null = null;
+
+      export function initConnection(config: ConnectionConfig): void {
+          pool = config;
+      }
+
+      export function getConnection(): ConnectionConfig {
+          if (!pool) throw new Error('Database not initialized');
+          return pool;
+      }
+    src/logger/index.ts: |
+      type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function createLogger(namespace: string) {
+          return {
+              debug: (msg: string) => log('debug', namespace, msg),
+              info: (msg: string) => log('info', namespace, msg),
+              warn: (msg: string) => log('warn', namespace, msg),
+              error: (msg: string) => log('error', namespace, msg),
+          };
+      }
+
+      function log(level: LogLevel, namespace: string, msg: string): void {
+          console.log(`[${level}] ${namespace}: ${msg}`);
+      }
+  commit_message: Update files
+fragments:
+- id: useapi
+  selector:
+    path: src/hooks/useApi.ts
+    anchor: useApi
+- id: no_connection
+  selector:
+    path: src/db/connection.ts
+- id: no_index
+  selector:
+    path: src/logger/index.ts
+- id: no_global_0
+  selector:
+    anchor: ConnectionConfig
+- id: no_global_1
+  selector:
+    anchor: initConnection
+- id: no_global_2
+  selector:
+    anchor: getConnection
+- id: no_global_3
+  selector:
+    anchor: createLogger
+- id: no_global_4
+  selector:
+    anchor: LogLevel
+oracle:
+  required:
+  - useapi
+  allowed: []
+  forbidden:
+  - no_connection
+  - no_index
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

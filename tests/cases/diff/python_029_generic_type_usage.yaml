@@ -1,0 +1,347 @@
+name: python_029_generic_type_usage
+repo:
+  initial_files:
+    containers.py: |
+      from typing import Generic, TypeVar, Optional
+
+      K = TypeVar('K')
+      V = TypeVar('V')
+
+      class Cache(Generic[K, V]):
+          def __init__(self, max_size: int = 100):
+              self._data: dict[K, V] = {}
+              self._max_size = max_size
+              self._access_count: dict[K, int] = {}
+
+          def get(self, key: K) -> Optional[V]:
+              if key in self._data:
+                  self._access_count[key] = self._access_count.get(key, 0) + 1
+                  return self._data[key]
+              return None
+
+          def set(self, key: K, value: V) -> None:
+              if len(self._data) >= self._max_size and key not in self._data:
+                  self._evict_least_used()
+              self._data[key] = value
+              self._access_count[key] = 0
+
+          def _evict_least_used(self) -> None:
+              if not self._access_count:
+                  return
+              least_used = min(self._access_count, key=self._access_count.get)
+              del self._data[least_used]
+              del self._access_count[least_used]
+
+          def size(self) -> int:
+              return len(self._data)
+    service.py: |
+      def run():
+          pass
+    test_service.py: |
+      from containers import Cache
+      from service import run
+
+      class TestSessionService:
+          def setup(self):
+              self.cache = Cache[str, dict](max_size=10)
+
+          def test_run_caches_result(self):
+              result = run("sess_1", {"key": "value"})
+              assert result["session"] == "sess_1"
+              second = run("sess_1", {"key": "other"})
+              assert second == result
+
+          def test_run_different_sessions(self):
+              r1 = run("sess_a", {"x": 1})
+              r2 = run("sess_b", {"x": 2})
+              assert r1 != r2
+    cache_warmer.py: |
+      from containers import Cache
+
+      class CacheWarmer:
+          def __init__(self, cache: Cache[str, dict]):
+              self._cache = cache
+
+          def warm(self, entries: list[tuple[str, dict]]) -> int:
+              count = 0
+              for key, value in entries:
+                  self._cache.set(key, value)
+                  count += 1
+              return count
+
+          def is_warm(self, key: str) -> bool:
+              return self._cache.get(key) is not None
+    type_coercion.py: |
+      from typing import Any, Type, Optional, Union
+
+      class CoercionError(Exception):
+          pass
+
+      def coerce(value: Any, target_type: Type) -> Any:
+          try:
+              if target_type == bool:
+                  if isinstance(value, str):
+                      return value.lower() in ('true', '1', 'yes')
+              return target_type(value)
+          except (ValueError, TypeError) as e:
+              raise CoercionError(f"Cannot coerce {type(value).__name__} to {target_type.__name__}") from e
+
+      def safe_coerce(value: Any, target_type: Type, default: Any = None) -> Any:
+          try:
+              return coerce(value, target_type)
+          except CoercionError:
+              return default
+    nullable.py: |
+      from typing import TypeVar, Generic, Optional, Callable
+
+      T = TypeVar('T')
+
+      class Nullable(Generic[T]):
+          def __init__(self, value: Optional[T] = None):
+              self._value = value
+
+          def is_present(self) -> bool:
+              return self._value is not None
+
+          def get(self) -> T:
+              if self._value is None:
+                  raise ValueError("Value is not present")
+              return self._value
+
+          def or_else(self, default: T) -> T:
+              return self._value if self._value is not None else default
+
+          def map(self, func: Callable[[T], T]) -> 'Nullable[T]':
+              if self._value is not None:
+                  return Nullable(func(self._value))
+              return Nullable()
+  changed_files:
+    containers.py: |
+      from typing import Generic, TypeVar, Optional
+
+      K = TypeVar('K')
+      V = TypeVar('V')
+
+      class Cache(Generic[K, V]):
+          def __init__(self, max_size: int = 100):
+              self._data: dict[K, V] = {}
+              self._max_size = max_size
+              self._access_count: dict[K, int] = {}
+
+          def get(self, key: K) -> Optional[V]:
+              if key in self._data:
+                  self._access_count[key] = self._access_count.get(key, 0) + 1
+                  return self._data[key]
+              return None
+
+          def set(self, key: K, value: V) -> None:
+              if len(self._data) >= self._max_size and key not in self._data:
+                  self._evict_least_used()
+              self._data[key] = value
+              self._access_count[key] = 0
+
+          def _evict_least_used(self) -> None:
+              if not self._access_count:
+                  return
+              least_used = min(self._access_count, key=self._access_count.get)
+              del self._data[least_used]
+              del self._access_count[least_used]
+
+          def size(self) -> int:
+              return len(self._data)
+    service.py: |
+      from containers import Cache
+
+      session_cache: Cache[str, dict] = Cache(max_size=500)
+
+      def run(session_id: str, payload: dict) -> dict:
+          cached = session_cache.get(session_id)
+          if cached is not None:
+              return cached
+          result = {"session": session_id, "data": payload}
+          session_cache.set(session_id, result)
+          return result
+    test_service.py: |
+      from containers import Cache
+      from service import run
+
+      class TestSessionService:
+          def setup(self):
+              self.cache = Cache[str, dict](max_size=10)
+
+          def test_run_caches_result(self):
+              result = run("sess_1", {"key": "value"})
+              assert result["session"] == "sess_1"
+              second = run("sess_1", {"key": "other"})
+              assert second == result
+
+          def test_run_different_sessions(self):
+              r1 = run("sess_a", {"x": 1})
+              r2 = run("sess_b", {"x": 2})
+              assert r1 != r2
+    cache_warmer.py: |
+      from containers import Cache
+
+      class CacheWarmer:
+          def __init__(self, cache: Cache[str, dict]):
+              self._cache = cache
+
+          def warm(self, entries: list[tuple[str, dict]]) -> int:
+              count = 0
+              for key, value in entries:
+                  self._cache.set(key, value)
+                  count += 1
+              return count
+
+          def is_warm(self, key: str) -> bool:
+              return self._cache.get(key) is not None
+    type_coercion.py: |
+      from typing import Any, Type, Optional, Union
+
+      class CoercionError(Exception):
+          pass
+
+      def coerce(value: Any, target_type: Type) -> Any:
+          try:
+              if target_type == bool:
+                  if isinstance(value, str):
+                      return value.lower() in ('true', '1', 'yes')
+              return target_type(value)
+          except (ValueError, TypeError) as e:
+              raise CoercionError(f"Cannot coerce {type(value).__name__} to {target_type.__name__}") from e
+
+      def safe_coerce(value: Any, target_type: Type, default: Any = None) -> Any:
+          try:
+              return coerce(value, target_type)
+          except CoercionError:
+              return default
+    nullable.py: |
+      from typing import TypeVar, Generic, Optional, Callable
+
+      T = TypeVar('T')
+
+      class Nullable(Generic[T]):
+          def __init__(self, value: Optional[T] = None):
+              self._value = value
+
+          def is_present(self) -> bool:
+              return self._value is not None
+
+          def get(self) -> T:
+              if self._value is None:
+                  raise ValueError("Value is not present")
+              return self._value
+
+          def or_else(self, default: T) -> T:
+              return self._value if self._value is not None else default
+
+          def map(self, func: Callable[[T], T]) -> 'Nullable[T]':
+              if self._value is not None:
+                  return Nullable(func(self._value))
+              return Nullable()
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: from containers import Cache
+- id: service_1
+  selector:
+    path: service.py
+    anchor: 'session_cache: Cache[str, dict] = Cache(max_size=500)'
+- id: service_2
+  selector:
+    path: service.py
+    anchor: session_cache.get(session_id)
+- id: service_3
+  selector:
+    path: service.py
+    anchor: session_cache.set(session_id, result)
+- id: containers
+  selector:
+    path: containers.py
+    anchor: 'class Cache(Generic[K, V]):'
+- id: containers_1
+  selector:
+    path: containers.py
+    anchor: 'def get(self, key: K) -> Optional[V]:'
+- id: containers_2
+  selector:
+    path: containers.py
+    anchor: 'def set(self, key: K, value: V) -> None:'
+- id: containers_3
+  selector:
+    path: containers.py
+    anchor: _evict_least_used
+- id: no_test_service
+  selector:
+    path: test_service.py
+- id: no_cache_warmer
+  selector:
+    path: cache_warmer.py
+- id: no_type_coercion
+  selector:
+    path: type_coercion.py
+- id: no_nullable
+  selector:
+    path: nullable.py
+- id: no_global_0
+  selector:
+    anchor: TestSessionService
+- id: no_global_1
+  selector:
+    anchor: test_run_caches_result
+- id: no_global_2
+  selector:
+    anchor: test_run_different_sessions
+- id: no_global_3
+  selector:
+    anchor: CacheWarmer
+- id: no_global_4
+  selector:
+    anchor: is_warm
+- id: no_global_5
+  selector:
+    anchor: Nullable
+- id: no_global_6
+  selector:
+    anchor: is_present
+- id: no_global_7
+  selector:
+    anchor: or_else
+- id: no_global_8
+  selector:
+    anchor: CoercionError
+- id: no_global_9
+  selector:
+    anchor: coerce
+- id: no_global_10
+  selector:
+    anchor: safe_coerce
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - service_3
+  - containers
+  - containers_1
+  - containers_2
+  - containers_3
+  allowed: []
+  forbidden:
+  - no_test_service
+  - no_cache_warmer
+  - no_type_coercion
+  - no_nullable
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

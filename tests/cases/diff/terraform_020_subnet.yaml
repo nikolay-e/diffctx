@@ -1,0 +1,95 @@
+name: terraform_020_subnet
+repo:
+  initial_files:
+    network.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block = var.vpc_cidr
+      }
+    variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+    db_network.tf: |
+      resource "aws_subnet" "database" {
+        count             = 2
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet("10.0.200.0/24", 2, count.index)
+        availability_zone = data.aws_availability_zones.available.names[count.index]
+
+        tags = {
+          Name = "database-subnet-${count.index}"
+          Tier = "database"
+        }
+      }
+  changed_files:
+    network.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block = var.vpc_cidr
+      }
+
+      resource "aws_subnet" "private" {
+        count             = 2
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index)
+        availability_zone = data.aws_availability_zones.available.names[count.index]
+
+        tags = {
+          Name = "private-subnet-${count.index}"
+        }
+      }
+    variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+    db_network.tf: |
+      resource "aws_subnet" "database" {
+        count             = 2
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet("10.0.200.0/24", 2, count.index)
+        availability_zone = data.aws_availability_zones.available.names[count.index]
+
+        tags = {
+          Name = "database-subnet-${count.index}"
+          Tier = "database"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "vpc_cidr" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: default = "10.0.0.0/16"
+- id: no_db_network
+  selector:
+    path: db_network.tf
+- id: no_global_0
+  selector:
+    anchor: database-subnet
+- id: no_global_1
+  selector:
+    anchor: Tier = "database"
+oracle:
+  required:
+  - variables
+  - variables_1
+  allowed: []
+  forbidden:
+  - no_db_network
+  - no_global_0
+  - no_global_1

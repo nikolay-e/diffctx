@@ -1,0 +1,309 @@
+name: jvm_and_compiled_045_kotlin_data_class
+repo:
+  initial_files:
+    src/main/kotlin/com/example/User.kt: |
+      package com.example
+
+      data class User(
+          val id: Long,
+          val name: String
+      )
+    src/main/kotlin/com/example/UserMapper.kt: |
+      package com.example
+
+      object UserMapper {
+          fun toDto(user: User): UserDto = UserDto(user.id, user.name)
+          fun fromDto(dto: UserDto): User = User(dto.id, dto.name)
+      }
+
+      data class UserDto(val id: Long, val name: String)
+    src/main/kotlin/com/example/product/ProductMapper.kt: |
+      package com.example.product
+
+      object ProductMapper {
+          fun toDto(product: Product): ProductDto = ProductDto(product.id, product.name, product.price)
+          fun fromDto(dto: ProductDto): Product = Product(dto.id, dto.name, dto.price)
+      }
+
+      data class Product(val id: Long, val name: String, val price: Double)
+      data class ProductDto(val id: Long, val name: String, val price: Double)
+    src/main/kotlin/com/example/UserRepository.kt: |
+      package com.example
+
+      class UserRepository {
+          private val users = mutableMapOf<Long, User>()
+
+          fun save(user: User) {
+              users[user.id] = user
+          }
+
+          fun findById(id: Long): User? = users[id]
+
+          fun findAll(): List<User> = users.values.toList()
+
+          fun deleteById(id: Long) {
+              users.remove(id)
+          }
+      }
+    src/main/kotlin/com/example/UserValidator.kt: |
+      package com.example
+
+      class UserValidator {
+          fun validate(name: String): Boolean {
+              return name.isNotBlank() && name.length in 2..100
+          }
+
+          fun validateEmail(email: String): Boolean {
+              return email.contains("@") && email.contains(".")
+          }
+
+          fun validateAll(name: String, email: String): List<String> {
+              val errors = mutableListOf<String>()
+              if (!validate(name)) errors.add("Invalid name")
+              if (!validateEmail(email)) errors.add("Invalid email")
+              return errors
+          }
+      }
+    src/main/kotlin/com/example/UserSerializer.kt: |
+      package com.example
+
+      import kotlinx.serialization.encodeToString
+      import kotlinx.serialization.json.Json
+
+      object UserSerializer {
+          private val json = Json { prettyPrint = true }
+
+          fun toJson(user: User): String {
+              return """{"id":${user.id},"name":"${user.name}"}"""
+          }
+
+          fun toJsonList(users: List<User>): String {
+              return users.joinToString(",", "[", "]") { toJson(it) }
+          }
+      }
+    src/main/kotlin/com/example/UserFactory.kt: |
+      package com.example
+
+      object UserFactory {
+          private var nextId = 1L
+
+          fun create(name: String): User = User(nextId++, name)
+
+          fun createBatch(names: List<String>): List<User> = names.map { create(it) }
+
+          fun createDefault(): User = create("Guest")
+      }
+  changed_files:
+    src/main/kotlin/com/example/User.kt: |
+      package com.example
+
+      data class User(
+          val id: Long,
+          val name: String,
+          val email: String,
+          val active: Boolean = true
+      )
+    src/main/kotlin/com/example/UserMapper.kt: |
+      package com.example
+
+      object UserMapper {
+          fun toDto(user: User): UserDto = UserDto(user.id, user.name)
+          fun fromDto(dto: UserDto): User = User(dto.id, dto.name)
+      }
+
+      data class UserDto(val id: Long, val name: String)
+    src/main/kotlin/com/example/product/ProductMapper.kt: |
+      package com.example.product
+
+      object ProductMapper {
+          fun toDto(product: Product): ProductDto = ProductDto(product.id, product.name, product.price)
+          fun fromDto(dto: ProductDto): Product = Product(dto.id, dto.name, dto.price)
+      }
+
+      data class Product(val id: Long, val name: String, val price: Double)
+      data class ProductDto(val id: Long, val name: String, val price: Double)
+    src/main/kotlin/com/example/UserRepository.kt: |
+      package com.example
+
+      class UserRepository {
+          private val users = mutableMapOf<Long, User>()
+
+          fun save(user: User) {
+              users[user.id] = user
+          }
+
+          fun findById(id: Long): User? = users[id]
+
+          fun findAll(): List<User> = users.values.toList()
+
+          fun deleteById(id: Long) {
+              users.remove(id)
+          }
+      }
+    src/main/kotlin/com/example/UserValidator.kt: |
+      package com.example
+
+      class UserValidator {
+          fun validate(name: String): Boolean {
+              return name.isNotBlank() && name.length in 2..100
+          }
+
+          fun validateEmail(email: String): Boolean {
+              return email.contains("@") && email.contains(".")
+          }
+
+          fun validateAll(name: String, email: String): List<String> {
+              val errors = mutableListOf<String>()
+              if (!validate(name)) errors.add("Invalid name")
+              if (!validateEmail(email)) errors.add("Invalid email")
+              return errors
+          }
+      }
+    src/main/kotlin/com/example/UserSerializer.kt: |
+      package com.example
+
+      import kotlinx.serialization.encodeToString
+      import kotlinx.serialization.json.Json
+
+      object UserSerializer {
+          private val json = Json { prettyPrint = true }
+
+          fun toJson(user: User): String {
+              return """{"id":${user.id},"name":"${user.name}"}"""
+          }
+
+          fun toJsonList(users: List<User>): String {
+              return users.joinToString(",", "[", "]") { toJson(it) }
+          }
+      }
+    src/main/kotlin/com/example/UserFactory.kt: |
+      package com.example
+
+      object UserFactory {
+          private var nextId = 1L
+
+          fun create(name: String): User = User(nextId++, name)
+
+          fun createBatch(names: List<String>): List<User> = names.map { create(it) }
+
+          fun createDefault(): User = create("Guest")
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: src/main/kotlin/com/example/User.kt
+    anchor: 'val email: String'
+- id: user_1
+  selector:
+    path: src/main/kotlin/com/example/User.kt
+    anchor: 'val active: Boolean = true'
+- id: user_2
+  selector:
+    path: src/main/kotlin/com/example/User.kt
+    anchor: 'val name: String'
+- id: usermapper
+  selector:
+    path: src/main/kotlin/com/example/UserMapper.kt
+    anchor: 'fun toDto(user: User): UserDto = UserDto(user.id, user.name)'
+- id: usermapper_1
+  selector:
+    path: src/main/kotlin/com/example/UserMapper.kt
+    anchor: 'data class UserDto(val id: Long, val name: String)'
+- id: no_productmapper
+  selector:
+    path: src/main/kotlin/com/example/product/ProductMapper.kt
+- id: no_userrepository
+  selector:
+    path: src/main/kotlin/com/example/UserRepository.kt
+- id: no_uservalidator
+  selector:
+    path: src/main/kotlin/com/example/UserValidator.kt
+- id: no_userserializer
+  selector:
+    path: src/main/kotlin/com/example/UserSerializer.kt
+- id: no_userfactory
+  selector:
+    path: src/main/kotlin/com/example/UserFactory.kt
+- id: no_global_0
+  selector:
+    anchor: ProductMapper
+- id: no_global_1
+  selector:
+    anchor: ProductDto
+- id: no_global_2
+  selector:
+    anchor: product.price
+- id: no_global_3
+  selector:
+    anchor: UserRepository
+- id: no_global_4
+  selector:
+    anchor: findById
+- id: no_global_5
+  selector:
+    anchor: deleteById
+- id: no_global_6
+  selector:
+    anchor: UserValidator
+- id: no_global_7
+  selector:
+    anchor: validateEmail
+- id: no_global_8
+  selector:
+    anchor: validateAll
+- id: no_global_9
+  selector:
+    anchor: Invalid name
+- id: no_global_10
+  selector:
+    anchor: UserSerializer
+- id: no_global_11
+  selector:
+    anchor: toJson
+- id: no_global_12
+  selector:
+    anchor: toJsonList
+- id: no_global_13
+  selector:
+    anchor: prettyPrint
+- id: no_global_14
+  selector:
+    anchor: UserFactory
+- id: no_global_15
+  selector:
+    anchor: createBatch
+- id: no_global_16
+  selector:
+    anchor: createDefault
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - usermapper
+  - usermapper_1
+  allowed: []
+  forbidden:
+  - no_productmapper
+  - no_userrepository
+  - no_uservalidator
+  - no_userserializer
+  - no_userfactory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

@@ -1,0 +1,204 @@
+name: javascript_022_implements_interface
+repo:
+  initial_files:
+    interfaces.ts: |
+      export interface Serializable {
+          serialize(): string;
+          deserialize(data: string): void;
+      }
+
+      export interface Comparable<T> {
+          compareTo(other: T): number;
+      }
+    impl.ts: |
+      console.log('initial');
+    json-serializer.ts: |
+      import { Serializable } from './interfaces';
+
+      export class JsonSerializer implements Serializable {
+          private data: Record<string, unknown> = {};
+
+          set(key: string, value: unknown): void {
+              this.data[key] = value;
+          }
+
+          get(key: string): unknown {
+              return this.data[key];
+          }
+
+          serialize(): string {
+              return JSON.stringify(this.data);
+          }
+
+          deserialize(data: string): void {
+              this.data = JSON.parse(data);
+          }
+      }
+    sortable-list.ts: |
+      import { Comparable } from './interfaces';
+
+      export class SortableList<T extends Comparable<T>> {
+          private items: T[] = [];
+
+          add(item: T): void {
+              this.items.push(item);
+          }
+
+          sort(): T[] {
+              return [...this.items].sort((a, b) => a.compareTo(b));
+          }
+
+          min(): T | undefined {
+              return this.sort()[0];
+          }
+
+          max(): T | undefined {
+              const sorted = this.sort();
+              return sorted[sorted.length - 1];
+          }
+      }
+  changed_files:
+    interfaces.ts: |
+      export interface Serializable {
+          serialize(): string;
+          deserialize(data: string): void;
+      }
+
+      export interface Comparable<T> {
+          compareTo(other: T): number;
+      }
+    impl.ts: |
+      import { Serializable, Comparable } from './interfaces';
+
+      export class DataRecord implements Serializable, Comparable<DataRecord> {
+          constructor(public id: number, public value: string) {}
+
+          serialize(): string {
+              return JSON.stringify({ id: this.id, value: this.value });
+          }
+
+          deserialize(data: string): void {
+              const parsed = JSON.parse(data);
+              this.id = parsed.id;
+              this.value = parsed.value;
+          }
+
+          compareTo(other: DataRecord): number {
+              return this.id - other.id;
+          }
+      }
+    json-serializer.ts: |
+      import { Serializable } from './interfaces';
+
+      export class JsonSerializer implements Serializable {
+          private data: Record<string, unknown> = {};
+
+          set(key: string, value: unknown): void {
+              this.data[key] = value;
+          }
+
+          get(key: string): unknown {
+              return this.data[key];
+          }
+
+          serialize(): string {
+              return JSON.stringify(this.data);
+          }
+
+          deserialize(data: string): void {
+              this.data = JSON.parse(data);
+          }
+      }
+    sortable-list.ts: |
+      import { Comparable } from './interfaces';
+
+      export class SortableList<T extends Comparable<T>> {
+          private items: T[] = [];
+
+          add(item: T): void {
+              this.items.push(item);
+          }
+
+          sort(): T[] {
+              return [...this.items].sort((a, b) => a.compareTo(b));
+          }
+
+          min(): T | undefined {
+              return this.sort()[0];
+          }
+
+          max(): T | undefined {
+              const sorted = this.sort();
+              return sorted[sorted.length - 1];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: impl
+  selector:
+    path: impl.ts
+    anchor: import { Serializable, Comparable } from './interfaces'
+- id: impl_1
+  selector:
+    path: impl.ts
+    anchor: class DataRecord implements Serializable, Comparable<DataRecord>
+- id: impl_2
+  selector:
+    path: impl.ts
+    anchor: 'serialize(): string'
+- id: impl_3
+  selector:
+    path: impl.ts
+    anchor: 'compareTo(other: DataRecord): number'
+- id: interfaces
+  selector:
+    path: interfaces.ts
+    anchor: interface Serializable
+- id: interfaces_1
+  selector:
+    path: interfaces.ts
+    anchor: 'serialize(): string'
+- id: interfaces_2
+  selector:
+    path: interfaces.ts
+    anchor: 'deserialize(data: string): void'
+- id: interfaces_3
+  selector:
+    path: interfaces.ts
+    anchor: 'compareTo(other: T): number'
+- id: no_json_serializer
+  selector:
+    path: json-serializer.ts
+- id: no_sortable_list
+  selector:
+    path: sortable-list.ts
+- id: no_global_0
+  selector:
+    anchor: JsonSerializer
+- id: no_global_1
+  selector:
+    anchor: this.data[key]
+- id: no_global_2
+  selector:
+    anchor: SortableList
+- id: no_global_3
+  selector:
+    anchor: a.compareTo(b)
+oracle:
+  required:
+  - impl
+  - impl_1
+  - impl_2
+  - impl_3
+  - interfaces
+  - interfaces_1
+  - interfaces_2
+  - interfaces_3
+  allowed: []
+  forbidden:
+  - no_json_serializer
+  - no_sortable_list
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

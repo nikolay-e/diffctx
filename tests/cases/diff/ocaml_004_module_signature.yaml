@@ -1,0 +1,466 @@
+name: ocaml_004_module_signature
+repo:
+  initial_files:
+    lib/cache.mli: |
+      type t
+
+      type key = string
+
+      val create : int -> t
+
+      val get : t -> key -> string option
+
+      val set : t -> key -> string -> t
+
+      val remove : t -> key -> t
+
+      val size : t -> int
+    lib/cache.ml: |
+      type entry = {
+        value : string;
+        timestamp : float;
+      }
+
+      type t = {
+        capacity : int;
+        entries : (string, entry) Hashtbl.t;
+        hit_count : int;
+        miss_count : int;
+      }
+
+      type key = string
+
+      type cache_stats = {
+        hits : int;
+        misses : int;
+        size : int;
+      }
+
+      let create capacity = {
+        capacity;
+        entries = Hashtbl.create capacity;
+        hit_count = 0;
+        miss_count = 0;
+      }
+
+      let get cache key =
+        match Hashtbl.find_opt cache.entries key with
+        | Some entry -> Some entry.value
+        | None -> None
+
+      let set cache key value =
+        let entry = { value; timestamp = Unix.gettimeofday () } in
+        Hashtbl.replace cache.entries key entry;
+        cache
+
+      let remove cache key =
+        Hashtbl.remove cache.entries key;
+        cache
+
+      let size cache =
+        Hashtbl.length cache.entries
+
+      let evict_expired cache max_age =
+        let now = Unix.gettimeofday () in
+        let to_remove = Hashtbl.fold (fun k v acc ->
+          if now -. v.timestamp > max_age then k :: acc else acc
+        ) cache.entries [] in
+        List.iter (fun k -> Hashtbl.remove cache.entries k) to_remove;
+        cache
+
+      let stats cache = {
+        hits = cache.hit_count;
+        misses = cache.miss_count;
+        size = Hashtbl.length cache.entries;
+      }
+    lib/store.mli: |
+      type t
+      val create : unit -> t
+      val put : t -> string -> string -> t
+      val fetch : t -> string -> string option
+      val delete : t -> string -> t
+
+      (* GARBAGE_OCAML_004_A = "store_iface_marker" *)
+      (* GARBAGE_OCAML_004_B = "store_sig_marker" *)
+    lib/store.ml: |
+      type t = {
+        data : (string, string) Hashtbl.t;
+      }
+
+      let _GARBAGE_OCAML_004_C = "store_impl_marker"
+      let _GARBAGE_OCAML_004_D = "store_data_marker"
+
+      let create () = { data = Hashtbl.create 32 }
+
+      let put store key value =
+        Hashtbl.replace store.data key value;
+        store
+
+      let fetch store key =
+        Hashtbl.find_opt store.data key
+
+      let delete store key =
+        Hashtbl.remove store.data key;
+        store
+    lib/pool.mli: |
+      type t
+      val create : int -> t
+      val acquire : t -> int option
+      val release : t -> int -> t
+
+      (* GARBAGE_OCAML_004_E = "pool_iface_marker" *)
+    lib/pool.ml: |
+      type t = {
+        capacity : int;
+        available : int list;
+        in_use : int list;
+      }
+
+      let _GARBAGE_OCAML_004_F = "pool_impl_marker"
+      let _GARBAGE_OCAML_004_G = "pool_data_marker"
+
+      let create n = {
+        capacity = n;
+        available = List.init n Fun.id;
+        in_use = [];
+      }
+
+      let acquire pool =
+        match pool.available with
+        | [] -> None
+        | x :: _ -> Some x
+
+      let release pool id =
+        { pool with
+          available = id :: pool.available;
+          in_use = List.filter (fun x -> x <> id) pool.in_use;
+        }
+    lib/metrics.ml: |
+      type metric_stats = {
+        total_requests : int;
+        avg_latency : float;
+        error_rate : float;
+      }
+
+      let _GARBAGE_OCAML_004_H = "metrics_marker"
+      let _GARBAGE_OCAML_004_I = "latency_marker"
+
+      let empty_stats = {
+        total_requests = 0;
+        avg_latency = 0.0;
+        error_rate = 0.0;
+      }
+
+      let record_request stats latency is_error =
+        let n = float_of_int stats.total_requests in
+        let new_avg = (stats.avg_latency *. n +. latency) /. (n +. 1.0) in
+        let errors = if is_error then 1 else 0 in
+        {
+          total_requests = stats.total_requests + 1;
+          avg_latency = new_avg;
+          error_rate = float_of_int errors /. (n +. 1.0);
+        }
+  changed_files:
+    lib/cache.mli: |
+      type t
+
+      type key = string
+
+      type cache_stats = {
+        hits : int;
+        misses : int;
+        size : int;
+      }
+
+      val create : int -> t
+
+      val get : t -> key -> string option
+
+      val set : t -> key -> string -> t
+
+      val remove : t -> key -> t
+
+      val size : t -> int
+
+      val evict_expired : t -> float -> t
+
+      val stats : t -> cache_stats
+    lib/cache.ml: |
+      type entry = {
+        value : string;
+        timestamp : float;
+      }
+
+      type t = {
+        capacity : int;
+        entries : (string, entry) Hashtbl.t;
+        hit_count : int;
+        miss_count : int;
+      }
+
+      type key = string
+
+      type cache_stats = {
+        hits : int;
+        misses : int;
+        size : int;
+      }
+
+      let create capacity = {
+        capacity;
+        entries = Hashtbl.create capacity;
+        hit_count = 0;
+        miss_count = 0;
+      }
+
+      let get cache key =
+        match Hashtbl.find_opt cache.entries key with
+        | Some entry -> Some entry.value
+        | None -> None
+
+      let set cache key value =
+        let entry = { value; timestamp = Unix.gettimeofday () } in
+        Hashtbl.replace cache.entries key entry;
+        cache
+
+      let remove cache key =
+        Hashtbl.remove cache.entries key;
+        cache
+
+      let size cache =
+        Hashtbl.length cache.entries
+
+      let evict_expired cache max_age =
+        let now = Unix.gettimeofday () in
+        let to_remove = Hashtbl.fold (fun k v acc ->
+          if now -. v.timestamp > max_age then k :: acc else acc
+        ) cache.entries [] in
+        List.iter (fun k -> Hashtbl.remove cache.entries k) to_remove;
+        cache
+
+      let stats cache = {
+        hits = cache.hit_count;
+        misses = cache.miss_count;
+        size = Hashtbl.length cache.entries;
+      }
+    lib/store.mli: |
+      type t
+      val create : unit -> t
+      val put : t -> string -> string -> t
+      val fetch : t -> string -> string option
+      val delete : t -> string -> t
+
+      (* GARBAGE_OCAML_004_A = "store_iface_marker" *)
+      (* GARBAGE_OCAML_004_B = "store_sig_marker" *)
+    lib/store.ml: |
+      type t = {
+        data : (string, string) Hashtbl.t;
+      }
+
+      let _GARBAGE_OCAML_004_C = "store_impl_marker"
+      let _GARBAGE_OCAML_004_D = "store_data_marker"
+
+      let create () = { data = Hashtbl.create 32 }
+
+      let put store key value =
+        Hashtbl.replace store.data key value;
+        store
+
+      let fetch store key =
+        Hashtbl.find_opt store.data key
+
+      let delete store key =
+        Hashtbl.remove store.data key;
+        store
+    lib/pool.mli: |
+      type t
+      val create : int -> t
+      val acquire : t -> int option
+      val release : t -> int -> t
+
+      (* GARBAGE_OCAML_004_E = "pool_iface_marker" *)
+    lib/pool.ml: |
+      type t = {
+        capacity : int;
+        available : int list;
+        in_use : int list;
+      }
+
+      let _GARBAGE_OCAML_004_F = "pool_impl_marker"
+      let _GARBAGE_OCAML_004_G = "pool_data_marker"
+
+      let create n = {
+        capacity = n;
+        available = List.init n Fun.id;
+        in_use = [];
+      }
+
+      let acquire pool =
+        match pool.available with
+        | [] -> None
+        | x :: _ -> Some x
+
+      let release pool id =
+        { pool with
+          available = id :: pool.available;
+          in_use = List.filter (fun x -> x <> id) pool.in_use;
+        }
+    lib/metrics.ml: |
+      type metric_stats = {
+        total_requests : int;
+        avg_latency : float;
+        error_rate : float;
+      }
+
+      let _GARBAGE_OCAML_004_H = "metrics_marker"
+      let _GARBAGE_OCAML_004_I = "latency_marker"
+
+      let empty_stats = {
+        total_requests = 0;
+        avg_latency = 0.0;
+        error_rate = 0.0;
+      }
+
+      let record_request stats latency is_error =
+        let n = float_of_int stats.total_requests in
+        let new_avg = (stats.avg_latency *. n +. latency) /. (n +. 1.0) in
+        let errors = if is_error then 1 else 0 in
+        {
+          total_requests = stats.total_requests + 1;
+          avg_latency = new_avg;
+          error_rate = float_of_int errors /. (n +. 1.0);
+        }
+  commit_message: Update files
+fragments:
+- id: cache
+  selector:
+    path: lib/cache.mli
+    anchor: 'val evict_expired : t -> float -> t'
+- id: cache_1
+  selector:
+    path: lib/cache.mli
+    anchor: 'val stats : t -> cache_stats'
+- id: cache_2
+  selector:
+    path: lib/cache.mli
+    anchor: type cache_stats
+- id: cache_3
+  selector:
+    path: lib/cache.mli
+    anchor: 'hits : int'
+- id: cache_4
+  selector:
+    path: lib/cache.ml
+    anchor: let evict_expired cache max_age
+- id: cache_5
+  selector:
+    path: lib/cache.ml
+    anchor: let stats cache
+- id: cache_6
+  selector:
+    path: lib/cache.ml
+    anchor: 'hit_count : int'
+- id: cache_7
+  selector:
+    path: lib/cache.ml
+    anchor: 'miss_count : int'
+- id: no_store
+  selector:
+    path: lib/store.mli
+- id: no_store_1
+  selector:
+    path: lib/store.ml
+- id: no_pool
+  selector:
+    path: lib/pool.mli
+- id: no_pool_1
+  selector:
+    path: lib/pool.ml
+- id: no_metrics
+  selector:
+    path: lib/metrics.ml
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_OCAML_004_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_OCAML_004_B
+- id: no_global_2
+  selector:
+    anchor: _GARBAGE_OCAML_004_C
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_OCAML_004_D
+- id: no_global_4
+  selector:
+    anchor: 'val put :'
+- id: no_global_5
+  selector:
+    anchor: 'val fetch :'
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_OCAML_004_E
+- id: no_global_7
+  selector:
+    anchor: _GARBAGE_OCAML_004_F
+- id: no_global_8
+  selector:
+    anchor: _GARBAGE_OCAML_004_G
+- id: no_global_9
+  selector:
+    anchor: 'val acquire :'
+- id: no_global_10
+  selector:
+    anchor: 'val release :'
+- id: no_global_11
+  selector:
+    anchor: _GARBAGE_OCAML_004_H
+- id: no_global_12
+  selector:
+    anchor: _GARBAGE_OCAML_004_I
+- id: no_global_13
+  selector:
+    anchor: metric_stats
+- id: no_global_14
+  selector:
+    anchor: total_requests
+- id: no_global_15
+  selector:
+    anchor: avg_latency
+- id: no_global_16
+  selector:
+    anchor: record_request
+oracle:
+  required:
+  - cache
+  - cache_1
+  - cache_2
+  - cache_3
+  - cache_4
+  - cache_5
+  - cache_6
+  - cache_7
+  allowed: []
+  forbidden:
+  - no_store
+  - no_store_1
+  - no_pool
+  - no_pool_1
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

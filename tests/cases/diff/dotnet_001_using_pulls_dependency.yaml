@@ -1,0 +1,209 @@
+name: dotnet_001_using_pulls_dependency
+repo:
+  initial_files:
+    src/OrderProcessor/OrderHandler.cs: |
+      using System;
+      using MyApp.Domain.Models;
+
+      namespace MyApp.OrderProcessor
+      {
+          public class OrderHandler
+          {
+              public void Process(Order order)
+              {
+                  if (order == null)
+                      throw new ArgumentNullException(nameof(order));
+                  order.Status = OrderStatus.Processing;
+              }
+          }
+      }
+    src/Domain/Models/Order.cs: |
+      namespace MyApp.Domain.Models
+      {
+          public enum OrderStatus
+          {
+              Pending,
+              Processing,
+              Shipped,
+              Cancelled
+          }
+
+          public class Order
+          {
+              public int Id { get; set; }
+              public string CustomerId { get; set; }
+              public OrderStatus Status { get; set; }
+              public decimal Total { get; set; }
+
+              public bool CanCancel()
+              {
+                  return Status == OrderStatus.Pending || Status == OrderStatus.Processing;
+              }
+          }
+      }
+    src/Warehouse/StockManager.cs: |
+      using System.Collections.Generic;
+
+      namespace MyApp.Warehouse
+      {
+          public class GARBAGE_DOTNET_001_A
+          {
+              public bool GARBAGE_DOTNET_001_B(string sku, int qty)
+              {
+                  return qty > 0;
+              }
+          }
+      }
+    src/Notifications/Notifier.cs: |
+      namespace MyApp.Notifications
+      {
+          public class GARBAGE_DOTNET_001_C
+          {
+              public void GARBAGE_DOTNET_001_D(string message)
+              {
+              }
+          }
+      }
+    src/Reporting/ReportService.cs: |
+      namespace MyApp.Reporting
+      {
+          public class GARBAGE_DOTNET_001_E
+          {
+              public string GARBAGE_DOTNET_001_F()
+              {
+                  return "report";
+              }
+          }
+      }
+  changed_files:
+    src/OrderProcessor/OrderHandler.cs: |
+      using System;
+      using MyApp.Domain.Models;
+
+      namespace MyApp.OrderProcessor
+      {
+          public class OrderHandler
+          {
+              public void Process(Order order)
+              {
+                  if (order == null)
+                      throw new ArgumentNullException(nameof(order));
+                  order.Status = OrderStatus.Processing;
+              }
+
+              public bool CanFulfil(Order order)
+              {
+                  return order.Total > 0 && order.Status == OrderStatus.Pending;
+              }
+          }
+      }
+    src/Domain/Models/Order.cs: |
+      namespace MyApp.Domain.Models
+      {
+          public enum OrderStatus
+          {
+              Pending,
+              Processing,
+              Shipped,
+              Cancelled
+          }
+
+          public class Order
+          {
+              public int Id { get; set; }
+              public string CustomerId { get; set; }
+              public OrderStatus Status { get; set; }
+              public decimal Total { get; set; }
+
+              public bool CanCancel()
+              {
+                  return Status == OrderStatus.Pending || Status == OrderStatus.Processing;
+              }
+          }
+      }
+    src/Warehouse/StockManager.cs: |
+      using System.Collections.Generic;
+
+      namespace MyApp.Warehouse
+      {
+          public class GARBAGE_DOTNET_001_A
+          {
+              public bool GARBAGE_DOTNET_001_B(string sku, int qty)
+              {
+                  return qty > 0;
+              }
+          }
+      }
+    src/Notifications/Notifier.cs: |
+      namespace MyApp.Notifications
+      {
+          public class GARBAGE_DOTNET_001_C
+          {
+              public void GARBAGE_DOTNET_001_D(string message)
+              {
+              }
+          }
+      }
+    src/Reporting/ReportService.cs: |
+      namespace MyApp.Reporting
+      {
+          public class GARBAGE_DOTNET_001_E
+          {
+              public string GARBAGE_DOTNET_001_F()
+              {
+                  return "report";
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: order
+  selector:
+    path: src/Domain/Models/Order.cs
+    anchor: CanCancel
+- id: order_1
+  selector:
+    path: src/Domain/Models/Order.cs
+    anchor: OrderStatus
+- id: no_warehouse
+  selector:
+    path: src/Warehouse/StockManager.cs
+- id: no_notifications
+  selector:
+    path: src/Notifications/Notifier.cs
+- id: no_reporting
+  selector:
+    path: src/Reporting/ReportService.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DOTNET_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DOTNET_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DOTNET_001_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DOTNET_001_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DOTNET_001_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DOTNET_001_F
+oracle:
+  required:
+  - order
+  - order_1
+  allowed: []
+  forbidden:
+  - no_warehouse
+  - no_notifications
+  - no_reporting
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,380 @@
+name: kubernetes_028_ingress_annotations
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-frontend
+        namespace: production
+        labels:
+          app: web-frontend
+          component: frontend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: web-frontend
+        template:
+          metadata:
+            labels:
+              app: web-frontend
+              component: frontend
+          spec:
+            containers:
+            - name: frontend
+              image: registry.example.com/web-frontend:v3.0.0
+              ports:
+              - containerPort: 3000
+                name: http
+              readinessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-frontend
+        namespace: production
+      spec:
+        selector:
+          app: web-frontend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-ingress
+        namespace: production
+      spec:
+        rules:
+        - host: www.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-frontend
+                  port:
+                    number: 80
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web-frontend-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: web-frontend
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/monitoring/fluentbit-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: fluent-bit-config
+        namespace: logging
+      data:
+        fluent-bit.conf: |
+          [SERVICE]
+              Flush         5
+              Daemon        Off
+              Log_Level     info
+          [INPUT]
+              Name          tail
+              Path          /var/log/containers/*.log
+          [OUTPUT]
+              Name          es
+              Host          elasticsearch.logging.svc
+              Port          9200
+    k8s/monitoring/prometheus-rules.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: frontend-alerts
+        namespace: monitoring
+      spec:
+        groups:
+        - name: frontend.rules
+          rules:
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+    k8s/security/cors-policy.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cors-allowed-origins
+        namespace: production
+      data:
+        origins.json: |
+          {
+            "allowed_origins": [
+              "https://example.com",
+              "https://www.example.com",
+              "https://admin.example.com"
+            ],
+            "allowed_methods": ["GET", "POST", "PUT", "DELETE"],
+            "max_age": 86400
+          }
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-frontend
+        namespace: production
+        labels:
+          app: web-frontend
+          component: frontend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: web-frontend
+        template:
+          metadata:
+            labels:
+              app: web-frontend
+              component: frontend
+          spec:
+            containers:
+            - name: frontend
+              image: registry.example.com/web-frontend:v3.0.0
+              ports:
+              - containerPort: 3000
+                name: http
+              readinessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-frontend
+        namespace: production
+      spec:
+        selector:
+          app: web-frontend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-ingress
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+          nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+          nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+          nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+          nginx.ingress.kubernetes.io/enable-cors: "true"
+          nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
+          nginx.ingress.kubernetes.io/rate-limit: "100"
+          nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+      spec:
+        rules:
+        - host: www.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-frontend
+                  port:
+                    number: 80
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web-frontend-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: web-frontend
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/monitoring/fluentbit-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: fluent-bit-config
+        namespace: logging
+      data:
+        fluent-bit.conf: |
+          [SERVICE]
+              Flush         5
+              Daemon        Off
+              Log_Level     info
+          [INPUT]
+              Name          tail
+              Path          /var/log/containers/*.log
+          [OUTPUT]
+              Name          es
+              Host          elasticsearch.logging.svc
+              Port          9200
+    k8s/monitoring/prometheus-rules.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: frontend-alerts
+        namespace: monitoring
+      spec:
+        groups:
+        - name: frontend.rules
+          rules:
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+    k8s/security/cors-policy.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cors-allowed-origins
+        namespace: production
+      data:
+        origins.json: |
+          {
+            "allowed_origins": [
+              "https://example.com",
+              "https://www.example.com",
+              "https://admin.example.com"
+            ],
+            "allowed_methods": ["GET", "POST", "PUT", "DELETE"],
+            "max_age": 86400
+          }
+  commit_message: Update files
+fragments:
+- id: ingress
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/rewrite-target: /'
+- id: ingress_1
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/proxy-read-timeout: "300"'
+- id: ingress_2
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/enable-cors: "true"'
+- id: no_deployment
+  selector:
+    path: k8s/base/deployment.yaml
+- id: no_hpa
+  selector:
+    path: k8s/base/hpa.yaml
+- id: no_fluentbit_config
+  selector:
+    path: k8s/monitoring/fluentbit-config.yaml
+- id: no_prometheus_rules
+  selector:
+    path: k8s/monitoring/prometheus-rules.yaml
+- id: no_cors_policy
+  selector:
+    path: k8s/security/cors-policy.yaml
+- id: no_global_0
+  selector:
+    anchor: web-frontend:v3.0.0
+- id: no_global_1
+  selector:
+    anchor: 'containerPort: 3000'
+- id: no_global_2
+  selector:
+    anchor: web-frontend-hpa
+- id: no_global_3
+  selector:
+    anchor: averageUtilization
+- id: no_global_4
+  selector:
+    anchor: fluent-bit-config
+- id: no_global_5
+  selector:
+    anchor: elasticsearch.logging.svc
+- id: no_global_6
+  selector:
+    anchor: HighErrorRate
+- id: no_global_7
+  selector:
+    anchor: PrometheusRule
+- id: no_global_8
+  selector:
+    anchor: frontend-alerts
+- id: no_global_9
+  selector:
+    anchor: cors-allowed-origins
+- id: no_global_10
+  selector:
+    anchor: allowed_methods
+- id: no_global_11
+  selector:
+    anchor: max_age
+oracle:
+  required:
+  - ingress
+  - ingress_1
+  - ingress_2
+  allowed: []
+  forbidden:
+  - no_deployment
+  - no_hpa
+  - no_fluentbit_config
+  - no_prometheus_rules
+  - no_cors_policy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

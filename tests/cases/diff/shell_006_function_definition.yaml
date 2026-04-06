@@ -1,0 +1,312 @@
+name: shell_006_function_definition
+repo:
+  initial_files:
+    lib/utils.sh: |
+      #!/bin/bash
+
+      process_file() {
+          local file=$1
+          echo "Processing $file"
+          wc -l < "$file"
+      }
+
+      log_message() {
+          local level=$1
+          local message=$2
+          echo "[$level] $(date +%H:%M:%S): $message"
+      }
+
+      get_file_extension() {
+          local file=$1
+          echo "${file##*.}"
+      }
+    main.sh: |
+      #!/bin/bash
+      source ./lib/utils.sh
+
+      for file in data/*.csv; do
+          count=$(process_file "$file")
+          log_message "INFO" "Processed $file ($count lines)"
+      done
+    format.sh: |
+      #!/bin/bash
+
+      to_uppercase() {
+          echo "${1^^}"
+      }
+
+      trim_whitespace() {
+          local text="$1"
+          text="${text#"${text%%[![:space:]]*}"}"
+          text="${text%"${text##*[![:space:]]}"}"
+          echo "$text"
+      }
+
+      pad_right() {
+          printf "%-${2}s" "$1"
+      }
+
+      center_text() {
+          local text="$1"
+          local width=${2:-40}
+          local pad=$(( (width - ${#text}) / 2 ))
+          printf "%*s%s\n" "$pad" "" "$text"
+      }
+    cleanup.sh: |
+      #!/bin/bash
+
+      TEMP_DIR="/tmp/app_work"
+      CLEANUP_LOG="/var/log/cleanup.log"
+
+      cleanup_temp() {
+          if [[ -d "$TEMP_DIR" ]]; then
+              rm -rf "$TEMP_DIR"
+              echo "Cleaned up $TEMP_DIR"
+          fi
+      }
+
+      cleanup_stale_locks() {
+          find /tmp -name "*.lock" -mmin +60 -delete
+      }
+
+      trap cleanup_temp EXIT
+    batch.sh: |
+      #!/bin/bash
+      source ./lib/utils.sh
+
+      BATCH_SIZE=50
+      PARALLEL_JOBS=4
+
+      process_batch() {
+          local dir=$1
+          local count=0
+          for file in "$dir"/*.csv; do
+              if (( count >= BATCH_SIZE )); then
+                  log_message "WARN" "Batch limit reached at $BATCH_SIZE"
+                  break
+              fi
+              result=$(process_file "$file")
+              log_message "INFO" "Batch processed: $file ($result lines)"
+              count=$((count + 1))
+          done
+          echo "Processed $count files"
+      }
+
+      run_parallel() {
+          local dir=$1
+          find "$dir" -name "*.csv" | xargs -P "$PARALLEL_JOBS" -I{} bash -c \
+              'source ./lib/utils.sh; process_file "{}"'
+      }
+    lib/file_check.sh: |
+      #!/bin/bash
+
+      validate_file() {
+          local file=$1
+          local max_size=${2:-104857600}
+          if [[ ! -f "$file" ]]; then
+              echo "FAIL: not a regular file: $file"
+              return 1
+          fi
+          local size
+          size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
+          if (( size > max_size )); then
+              echo "FAIL: file too large: $file ($size bytes)"
+              return 1
+          fi
+          return 0
+      }
+
+      check_encoding() {
+          local file=$1
+          file -bi "$file" | grep -q "utf-8"
+      }
+
+      is_binary() {
+          local file=$1
+          file -bi "$file" | grep -q "application/octet-stream"
+      }
+    report.sh: |
+      #!/bin/bash
+      source ./lib/reporting.sh
+
+      generate_report() {
+          local output_file=$1
+          log_message "INFO" "Generating report to $output_file"
+          echo "Report generated at $(date)" > "$output_file"
+          echo "Total records: $(count_records)" >> "$output_file"
+          log_message "INFO" "Report complete"
+      }
+
+      count_records() {
+          find data/ -name "*.csv" -exec wc -l {} + | tail -1 | awk '{print $1}'
+      }
+
+      email_report() {
+          local recipient=$1
+          local report_file=$2
+          mail -s "Daily Report" "$recipient" < "$report_file"
+      }
+  changed_files:
+    lib/utils.sh: |
+      #!/bin/bash
+
+      process_file() {
+          local file=$1
+          echo "Processing $file"
+          wc -l < "$file"
+      }
+
+      log_message() {
+          local level=$1
+          local message=$2
+          echo "[$level] $(date +%H:%M:%S): $message"
+      }
+
+      get_file_extension() {
+          local file=$1
+          echo "${file##*.}"
+      }
+
+      validate_file() {
+          local file=$1
+          if [[ ! -f "$file" ]]; then
+              log_message "ERROR" "File not found: $file"
+              return 1
+          fi
+          if [[ ! -r "$file" ]]; then
+              log_message "ERROR" "File not readable: $file"
+              return 1
+          fi
+          return 0
+      }
+    main.sh: |
+      #!/bin/bash
+      source ./lib/utils.sh
+
+      for file in data/*.csv; do
+          if validate_file "$file"; then
+              count=$(process_file "$file")
+              log_message "INFO" "Processed $file ($count lines)"
+          else
+              log_message "WARN" "Skipped $file"
+          fi
+      done
+  commit_message: Update files
+fragments:
+- id: utils
+  selector:
+    path: lib/utils.sh
+    anchor: validate_file()
+- id: utils_1
+  selector:
+    path: lib/utils.sh
+    anchor: log_message()
+- id: utils_2
+  selector:
+    path: lib/utils.sh
+    anchor: process_file()
+- id: main
+  selector:
+    path: main.sh
+    anchor: validate_file
+- id: main_1
+  selector:
+    path: main.sh
+    anchor: process_file
+- id: no_format
+  selector:
+    path: format.sh
+- id: no_cleanup
+  selector:
+    path: cleanup.sh
+- id: no_batch
+  selector:
+    path: batch.sh
+- id: no_file_check
+  selector:
+    path: lib/file_check.sh
+- id: no_report
+  selector:
+    path: report.sh
+- id: no_global_0
+  selector:
+    anchor: to_uppercase
+- id: no_global_1
+  selector:
+    anchor: trim_whitespace
+- id: no_global_2
+  selector:
+    anchor: pad_right
+- id: no_global_3
+  selector:
+    anchor: center_text
+- id: no_global_4
+  selector:
+    anchor: cleanup_temp
+- id: no_global_5
+  selector:
+    anchor: cleanup_stale_locks
+- id: no_global_6
+  selector:
+    anchor: TEMP_DIR
+- id: no_global_7
+  selector:
+    anchor: BATCH_SIZE
+- id: no_global_8
+  selector:
+    anchor: PARALLEL_JOBS
+- id: no_global_9
+  selector:
+    anchor: process_batch
+- id: no_global_10
+  selector:
+    anchor: run_parallel
+- id: no_global_11
+  selector:
+    anchor: check_encoding
+- id: no_global_12
+  selector:
+    anchor: is_binary
+- id: no_global_13
+  selector:
+    anchor: max_size
+- id: no_global_14
+  selector:
+    anchor: generate_report
+- id: no_global_15
+  selector:
+    anchor: email_report
+- id: no_global_16
+  selector:
+    anchor: count_records
+oracle:
+  required:
+  - utils
+  - utils_1
+  - utils_2
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_format
+  - no_cleanup
+  - no_batch
+  - no_file_check
+  - no_report
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

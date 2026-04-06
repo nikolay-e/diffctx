@@ -1,0 +1,98 @@
+name: javascript_053_route_handler
+repo:
+  initial_files:
+    userHandler.ts: |
+      import { Request, Response } from 'express';
+
+      export async function getUserHandler(req: Request, res: Response) {
+          const { id } = req.params;
+          res.json({ id, name: 'User' });
+      }
+    routes.ts: |
+      console.log('initial');
+    postHandler.ts: |
+      import { Request, Response } from 'express';
+
+      export async function createUserHandler(req: Request, res: Response) {
+          const { name, email } = req.body;
+          res.status(201).json({ id: Date.now().toString(), name, email });
+      }
+    route-config.ts: |
+      interface RouteDefinition {
+          method: 'get' | 'post' | 'put' | 'delete';
+          path: string;
+          handler: string;
+      }
+
+      export const routeDefinitions: RouteDefinition[] = [
+          { method: 'get', path: '/users/:id', handler: 'getUserHandler' },
+          { method: 'post', path: '/users', handler: 'createUserHandler' },
+      ];
+  changed_files:
+    userHandler.ts: |
+      import { Request, Response } from 'express';
+
+      export async function getUserHandler(req: Request, res: Response) {
+          const { id } = req.params;
+          res.json({ id, name: 'User' });
+      }
+    routes.ts: |
+      import { Router } from 'express';
+      import { getUserHandler } from './userHandler';
+
+      export const router = Router();
+      router.get('/users/:id', getUserHandler);
+    postHandler.ts: |
+      import { Request, Response } from 'express';
+
+      export async function createUserHandler(req: Request, res: Response) {
+          const { name, email } = req.body;
+          res.status(201).json({ id: Date.now().toString(), name, email });
+      }
+    route-config.ts: |
+      interface RouteDefinition {
+          method: 'get' | 'post' | 'put' | 'delete';
+          path: string;
+          handler: string;
+      }
+
+      export const routeDefinitions: RouteDefinition[] = [
+          { method: 'get', path: '/users/:id', handler: 'getUserHandler' },
+          { method: 'post', path: '/users', handler: 'createUserHandler' },
+      ];
+  commit_message: Update files
+fragments:
+- id: userhandler
+  selector:
+    path: userHandler.ts
+    anchor: 'function getUserHandler(req: Request, res: Response)'
+- id: userhandler_1
+  selector:
+    path: userHandler.ts
+    anchor: req.params
+- id: no_posthandler
+  selector:
+    path: postHandler.ts
+- id: no_route_config
+  selector:
+    path: route-config.ts
+- id: no_global_0
+  selector:
+    anchor: createUserHandler
+- id: no_global_1
+  selector:
+    anchor: RouteDefinition
+- id: no_global_2
+  selector:
+    anchor: routeDefinitions
+oracle:
+  required:
+  - userhandler
+  - userhandler_1
+  allowed: []
+  forbidden:
+  - no_posthandler
+  - no_route_config
+  - no_global_0
+  - no_global_1
+  - no_global_2

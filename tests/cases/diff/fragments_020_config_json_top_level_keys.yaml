@@ -1,0 +1,96 @@
+name: fragments_020_config_json_top_level_keys
+repo:
+  initial_files:
+    config.json: |
+      {
+        "database": {
+          "host": "localhost",
+          "port": 5432,
+          "name": "mydb",
+          "credentials": {
+            "user": "admin",
+            "password": "secret"
+          }
+        },
+        "server": {
+          "port": 8080,
+          "debug": true,
+          "workers": 4
+        },
+        "garbage_section_a": {
+          "nested": {
+          }
+        },
+        "garbage_section_b": {
+        },
+        "logging": {
+        }
+      }
+    garbage_config_072.json: |
+      {
+        "garbage_root": {
+          "key": "GARBAGE_FRAG_garbroot_072",
+          "nested": {
+            "value": "GARBAGE_FRAG_garbnested_072"
+          }
+        },
+        "another_garbage": {
+          "items": ["GARBAGE_FRAG_garbitem1_072", "GARBAGE_FRAG_garbitem2_072"]
+        }
+      }
+  changed_files:
+    config.json: |
+      {
+        "database": {
+          "host": "localhost",
+          "port": 5433,
+          "name": "mydb",
+          "credentials": {
+            "user": "admin",
+            "password": "secret"
+          }
+        },
+        "server": {
+          "port": 8080,
+          "debug": true,
+          "workers": 4
+        },
+        "garbage_section_a": {
+          "nested": {
+          }
+        },
+        "garbage_section_b": {
+        },
+        "logging": {
+        }
+      }
+    garbage_config_072.json: |
+      {
+        "garbage_root": {
+          "key": "GARBAGE_FRAG_garbroot_072",
+          "nested": {
+            "value": "GARBAGE_FRAG_garbnested_072"
+          }
+        },
+        "another_garbage": {
+          "items": ["GARBAGE_FRAG_garbitem1_072", "GARBAGE_FRAG_garbitem2_072"]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: config_file
+  selector:
+    path: config.json
+- id: req_global_0
+  selector:
+    anchor: '5433'
+- id: no_global_0
+  selector:
+    anchor: garbage_config_072.json
+oracle:
+  required:
+  - config_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

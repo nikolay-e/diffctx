@@ -1,0 +1,135 @@
+name: scala_008_type_class
+repo:
+  initial_files:
+    Show.scala: |
+      trait Show[A] {
+        def show(a: A): String
+      }
+
+      object Show {
+        def apply[A](implicit sh: Show[A]): Show[A] = sh
+
+        implicit val intShow: Show[Int] = (a: Int) => a.toString
+        implicit val stringShow: Show[String] = (a: String) => a
+      }
+    Printer.scala: |
+      class Printer {}
+    Eq.scala: |
+      trait Eq[A] {
+        def eqv(a: A, b: A): Boolean
+      }
+
+      object Eq {
+        def apply[A](implicit ev: Eq[A]): Eq[A] = ev
+
+        implicit val intEq: Eq[Int] = (a: Int, b: Int) => a == b
+        implicit val stringEq: Eq[String] = (a: String, b: String) => a == b
+
+        def isEqual[A: Eq](a: A, b: A): Boolean = Eq[A].eqv(a, b)
+      }
+    Formatter.scala: |
+      class Formatter {
+        def formatInt(value: Int): String = s"Integer: $value"
+        def formatString(value: String): String = s"String: '$value'"
+        def formatDouble(value: Double): String = f"Double: $value%.2f"
+        def formatBoolean(value: Boolean): String = if (value) "yes" else "no"
+      }
+  changed_files:
+    Show.scala: |
+      trait Show[A] {
+        def show(a: A): String
+      }
+
+      object Show {
+        def apply[A](implicit sh: Show[A]): Show[A] = sh
+
+        implicit val intShow: Show[Int] = (a: Int) => a.toString
+        implicit val stringShow: Show[String] = (a: String) => a
+      }
+    Printer.scala: |
+      class Printer {
+        def print[A: Show](value: A): String = {
+          Show[A].show(value)
+        }
+
+        def printInt(value: Int): String = {
+          print(value)
+        }
+
+        def printString(value: String): String = {
+          print(value)
+        }
+      }
+    Eq.scala: |
+      trait Eq[A] {
+        def eqv(a: A, b: A): Boolean
+      }
+
+      object Eq {
+        def apply[A](implicit ev: Eq[A]): Eq[A] = ev
+
+        implicit val intEq: Eq[Int] = (a: Int, b: Int) => a == b
+        implicit val stringEq: Eq[String] = (a: String, b: String) => a == b
+
+        def isEqual[A: Eq](a: A, b: A): Boolean = Eq[A].eqv(a, b)
+      }
+    Formatter.scala: |
+      class Formatter {
+        def formatInt(value: Int): String = s"Integer: $value"
+        def formatString(value: String): String = s"String: '$value'"
+        def formatDouble(value: Double): String = f"Double: $value%.2f"
+        def formatBoolean(value: Boolean): String = if (value) "yes" else "no"
+      }
+  commit_message: Update files
+fragments:
+- id: printer
+  selector:
+    path: Printer.scala
+    anchor: 'def print[A: Show](value: A): String = {'
+- id: printer_1
+  selector:
+    path: Printer.scala
+    anchor: Show[A].show(value)
+- id: show
+  selector:
+    path: Show.scala
+    anchor: trait Show[A] {
+- id: no_eq
+  selector:
+    path: Eq.scala
+- id: no_formatter
+  selector:
+    path: Formatter.scala
+- id: no_global_0
+  selector:
+    anchor: trait Eq[A]
+- id: no_global_1
+  selector:
+    anchor: eqv
+- id: no_global_2
+  selector:
+    anchor: isEqual
+- id: no_global_3
+  selector:
+    anchor: class Formatter
+- id: no_global_4
+  selector:
+    anchor: formatDouble
+- id: no_global_5
+  selector:
+    anchor: formatBoolean
+oracle:
+  required:
+  - printer
+  - printer_1
+  - show
+  allowed: []
+  forbidden:
+  - no_eq
+  - no_formatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

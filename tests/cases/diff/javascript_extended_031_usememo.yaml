@@ -1,0 +1,181 @@
+name: javascript_extended_031_usememo
+repo:
+  initial_files:
+    src/compute.ts: |
+      export function expensiveComputation(items: number[]): number {
+          return items.reduce((sum, n) => sum + n * n, 0);
+      }
+
+      export function averageValue(items: number[]): number {
+          if (items.length === 0) return 0;
+          const total = items.reduce((sum, n) => sum + n, 0);
+          return total / items.length;
+      }
+
+      export function filterOutliers(items: number[], threshold: number): number[] {
+          const avg = averageValue(items);
+          return items.filter(n => Math.abs(n - avg) <= threshold);
+      }
+    src/Stats.tsx: |
+      console.log('initial');
+    src/components/chart.tsx: |
+      interface ChartProps {
+          data: number[];
+          width: number;
+          height: number;
+          color?: string;
+      }
+
+      export function BarChart({ data, width, height, color = '#4a90d9' }: ChartProps) {
+          const maxVal = Math.max(...data);
+          const barWidth = width / data.length;
+          return (
+              <svg width={width} height={height}>
+                  {data.map((val, i) => (
+                      <rect
+                          key={i}
+                          x={i * barWidth}
+                          y={height - (val / maxVal) * height}
+                          width={barWidth - 2}
+                          height={(val / maxVal) * height}
+                          fill={color}
+                      />
+                  ))}
+              </svg>
+          );
+      }
+    src/utils/format.ts: |
+      export function formatCurrency(value: number, currency = 'USD'): string {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
+      }
+
+      export function formatPercentage(value: number, decimals = 1): string {
+          return `${(value * 100).toFixed(decimals)}%`;
+      }
+
+      export function formatCompact(value: number): string {
+          return new Intl.NumberFormat('en-US', { notation: 'compact' }).format(value);
+      }
+  changed_files:
+    src/compute.ts: |
+      export function expensiveComputation(items: number[]): number {
+          return items.reduce((sum, n) => sum + n * n, 0);
+      }
+
+      export function averageValue(items: number[]): number {
+          if (items.length === 0) return 0;
+          const total = items.reduce((sum, n) => sum + n, 0);
+          return total / items.length;
+      }
+
+      export function filterOutliers(items: number[], threshold: number): number[] {
+          const avg = averageValue(items);
+          return items.filter(n => Math.abs(n - avg) <= threshold);
+      }
+    src/Stats.tsx: |
+      import { useMemo } from 'react';
+      import { expensiveComputation, averageValue } from './compute';
+
+      interface StatsProps {
+          items: number[];
+      }
+
+      export function Stats({ items }: StatsProps) {
+          const sumOfSquares = useMemo(() => expensiveComputation(items), [items]);
+          const average = useMemo(() => averageValue(items), [items]);
+
+          return (
+              <div>
+                  <p>Sum of squares: {sumOfSquares}</p>
+                  <p>Average: {average.toFixed(2)}</p>
+                  <p>Count: {items.length}</p>
+              </div>
+          );
+      }
+    src/components/chart.tsx: |
+      interface ChartProps {
+          data: number[];
+          width: number;
+          height: number;
+          color?: string;
+      }
+
+      export function BarChart({ data, width, height, color = '#4a90d9' }: ChartProps) {
+          const maxVal = Math.max(...data);
+          const barWidth = width / data.length;
+          return (
+              <svg width={width} height={height}>
+                  {data.map((val, i) => (
+                      <rect
+                          key={i}
+                          x={i * barWidth}
+                          y={height - (val / maxVal) * height}
+                          width={barWidth - 2}
+                          height={(val / maxVal) * height}
+                          fill={color}
+                      />
+                  ))}
+              </svg>
+          );
+      }
+    src/utils/format.ts: |
+      export function formatCurrency(value: number, currency = 'USD'): string {
+          return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
+      }
+
+      export function formatPercentage(value: number, decimals = 1): string {
+          return `${(value * 100).toFixed(decimals)}%`;
+      }
+
+      export function formatCompact(value: number): string {
+          return new Intl.NumberFormat('en-US', { notation: 'compact' }).format(value);
+      }
+  commit_message: Update files
+fragments:
+- id: compute
+  selector:
+    path: src/compute.ts
+    anchor: expensiveComputation
+- id: compute_1
+  selector:
+    path: src/compute.ts
+    anchor: averageValue
+- id: compute_2
+  selector:
+    path: src/compute.ts
+    anchor: items.reduce
+- id: no_chart
+  selector:
+    path: src/components/chart.tsx
+- id: no_format
+  selector:
+    path: src/utils/format.ts
+- id: no_global_0
+  selector:
+    anchor: BarChart
+- id: no_global_1
+  selector:
+    anchor: ChartProps
+- id: no_global_2
+  selector:
+    anchor: formatCurrency
+- id: no_global_3
+  selector:
+    anchor: formatPercentage
+- id: no_global_4
+  selector:
+    anchor: formatCompact
+oracle:
+  required:
+  - compute
+  - compute_1
+  - compute_2
+  allowed: []
+  forbidden:
+  - no_chart
+  - no_format
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

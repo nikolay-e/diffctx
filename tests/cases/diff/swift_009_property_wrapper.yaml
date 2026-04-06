@@ -1,0 +1,360 @@
+name: swift_009_property_wrapper
+repo:
+  initial_files:
+    Sources/PropertyWrappers/Published.swift: |
+      import Combine
+
+      @propertyWrapper
+      struct Published<Value> {
+          private var value: Value
+          private let subject = PassthroughSubject<Value, Never>()
+
+          var wrappedValue: Value {
+              get { value }
+              set {
+                  value = newValue
+                  subject.send(newValue)
+              }
+          }
+
+          var projectedValue: PassthroughSubject<Value, Never> {
+              subject
+          }
+
+          init(wrappedValue: Value) {
+              self.value = wrappedValue
+          }
+      }
+    Sources/ViewModels/ViewModel.swift: |
+      import Combine
+
+      class ViewModel: ObservableObject {
+          func placeholder() {}
+      }
+    Sources/PropertyWrappers/UserDefault.swift: |
+      import Foundation
+
+      @propertyWrapper
+      struct UserDefault<Value> {
+          let key: String
+          let defaultValue: Value
+
+          var wrappedValue: Value {
+              get { UserDefaults.standard.object(forKey: key) as? Value ?? defaultValue }
+              set { UserDefaults.standard.set(newValue, forKey: key) }
+          }
+
+          init(wrappedValue: Value, key: String) {
+              self.defaultValue = wrappedValue
+              self.key = key
+          }
+      }
+    Sources/Services/NotificationCenter.swift: |
+      import Foundation
+
+      class AppNotificationCenter {
+          static let shared = AppNotificationCenter()
+          private var observers: [String: [(Any) -> Void]] = [:]
+
+          func addObserver(event: String, handler: @escaping (Any) -> Void) {
+              observers[event, default: []].append(handler)
+          }
+
+          func post(event: String, data: Any) {
+              observers[event]?.forEach { $0(data) }
+          }
+
+          func removeAll(event: String) {
+              observers[event] = nil
+          }
+      }
+    Sources/PropertyWrappers/Clamped.swift: |
+      @propertyWrapper
+      struct Clamped<Value: Comparable> {
+          private var value: Value
+          let range: ClosedRange<Value>
+
+          var wrappedValue: Value {
+              get { value }
+              set { value = min(max(newValue, range.lowerBound), range.upperBound) }
+          }
+
+          init(wrappedValue: Value, _ range: ClosedRange<Value>) {
+              self.range = range
+              self.value = min(max(wrappedValue, range.lowerBound), range.upperBound)
+          }
+      }
+    Sources/ViewModels/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var language: String = "en"
+          @Published var theme: String = "system"
+          @Published var analyticsEnabled: Bool = true
+
+          private var cancellables = Set<AnyCancellable>()
+
+          func resetToDefaults() {
+              language = "en"
+              theme = "system"
+              analyticsEnabled = true
+          }
+      }
+    Sources/Bindings/ObservableStore.swift: |
+      import Combine
+
+      class ObservableStore<State> {
+          private let subject: CurrentValueSubject<State, Never>
+
+          var state: State {
+              get { subject.value }
+              set { subject.send(newValue) }
+          }
+
+          var publisher: AnyPublisher<State, Never> {
+              subject.eraseToAnyPublisher()
+          }
+
+          init(initialState: State) {
+              subject = CurrentValueSubject(initialState)
+          }
+      }
+  changed_files:
+    Sources/PropertyWrappers/Published.swift: |
+      import Combine
+
+      @propertyWrapper
+      struct Published<Value> {
+          private var value: Value
+          private let subject = PassthroughSubject<Value, Never>()
+
+          var wrappedValue: Value {
+              get { value }
+              set {
+                  value = newValue
+                  subject.send(newValue)
+              }
+          }
+
+          var projectedValue: PassthroughSubject<Value, Never> {
+              subject
+          }
+
+          init(wrappedValue: Value) {
+              self.value = wrappedValue
+          }
+      }
+    Sources/ViewModels/ViewModel.swift: |
+      import Combine
+
+      class ViewModel: ObservableObject {
+          @Published var users: [String] = []
+          @Published var isLoading = false
+
+          private var cancellables = Set<AnyCancellable>()
+
+          func loadUsers() {
+              isLoading = true
+              users = ["John", "Jane"]
+              isLoading = false
+          }
+      }
+    Sources/PropertyWrappers/UserDefault.swift: |
+      import Foundation
+
+      @propertyWrapper
+      struct UserDefault<Value> {
+          let key: String
+          let defaultValue: Value
+
+          var wrappedValue: Value {
+              get { UserDefaults.standard.object(forKey: key) as? Value ?? defaultValue }
+              set { UserDefaults.standard.set(newValue, forKey: key) }
+          }
+
+          init(wrappedValue: Value, key: String) {
+              self.defaultValue = wrappedValue
+              self.key = key
+          }
+      }
+    Sources/Services/NotificationCenter.swift: |
+      import Foundation
+
+      class AppNotificationCenter {
+          static let shared = AppNotificationCenter()
+          private var observers: [String: [(Any) -> Void]] = [:]
+
+          func addObserver(event: String, handler: @escaping (Any) -> Void) {
+              observers[event, default: []].append(handler)
+          }
+
+          func post(event: String, data: Any) {
+              observers[event]?.forEach { $0(data) }
+          }
+
+          func removeAll(event: String) {
+              observers[event] = nil
+          }
+      }
+    Sources/PropertyWrappers/Clamped.swift: |
+      @propertyWrapper
+      struct Clamped<Value: Comparable> {
+          private var value: Value
+          let range: ClosedRange<Value>
+
+          var wrappedValue: Value {
+              get { value }
+              set { value = min(max(newValue, range.lowerBound), range.upperBound) }
+          }
+
+          init(wrappedValue: Value, _ range: ClosedRange<Value>) {
+              self.range = range
+              self.value = min(max(wrappedValue, range.lowerBound), range.upperBound)
+          }
+      }
+    Sources/ViewModels/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var language: String = "en"
+          @Published var theme: String = "system"
+          @Published var analyticsEnabled: Bool = true
+
+          private var cancellables = Set<AnyCancellable>()
+
+          func resetToDefaults() {
+              language = "en"
+              theme = "system"
+              analyticsEnabled = true
+          }
+      }
+    Sources/Bindings/ObservableStore.swift: |
+      import Combine
+
+      class ObservableStore<State> {
+          private let subject: CurrentValueSubject<State, Never>
+
+          var state: State {
+              get { subject.value }
+              set { subject.send(newValue) }
+          }
+
+          var publisher: AnyPublisher<State, Never> {
+              subject.eraseToAnyPublisher()
+          }
+
+          init(initialState: State) {
+              subject = CurrentValueSubject(initialState)
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: viewmodel
+  selector:
+    path: Sources/ViewModels/ViewModel.swift
+    anchor: '@Published var users: [String] = []'
+- id: viewmodel_1
+  selector:
+    path: Sources/ViewModels/ViewModel.swift
+    anchor: '@Published var isLoading'
+- id: published
+  selector:
+    path: Sources/PropertyWrappers/Published.swift
+    anchor: '@propertyWrapper'
+- id: published_1
+  selector:
+    path: Sources/PropertyWrappers/Published.swift
+    anchor: subject.send(newValue)
+- id: published_2
+  selector:
+    path: Sources/PropertyWrappers/Published.swift
+    anchor: 'var projectedValue: PassthroughSubject'
+- id: no_userdefault
+  selector:
+    path: Sources/PropertyWrappers/UserDefault.swift
+- id: no_notificationcenter
+  selector:
+    path: Sources/Services/NotificationCenter.swift
+- id: no_clamped
+  selector:
+    path: Sources/PropertyWrappers/Clamped.swift
+- id: no_settingsviewmodel
+  selector:
+    path: Sources/ViewModels/SettingsViewModel.swift
+- id: no_observablestore
+  selector:
+    path: Sources/Bindings/ObservableStore.swift
+- id: no_global_0
+  selector:
+    anchor: UserDefault
+- id: no_global_1
+  selector:
+    anchor: defaultValue
+- id: no_global_2
+  selector:
+    anchor: UserDefaults.standard
+- id: no_global_3
+  selector:
+    anchor: AppNotificationCenter
+- id: no_global_4
+  selector:
+    anchor: addObserver
+- id: no_global_5
+  selector:
+    anchor: removeAll
+- id: no_global_6
+  selector:
+    anchor: Clamped
+- id: no_global_7
+  selector:
+    anchor: ClosedRange
+- id: no_global_8
+  selector:
+    anchor: lowerBound
+- id: no_global_9
+  selector:
+    anchor: SettingsViewModel
+- id: no_global_10
+  selector:
+    anchor: analyticsEnabled
+- id: no_global_11
+  selector:
+    anchor: resetToDefaults
+- id: no_global_12
+  selector:
+    anchor: ObservableStore
+- id: no_global_13
+  selector:
+    anchor: CurrentValueSubject
+- id: no_global_14
+  selector:
+    anchor: eraseToAnyPublisher
+oracle:
+  required:
+  - viewmodel
+  - viewmodel_1
+  - published
+  - published_1
+  - published_2
+  allowed: []
+  forbidden:
+  - no_userdefault
+  - no_notificationcenter
+  - no_clamped
+  - no_settingsviewmodel
+  - no_observablestore
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

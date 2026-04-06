@@ -1,0 +1,361 @@
+name: ppr_032_large_graph_scalability
+repo:
+  initial_files:
+    plugins/formatter.py: |
+      from plugin_base import Plugin
+
+      class FormatterPlugin(Plugin):
+          name = "formatter"
+
+          def process(self, data):
+              return self.format(data)
+
+          def format(self, data):
+              return {"formatted": data}
+    plugins/exporter.py: |
+      from plugin_base import Plugin
+
+      class ExporterPlugin(Plugin):
+          name = "exporter"
+
+          def process(self, data):
+              return self.export(data)
+
+          def export(self, records):
+              return "\n".join(str(r) for r in records)
+    plugin_base.py: |
+      from abc import ABC, abstractmethod
+
+      class Plugin(ABC):
+          name: str = ""
+
+          @abstractmethod
+          def process(self, data):
+              raise NotImplementedError
+
+          def describe(self) -> str:
+              return f"Plugin({self.name})"
+    pipeline.py: |
+      from plugins.formatter import FormatterPlugin
+      from plugins.exporter import ExporterPlugin
+      from plugins.validator import ValidatorPlugin
+
+      class DataPipeline:
+          def __init__(self):
+              self.formatter = FormatterPlugin()
+              self.exporter = ExporterPlugin()
+              self.validator = ValidatorPlugin()
+
+          def run(self, raw_data: list) -> str:
+              validated = [d for d in raw_data if self.validator.validate(d)]
+              formatted = [self.formatter.format(d) for d in validated]
+              output = self.exporter.export(formatted)
+              return output
+
+          def run_formatted_only(self, raw_data: list) -> list:
+              return [self.formatter.format(d) for d in raw_data]
+    plugin_registry.py: |
+      from plugins.formatter import FormatterPlugin
+      from plugins.exporter import ExporterPlugin
+      from plugins.validator import ValidatorPlugin
+      from plugins.transformer import TransformerPlugin
+      from plugins.aggregator import AggregatorPlugin
+
+      PLUGIN_CLASSES = [
+          FormatterPlugin,
+          ExporterPlugin,
+          ValidatorPlugin,
+          TransformerPlugin,
+          AggregatorPlugin,
+      ]
+
+      class PluginRegistry:
+          def __init__(self):
+              self._plugins = {}
+
+          def register_all(self):
+              for cls in PLUGIN_CLASSES:
+                  plugin = cls()
+                  self._plugins[plugin.name] = plugin
+
+          def get(self, name: str):
+              return self._plugins.get(name)
+
+          def list_plugins(self) -> list:
+              return list(self._plugins.keys())
+    plugins/validator.py: |
+      from plugin_base import Plugin
+
+      class ValidatorPlugin(Plugin):
+          name = "validator"
+
+          def process(self, data):
+              return self.validate(data)
+
+          def validate(self, record) -> bool:
+              if not isinstance(record, dict):
+                  return False
+              if "id" not in record:
+                  return False
+              return True
+
+          def validate_batch(self, records: list) -> list:
+              return [r for r in records if self.validate(r)]
+    plugins/transformer.py: |
+      from plugin_base import Plugin
+
+      class TransformerPlugin(Plugin):
+          name = "transformer"
+
+          def process(self, data):
+              return self.transform(data)
+
+          def transform(self, record: dict) -> dict:
+              result = {}
+              for key, value in record.items():
+                  result[key.lower().replace(" ", "_")] = value
+              return result
+    plugins/aggregator.py: |
+      from plugin_base import Plugin
+      from collections import Counter
+
+      class AggregatorPlugin(Plugin):
+          name = "aggregator"
+
+          def process(self, data):
+              return self.aggregate(data)
+
+          def aggregate(self, records: list) -> dict:
+              if not records:
+                  return {"count": 0}
+              keys = Counter()
+              for record in records:
+                  if isinstance(record, dict):
+                      keys.update(record.keys())
+              return {
+                  "count": len(records),
+                  "fields": dict(keys),
+              }
+    tests/test_formatter.py: |
+      from plugins.formatter import FormatterPlugin
+
+      def test_format_basic():
+          f = FormatterPlugin()
+          result = f.format({"id": 1, "name": "test"})
+          assert "formatted" in result
+
+      def test_format_preserves_data():
+          f = FormatterPlugin()
+          data = {"key": "value"}
+          result = f.format(data)
+          assert result["formatted"] == data
+
+      def test_process_calls_format():
+          f = FormatterPlugin()
+          result = f.process({"id": 1})
+          assert isinstance(result, dict)
+    tests/test_exporter.py: |
+      from plugins.exporter import ExporterPlugin
+
+      def test_export_basic():
+          e = ExporterPlugin()
+          result = e.export(["a", "b", "c"])
+          assert "a" in result
+          assert "b" in result
+
+      def test_export_single():
+          e = ExporterPlugin()
+          result = e.export(["only"])
+          assert result == "only"
+
+      def test_process_calls_export():
+          e = ExporterPlugin()
+          result = e.process(["x", "y"])
+          assert isinstance(result, str)
+    config/plugins.yaml: |
+      plugins:
+        enabled:
+          - formatter
+          - exporter
+          - validator
+          - transformer
+          - aggregator
+        disabled:
+          - legacy_converter
+        settings:
+          formatter:
+            default_style: "standard"
+          exporter:
+            output_dir: "/tmp/exports"
+  changed_files:
+    plugins/formatter.py: |
+      from plugin_base import Plugin
+
+      class FormatterPlugin(Plugin):
+          name = "formatter"
+
+          def process(self, data):
+              return self.format(data)
+
+          def format(self, data, style="default"):
+              return {"formatted": data, "style": style, "version": 2}
+    plugins/exporter.py: |
+      from plugin_base import Plugin
+
+      class ExporterPlugin(Plugin):
+          name = "exporter"
+
+          def process(self, data):
+              return self.export(data)
+
+          def export(self, records, delimiter=","):
+              header = f"# Export: {len(records)} records"
+              body = delimiter.join(str(r) for r in records)
+              footer = f"# Total: {len(records)}"
+              return f"{header}\n{body}\n{footer}"
+  commit_message: Update files
+fragments:
+- id: formatter
+  selector:
+    path: plugins/formatter.py
+    anchor: def format(self, data, style="default")
+- id: formatter_1
+  selector:
+    path: plugins/formatter.py
+    anchor: '"version": 2'
+- id: exporter
+  selector:
+    path: plugins/exporter.py
+    anchor: def export(self, records, delimiter=",")
+- id: exporter_1
+  selector:
+    path: plugins/exporter.py
+    anchor: delimiter.join
+- id: pipeline
+  selector:
+    path: pipeline.py
+    anchor: self.formatter.format(d)
+- id: pipeline_1
+  selector:
+    path: pipeline.py
+    anchor: self.exporter.export(formatted)
+- id: plugin_base
+  selector:
+    path: plugin_base.py
+    anchor: def process(self, data)
+- id: plugin_base_1
+  selector:
+    path: plugin_base.py
+    anchor: class Plugin(ABC)
+- id: no_validator
+  selector:
+    path: plugins/validator.py
+- id: no_transformer
+  selector:
+    path: plugins/transformer.py
+- id: no_aggregator
+  selector:
+    path: plugins/aggregator.py
+- id: no_plugin_registry
+  selector:
+    path: plugin_registry.py
+- id: no_test_formatter
+  selector:
+    path: tests/test_formatter.py
+- id: no_test_exporter
+  selector:
+    path: tests/test_exporter.py
+- id: no_plugins
+  selector:
+    path: config/plugins.yaml
+- id: no_global_0
+  selector:
+    anchor: ValidatorPlugin
+- id: no_global_1
+  selector:
+    anchor: validate_batch
+- id: no_global_2
+  selector:
+    anchor: '"id" not in record'
+- id: no_global_3
+  selector:
+    anchor: TransformerPlugin
+- id: no_global_4
+  selector:
+    anchor: key.lower()
+- id: no_global_5
+  selector:
+    anchor: AggregatorPlugin
+- id: no_global_6
+  selector:
+    anchor: Counter
+- id: no_global_7
+  selector:
+    anchor: PluginRegistry
+- id: no_global_8
+  selector:
+    anchor: PLUGIN_CLASSES
+- id: no_global_9
+  selector:
+    anchor: register_all
+- id: no_global_10
+  selector:
+    anchor: list_plugins
+- id: no_global_11
+  selector:
+    anchor: test_format_basic
+- id: no_global_12
+  selector:
+    anchor: test_format_preserves_data
+- id: no_global_13
+  selector:
+    anchor: test_export_basic
+- id: no_global_14
+  selector:
+    anchor: test_export_single
+- id: no_global_15
+  selector:
+    anchor: default_style
+- id: no_global_16
+  selector:
+    anchor: output_dir
+- id: no_global_17
+  selector:
+    anchor: legacy_converter
+oracle:
+  required:
+  - formatter
+  - formatter_1
+  - exporter
+  - exporter_1
+  - pipeline
+  - pipeline_1
+  - plugin_base
+  - plugin_base_1
+  allowed: []
+  forbidden:
+  - no_validator
+  - no_transformer
+  - no_aggregator
+  - no_plugin_registry
+  - no_test_formatter
+  - no_test_exporter
+  - no_plugins
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

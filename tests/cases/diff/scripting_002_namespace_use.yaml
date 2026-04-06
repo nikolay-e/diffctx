@@ -1,0 +1,285 @@
+name: scripting_002_namespace_use
+repo:
+  initial_files:
+    src/Controllers/Controller.php: |
+      <?php
+      namespace App\Controllers;
+
+      class Controller {
+      }
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentService {
+          private string $provider;
+          private string $currency;
+
+          public function __construct(string $provider = 'stripe', string $currency = 'USD') {
+              $this->provider = $provider;
+              $this->currency = $currency;
+          }
+
+          public function process(float $amount): bool {
+              if ($amount <= 0) {
+                  return false;
+              }
+              return true;
+          }
+
+          public function refund(string $transactionId, float $amount): bool {
+              return $amount > 0 && strlen($transactionId) > 0;
+          }
+
+          public function getProvider(): string {
+              return $this->provider;
+          }
+
+          public function getCurrency(): string {
+              return $this->currency;
+          }
+      }
+    src/Services/ShippingService.php: |
+      <?php
+      namespace App\Services;
+
+      class ShippingService {
+          private float $baseRate;
+          private string $carrier;
+
+          public function __construct(float $baseRate = 5.99, string $carrier = 'fedex') {
+              $this->baseRate = $baseRate;
+              $this->carrier = $carrier;
+          }
+
+          public function calculateRate(float $weight, string $zone): float {
+              return $this->baseRate + ($weight * 0.5) + ($zone === 'international' ? 15.0 : 0.0);
+          }
+
+          public function getCarrier(): string {
+              return $this->carrier;
+          }
+
+          public function getBaseRate(): float {
+              return $this->baseRate;
+          }
+      }
+    src/Services/DiscountService.php: |
+      <?php
+      namespace App\Services;
+
+      class DiscountService {
+          private float $maxDiscount;
+
+          public function __construct(float $maxDiscount = 0.30) {
+              $this->maxDiscount = $maxDiscount;
+          }
+
+          public function apply(float $amount, float $percentage): float {
+              $discount = min($percentage, $this->maxDiscount);
+              return $amount * (1.0 - $discount);
+          }
+
+          public function getMaxDiscount(): float {
+              return $this->maxDiscount;
+          }
+      }
+    src/Repositories/OrderRepository.php: |
+      <?php
+      namespace App\Repositories;
+
+      class OrderRepository {
+          private array $orders = [];
+
+          public function save(array $order): int {
+              $id = count($this->orders) + 1;
+              $order['id'] = $id;
+              $this->orders[$id] = $order;
+              return $id;
+          }
+
+          public function findById(int $id): ?array {
+              return $this->orders[$id] ?? null;
+          }
+      }
+    src/Controllers/CartController.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentService;
+
+      class CartController {
+          private PaymentService $paymentService;
+
+          public function __construct() {
+              $this->paymentService = new PaymentService();
+          }
+
+          public function processCart(array $items): array {
+              $total = array_sum(array_column($items, 'price'));
+              $success = $this->paymentService->process($total);
+              return [
+                  'success' => $success,
+                  'total' => $total,
+                  'provider' => $this->paymentService->getProvider(),
+              ];
+          }
+      }
+    src/Events/PaymentProcessed.php: |
+      <?php
+      namespace App\Events;
+
+      class PaymentProcessed {
+          public float $amount;
+          public string $provider;
+          public string $transactionId;
+
+          public function __construct(float $amount, string $provider, string $transactionId) {
+              $this->amount = $amount;
+              $this->provider = $provider;
+              $this->transactionId = $transactionId;
+          }
+      }
+    tests/PaymentServiceTest.php: |
+      <?php
+      namespace Tests;
+
+      use App\Services\PaymentService;
+      use PHPUnit\Framework\TestCase;
+
+      class PaymentServiceTest extends TestCase {
+          public function testProcessPositiveAmount(): void {
+              $service = new PaymentService();
+              $this->assertTrue($service->process(100.00));
+          }
+
+          public function testProcessZeroAmountReturnsFalse(): void {
+              $service = new PaymentService();
+              $this->assertFalse($service->process(0.00));
+          }
+      }
+  changed_files:
+    src/Controllers/Controller.php: |
+      <?php
+      namespace App\Controllers;
+
+      use App\Services\PaymentService;
+
+      class Controller {
+          private PaymentService $paymentService;
+
+          public function __construct() {
+              $this->paymentService = new PaymentService();
+          }
+
+          public function checkout(float $amount): array {
+              $success = $this->paymentService->process($amount);
+              return [
+                  'success' => $success,
+                  'provider' => $this->paymentService->getProvider(),
+                  'currency' => $this->paymentService->getCurrency(),
+              ];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: paymentservice
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: 'public function process(float $amount): bool'
+- id: paymentservice_1
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: 'public function getProvider(): string'
+- id: paymentservice_2
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: 'public function getCurrency(): string'
+- id: paymentservice_3
+  selector:
+    path: src/Services/PaymentService.php
+    anchor: if ($amount <= 0)
+- id: no_shippingservice
+  selector:
+    path: src/Services/ShippingService.php
+- id: no_discountservice
+  selector:
+    path: src/Services/DiscountService.php
+- id: no_orderrepository
+  selector:
+    path: src/Repositories/OrderRepository.php
+- id: no_cartcontroller
+  selector:
+    path: src/Controllers/CartController.php
+- id: no_paymentprocessed
+  selector:
+    path: src/Events/PaymentProcessed.php
+- id: no_paymentservicetest
+  selector:
+    path: tests/PaymentServiceTest.php
+- id: no_global_0
+  selector:
+    anchor: class ShippingService
+- id: no_global_1
+  selector:
+    anchor: calculateRate
+- id: no_global_2
+  selector:
+    anchor: getCarrier
+- id: no_global_3
+  selector:
+    anchor: class DiscountService
+- id: no_global_4
+  selector:
+    anchor: getMaxDiscount
+- id: no_global_5
+  selector:
+    anchor: class OrderRepository
+- id: no_global_6
+  selector:
+    anchor: function save
+- id: no_global_7
+  selector:
+    anchor: class CartController
+- id: no_global_8
+  selector:
+    anchor: processCart
+- id: no_global_9
+  selector:
+    anchor: class PaymentProcessed
+- id: no_global_10
+  selector:
+    anchor: transactionId
+- id: no_global_11
+  selector:
+    anchor: class PaymentServiceTest
+- id: no_global_12
+  selector:
+    anchor: testProcessPositiveAmount
+oracle:
+  required:
+  - paymentservice
+  - paymentservice_1
+  - paymentservice_2
+  - paymentservice_3
+  allowed: []
+  forbidden:
+  - no_shippingservice
+  - no_discountservice
+  - no_orderrepository
+  - no_cartcontroller
+  - no_paymentprocessed
+  - no_paymentservicetest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

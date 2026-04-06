@@ -1,0 +1,139 @@
+name: ppr_022_dangling_no_outgoing
+repo:
+  initial_files:
+    hub.py: |
+      from leaf1 import leaf1_func
+      from leaf2 import leaf2_func
+
+      def hub_func():
+          leaf1_func()
+          leaf2_func()
+    leaf1.py: |
+      def leaf1_func():
+          return "leaf1"
+    leaf2.py: |
+      def leaf2_func():
+          return "leaf2"
+    alt_hub.py: |
+      from leaf1 import leaf1_func
+      from leaf2 import leaf2_func
+
+      def hub_func():
+          return leaf1_func() + leaf2_func()
+
+      class HubManager:
+          def orchestrate(self):
+              return hub_func()
+    leaf3.py: |
+      def leaf3_func():
+          return "leaf3"
+
+      class Leaf3Processor:
+          def process(self):
+              return leaf3_func()
+    auth_provider.py: |
+      AUTH_TOKEN_PREFIX = "bearer"
+      TOKEN_EXPIRY = 7200
+
+      class AuthProvider:
+          def authenticate(self, username: str):
+              pass
+  changed_files:
+    hub.py: |
+      from leaf1 import leaf1_func
+      from leaf2 import leaf2_func
+
+      def hub_func():
+          leaf1_func()
+          leaf2_func()
+          return "modified"
+    leaf1.py: |
+      def leaf1_func():
+          return "leaf1"
+    leaf2.py: |
+      def leaf2_func():
+          return "leaf2"
+    alt_hub.py: |
+      from leaf1 import leaf1_func
+      from leaf2 import leaf2_func
+
+      def hub_func():
+          return leaf1_func() + leaf2_func()
+
+      class HubManager:
+          def orchestrate(self):
+              return hub_func()
+    leaf3.py: |
+      def leaf3_func():
+          return "leaf3"
+
+      class Leaf3Processor:
+          def process(self):
+              return leaf3_func()
+    auth_provider.py: |
+      AUTH_TOKEN_PREFIX = "bearer"
+      TOKEN_EXPIRY = 7200
+
+      class AuthProvider:
+          def authenticate(self, username: str):
+              pass
+  commit_message: Update files
+fragments:
+- id: hub
+  selector:
+    path: hub.py
+    anchor: 'def hub_func():'
+- id: hub_1
+  selector:
+    path: hub.py
+    anchor: return "modified"
+- id: req_pattern_0
+  selector:
+    anchor: hub_func
+- id: req_pattern_1
+  selector:
+    anchor: modified
+- id: no_alt_hub
+  selector:
+    path: alt_hub.py
+- id: no_leaf3
+  selector:
+    path: leaf3.py
+- id: no_auth_provider
+  selector:
+    path: auth_provider.py
+- id: no_global_0
+  selector:
+    anchor: HubManager
+- id: no_global_1
+  selector:
+    anchor: orchestrate
+- id: no_global_2
+  selector:
+    anchor: Leaf3Processor
+- id: no_global_3
+  selector:
+    anchor: leaf3_func
+- id: no_global_4
+  selector:
+    anchor: AuthProvider
+- id: no_global_5
+  selector:
+    anchor: AUTH_TOKEN_PREFIX
+oracle:
+  required:
+  - hub
+  - hub_1
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_alt_hub
+  - no_leaf3
+  - no_auth_provider
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

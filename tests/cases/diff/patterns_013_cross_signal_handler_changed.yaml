@@ -1,0 +1,481 @@
+name: patterns_013_cross_signal_handler_changed
+repo:
+  initial_files:
+    signals.py: |
+      from models.user import User
+
+      def on_user_created(sender, instance):
+          print(f"User created: {instance.name}")
+    models/user.py: |
+      from datetime import datetime
+
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+              self.created_at = datetime.utcnow()
+              self.is_active = True
+
+          def deactivate(self):
+              self.is_active = False
+
+          def full_display_name(self) -> str:
+              return f"{self.name} <{self.email}>"
+    services/email_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+      DEFAULT_FROM = "noreply@example.com"
+
+      class EmailService:
+          def __init__(self, host: str = SMTP_HOST, port: int = SMTP_PORT):
+              self.host = host
+              self.port = port
+
+          def send_welcome(self, recipient_email: str, recipient_name: str) -> bool:
+              subject = f"Welcome, {recipient_name}!"
+              body = f"Hello {recipient_name}, welcome to our platform."
+              return self._send(recipient_email, subject, body)
+
+          def send_password_reset(self, recipient_email: str, reset_token: str) -> bool:
+              subject = "Password Reset Request"
+              body = f"Use this token to reset your password: {reset_token}"
+              return self._send(recipient_email, subject, body)
+
+          def _send(self, to: str, subject: str, body: str) -> bool:
+              logger.info(f"Sending email to {to}: {subject}")
+              return True
+    apps.py: |
+      from signals import on_user_created
+      from signals_registry import user_created
+
+      class UserAppConfig:
+          name = "users"
+
+          def ready(self):
+              user_created.connect(on_user_created)
+
+      class OrderAppConfig:
+          name = "orders"
+
+          def ready(self):
+              pass
+    signals_registry.py: |
+      class Signal:
+          def __init__(self, name: str):
+              self.name = name
+              self._receivers: list[callable] = []
+
+          def connect(self, receiver: callable) -> None:
+              self._receivers.append(receiver)
+
+          def send(self, sender, **kwargs):
+              results = []
+              for receiver in self._receivers:
+                  results.append(receiver(sender, **kwargs))
+              return results
+
+          def disconnect(self, receiver: callable) -> None:
+              self._receivers = [r for r in self._receivers if r != receiver]
+
+      user_created = Signal("user_created")
+      user_deleted = Signal("user_deleted")
+      order_placed = Signal("order_placed")
+    services/notification_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      NOTIFICATION_TYPES = ["push", "in_app", "email"]
+      MAX_BATCH_SIZE = 100
+
+      class NotificationService:
+          def __init__(self):
+              self._queue: list[dict] = []
+
+          def send_push(self, user_email: str, user_name: str, message: str) -> bool:
+              logger.info(f"Push notification to {user_name}: {message}")
+              self._queue.append({"type": "push", "to": user_email, "body": message})
+              return True
+
+          def send_in_app(self, user_email: str, user_name: str, message: str) -> bool:
+              logger.info(f"In-app notification to {user_name}: {message}")
+              self._queue.append({"type": "in_app", "to": user_email, "body": message})
+              return True
+
+          def flush_queue(self) -> int:
+              count = len(self._queue)
+              self._queue.clear()
+              return count
+    handlers/user_handler.py: |
+      from models.user import User
+      from signals_registry import user_created
+
+      class UserHandler:
+          def __init__(self, user_repo):
+              self.user_repo = user_repo
+
+          def create_user(self, request_data: dict) -> dict:
+              user = User(
+                  name=request_data["name"],
+                  email=request_data["email"],
+              )
+              self.user_repo.save(user)
+              user_created.send(sender=self.__class__, instance=user)
+              return {"id": user.name, "status": "created"}
+
+          def get_user(self, user_id: str) -> dict | None:
+              return self.user_repo.find(user_id)
+
+          def list_users(self) -> list[dict]:
+              return self.user_repo.find_all()
+    tests/test_signals.py: |
+      from models.user import User
+      from signals import on_user_created
+
+      def test_on_user_created_prints_name(capsys):
+          user = User(name="Alice", email="alice@example.com")
+          on_user_created(sender=None, instance=user)
+          captured = capsys.readouterr()
+          assert "Alice" in captured.out
+
+      def test_on_user_created_handles_special_chars(capsys):
+          user = User(name="Bob O'Brien", email="bob@example.com")
+          on_user_created(sender=None, instance=user)
+          captured = capsys.readouterr()
+          assert "Bob O'Brien" in captured.out
+    services/sms_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      SMS_GATEWAY_URL = "https://sms.gateway.example.com/api/v1"
+      SMS_MAX_LENGTH = 160
+
+      class SmsService:
+          def __init__(self, gateway_url: str = SMS_GATEWAY_URL):
+              self.gateway_url = gateway_url
+
+          def send_welcome_sms(self, phone_number: str, user_name: str) -> bool:
+              message = f"Welcome {user_name}! Thanks for joining."
+              return self._send(phone_number, message)
+
+          def send_verification(self, phone_number: str, code: str) -> bool:
+              message = f"Your verification code is: {code}"
+              return self._send(phone_number, message)
+
+          def _send(self, to: str, message: str) -> bool:
+              if len(message) > SMS_MAX_LENGTH:
+                  message = message[:SMS_MAX_LENGTH]
+              logger.info(f"SMS to {to}: {message}")
+              return True
+  changed_files:
+    signals.py: |
+      from models.user import User
+      from services.email_service import EmailService
+
+      email_service = EmailService()
+
+      def on_user_created(sender, instance):
+          print(f"User created: {instance.name}")
+          email_service.send_welcome(instance.email, instance.name)
+          log_user_event("created", instance)
+
+      def log_user_event(event_type, user):
+          print(f"Event [{event_type}]: {user.name}")
+    models/user.py: |
+      from datetime import datetime
+
+      class User:
+          def __init__(self, name: str, email: str):
+              self.name = name
+              self.email = email
+              self.created_at = datetime.utcnow()
+              self.is_active = True
+
+          def deactivate(self):
+              self.is_active = False
+
+          def full_display_name(self) -> str:
+              return f"{self.name} <{self.email}>"
+    services/email_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      SMTP_HOST = "smtp.example.com"
+      SMTP_PORT = 587
+      DEFAULT_FROM = "noreply@example.com"
+
+      class EmailService:
+          def __init__(self, host: str = SMTP_HOST, port: int = SMTP_PORT):
+              self.host = host
+              self.port = port
+
+          def send_welcome(self, recipient_email: str, recipient_name: str) -> bool:
+              subject = f"Welcome, {recipient_name}!"
+              body = f"Hello {recipient_name}, welcome to our platform."
+              return self._send(recipient_email, subject, body)
+
+          def send_password_reset(self, recipient_email: str, reset_token: str) -> bool:
+              subject = "Password Reset Request"
+              body = f"Use this token to reset your password: {reset_token}"
+              return self._send(recipient_email, subject, body)
+
+          def _send(self, to: str, subject: str, body: str) -> bool:
+              logger.info(f"Sending email to {to}: {subject}")
+              return True
+    apps.py: |
+      from signals import on_user_created
+      from signals_registry import user_created
+
+      class UserAppConfig:
+          name = "users"
+
+          def ready(self):
+              user_created.connect(on_user_created)
+
+      class OrderAppConfig:
+          name = "orders"
+
+          def ready(self):
+              pass
+    signals_registry.py: |
+      class Signal:
+          def __init__(self, name: str):
+              self.name = name
+              self._receivers: list[callable] = []
+
+          def connect(self, receiver: callable) -> None:
+              self._receivers.append(receiver)
+
+          def send(self, sender, **kwargs):
+              results = []
+              for receiver in self._receivers:
+                  results.append(receiver(sender, **kwargs))
+              return results
+
+          def disconnect(self, receiver: callable) -> None:
+              self._receivers = [r for r in self._receivers if r != receiver]
+
+      user_created = Signal("user_created")
+      user_deleted = Signal("user_deleted")
+      order_placed = Signal("order_placed")
+    services/notification_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      NOTIFICATION_TYPES = ["push", "in_app", "email"]
+      MAX_BATCH_SIZE = 100
+
+      class NotificationService:
+          def __init__(self):
+              self._queue: list[dict] = []
+
+          def send_push(self, user_email: str, user_name: str, message: str) -> bool:
+              logger.info(f"Push notification to {user_name}: {message}")
+              self._queue.append({"type": "push", "to": user_email, "body": message})
+              return True
+
+          def send_in_app(self, user_email: str, user_name: str, message: str) -> bool:
+              logger.info(f"In-app notification to {user_name}: {message}")
+              self._queue.append({"type": "in_app", "to": user_email, "body": message})
+              return True
+
+          def flush_queue(self) -> int:
+              count = len(self._queue)
+              self._queue.clear()
+              return count
+    handlers/user_handler.py: |
+      from models.user import User
+      from signals_registry import user_created
+
+      class UserHandler:
+          def __init__(self, user_repo):
+              self.user_repo = user_repo
+
+          def create_user(self, request_data: dict) -> dict:
+              user = User(
+                  name=request_data["name"],
+                  email=request_data["email"],
+              )
+              self.user_repo.save(user)
+              user_created.send(sender=self.__class__, instance=user)
+              return {"id": user.name, "status": "created"}
+
+          def get_user(self, user_id: str) -> dict | None:
+              return self.user_repo.find(user_id)
+
+          def list_users(self) -> list[dict]:
+              return self.user_repo.find_all()
+    tests/test_signals.py: |
+      from models.user import User
+      from signals import on_user_created
+
+      def test_on_user_created_prints_name(capsys):
+          user = User(name="Alice", email="alice@example.com")
+          on_user_created(sender=None, instance=user)
+          captured = capsys.readouterr()
+          assert "Alice" in captured.out
+
+      def test_on_user_created_handles_special_chars(capsys):
+          user = User(name="Bob O'Brien", email="bob@example.com")
+          on_user_created(sender=None, instance=user)
+          captured = capsys.readouterr()
+          assert "Bob O'Brien" in captured.out
+    services/sms_service.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      SMS_GATEWAY_URL = "https://sms.gateway.example.com/api/v1"
+      SMS_MAX_LENGTH = 160
+
+      class SmsService:
+          def __init__(self, gateway_url: str = SMS_GATEWAY_URL):
+              self.gateway_url = gateway_url
+
+          def send_welcome_sms(self, phone_number: str, user_name: str) -> bool:
+              message = f"Welcome {user_name}! Thanks for joining."
+              return self._send(phone_number, message)
+
+          def send_verification(self, phone_number: str, code: str) -> bool:
+              message = f"Your verification code is: {code}"
+              return self._send(phone_number, message)
+
+          def _send(self, to: str, message: str) -> bool:
+              if len(message) > SMS_MAX_LENGTH:
+                  message = message[:SMS_MAX_LENGTH]
+              logger.info(f"SMS to {to}: {message}")
+              return True
+  commit_message: Update files
+fragments:
+- id: signals
+  selector:
+    path: signals.py
+    anchor: from services.email_service import EmailService
+- id: signals_1
+  selector:
+    path: signals.py
+    anchor: email_service.send_welcome(instance.email, instance.name)
+- id: signals_2
+  selector:
+    path: signals.py
+    anchor: 'def log_user_event(event_type, user):'
+- id: user
+  selector:
+    path: models/user.py
+    anchor: 'class User:'
+- id: user_1
+  selector:
+    path: models/user.py
+    anchor: self.name = name
+- id: user_2
+  selector:
+    path: models/user.py
+    anchor: self.email = email
+- id: email_service
+  selector:
+    path: services/email_service.py
+    anchor: 'class EmailService:'
+- id: email_service_1
+  selector:
+    path: services/email_service.py
+    anchor: 'def send_welcome(self, recipient_email: str, recipient_name: str) -> bool:'
+- id: apps
+  selector:
+    path: apps.py
+    anchor: user_created.connect(on_user_created)
+- id: no_signals_registry
+  selector:
+    path: signals_registry.py
+- id: no_notification_service
+  selector:
+    path: services/notification_service.py
+- id: no_user_handler
+  selector:
+    path: handlers/user_handler.py
+- id: no_test_signals
+  selector:
+    path: tests/test_signals.py
+- id: no_sms_service
+  selector:
+    path: services/sms_service.py
+- id: no_global_0
+  selector:
+    anchor: 'class Signal:'
+- id: no_global_1
+  selector:
+    anchor: def disconnect
+- id: no_global_2
+  selector:
+    anchor: order_placed
+- id: no_global_3
+  selector:
+    anchor: NotificationService
+- id: no_global_4
+  selector:
+    anchor: send_push
+- id: no_global_5
+  selector:
+    anchor: send_in_app
+- id: no_global_6
+  selector:
+    anchor: MAX_BATCH_SIZE
+- id: no_global_7
+  selector:
+    anchor: UserHandler
+- id: no_global_8
+  selector:
+    anchor: user_created.send
+- id: no_global_9
+  selector:
+    anchor: test_on_user_created_prints_name
+- id: no_global_10
+  selector:
+    anchor: test_on_user_created_handles_special_chars
+- id: no_global_11
+  selector:
+    anchor: SmsService
+- id: no_global_12
+  selector:
+    anchor: SMS_GATEWAY_URL
+- id: no_global_13
+  selector:
+    anchor: send_welcome_sms
+oracle:
+  required:
+  - signals
+  - signals_1
+  - signals_2
+  - user
+  - user_1
+  - user_2
+  - email_service
+  - email_service_1
+  - apps
+  allowed: []
+  forbidden:
+  - no_signals_registry
+  - no_notification_service
+  - no_user_handler
+  - no_test_signals
+  - no_sms_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

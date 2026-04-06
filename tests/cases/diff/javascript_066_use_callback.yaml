@@ -1,0 +1,95 @@
+name: javascript_066_use_callback
+repo:
+  initial_files:
+    src/handlers.ts: |
+      export function createClickHandler(id: string) {
+          return () => console.log('Clicked:', id);
+      }
+    src/ActionButton.tsx: |
+      export function ActionButton({ id }: { id: string }) {
+          return <button>Action</button>;
+      }
+    src/event-analytics.ts: |
+      export function trackClick(elementId: string, timestamp: number): void {
+          console.log(`Click tracked: ${elementId} at ${timestamp}`);
+      }
+
+      export function trackHover(elementId: string, durationMs: number): void {
+          console.log(`Hover tracked: ${elementId} for ${durationMs}ms`);
+      }
+    src/ActionButton.styles.ts: |
+      export const buttonStyles = {
+          primary: { backgroundColor: '#007bff', color: 'white', padding: '8px 16px' },
+          secondary: { backgroundColor: '#6c757d', color: 'white', padding: '8px 16px' },
+          disabled: { backgroundColor: '#ccc', color: '#666', cursor: 'not-allowed' },
+      };
+  changed_files:
+    src/handlers.ts: |
+      export function createClickHandler(id: string) {
+          return () => console.log('Clicked:', id);
+      }
+    src/ActionButton.tsx: |
+      import { useCallback } from 'react';
+      import { createClickHandler } from './handlers';
+
+      export function ActionButton({ id }: { id: string }) {
+          const handleClick = useCallback(() => {
+              createClickHandler(id)();
+          }, [id]);
+
+          return <button onClick={handleClick}>Action</button>;
+      }
+    src/event-analytics.ts: |
+      export function trackClick(elementId: string, timestamp: number): void {
+          console.log(`Click tracked: ${elementId} at ${timestamp}`);
+      }
+
+      export function trackHover(elementId: string, durationMs: number): void {
+          console.log(`Hover tracked: ${elementId} for ${durationMs}ms`);
+      }
+    src/ActionButton.styles.ts: |
+      export const buttonStyles = {
+          primary: { backgroundColor: '#007bff', color: 'white', padding: '8px 16px' },
+          secondary: { backgroundColor: '#6c757d', color: 'white', padding: '8px 16px' },
+          disabled: { backgroundColor: '#ccc', color: '#666', cursor: 'not-allowed' },
+      };
+  commit_message: Update files
+fragments:
+- id: handlers
+  selector:
+    path: src/handlers.ts
+    anchor: createClickHandler
+- id: handlers_1
+  selector:
+    path: src/handlers.ts
+    anchor: console.log
+- id: no_event_analytics
+  selector:
+    path: src/event-analytics.ts
+- id: no_actionbutton_styles
+  selector:
+    path: src/ActionButton.styles.ts
+- id: no_global_0
+  selector:
+    anchor: trackClick
+- id: no_global_1
+  selector:
+    anchor: trackHover
+- id: no_global_2
+  selector:
+    anchor: buttonStyles
+- id: no_global_3
+  selector:
+    anchor: backgroundColor
+oracle:
+  required:
+  - handlers
+  - handlers_1
+  allowed: []
+  forbidden:
+  - no_event_analytics
+  - no_actionbutton_styles
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

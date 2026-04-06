@@ -1,0 +1,258 @@
+name: rust_032_move_semantics
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod resource;
+      pub mod handler;
+      pub mod buffer;
+      pub mod pool;
+    src/resource.rs: |
+      pub struct Resource {
+          data: String,
+          size: usize,
+      }
+
+      impl Resource {
+          pub fn new(data: String) -> Self {
+              let size = data.len();
+              Self { data, size }
+          }
+
+          pub fn consume(self) -> String {
+              self.data
+          }
+
+          pub fn size(&self) -> usize {
+              self.size
+          }
+      }
+    src/handler.rs: |
+      use crate::resource::Resource;
+
+      pub fn handle(resource: Resource) {
+          println!("Handling resource of size {}", resource.size());
+          let data = resource.consume();
+          println!("Handled: {}", data);
+      }
+    src/buffer.rs: |
+      pub struct Buffer {
+          data: Vec<u8>,
+          capacity: usize,
+      }
+
+      impl Buffer {
+          pub fn new(capacity: usize) -> Self {
+              Self {
+                  data: Vec::with_capacity(capacity),
+                  capacity,
+              }
+          }
+
+          pub fn write(&mut self, bytes: &[u8]) {
+              self.data.extend_from_slice(bytes);
+          }
+
+          pub fn into_inner(self) -> Vec<u8> {
+              self.data
+          }
+
+          pub fn take(&mut self) -> Vec<u8> {
+              std::mem::take(&mut self.data)
+          }
+
+          pub fn remaining(&self) -> usize {
+              self.capacity.saturating_sub(self.data.len())
+          }
+      }
+    src/pool.rs: |
+      pub struct ObjectPool<T> {
+          available: Vec<T>,
+          max_size: usize,
+      }
+
+      impl<T> ObjectPool<T> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  available: Vec::new(),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<T> {
+              self.available.pop()
+          }
+
+          pub fn release(&mut self, item: T) {
+              if self.available.len() < self.max_size {
+                  self.available.push(item);
+              }
+          }
+
+          pub fn available_count(&self) -> usize {
+              self.available.len()
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod resource;
+      pub mod handler;
+      pub mod buffer;
+      pub mod pool;
+    src/resource.rs: |
+      pub struct Resource {
+          data: String,
+          size: usize,
+      }
+
+      impl Resource {
+          pub fn new(data: String) -> Self {
+              let size = data.len();
+              Self { data, size }
+          }
+
+          pub fn consume(self) -> String {
+              self.data
+          }
+
+          pub fn size(&self) -> usize {
+              self.size
+          }
+      }
+    src/handler.rs: |
+      use crate::resource::Resource;
+
+      pub fn handle(resource: Resource) {
+          println!("Handling resource of size {}", resource.size());
+          let data = resource.consume();
+          println!("Handled: {}", data);
+      }
+
+      pub fn transfer_ownership(resource: Resource) -> Resource {
+          println!("Transferring resource of size {}", resource.size());
+          resource
+      }
+
+      pub fn take_and_return(mut resource: Resource) -> Resource {
+          let original_size = resource.size();
+          let mut data = resource.consume();
+          data.push_str("_processed");
+          let new_resource = Resource::new(data);
+          println!("Processed: {} -> {} bytes", original_size, new_resource.size());
+          new_resource
+      }
+    src/buffer.rs: |
+      pub struct Buffer {
+          data: Vec<u8>,
+          capacity: usize,
+      }
+
+      impl Buffer {
+          pub fn new(capacity: usize) -> Self {
+              Self {
+                  data: Vec::with_capacity(capacity),
+                  capacity,
+              }
+          }
+
+          pub fn write(&mut self, bytes: &[u8]) {
+              self.data.extend_from_slice(bytes);
+          }
+
+          pub fn into_inner(self) -> Vec<u8> {
+              self.data
+          }
+
+          pub fn take(&mut self) -> Vec<u8> {
+              std::mem::take(&mut self.data)
+          }
+
+          pub fn remaining(&self) -> usize {
+              self.capacity.saturating_sub(self.data.len())
+          }
+      }
+    src/pool.rs: |
+      pub struct ObjectPool<T> {
+          available: Vec<T>,
+          max_size: usize,
+      }
+
+      impl<T> ObjectPool<T> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  available: Vec::new(),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<T> {
+              self.available.pop()
+          }
+
+          pub fn release(&mut self, item: T) {
+              if self.available.len() < self.max_size {
+                  self.available.push(item);
+              }
+          }
+
+          pub fn available_count(&self) -> usize {
+              self.available.len()
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: src/handler.rs
+    anchor: 'pub fn transfer_ownership(resource: Resource) -> Resource {'
+- id: handler_1
+  selector:
+    path: src/handler.rs
+    anchor: 'pub fn take_and_return(mut resource: Resource) -> Resource {'
+- id: resource
+  selector:
+    path: src/resource.rs
+    anchor: pub fn consume(self) -> String {
+- id: resource_1
+  selector:
+    path: src/resource.rs
+    anchor: 'pub fn new(data: String) -> Self {'
+- id: no_buffer
+  selector:
+    path: src/buffer.rs
+- id: no_pool
+  selector:
+    path: src/pool.rs
+- id: no_global_0
+  selector:
+    anchor: struct Buffer
+- id: no_global_1
+  selector:
+    anchor: into_inner
+- id: no_global_2
+  selector:
+    anchor: remaining
+- id: no_global_3
+  selector:
+    anchor: ObjectPool
+- id: no_global_4
+  selector:
+    anchor: acquire
+- id: no_global_5
+  selector:
+    anchor: available_count
+oracle:
+  required:
+  - handler
+  - handler_1
+  - resource
+  - resource_1
+  allowed: []
+  forbidden:
+  - no_buffer
+  - no_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

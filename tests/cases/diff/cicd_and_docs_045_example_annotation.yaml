@@ -1,0 +1,264 @@
+name: cicd_and_docs_045_example_annotation
+repo:
+  initial_files:
+    src/parser.ts: |
+      import { ParseResult } from './types';
+
+      export function parse(input: string): object {
+        return JSON.parse(input);
+      }
+
+      export function stringify(data: object, indent?: number): string {
+        return JSON.stringify(data, null, indent);
+      }
+    src/types.ts: |
+      export interface ParseResult {
+        data: object;
+        valid: boolean;
+        errors?: ValidationDetail[];
+      }
+
+      export interface ValidationDetail {
+        path: string;
+        message: string;
+        rule: string;
+      }
+
+      export interface ParseOptions {
+        schema?: object;
+        strict?: boolean;
+        coerceTypes?: boolean;
+      }
+    src/errors.ts: |
+      export class SchemaValidationError extends Error {
+        readonly path: string;
+        readonly violations: string[];
+
+        constructor(message: string, path: string, violations: string[]) {
+          super(message);
+          this.name = 'SchemaValidationError';
+          this.path = path;
+          this.violations = violations;
+        }
+
+        toJSON(): object {
+          return {
+            name: this.name,
+            message: this.message,
+            path: this.path,
+            violations: this.violations,
+          };
+        }
+      }
+
+      export class ParserInternalError extends Error {
+        constructor(cause: unknown) {
+          super(`Internal parser failure: ${cause}`);
+          this.name = 'ParserInternalError';
+        }
+      }
+    src/handler.ts: |
+      import { parse } from './parser';
+
+      export function handleRequest(rawBody: string): {
+        status: number;
+        body: object;
+      } {
+        try {
+          const data = parse(rawBody);
+          return { status: 200, body: data };
+        } catch {
+          return { status: 400, body: { error: 'Invalid JSON' } };
+        }
+      }
+
+      export function handleBatchRequest(items: string[]): object[] {
+        return items.map((item) => {
+          const result = handleRequest(item);
+          return result.body;
+        });
+      }
+    src/formatter.ts: |
+      export function formatAsTable(data: object): string {
+        const entries = Object.entries(data);
+        const maxKeyLen = Math.max(...entries.map(([k]) => k.length));
+        return entries
+          .map(([key, val]) => `${key.padEnd(maxKeyLen)} : ${JSON.stringify(val)}`)
+          .join('\n');
+      }
+
+      export function formatAsYaml(data: object, indent: number = 2): string {
+        const spaces = ' '.repeat(indent);
+        return Object.entries(data)
+          .map(([key, val]) => `${key}:\n${spaces}${JSON.stringify(val)}`)
+          .join('\n');
+      }
+    src/validator-utils.ts: |
+      export function isEmail(value: string): boolean {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      }
+
+      export function isUrl(value: string): boolean {
+        try {
+          new URL(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      export function isNonEmpty(value: string): boolean {
+        return value.trim().length > 0;
+      }
+
+      export function isInRange(value: number, min: number, max: number): boolean {
+        return value >= min && value <= max;
+      }
+    examples/parsing.ts: |
+      import { parse } from '../src/parser';
+
+      const simple = parse('{"name": "Alice", "age": 30}');
+      console.log('Parsed:', simple);
+
+      try {
+        parse('not valid json');
+      } catch (e) {
+        console.log('Expected error:', e);
+      }
+    package.json: |
+      {
+        "name": "@acme/json-parser",
+        "version": "2.3.0",
+        "main": "dist/parser.js",
+        "types": "dist/parser.d.ts",
+        "license": "MIT"
+      }
+  changed_files:
+    src/parser.ts: |
+      import { ParseResult, ParseOptions } from './types';
+      import { SchemaValidationError } from './errors';
+
+      export function parse(input: string, options?: ParseOptions): ParseResult {
+        const data = JSON.parse(input);
+        if (options?.schema) {
+          const errors = validateSchema(data, options.schema, options.strict);
+          if (errors.length > 0) {
+            throw new SchemaValidationError(
+              `Validation failed with ${errors.length} error(s)`,
+              '$',
+              errors,
+            );
+          }
+          return { data, valid: true };
+        }
+        return { data, valid: true };
+      }
+
+      function validateSchema(
+        data: object,
+        schema: object,
+        strict?: boolean
+      ): string[] {
+        return [];
+      }
+
+      export function stringify(data: object, indent?: number): string {
+        return JSON.stringify(data, null, indent);
+      }
+  commit_message: Update files
+fragments:
+- id: parser
+  selector:
+    path: src/parser.ts
+    anchor: function parse
+- id: parser_1
+  selector:
+    path: src/parser.ts
+    anchor: SchemaValidationError
+- id: parser_2
+  selector:
+    path: src/parser.ts
+    anchor: ParseResult
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: interface ParseResult
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: interface ParseOptions
+- id: types_2
+  selector:
+    path: src/types.ts
+    anchor: 'valid: boolean'
+- id: handler
+  selector:
+    path: src/handler.ts
+    anchor: const data = parse(rawBody)
+- id: no_formatter
+  selector:
+    path: src/formatter.ts
+- id: no_validator_utils
+  selector:
+    path: src/validator-utils.ts
+- id: no_package
+  selector:
+    path: package.json
+- id: no_parsing
+  selector:
+    path: examples/parsing.ts
+- id: no_global_0
+  selector:
+    anchor: formatAsTable
+- id: no_global_1
+  selector:
+    anchor: formatAsYaml
+- id: no_global_2
+  selector:
+    anchor: isEmail
+- id: no_global_3
+  selector:
+    anchor: isUrl
+- id: no_global_4
+  selector:
+    anchor: isNonEmpty
+- id: no_global_5
+  selector:
+    anchor: isInRange
+- id: no_global_6
+  selector:
+    anchor: 'Parsed:'
+- id: no_global_7
+  selector:
+    anchor: 'Expected error:'
+- id: no_global_8
+  selector:
+    anchor: '@acme/json-parser'
+- id: no_global_9
+  selector:
+    anchor: dist/parser.js
+oracle:
+  required:
+  - parser
+  - parser_1
+  - parser_2
+  - types
+  - types_1
+  - types_2
+  - handler
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_validator_utils
+  - no_package
+  - no_parsing
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

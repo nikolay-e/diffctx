@@ -1,0 +1,438 @@
+name: php_014_closure
+repo:
+  initial_files:
+    src/Math/Multiplier.php: |
+      <?php
+      namespace App\Math;
+
+      class Multiplier {
+          public function __construct(private readonly int $factor) {}
+
+          public function getFactor(): int {
+              return $this->factor;
+          }
+
+          public function apply(int $value): int {
+              return $value * $this->factor;
+          }
+
+          public function isIdentity(): bool {
+              return $this->factor === 1;
+          }
+      }
+    src/Collections/Collection.php: |
+      <?php
+      namespace App\Collections;
+
+      class Collection {
+          private array $items;
+
+          public function __construct(array $items = []) {
+              $this->items = $items;
+          }
+
+          public function toArray(): array {
+              return $this->items;
+          }
+
+          public function count(): int {
+              return count($this->items);
+          }
+      }
+    src/Collections/Sorter.php: |
+      <?php
+      namespace App\Collections;
+
+      class Sorter {
+          public function sortBy(array $items, callable $comparator): array {
+              usort($items, $comparator);
+              return $items;
+          }
+
+          public function sortDescending(array $items): array {
+              return $this->sortBy($items, function(int $a, int $b): int {
+                  return $b - $a;
+              });
+          }
+
+          public function sortAscending(array $items): array {
+              return $this->sortBy($items, function(int $a, int $b): int {
+                  return $a - $b;
+              });
+          }
+
+          public function toArray(): array {
+              return [];
+          }
+      }
+    src/Collections/Reducer.php: |
+      <?php
+      namespace App\Collections;
+
+      class Reducer {
+          private array $items;
+
+          public function __construct(array $items = []) {
+              $this->items = $items;
+          }
+
+          public function reduce(callable $callback, mixed $initial = null): mixed {
+              return array_reduce($this->items, $callback, $initial);
+          }
+
+          public function sum(): int {
+              return $this->reduce(function(int $carry, int $item): int {
+                  return $carry + $item;
+              }, 0);
+          }
+
+          public function average(): float {
+              $count = count($this->items);
+              return $count > 0 ? $this->sum() / $count : 0.0;
+          }
+      }
+    src/Math/Calculator.php: |
+      <?php
+      namespace App\Math;
+
+      class Calculator {
+          public function add(int $a, int $b): int {
+              return $a + $b;
+          }
+
+          public function multiply(int $a, int $b): int {
+              return $a * $b;
+          }
+
+          public function divide(int $a, int $b): float {
+              if ($b === 0) {
+                  throw new \DivisionByZeroError("Cannot divide by zero");
+              }
+              return $a / $b;
+          }
+      }
+    src/Collections/Pipeline.php: |
+      <?php
+      namespace App\Collections;
+
+      class Pipeline {
+          private array $stages = [];
+
+          public function map(callable $fn): self {
+              $this->stages[] = ['type' => 'map', 'fn' => $fn];
+              return $this;
+          }
+
+          public function filter(callable $fn): self {
+              $this->stages[] = ['type' => 'filter', 'fn' => $fn];
+              return $this;
+          }
+
+          public function execute(array $data): array {
+              foreach ($this->stages as $stage) {
+                  $data = match($stage['type']) {
+                      'map' => array_map($stage['fn'], $data),
+                      'filter' => array_values(array_filter($data, $stage['fn'])),
+                  };
+              }
+              return $data;
+          }
+      }
+    src/Math/Statistics.php: |
+      <?php
+      namespace App\Math;
+
+      class Statistics {
+          public function average(array $values): float {
+              return count($values) > 0 ? array_sum($values) / count($values) : 0.0;
+          }
+
+          public function sum(array $values): int|float {
+              return array_sum($values);
+          }
+
+          public function median(array $values): float {
+              sort($values);
+              $count = count($values);
+              $mid = intdiv($count, 2);
+              return $count % 2 === 0
+                  ? ($values[$mid - 1] + $values[$mid]) / 2
+                  : $values[$mid];
+          }
+      }
+  changed_files:
+    src/Math/Multiplier.php: |
+      <?php
+      namespace App\Math;
+
+      class Multiplier {
+          public function __construct(private readonly int $factor) {}
+
+          public function getFactor(): int {
+              return $this->factor;
+          }
+
+          public function apply(int $value): int {
+              return $value * $this->factor;
+          }
+
+          public function isIdentity(): bool {
+              return $this->factor === 1;
+          }
+      }
+    src/Collections/Collection.php: |
+      <?php
+      namespace App\Collections;
+
+      use App\Math\Multiplier;
+
+      class Collection {
+          private array $items;
+
+          public function __construct(array $items = []) {
+              $this->items = $items;
+          }
+
+          public function map(callable $callback): self {
+              return new self(array_map($callback, $this->items));
+          }
+
+          public function filter(callable $callback): self {
+              return new self(array_values(array_filter($this->items, $callback)));
+          }
+
+          public function multiplyBy(Multiplier $multiplier): self {
+              $factor = $multiplier->getFactor();
+              return $this->map(function(int $item) use ($factor): int {
+                  return $item * $factor;
+              });
+          }
+
+          public function toArray(): array {
+              return $this->items;
+          }
+
+          public function count(): int {
+              return count($this->items);
+          }
+      }
+    src/Collections/Sorter.php: |
+      <?php
+      namespace App\Collections;
+
+      class Sorter {
+          public function sortBy(array $items, callable $comparator): array {
+              usort($items, $comparator);
+              return $items;
+          }
+
+          public function sortDescending(array $items): array {
+              return $this->sortBy($items, function(int $a, int $b): int {
+                  return $b - $a;
+              });
+          }
+
+          public function sortAscending(array $items): array {
+              return $this->sortBy($items, function(int $a, int $b): int {
+                  return $a - $b;
+              });
+          }
+
+          public function toArray(): array {
+              return [];
+          }
+      }
+    src/Collections/Reducer.php: |
+      <?php
+      namespace App\Collections;
+
+      class Reducer {
+          private array $items;
+
+          public function __construct(array $items = []) {
+              $this->items = $items;
+          }
+
+          public function reduce(callable $callback, mixed $initial = null): mixed {
+              return array_reduce($this->items, $callback, $initial);
+          }
+
+          public function sum(): int {
+              return $this->reduce(function(int $carry, int $item): int {
+                  return $carry + $item;
+              }, 0);
+          }
+
+          public function average(): float {
+              $count = count($this->items);
+              return $count > 0 ? $this->sum() / $count : 0.0;
+          }
+      }
+    src/Math/Calculator.php: |
+      <?php
+      namespace App\Math;
+
+      class Calculator {
+          public function add(int $a, int $b): int {
+              return $a + $b;
+          }
+
+          public function multiply(int $a, int $b): int {
+              return $a * $b;
+          }
+
+          public function divide(int $a, int $b): float {
+              if ($b === 0) {
+                  throw new \DivisionByZeroError("Cannot divide by zero");
+              }
+              return $a / $b;
+          }
+      }
+    src/Collections/Pipeline.php: |
+      <?php
+      namespace App\Collections;
+
+      class Pipeline {
+          private array $stages = [];
+
+          public function map(callable $fn): self {
+              $this->stages[] = ['type' => 'map', 'fn' => $fn];
+              return $this;
+          }
+
+          public function filter(callable $fn): self {
+              $this->stages[] = ['type' => 'filter', 'fn' => $fn];
+              return $this;
+          }
+
+          public function execute(array $data): array {
+              foreach ($this->stages as $stage) {
+                  $data = match($stage['type']) {
+                      'map' => array_map($stage['fn'], $data),
+                      'filter' => array_values(array_filter($data, $stage['fn'])),
+                  };
+              }
+              return $data;
+          }
+      }
+    src/Math/Statistics.php: |
+      <?php
+      namespace App\Math;
+
+      class Statistics {
+          public function average(array $values): float {
+              return count($values) > 0 ? array_sum($values) / count($values) : 0.0;
+          }
+
+          public function sum(array $values): int|float {
+              return array_sum($values);
+          }
+
+          public function median(array $values): float {
+              sort($values);
+              $count = count($values);
+              $mid = intdiv($count, 2);
+              return $count % 2 === 0
+                  ? ($values[$mid - 1] + $values[$mid]) / 2
+                  : $values[$mid];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: collection
+  selector:
+    path: src/Collections/Collection.php
+    anchor: 'function(int $item) use ($factor): int'
+- id: collection_1
+  selector:
+    path: src/Collections/Collection.php
+    anchor: 'public function multiplyBy(Multiplier $multiplier): self'
+- id: collection_2
+  selector:
+    path: src/Collections/Collection.php
+    anchor: $factor = $multiplier->getFactor()
+- id: multiplier
+  selector:
+    path: src/Math/Multiplier.php
+    anchor: 'public function getFactor(): int'
+- id: multiplier_1
+  selector:
+    path: src/Math/Multiplier.php
+    anchor: private readonly int $factor
+- id: no_sorter
+  selector:
+    path: src/Collections/Sorter.php
+- id: no_reducer
+  selector:
+    path: src/Collections/Reducer.php
+- id: no_calculator
+  selector:
+    path: src/Math/Calculator.php
+- id: no_pipeline
+  selector:
+    path: src/Collections/Pipeline.php
+- id: no_statistics
+  selector:
+    path: src/Math/Statistics.php
+- id: no_global_0
+  selector:
+    anchor: class Sorter
+- id: no_global_1
+  selector:
+    anchor: sortBy
+- id: no_global_2
+  selector:
+    anchor: sortDescending
+- id: no_global_3
+  selector:
+    anchor: class Reducer
+- id: no_global_4
+  selector:
+    anchor: array_reduce
+- id: no_global_5
+  selector:
+    anchor: class Calculator
+- id: no_global_6
+  selector:
+    anchor: DivisionByZeroError
+- id: no_global_7
+  selector:
+    anchor: class Pipeline
+- id: no_global_8
+  selector:
+    anchor: execute
+- id: no_global_9
+  selector:
+    anchor: stages
+- id: no_global_10
+  selector:
+    anchor: class Statistics
+- id: no_global_11
+  selector:
+    anchor: median
+oracle:
+  required:
+  - collection
+  - collection_1
+  - collection_2
+  - multiplier
+  - multiplier_1
+  allowed: []
+  forbidden:
+  - no_sorter
+  - no_reducer
+  - no_calculator
+  - no_pipeline
+  - no_statistics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

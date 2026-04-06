@@ -1,0 +1,242 @@
+name: python_024_abstract_method_implementation
+repo:
+  initial_files:
+    base.py: |
+      from abc import ABC, abstractmethod
+      from typing import Generic, TypeVar, Optional, Dict, Any
+      from dataclasses import dataclass
+      from enum import Enum
+
+      T = TypeVar("T")
+
+      class HandlerStatus(Enum):
+          PENDING = "pending"
+          COMPLETED = "completed"
+          FAILED = "failed"
+
+      @dataclass
+      class HandlerResult(Generic[T]):
+          data: Optional[T]
+          status: HandlerStatus
+          error_message: str = ""
+
+          @classmethod
+          def success(cls, data: T) -> "HandlerResult[T]":
+              return cls(data=data, status=HandlerStatus.COMPLETED)
+
+          @classmethod
+          def failure(cls, error: str) -> "HandlerResult[T]":
+              return cls(data=None, status=HandlerStatus.FAILED, error_message=error)
+
+      class BaseHandler(ABC, Generic[T]):
+          @abstractmethod
+          def execute(self, data: dict) -> HandlerResult[T]:
+              pass
+
+          @abstractmethod
+          def validate(self, data: dict) -> bool:
+              pass
+
+          def run(self, data: dict) -> HandlerResult[T]:
+              if not self.validate(data):
+                  return HandlerResult.failure("Validation failed")
+              return self.execute(data)
+    handlers.py: |
+      class Handler:
+          pass
+    websocket_handler.py: |
+      import asyncio
+      from typing import Dict, Any, Optional, List
+
+      class WebSocketHandler:
+          def __init__(self):
+              self._connections: Dict[str, Any] = {}
+
+          async def handle(self, client_id: str, message: str) -> Optional[str]:
+              if message == "ping":
+                  return "pong"
+              return None
+
+          async def broadcast(self, message: str) -> None:
+              pass
+
+          def get_connected_clients(self) -> List[str]:
+              return list(self._connections.keys())
+    graphql_resolver.py: |
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class ResolverContext:
+          user_id: Optional[int] = None
+          permissions: List[str] = None
+
+      class GraphQLResolver:
+          def __init__(self):
+              self._resolvers: Dict[str, callable] = {}
+
+          def register(self, type_name: str, field: str, resolver: callable) -> None:
+              key = f"{type_name}.{field}"
+              self._resolvers[key] = resolver
+
+          def resolve(self, type_name: str, field: str, context: ResolverContext) -> Any:
+              key = f"{type_name}.{field}"
+              resolver = self._resolvers.get(key)
+              return resolver(context) if resolver else None
+  changed_files:
+    base.py: |
+      from abc import ABC, abstractmethod
+      from typing import Generic, TypeVar, Optional, Dict, Any
+      from dataclasses import dataclass
+      from enum import Enum
+
+      T = TypeVar("T")
+
+      class HandlerStatus(Enum):
+          PENDING = "pending"
+          COMPLETED = "completed"
+          FAILED = "failed"
+
+      @dataclass
+      class HandlerResult(Generic[T]):
+          data: Optional[T]
+          status: HandlerStatus
+          error_message: str = ""
+
+          @classmethod
+          def success(cls, data: T) -> "HandlerResult[T]":
+              return cls(data=data, status=HandlerStatus.COMPLETED)
+
+          @classmethod
+          def failure(cls, error: str) -> "HandlerResult[T]":
+              return cls(data=None, status=HandlerStatus.FAILED, error_message=error)
+
+      class BaseHandler(ABC, Generic[T]):
+          @abstractmethod
+          def execute(self, data: dict) -> HandlerResult[T]:
+              pass
+
+          @abstractmethod
+          def validate(self, data: dict) -> bool:
+              pass
+
+          def run(self, data: dict) -> HandlerResult[T]:
+              if not self.validate(data):
+                  return HandlerResult.failure("Validation failed")
+              return self.execute(data)
+    handlers.py: |
+      from base import BaseHandler, HandlerResult, HandlerStatus
+      from typing import Dict, Any
+      from dataclasses import dataclass
+
+      @dataclass
+      class DataPayload:
+          id: str
+          content: Dict[str, Any]
+
+      class ConcreteHandler(BaseHandler[dict]):
+          def execute(self, data: dict) -> HandlerResult[dict]:
+              processed = {
+                  "id": data.get("id", ""),
+                  "processed": True,
+                  "content": data.get("content", {})
+              }
+              return HandlerResult.success(processed)
+
+          def validate(self, data: dict) -> bool:
+              return "id" in data and isinstance(data.get("id"), str)
+
+      def process_payload(payload: DataPayload) -> HandlerResult[dict]:
+          handler = ConcreteHandler()
+          return handler.run({"id": payload.id, "content": payload.content})
+    websocket_handler.py: |
+      import asyncio
+      from typing import Dict, Any, Optional, List
+
+      class WebSocketHandler:
+          def __init__(self):
+              self._connections: Dict[str, Any] = {}
+
+          async def handle(self, client_id: str, message: str) -> Optional[str]:
+              if message == "ping":
+                  return "pong"
+              return None
+
+          async def broadcast(self, message: str) -> None:
+              pass
+
+          def get_connected_clients(self) -> List[str]:
+              return list(self._connections.keys())
+    graphql_resolver.py: |
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class ResolverContext:
+          user_id: Optional[int] = None
+          permissions: List[str] = None
+
+      class GraphQLResolver:
+          def __init__(self):
+              self._resolvers: Dict[str, callable] = {}
+
+          def register(self, type_name: str, field: str, resolver: callable) -> None:
+              key = f"{type_name}.{field}"
+              self._resolvers[key] = resolver
+
+          def resolve(self, type_name: str, field: str, context: ResolverContext) -> Any:
+              key = f"{type_name}.{field}"
+              resolver = self._resolvers.get(key)
+              return resolver(context) if resolver else None
+  commit_message: Update files
+fragments:
+- id: handlers
+  selector:
+    path: handlers.py
+    anchor: from base import BaseHandler, HandlerResult, HandlerStatus
+- id: handlers_1
+  selector:
+    path: handlers.py
+    anchor: 'class ConcreteHandler(BaseHandler[dict]):'
+- id: base_file
+  selector:
+    path: base.py
+- id: no_websocket_handler
+  selector:
+    path: websocket_handler.py
+- id: no_graphql_resolver
+  selector:
+    path: graphql_resolver.py
+- id: no_global_0
+  selector:
+    anchor: WebSocketHandler
+- id: no_global_1
+  selector:
+    anchor: broadcast
+- id: no_global_2
+  selector:
+    anchor: get_connected_clients
+- id: no_global_3
+  selector:
+    anchor: GraphQLResolver
+- id: no_global_4
+  selector:
+    anchor: ResolverContext
+- id: no_global_5
+  selector:
+    anchor: register
+oracle:
+  required:
+  - handlers
+  - handlers_1
+  - base_file
+  allowed: []
+  forbidden:
+  - no_websocket_handler
+  - no_graphql_resolver
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

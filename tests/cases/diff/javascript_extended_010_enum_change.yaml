@@ -1,0 +1,227 @@
+name: javascript_extended_010_enum_change
+repo:
+  initial_files:
+    enums.ts: |
+      export enum Status {
+          Pending = 'PENDING',
+          Active = 'ACTIVE',
+          Completed = 'COMPLETED',
+      }
+    task.ts: |
+      import { Status } from './enums';
+
+      export class Task {
+          status: Status = Status.Pending;
+
+          complete() {
+              this.status = Status.Completed;
+          }
+      }
+    src/services/taskService.ts: |
+      import { Status } from '../enums';
+      import { Task } from '../task';
+
+      const tasks: Task[] = [];
+
+      export function addTask(): Task {
+          const t = new Task();
+          tasks.push(t);
+          return t;
+      }
+
+      export function getTasksByStatus(status: Status): Task[] {
+          return tasks.filter(t => t.status === status);
+      }
+
+      export function countByStatus(): Record<string, number> {
+          const counts: Record<string, number> = {};
+          for (const t of tasks) {
+              counts[t.status] = (counts[t.status] || 0) + 1;
+          }
+          return counts;
+      }
+    src/services/statusTransitions.ts: |
+      import { Status } from '../enums';
+
+      const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
+          [Status.Pending]: [Status.Active],
+          [Status.Active]: [Status.Completed],
+          [Status.Completed]: [],
+      };
+
+      export function canTransition(from: Status, to: Status): boolean {
+          return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+      }
+
+      export function getNextStatuses(current: Status): Status[] {
+          return ALLOWED_TRANSITIONS[current] ?? [];
+      }
+    src/utils/statusFormatter.ts: |
+      import { Status } from '../enums';
+
+      const STATUS_LABELS: Record<Status, string> = {
+          [Status.Pending]: 'Pending Review',
+          [Status.Active]: 'In Progress',
+          [Status.Completed]: 'Done',
+      };
+
+      export function formatStatus(status: Status): string {
+          return STATUS_LABELS[status] ?? status;
+      }
+
+      export function getStatusColor(status: Status): string {
+          switch (status) {
+              case Status.Pending: return '#f59e0b';
+              case Status.Active: return '#3b82f6';
+              case Status.Completed: return '#10b981';
+              default: return '#6b7280';
+          }
+      }
+  changed_files:
+    enums.ts: |
+      export enum Status {
+          Pending = 'PENDING',
+          Active = 'ACTIVE',
+          Completed = 'COMPLETED',
+          Cancelled = 'CANCELLED',
+          OnHold = 'ON_HOLD',
+      }
+    task.ts: |
+      import { Status } from './enums';
+
+      export class Task {
+          status: Status = Status.Pending;
+
+          complete() {
+              this.status = Status.Completed;
+          }
+      }
+    src/services/taskService.ts: |
+      import { Status } from '../enums';
+      import { Task } from '../task';
+
+      const tasks: Task[] = [];
+
+      export function addTask(): Task {
+          const t = new Task();
+          tasks.push(t);
+          return t;
+      }
+
+      export function getTasksByStatus(status: Status): Task[] {
+          return tasks.filter(t => t.status === status);
+      }
+
+      export function countByStatus(): Record<string, number> {
+          const counts: Record<string, number> = {};
+          for (const t of tasks) {
+              counts[t.status] = (counts[t.status] || 0) + 1;
+          }
+          return counts;
+      }
+    src/services/statusTransitions.ts: |
+      import { Status } from '../enums';
+
+      const ALLOWED_TRANSITIONS: Record<Status, Status[]> = {
+          [Status.Pending]: [Status.Active],
+          [Status.Active]: [Status.Completed],
+          [Status.Completed]: [],
+      };
+
+      export function canTransition(from: Status, to: Status): boolean {
+          return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+      }
+
+      export function getNextStatuses(current: Status): Status[] {
+          return ALLOWED_TRANSITIONS[current] ?? [];
+      }
+    src/utils/statusFormatter.ts: |
+      import { Status } from '../enums';
+
+      const STATUS_LABELS: Record<Status, string> = {
+          [Status.Pending]: 'Pending Review',
+          [Status.Active]: 'In Progress',
+          [Status.Completed]: 'Done',
+      };
+
+      export function formatStatus(status: Status): string {
+          return STATUS_LABELS[status] ?? status;
+      }
+
+      export function getStatusColor(status: Status): string {
+          switch (status) {
+              case Status.Pending: return '#f59e0b';
+              case Status.Active: return '#3b82f6';
+              case Status.Completed: return '#10b981';
+              default: return '#6b7280';
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: enums
+  selector:
+    path: enums.ts
+    anchor: enum Status {
+- id: enums_1
+  selector:
+    path: enums.ts
+    anchor: Cancelled = 'CANCELLED'
+- id: enums_2
+  selector:
+    path: enums.ts
+    anchor: OnHold = 'ON_HOLD'
+- id: no_taskservice
+  selector:
+    path: src/services/taskService.ts
+- id: no_statustransitions
+  selector:
+    path: src/services/statusTransitions.ts
+- id: no_statusformatter
+  selector:
+    path: src/utils/statusFormatter.ts
+- id: no_global_0
+  selector:
+    anchor: addTask
+- id: no_global_1
+  selector:
+    anchor: getTasksByStatus
+- id: no_global_2
+  selector:
+    anchor: countByStatus
+- id: no_global_3
+  selector:
+    anchor: ALLOWED_TRANSITIONS
+- id: no_global_4
+  selector:
+    anchor: canTransition
+- id: no_global_5
+  selector:
+    anchor: getNextStatuses
+- id: no_global_6
+  selector:
+    anchor: STATUS_LABELS
+- id: no_global_7
+  selector:
+    anchor: formatStatus
+- id: no_global_8
+  selector:
+    anchor: getStatusColor
+oracle:
+  required:
+  - enums
+  - enums_1
+  - enums_2
+  allowed: []
+  forbidden:
+  - no_taskservice
+  - no_statustransitions
+  - no_statusformatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

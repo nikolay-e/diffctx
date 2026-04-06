@@ -1,0 +1,215 @@
+name: scala_024_opaque_types
+repo:
+  initial_files:
+    Types.scala: |
+      object Types {
+        opaque type UserId = Long
+        opaque type OrderId = Long
+
+        object UserId {
+          def apply(value: Long): UserId = value
+          extension (id: UserId) def value: Long = id
+        }
+
+        object OrderId {
+          def apply(value: Long): OrderId = value
+          extension (id: OrderId) def value: Long = id
+        }
+      }
+    UserService.scala: |
+      class UserService {}
+    OrderService.scala: |
+      import Types._
+
+      class OrderService {
+        def createOrder(userId: UserId, amount: Double): OrderId = {
+          OrderId(System.currentTimeMillis())
+        }
+
+        def getOrderDetails(orderId: OrderId): String = {
+          s"Order ${orderId.value} details"
+        }
+
+        def listOrdersForUser(userId: UserId): List[OrderId] = {
+          List(OrderId(1L), OrderId(2L))
+        }
+      }
+    InventoryService.scala: |
+      import Types._
+
+      class InventoryService {
+        def checkStock(orderId: OrderId): Boolean = {
+          orderId.value > 0
+        }
+
+        def reserveForOrder(orderId: OrderId, quantity: Int): String = {
+          s"Reserved $quantity items for order ${orderId.value}"
+        }
+      }
+    Repository.scala: |
+      trait Repository[T] {
+        def findById(id: Long): Option[T]
+        def findAll(): List[T]
+        def save(entity: T): Unit
+        def delete(id: Long): Unit
+      }
+
+      class InMemoryRepository[T] extends Repository[T] {
+        private var store: Map[Long, T] = Map.empty
+
+        def findById(id: Long): Option[T] = store.get(id)
+        def findAll(): List[T] = store.values.toList
+        def save(entity: T): Unit = {}
+        def delete(id: Long): Unit = { store = store.removed(id) }
+      }
+    TypeAliases.scala: |
+      object TypeAliases {
+        opaque type Email = String
+        opaque type Name = String
+
+        object Email {
+          def apply(value: String): Email = value
+          extension (e: Email) def value: String = e
+        }
+
+        object Name {
+          def apply(value: String): Name = value
+          extension (n: Name) def value: String = n
+        }
+      }
+    UserController.scala: |
+      class UserController(service: UserService) {
+        def handleCreateUser(name: String): String = {
+          val userId = service.createUser(name)
+          s"Created user with id: $userId"
+        }
+
+        def handleGetUser(rawId: Long): String = {
+          import Types._
+          val userId = UserId(rawId)
+          service.getUserById(userId).getOrElse("Not found")
+        }
+      }
+  changed_files:
+    UserService.scala: |
+      import Types._
+
+      class UserService {
+        def getUserById(id: UserId): Option[String] = {
+          Some(s"User with id ${id.value}")
+        }
+
+        def createUser(name: String): UserId = {
+          UserId(System.currentTimeMillis())
+        }
+
+        def getOrderForUser(userId: UserId, orderId: OrderId): String = {
+          s"Order ${orderId.value} for user ${userId.value}"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: Types.scala
+    anchor: opaque type UserId
+- id: types_1
+  selector:
+    path: Types.scala
+    anchor: opaque type OrderId
+- id: types_2
+  selector:
+    path: Types.scala
+    anchor: 'def apply(value: Long): UserId'
+- id: types_3
+  selector:
+    path: Types.scala
+    anchor: 'extension (id: UserId) def value: Long'
+- id: no_orderservice
+  selector:
+    path: OrderService.scala
+- id: no_inventoryservice
+  selector:
+    path: InventoryService.scala
+- id: no_repository
+  selector:
+    path: Repository.scala
+- id: no_typealiases
+  selector:
+    path: TypeAliases.scala
+- id: no_usercontroller
+  selector:
+    path: UserController.scala
+- id: no_global_0
+  selector:
+    anchor: class OrderService
+- id: no_global_1
+  selector:
+    anchor: createOrder
+- id: no_global_2
+  selector:
+    anchor: getOrderDetails
+- id: no_global_3
+  selector:
+    anchor: listOrdersForUser
+- id: no_global_4
+  selector:
+    anchor: class InventoryService
+- id: no_global_5
+  selector:
+    anchor: checkStock
+- id: no_global_6
+  selector:
+    anchor: reserveForOrder
+- id: no_global_7
+  selector:
+    anchor: trait Repository
+- id: no_global_8
+  selector:
+    anchor: InMemoryRepository
+- id: no_global_9
+  selector:
+    anchor: store.removed
+- id: no_global_10
+  selector:
+    anchor: object TypeAliases
+- id: no_global_11
+  selector:
+    anchor: opaque type Email
+- id: no_global_12
+  selector:
+    anchor: opaque type Name
+- id: no_global_13
+  selector:
+    anchor: class UserController
+- id: no_global_14
+  selector:
+    anchor: handleCreateUser
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - types_3
+  allowed: []
+  forbidden:
+  - no_orderservice
+  - no_inventoryservice
+  - no_repository
+  - no_typealiases
+  - no_usercontroller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

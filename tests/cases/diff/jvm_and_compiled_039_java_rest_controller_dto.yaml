@@ -1,0 +1,414 @@
+name: jvm_and_compiled_039_java_rest_controller_dto
+repo:
+  initial_files:
+    src/main/java/com/example/dto/UserDto.java: |
+      package com.example.dto;
+
+      public class UserDto {
+          private Long id;
+          private String name;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+      }
+    src/main/java/com/example/UserController.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.springframework.web.bind.annotation.*;
+
+      @RestController
+      @RequestMapping("/api/users")
+      public class UserController {
+          @GetMapping("/{id}")
+          public UserDto getUser(@PathVariable Long id) {
+              UserDto dto = new UserDto();
+              dto.setId(id);
+              dto.setName("User");
+              return dto;
+          }
+
+          @PostMapping
+          public UserDto createUser(@RequestBody UserDto dto) {
+              dto.setId(1L);
+              return dto;
+          }
+      }
+    src/main/java/com/example/dto/ProductDto.java: |
+      package com.example.dto;
+
+      import javax.validation.constraints.*;
+
+      public class ProductDto {
+          private Long id;
+
+          @NotBlank
+          @Size(min = 1, max = 200)
+          private String title;
+
+          @Positive
+          private double price;
+
+          private String category;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getTitle() { return title; }
+          public void setTitle(String title) { this.title = title; }
+          public double getPrice() { return price; }
+          public void setPrice(double price) { this.price = price; }
+          public String getCategory() { return category; }
+          public void setCategory(String category) { this.category = category; }
+      }
+    src/main/java/com/example/UserService.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.springframework.stereotype.Service;
+
+      @Service
+      public class UserService {
+          public UserDto createUser(String name, String email) {
+              UserDto dto = new UserDto();
+              dto.setName(name);
+              return dto;
+          }
+
+          public UserDto updateUser(Long id, String name) {
+              UserDto dto = new UserDto();
+              dto.setId(id);
+              dto.setName(name);
+              return dto;
+          }
+      }
+    src/main/java/com/example/config/ValidationConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+      @Configuration
+      public class ValidationConfig {
+          @Bean
+          public LocalValidatorFactoryBean validator() {
+              return new LocalValidatorFactoryBean();
+          }
+      }
+    src/test/java/com/example/UserDtoTest.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.junit.jupiter.api.Test;
+      import javax.validation.Validation;
+      import javax.validation.Validator;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class UserDtoTest {
+          private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+          @Test
+          void validUserDto() {
+              UserDto dto = new UserDto();
+              dto.setName("John");
+              var violations = validator.validate(dto);
+              assertTrue(violations.isEmpty());
+          }
+      }
+    src/main/java/com/example/dto/OrderDto.java: |
+      package com.example.dto;
+
+      import javax.validation.constraints.*;
+      import java.math.BigDecimal;
+
+      public class OrderDto {
+          private Long id;
+
+          @NotNull
+          private Long customerId;
+
+          @Positive
+          private BigDecimal amount;
+
+          @NotBlank
+          private String status;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public Long getCustomerId() { return customerId; }
+          public void setCustomerId(Long customerId) { this.customerId = customerId; }
+          public BigDecimal getAmount() { return amount; }
+          public void setAmount(BigDecimal amount) { this.amount = amount; }
+      }
+  changed_files:
+    src/main/java/com/example/dto/UserDto.java: |
+      package com.example.dto;
+
+      import javax.validation.constraints.*;
+
+      public class UserDto {
+          private Long id;
+
+          @NotBlank
+          @Size(min = 2, max = 100)
+          private String name;
+
+          @Email
+          private String email;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+          public String getEmail() { return email; }
+          public void setEmail(String email) { this.email = email; }
+      }
+    src/main/java/com/example/UserController.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.springframework.web.bind.annotation.*;
+
+      @RestController
+      @RequestMapping("/api/users")
+      public class UserController {
+          @GetMapping("/{id}")
+          public UserDto getUser(@PathVariable Long id) {
+              UserDto dto = new UserDto();
+              dto.setId(id);
+              dto.setName("User");
+              return dto;
+          }
+
+          @PostMapping
+          public UserDto createUser(@RequestBody UserDto dto) {
+              dto.setId(1L);
+              return dto;
+          }
+      }
+    src/main/java/com/example/dto/ProductDto.java: |
+      package com.example.dto;
+
+      import javax.validation.constraints.*;
+
+      public class ProductDto {
+          private Long id;
+
+          @NotBlank
+          @Size(min = 1, max = 200)
+          private String title;
+
+          @Positive
+          private double price;
+
+          private String category;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public String getTitle() { return title; }
+          public void setTitle(String title) { this.title = title; }
+          public double getPrice() { return price; }
+          public void setPrice(double price) { this.price = price; }
+          public String getCategory() { return category; }
+          public void setCategory(String category) { this.category = category; }
+      }
+    src/main/java/com/example/UserService.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.springframework.stereotype.Service;
+
+      @Service
+      public class UserService {
+          public UserDto createUser(String name, String email) {
+              UserDto dto = new UserDto();
+              dto.setName(name);
+              return dto;
+          }
+
+          public UserDto updateUser(Long id, String name) {
+              UserDto dto = new UserDto();
+              dto.setId(id);
+              dto.setName(name);
+              return dto;
+          }
+      }
+    src/main/java/com/example/config/ValidationConfig.java: |
+      package com.example.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+      @Configuration
+      public class ValidationConfig {
+          @Bean
+          public LocalValidatorFactoryBean validator() {
+              return new LocalValidatorFactoryBean();
+          }
+      }
+    src/test/java/com/example/UserDtoTest.java: |
+      package com.example;
+
+      import com.example.dto.UserDto;
+      import org.junit.jupiter.api.Test;
+      import javax.validation.Validation;
+      import javax.validation.Validator;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class UserDtoTest {
+          private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+          @Test
+          void validUserDto() {
+              UserDto dto = new UserDto();
+              dto.setName("John");
+              var violations = validator.validate(dto);
+              assertTrue(violations.isEmpty());
+          }
+      }
+    src/main/java/com/example/dto/OrderDto.java: |
+      package com.example.dto;
+
+      import javax.validation.constraints.*;
+      import java.math.BigDecimal;
+
+      public class OrderDto {
+          private Long id;
+
+          @NotNull
+          private Long customerId;
+
+          @Positive
+          private BigDecimal amount;
+
+          @NotBlank
+          private String status;
+
+          public Long getId() { return id; }
+          public void setId(Long id) { this.id = id; }
+          public Long getCustomerId() { return customerId; }
+          public void setCustomerId(Long customerId) { this.customerId = customerId; }
+          public BigDecimal getAmount() { return amount; }
+          public void setAmount(BigDecimal amount) { this.amount = amount; }
+      }
+  commit_message: Update files
+fragments:
+- id: userdto
+  selector:
+    path: src/main/java/com/example/dto/UserDto.java
+    anchor: import javax.validation.constraints.*
+- id: userdto_1
+  selector:
+    path: src/main/java/com/example/dto/UserDto.java
+    anchor: '@NotBlank'
+- id: userdto_2
+  selector:
+    path: src/main/java/com/example/dto/UserDto.java
+    anchor: '@Size(min = 2, max = 100)'
+- id: userdto_3
+  selector:
+    path: src/main/java/com/example/dto/UserDto.java
+    anchor: '@Email'
+- id: userdto_4
+  selector:
+    path: src/main/java/com/example/dto/UserDto.java
+    anchor: public String getEmail() { return email; }
+- id: usercontroller
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: import com.example.dto.UserDto
+- id: usercontroller_1
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: '@RequestMapping("/api/users")'
+- id: usercontroller_2
+  selector:
+    path: src/main/java/com/example/UserController.java
+    anchor: public UserDto getUser
+- id: no_productdto
+  selector:
+    path: src/main/java/com/example/dto/ProductDto.java
+- id: no_userservice
+  selector:
+    path: src/main/java/com/example/UserService.java
+- id: no_validationconfig
+  selector:
+    path: src/main/java/com/example/config/ValidationConfig.java
+- id: no_userdtotest
+  selector:
+    path: src/test/java/com/example/UserDtoTest.java
+- id: no_orderdto
+  selector:
+    path: src/main/java/com/example/dto/OrderDto.java
+- id: no_global_0
+  selector:
+    anchor: ProductDto
+- id: no_global_1
+  selector:
+    anchor: getTitle
+- id: no_global_2
+  selector:
+    anchor: '@Positive'
+- id: no_global_3
+  selector:
+    anchor: UserService
+- id: no_global_4
+  selector:
+    anchor: updateUser
+- id: no_global_5
+  selector:
+    anchor: ValidationConfig
+- id: no_global_6
+  selector:
+    anchor: LocalValidatorFactoryBean
+- id: no_global_7
+  selector:
+    anchor: UserDtoTest
+- id: no_global_8
+  selector:
+    anchor: buildDefaultValidatorFactory
+- id: no_global_9
+  selector:
+    anchor: violations
+- id: no_global_10
+  selector:
+    anchor: OrderDto
+- id: no_global_11
+  selector:
+    anchor: customerId
+- id: no_global_12
+  selector:
+    anchor: '@NotNull'
+oracle:
+  required:
+  - userdto
+  - userdto_1
+  - userdto_2
+  - userdto_3
+  - userdto_4
+  - usercontroller
+  - usercontroller_1
+  - usercontroller_2
+  allowed: []
+  forbidden:
+  - no_productdto
+  - no_userservice
+  - no_validationconfig
+  - no_userdtotest
+  - no_orderdto
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

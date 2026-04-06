@@ -1,0 +1,250 @@
+name: terraform_064_yamlencode
+repo:
+  initial_files:
+    k8s.tf: |
+      resource "local_file" "k8s_config" {
+        filename = "${path.module}/output/deployment.yaml"
+        content  = yamlencode({
+          apiVersion = "apps/v1"
+          kind       = "Deployment"
+          metadata = {
+            name = "web-app"
+            labels = {
+              app = "web"
+            }
+          }
+          spec = {
+            replicas = 2
+            selector = {
+              matchLabels = {
+                app = "web"
+              }
+            }
+          }
+        })
+      }
+    variables.tf: |
+      variable "app_version" {
+        type    = string
+        default = "v1"
+      }
+
+      variable "namespace" {
+        type    = string
+        default = "production"
+      }
+
+      variable "cluster_name" {
+        type    = string
+        default = "main-cluster"
+      }
+    services.tf: |
+      resource "local_file" "k8s_service" {
+        filename = "${path.module}/output/service.yaml"
+        content  = yamlencode({
+          apiVersion = "v1"
+          kind       = "Service"
+          metadata = {
+            name      = "web-app-service"
+            namespace = var.namespace
+          }
+          spec = {
+            selector = {
+              app = "web"
+            }
+            ports = [{
+              port       = 80
+              targetPort = 8080
+              protocol   = "TCP"
+            }]
+            type = "ClusterIP"
+          }
+        })
+      }
+    nginx/config.tf: |
+      resource "local_file" "nginx_config" {
+        filename = "${path.module}/output/nginx.conf"
+        content  = yamlencode({
+          upstream = {
+            servers = ["10.0.1.1", "10.0.1.2"]
+          }
+          server = {
+            listen = 80
+            location = {
+              proxy_pass = "http://upstream"
+            }
+          }
+        })
+      }
+    monitoring/grafana.tf: |
+      resource "local_file" "grafana_dashboard" {
+        filename = "${path.module}/output/grafana-dashboard.yaml"
+        content  = yamlencode({
+          apiVersion = "v1"
+          kind       = "ConfigMap"
+          metadata = {
+            name      = "grafana-dashboards"
+            namespace = "monitoring"
+          }
+          data = {
+            "dashboard.json" = file("${path.module}/dashboards/main.json")
+          }
+        })
+      }
+    alerting/sns.tf: |
+      resource "aws_sns_topic" "alerts" {
+        name = "critical-alerts"
+      }
+
+      resource "aws_sns_topic_subscription" "email" {
+        topic_arn = aws_sns_topic.alerts.arn
+        protocol  = "email"
+        endpoint  = "ops@example.com"
+      }
+    helm/values.yaml: |
+      replicaCount: 3
+      image:
+        repository: web-app
+        tag: v1
+      resources:
+        limits:
+          cpu: 500m
+          memory: 256Mi
+        requests:
+          cpu: 250m
+          memory: 128Mi
+      service:
+        type: ClusterIP
+        port: 80
+  changed_files:
+    k8s.tf: |
+      resource "local_file" "k8s_config" {
+        filename = "${path.module}/output/deployment.yaml"
+        content  = yamlencode({
+          apiVersion = "apps/v1"
+          kind       = "Deployment"
+          metadata = {
+            name      = "web-app"
+            namespace = var.namespace
+            labels = {
+              app     = "web"
+              version = var.app_version
+            }
+          }
+          spec = {
+            replicas = 3
+            selector = {
+              matchLabels = {
+                app = "web"
+              }
+            }
+            template = {
+              spec = {
+                containers = [{
+                  name  = "web"
+                  image = "web-app:${var.app_version}"
+                  resources = {
+                    limits = {
+                      cpu    = "500m"
+                      memory = "256Mi"
+                    }
+                  }
+                }]
+              }
+            }
+          }
+        })
+      }
+  commit_message: Update files
+fragments:
+- id: k8s
+  selector:
+    path: k8s.tf
+    anchor: replicas = 3
+- id: k8s_1
+  selector:
+    path: k8s.tf
+    anchor: image = "web-app:${var.app_version}"
+- id: k8s_2
+  selector:
+    path: k8s.tf
+    anchor: resource "local_file" "k8s_config"
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "app_version" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: variable "namespace" {
+- id: services
+  selector:
+    path: services.tf
+    anchor: app = "web"
+- id: services_1
+  selector:
+    path: services.tf
+    anchor: targetPort = 8080
+- id: no_config
+  selector:
+    path: nginx/config.tf
+- id: no_grafana
+  selector:
+    path: monitoring/grafana.tf
+- id: no_sns
+  selector:
+    path: alerting/sns.tf
+- id: no_values
+  selector:
+    path: helm/values.yaml
+- id: no_global_0
+  selector:
+    anchor: upstream
+- id: no_global_1
+  selector:
+    anchor: 10.0.1.1
+- id: no_global_2
+  selector:
+    anchor: proxy_pass
+- id: no_global_3
+  selector:
+    anchor: grafana-dashboards
+- id: no_global_4
+  selector:
+    anchor: dashboard.json
+- id: no_global_5
+  selector:
+    anchor: critical-alerts
+- id: no_global_6
+  selector:
+    anchor: ops@example.com
+- id: no_global_7
+  selector:
+    anchor: replicaCount
+- id: no_global_8
+  selector:
+    anchor: 'repository: web-app'
+oracle:
+  required:
+  - k8s
+  - k8s_1
+  - k8s_2
+  - variables
+  - variables_1
+  - services
+  - services_1
+  allowed: []
+  forbidden:
+  - no_config
+  - no_grafana
+  - no_sns
+  - no_values
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

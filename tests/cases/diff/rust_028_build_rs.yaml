@@ -1,0 +1,248 @@
+name: rust_028_build_rs
+repo:
+  initial_files:
+    build.rs: |
+      fn main() {
+          println!("cargo:rerun-if-changed=proto/");
+          tonic_build::compile_protos("proto/service.proto").unwrap();
+      }
+    src/lib.rs: |
+      pub mod service;
+      pub mod telemetry;
+      pub mod health;
+      pub mod client;
+      pub mod interceptor;
+    src/service.rs: |
+      pub mod proto {
+          tonic::include_proto!("service");
+      }
+
+      pub use proto::service_server::Service;
+
+      pub struct ServiceImpl {
+          name: String,
+      }
+
+      impl ServiceImpl {
+          pub fn new(name: &str) -> Self {
+              Self { name: name.to_string() }
+          }
+
+          pub fn service_name(&self) -> &str {
+              &self.name
+          }
+      }
+    src/telemetry.rs: |
+      use tracing::{info, instrument};
+
+      pub struct RequestTracer {
+          service_name: String,
+          sample_rate: f64,
+      }
+
+      impl RequestTracer {
+          pub fn new(service_name: &str, sample_rate: f64) -> Self {
+              Self {
+                  service_name: service_name.to_string(),
+                  sample_rate,
+              }
+          }
+
+          #[instrument(skip(self))]
+          pub fn trace_request(&self, method: &str, path: &str) {
+              info!(service = %self.service_name, method, path, "incoming request");
+          }
+
+          pub fn set_sample_rate(&mut self, rate: f64) {
+              self.sample_rate = rate.clamp(0.0, 1.0);
+          }
+      }
+    src/health.rs: |
+      use serde::Serialize;
+
+      #[derive(Serialize)]
+      pub struct HealthResponse {
+          pub status: String,
+          pub uptime_seconds: u64,
+      }
+
+      pub fn check_health(start_time: std::time::Instant) -> HealthResponse {
+          HealthResponse {
+              status: "ok".to_string(),
+              uptime_seconds: start_time.elapsed().as_secs(),
+          }
+      }
+
+      pub fn liveness_probe() -> bool {
+          true
+      }
+    src/client.rs: |
+      pub mod proto {
+          tonic::include_proto!("service");
+      }
+
+      pub use proto::service_client::ServiceClient;
+
+      pub struct ClientConfig {
+          endpoint: String,
+          timeout_ms: u64,
+      }
+
+      impl ClientConfig {
+          pub fn new(endpoint: &str) -> Self {
+              Self {
+                  endpoint: endpoint.to_string(),
+                  timeout_ms: 5000,
+              }
+          }
+
+          pub fn with_timeout(mut self, ms: u64) -> Self {
+              self.timeout_ms = ms;
+              self
+          }
+
+          pub fn endpoint(&self) -> &str {
+              &self.endpoint
+          }
+      }
+    src/interceptor.rs: |
+      use tonic::{Request, Status};
+
+      pub fn auth_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+          let token = req
+              .metadata()
+              .get("authorization")
+              .and_then(|v| v.to_str().ok());
+
+          match token {
+              Some(t) if t.starts_with("Bearer ") => Ok(req),
+              _ => Err(Status::unauthenticated("Missing or invalid token")),
+          }
+      }
+
+      pub fn logging_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+          println!("Request to: {:?}", req.uri());
+          Ok(req)
+      }
+    Cargo.toml: |
+      [package]
+      name = "grpc-service"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      tonic = "0.11"
+      prost = "0.12"
+      tokio = { version = "1", features = ["full"] }
+      serde = { version = "1", features = ["derive"] }
+      tracing = "0.1"
+
+      [build-dependencies]
+      tonic-build = "0.11"
+  changed_files:
+    build.rs: |
+      fn main() {
+          println!("cargo:rerun-if-changed=proto/");
+
+          tonic_build::configure()
+              .build_server(true)
+              .build_client(true)
+              .out_dir("src/generated")
+              .compile(
+                  &["proto/service.proto", "proto/types.proto"],
+                  &["proto/"],
+              )
+              .unwrap();
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: src/service.rs
+    anchor: tonic::include_proto!("service")
+- id: service_1
+  selector:
+    path: src/service.rs
+    anchor: service_server::Service
+- id: no_telemetry
+  selector:
+    path: src/telemetry.rs
+- id: no_health
+  selector:
+    path: src/health.rs
+- id: no_client
+  selector:
+    path: src/client.rs
+- id: no_interceptor
+  selector:
+    path: src/interceptor.rs
+- id: no_cargo
+  selector:
+    path: Cargo.toml
+- id: no_global_0
+  selector:
+    anchor: RequestTracer
+- id: no_global_1
+  selector:
+    anchor: trace_request
+- id: no_global_2
+  selector:
+    anchor: sample_rate
+- id: no_global_3
+  selector:
+    anchor: HealthResponse
+- id: no_global_4
+  selector:
+    anchor: check_health
+- id: no_global_5
+  selector:
+    anchor: liveness_probe
+- id: no_global_6
+  selector:
+    anchor: service_client::ServiceClient
+- id: no_global_7
+  selector:
+    anchor: ClientConfig
+- id: no_global_8
+  selector:
+    anchor: with_timeout
+- id: no_global_9
+  selector:
+    anchor: auth_interceptor
+- id: no_global_10
+  selector:
+    anchor: logging_interceptor
+- id: no_global_11
+  selector:
+    anchor: unauthenticated
+- id: no_global_12
+  selector:
+    anchor: tonic-build
+- id: no_global_13
+  selector:
+    anchor: '[build-dependencies]'
+oracle:
+  required:
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_telemetry
+  - no_health
+  - no_client
+  - no_interceptor
+  - no_cargo
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

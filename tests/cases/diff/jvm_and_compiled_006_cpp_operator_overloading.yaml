@@ -1,0 +1,250 @@
+name: jvm_and_compiled_006_cpp_operator_overloading
+repo:
+  initial_files:
+    include/vector2d.h: |
+      #pragma once
+
+      class Vector2D {
+      public:
+          double x, y;
+
+          Vector2D(double x = 0, double y = 0) : x(x), y(y) {}
+
+          Vector2D operator+(const Vector2D& other) const {
+              return Vector2D(x + other.x, y + other.y);
+          }
+
+          Vector2D operator-(const Vector2D& other) const {
+              return Vector2D(x - other.x, y - other.y);
+          }
+
+          Vector2D operator*(double scalar) const {
+              return Vector2D(x * scalar, y * scalar);
+          }
+
+          Vector2D& operator+=(const Vector2D& other) {
+              x += other.x;
+              y += other.y;
+              return *this;
+          }
+      };
+    src/physics.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    include/matrix2d.h: |
+      #pragma once
+
+      class Matrix2D {
+      public:
+          double m[2][2];
+
+          Matrix2D() : m{{1,0},{0,1}} {}
+          Matrix2D(double a, double b, double c, double d) : m{{a,b},{c,d}} {}
+
+          Matrix2D operator+(const Matrix2D& other) const {
+              return Matrix2D(
+                  m[0][0]+other.m[0][0], m[0][1]+other.m[0][1],
+                  m[1][0]+other.m[1][0], m[1][1]+other.m[1][1]);
+          }
+
+          Matrix2D operator*(const Matrix2D& other) const {
+              return Matrix2D(
+                  m[0][0]*other.m[0][0] + m[0][1]*other.m[1][0],
+                  m[0][0]*other.m[0][1] + m[0][1]*other.m[1][1],
+                  m[1][0]*other.m[0][0] + m[1][1]*other.m[1][0],
+                  m[1][0]*other.m[0][1] + m[1][1]*other.m[1][1]);
+          }
+
+          double determinant() const {
+              return m[0][0]*m[1][1] - m[0][1]*m[1][0];
+          }
+      };
+    src/renderer.cpp: |
+      #include "vector2d.h"
+      #include <iostream>
+
+      class Renderer {
+          Vector2D offset_;
+          double scale_;
+      public:
+          Renderer(double scale) : scale_(scale) {}
+
+          Vector2D worldToScreen(const Vector2D& worldPos) {
+              return worldPos * scale_ + offset_;
+          }
+
+          void setOffset(const Vector2D& offset) { offset_ = offset; }
+
+          void drawPoint(const Vector2D& pos) {
+              auto screen = worldToScreen(pos);
+              std::cout << "Draw at " << screen.x << "," << screen.y << std::endl;
+          }
+      };
+    include/color.h: |
+      #pragma once
+      #include <algorithm>
+
+      class Color {
+      public:
+          float r, g, b, a;
+
+          Color(float r=0, float g=0, float b=0, float a=1)
+              : r(r), g(g), b(b), a(a) {}
+
+          Color operator+(const Color& other) const {
+              return Color(
+                  std::min(r+other.r, 1.0f),
+                  std::min(g+other.g, 1.0f),
+                  std::min(b+other.b, 1.0f),
+                  std::min(a+other.a, 1.0f));
+          }
+
+          Color operator*(float scalar) const {
+              return Color(r*scalar, g*scalar, b*scalar, a);
+          }
+      };
+    tests/vector_test.cpp: |
+      #include "vector2d.h"
+      #include <cassert>
+      #include <cmath>
+
+      void test_add() {
+          Vector2D a(1, 2);
+          Vector2D b(3, 4);
+          auto c = a + b;
+          assert(c.x == 4 && c.y == 6);
+      }
+
+      void test_scalar_multiply() {
+          Vector2D v(2, 3);
+          auto r = v * 2.0;
+          assert(r.x == 4 && r.y == 6);
+      }
+
+      void test_plus_equals() {
+          Vector2D a(1, 1);
+          a += Vector2D(2, 3);
+          assert(a.x == 3 && a.y == 4);
+      }
+  changed_files:
+    src/physics.cpp: |
+      #include "vector2d.h"
+
+      Vector2D computePosition(Vector2D pos, Vector2D vel, double dt) {
+          return pos + vel * dt;
+      }
+
+      void simulate() {
+          Vector2D position(0, 0);
+          Vector2D velocity(1, 2);
+          position += velocity * 0.1;
+      }
+  commit_message: Update files
+fragments:
+- id: physics
+  selector:
+    path: src/physics.cpp
+    anchor: return pos + vel * dt
+- id: physics_1
+  selector:
+    path: src/physics.cpp
+    anchor: position += velocity * 0.1
+- id: physics_2
+  selector:
+    path: src/physics.cpp
+    anchor: Vector2D computePosition
+- id: vector2d
+  selector:
+    path: include/vector2d.h
+    anchor: Vector2D operator+(const Vector2D& other) const
+- id: vector2d_1
+  selector:
+    path: include/vector2d.h
+    anchor: Vector2D operator*(double scalar) const
+- id: vector2d_2
+  selector:
+    path: include/vector2d.h
+    anchor: Vector2D& operator+=(const Vector2D& other)
+- id: vector2d_3
+  selector:
+    path: include/vector2d.h
+    anchor: double x, y
+- id: no_matrix2d
+  selector:
+    path: include/matrix2d.h
+- id: no_renderer
+  selector:
+    path: src/renderer.cpp
+- id: no_color
+  selector:
+    path: include/color.h
+- id: no_vector_test
+  selector:
+    path: tests/vector_test.cpp
+- id: no_global_0
+  selector:
+    anchor: Matrix2D
+- id: no_global_1
+  selector:
+    anchor: determinant
+- id: no_global_2
+  selector:
+    anchor: m[2][2]
+- id: no_global_3
+  selector:
+    anchor: Renderer
+- id: no_global_4
+  selector:
+    anchor: worldToScreen
+- id: no_global_5
+  selector:
+    anchor: drawPoint
+- id: no_global_6
+  selector:
+    anchor: scale_
+- id: no_global_7
+  selector:
+    anchor: class Color
+- id: no_global_8
+  selector:
+    anchor: float r, g, b
+- id: no_global_9
+  selector:
+    anchor: std::min
+- id: no_global_10
+  selector:
+    anchor: test_add
+- id: no_global_11
+  selector:
+    anchor: test_scalar_multiply
+- id: no_global_12
+  selector:
+    anchor: test_plus_equals
+oracle:
+  required:
+  - physics
+  - physics_1
+  - physics_2
+  - vector2d
+  - vector2d_1
+  - vector2d_2
+  - vector2d_3
+  allowed: []
+  forbidden:
+  - no_matrix2d
+  - no_renderer
+  - no_color
+  - no_vector_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

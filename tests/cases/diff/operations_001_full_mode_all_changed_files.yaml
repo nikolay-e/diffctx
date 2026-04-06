@@ -1,0 +1,260 @@
+name: operations_001_full_mode_all_changed_files
+repo:
+  initial_files:
+    models.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+
+      @dataclass
+      class Task:
+          title: str
+          description: str
+          completed: bool = False
+          created_at: datetime = None
+
+          def __post_init__(self):
+              if self.created_at is None:
+                  self.created_at = datetime.now()
+
+          def mark_complete(self) -> None:
+              self.completed = True
+
+          def summary(self) -> str:
+              status = "done" if self.completed else "pending"
+              return f"[{status}] {self.title}"
+    service.py: |
+      from models import Task
+
+      _tasks: list[Task] = []
+
+      def add_task(title: str, description: str) -> Task:
+          task = Task(title=title, description=description)
+          _tasks.append(task)
+          return task
+
+      def get_all_tasks() -> list[Task]:
+          return list(_tasks)
+
+      def get_pending_tasks() -> list[Task]:
+          return [t for t in _tasks if not t.completed]
+
+      def complete_task(index: int) -> bool:
+          if 0 <= index < len(_tasks):
+              _tasks[index].mark_complete()
+              return True
+          return False
+    api.py: |
+      from service import add_task, get_all_tasks, get_pending_tasks
+
+      def handle_create(data: dict) -> dict:
+          task = add_task(data["title"], data.get("description", ""))
+          return {"status": "created", "task": task.summary()}
+
+      def handle_list() -> dict:
+          tasks = get_all_tasks()
+          return {"tasks": [t.summary() for t in tasks], "count": len(tasks)}
+
+      def handle_pending() -> dict:
+          pending = get_pending_tasks()
+          return {"pending": [t.summary() for t in pending], "count": len(pending)}
+    utils/notification_dispatcher.py: |
+      from dataclasses import dataclass
+      from typing import Callable
+
+      CHANNEL_EMAIL = "email"
+      CHANNEL_SMS = "sms"
+
+      @dataclass
+      class Notification:
+          recipient: str
+          channel: str
+          subject: str
+          body: str
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._handlers: dict[str, Callable] = {}
+
+          def register_channel(self, channel: str, handler: Callable) -> None:
+              self._handlers[channel] = handler
+
+          def dispatch(self, notification: Notification) -> bool:
+              handler = self._handlers.get(notification.channel)
+              if handler is None:
+                  return False
+              handler(notification)
+              return True
+    utils/report_generator.py: |
+      from datetime import date
+      from typing import Any
+
+      REPORT_FORMAT_CSV = "csv"
+      REPORT_FORMAT_PDF = "pdf"
+
+      class ReportGenerator:
+          def __init__(self, output_dir: str = "/tmp/reports"):
+              self.output_dir = output_dir
+
+          def generate(self, title: str, rows: list[dict[str, Any]]) -> str:
+              filename = f"{title}_{date.today().isoformat()}.csv"
+              return f"{self.output_dir}/{filename}"
+
+          def schedule(self, title: str, cron: str) -> dict:
+              return {"title": title, "cron": cron, "active": True}
+  changed_files:
+    models.py: |
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from typing import Optional
+
+      @dataclass
+      class Task:
+          title: str
+          description: str
+          completed: bool = False
+          priority: int = 0
+          created_at: datetime = None
+          completed_at: Optional[datetime] = None
+
+          def __post_init__(self):
+              if self.created_at is None:
+                  self.created_at = datetime.now()
+
+          def mark_complete(self) -> None:
+              self.completed = True
+              self.completed_at = datetime.now()
+
+          def summary(self) -> str:
+              status = "done" if self.completed else "pending"
+              return f"[{status}] ({self.priority}) {self.title}"
+    service.py: |
+      from models import Task
+
+      _tasks: list[Task] = []
+
+      def add_task(title: str, description: str, priority: int = 0) -> Task:
+          task = Task(title=title, description=description, priority=priority)
+          _tasks.append(task)
+          return task
+
+      def get_all_tasks() -> list[Task]:
+          return sorted(_tasks, key=lambda t: t.priority, reverse=True)
+
+      def get_pending_tasks() -> list[Task]:
+          return [t for t in get_all_tasks() if not t.completed]
+
+      def complete_task(index: int) -> bool:
+          if 0 <= index < len(_tasks):
+              _tasks[index].mark_complete()
+              return True
+          return False
+    api.py: |
+      from service import add_task, get_all_tasks, get_pending_tasks
+
+      def handle_create(data: dict) -> dict:
+          task = add_task(data["title"], data.get("description", ""), data.get("priority", 0))
+          return {"status": "created", "task": task.summary()}
+
+      def handle_list() -> dict:
+          tasks = get_all_tasks()
+          return {"tasks": [t.summary() for t in tasks], "count": len(tasks)}
+
+      def handle_pending() -> dict:
+          pending = get_pending_tasks()
+          return {"pending": [t.summary() for t in pending], "count": len(pending)}
+    utils/notification_dispatcher.py: |
+      from dataclasses import dataclass
+      from typing import Callable
+
+      CHANNEL_EMAIL = "email"
+      CHANNEL_SMS = "sms"
+
+      @dataclass
+      class Notification:
+          recipient: str
+          channel: str
+          subject: str
+          body: str
+
+      class NotificationDispatcher:
+          def __init__(self):
+              self._handlers: dict[str, Callable] = {}
+
+          def register_channel(self, channel: str, handler: Callable) -> None:
+              self._handlers[channel] = handler
+
+          def dispatch(self, notification: Notification) -> bool:
+              handler = self._handlers.get(notification.channel)
+              if handler is None:
+                  return False
+              handler(notification)
+              return True
+    utils/report_generator.py: |
+      from datetime import date
+      from typing import Any
+
+      REPORT_FORMAT_CSV = "csv"
+      REPORT_FORMAT_PDF = "pdf"
+
+      class ReportGenerator:
+          def __init__(self, output_dir: str = "/tmp/reports"):
+              self.output_dir = output_dir
+
+          def generate(self, title: str, rows: list[dict[str, Any]]) -> str:
+              filename = f"{title}_{date.today().isoformat()}.csv"
+              return f"{self.output_dir}/{filename}"
+
+          def schedule(self, title: str, cron: str) -> dict:
+              return {"title": title, "cron": cron, "active": True}
+  commit_message: Update files
+fragments:
+- id: models
+  selector:
+    path: models.py
+    anchor: 'priority: int = 0'
+- id: service
+  selector:
+    path: service.py
+    anchor: 'priority: int = 0'
+- id: api_file
+  selector:
+    path: api.py
+- id: no_notification_dispatcher
+  selector:
+    path: utils/notification_dispatcher.py
+- id: no_report_generator
+  selector:
+    path: utils/report_generator.py
+- id: no_global_0
+  selector:
+    anchor: NotificationDispatcher
+- id: no_global_1
+  selector:
+    anchor: ReportGenerator
+- id: no_global_2
+  selector:
+    anchor: CHANNEL_EMAIL
+- id: no_global_3
+  selector:
+    anchor: REPORT_FORMAT_CSV
+- id: no_global_4
+  selector:
+    anchor: notification_dispatcher.py
+- id: no_global_5
+  selector:
+    anchor: report_generator.py
+oracle:
+  required:
+  - models
+  - service
+  - api_file
+  allowed: []
+  forbidden:
+  - no_notification_dispatcher
+  - no_report_generator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

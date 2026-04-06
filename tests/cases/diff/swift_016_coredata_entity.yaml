@@ -1,0 +1,402 @@
+name: swift_016_coredata_entity
+repo:
+  initial_files:
+    Persistence/TaskItem+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension TaskItem {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<TaskItem> {
+              return NSFetchRequest<TaskItem>(entityName: "TaskItem")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var title: String?
+          @NSManaged public var isCompleted: Bool
+          @NSManaged public var dueDate: Date?
+          @NSManaged public var priority: Int16
+      }
+    Persistence/TaskRepository.swift: |
+      import CoreData
+
+      class TaskRepository {}
+    Generated/Category+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension Category {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<Category> {
+              return NSFetchRequest<Category>(entityName: "Category")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var name: String?
+          @NSManaged public var colorHex: String?
+          @NSManaged public var sortOrder: Int16
+      }
+    Persistence/CategoryRepository.swift: |
+      import CoreData
+
+      class CategoryRepository {
+          let context: NSManagedObjectContext
+
+          init(context: NSManagedObjectContext) {
+              self.context = context
+          }
+
+          func createCategory(name: String, color: String) -> Category {
+              let category = Category(context: context)
+              category.id = UUID()
+              category.name = name
+              category.colorHex = color
+              category.sortOrder = 0
+              return category
+          }
+
+          func fetchAll() throws -> [Category] {
+              let request = Category.fetchRequest()
+              request.sortDescriptors = [NSSortDescriptor(key: "sortOrder", ascending: true)]
+              return try context.fetch(request)
+          }
+      }
+    ViewModels/TaskListViewModel.swift: |
+      import Foundation
+
+      @MainActor
+      class TaskListViewModel: ObservableObject {
+          @Published var tasks: [TaskItem] = []
+          private let repository: TaskRepository
+
+          init(repository: TaskRepository) {
+              self.repository = repository
+          }
+
+          func loadTasks() {
+              tasks = (try? repository.fetchIncomplete()) ?? []
+          }
+
+          func addTask(title: String, priority: Int16) {
+              _ = repository.createTask(title: title, dueDate: nil, priority: priority)
+              loadTasks()
+          }
+
+          func completeTask(_ task: TaskItem) {
+              repository.markCompleted(task)
+              loadTasks()
+          }
+      }
+    Persistence/PersistenceController.swift: |
+      import CoreData
+
+      class PersistenceController {
+          static let shared = PersistenceController()
+          let container: NSPersistentContainer
+
+          init() {
+              container = NSPersistentContainer(name: "Model")
+              container.loadPersistentStores { _, error in
+                  if let error = error { fatalError("Store: \(error)") }
+              }
+          }
+
+          var viewContext: NSManagedObjectContext {
+              container.viewContext
+          }
+
+          func save() throws {
+              let ctx = container.viewContext
+              if ctx.hasChanges { try ctx.save() }
+          }
+      }
+    Generated/Project+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension Project {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<Project> {
+              return NSFetchRequest<Project>(entityName: "Project")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var title: String?
+          @NSManaged public var deadline: Date?
+          @NSManaged public var isArchived: Bool
+      }
+  changed_files:
+    Persistence/TaskItem+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension TaskItem {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<TaskItem> {
+              return NSFetchRequest<TaskItem>(entityName: "TaskItem")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var title: String?
+          @NSManaged public var isCompleted: Bool
+          @NSManaged public var dueDate: Date?
+          @NSManaged public var priority: Int16
+      }
+    Persistence/TaskRepository.swift: |
+      import CoreData
+
+      class TaskRepository {
+          let context: NSManagedObjectContext
+
+          init(context: NSManagedObjectContext) {
+              self.context = context
+          }
+
+          func createTask(title: String, dueDate: Date?, priority: Int16) -> TaskItem {
+              let task = TaskItem(context: context)
+              task.id = UUID()
+              task.title = title
+              task.isCompleted = false
+              task.dueDate = dueDate
+              task.priority = priority
+              return task
+          }
+
+          func fetchIncomplete() throws -> [TaskItem] {
+              let request = TaskItem.fetchRequest()
+              request.predicate = NSPredicate(format: "isCompleted == NO")
+              request.sortDescriptors = [
+                  NSSortDescriptor(key: "priority", ascending: false),
+                  NSSortDescriptor(key: "dueDate", ascending: true)
+              ]
+              return try context.fetch(request)
+          }
+
+          func markCompleted(_ task: TaskItem) {
+              task.isCompleted = true
+          }
+      }
+    Generated/Category+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension Category {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<Category> {
+              return NSFetchRequest<Category>(entityName: "Category")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var name: String?
+          @NSManaged public var colorHex: String?
+          @NSManaged public var sortOrder: Int16
+      }
+    Persistence/CategoryRepository.swift: |
+      import CoreData
+
+      class CategoryRepository {
+          let context: NSManagedObjectContext
+
+          init(context: NSManagedObjectContext) {
+              self.context = context
+          }
+
+          func createCategory(name: String, color: String) -> Category {
+              let category = Category(context: context)
+              category.id = UUID()
+              category.name = name
+              category.colorHex = color
+              category.sortOrder = 0
+              return category
+          }
+
+          func fetchAll() throws -> [Category] {
+              let request = Category.fetchRequest()
+              request.sortDescriptors = [NSSortDescriptor(key: "sortOrder", ascending: true)]
+              return try context.fetch(request)
+          }
+      }
+    ViewModels/TaskListViewModel.swift: |
+      import Foundation
+
+      @MainActor
+      class TaskListViewModel: ObservableObject {
+          @Published var tasks: [TaskItem] = []
+          private let repository: TaskRepository
+
+          init(repository: TaskRepository) {
+              self.repository = repository
+          }
+
+          func loadTasks() {
+              tasks = (try? repository.fetchIncomplete()) ?? []
+          }
+
+          func addTask(title: String, priority: Int16) {
+              _ = repository.createTask(title: title, dueDate: nil, priority: priority)
+              loadTasks()
+          }
+
+          func completeTask(_ task: TaskItem) {
+              repository.markCompleted(task)
+              loadTasks()
+          }
+      }
+    Persistence/PersistenceController.swift: |
+      import CoreData
+
+      class PersistenceController {
+          static let shared = PersistenceController()
+          let container: NSPersistentContainer
+
+          init() {
+              container = NSPersistentContainer(name: "Model")
+              container.loadPersistentStores { _, error in
+                  if let error = error { fatalError("Store: \(error)") }
+              }
+          }
+
+          var viewContext: NSManagedObjectContext {
+              container.viewContext
+          }
+
+          func save() throws {
+              let ctx = container.viewContext
+              if ctx.hasChanges { try ctx.save() }
+          }
+      }
+    Generated/Project+CoreDataProperties.swift: |
+      import Foundation
+      import CoreData
+
+      extension Project {
+          @nonobjc public class func fetchRequest() -> NSFetchRequest<Project> {
+              return NSFetchRequest<Project>(entityName: "Project")
+          }
+
+          @NSManaged public var id: UUID?
+          @NSManaged public var title: String?
+          @NSManaged public var deadline: Date?
+          @NSManaged public var isArchived: Bool
+      }
+  commit_message: Update files
+fragments:
+- id: taskrepository
+  selector:
+    path: Persistence/TaskRepository.swift
+    anchor: 'TaskItem(context: context)'
+- id: taskrepository_1
+  selector:
+    path: Persistence/TaskRepository.swift
+    anchor: task.isCompleted = false
+- id: taskrepository_2
+  selector:
+    path: Persistence/TaskRepository.swift
+    anchor: TaskItem.fetchRequest()
+- id: taskitem_coredataproperties
+  selector:
+    path: Persistence/TaskItem+CoreDataProperties.swift
+    anchor: extension TaskItem
+- id: taskitem_coredataproperties_1
+  selector:
+    path: Persistence/TaskItem+CoreDataProperties.swift
+    anchor: class func fetchRequest()
+- id: taskitem_coredataproperties_2
+  selector:
+    path: Persistence/TaskItem+CoreDataProperties.swift
+    anchor: '@NSManaged public var title: String?'
+- id: taskitem_coredataproperties_3
+  selector:
+    path: Persistence/TaskItem+CoreDataProperties.swift
+    anchor: '@NSManaged public var isCompleted: Bool'
+- id: taskitem_coredataproperties_4
+  selector:
+    path: Persistence/TaskItem+CoreDataProperties.swift
+    anchor: '@NSManaged public var priority: Int16'
+- id: no_category_coredataproperties
+  selector:
+    path: Generated/Category+CoreDataProperties.swift
+- id: no_categoryrepository
+  selector:
+    path: Persistence/CategoryRepository.swift
+- id: no_tasklistviewmodel
+  selector:
+    path: ViewModels/TaskListViewModel.swift
+- id: no_persistencecontroller
+  selector:
+    path: Persistence/PersistenceController.swift
+- id: no_project_coredataproperties
+  selector:
+    path: Generated/Project+CoreDataProperties.swift
+- id: no_global_0
+  selector:
+    anchor: extension Category
+- id: no_global_1
+  selector:
+    anchor: colorHex
+- id: no_global_2
+  selector:
+    anchor: sortOrder
+- id: no_global_3
+  selector:
+    anchor: CategoryRepository
+- id: no_global_4
+  selector:
+    anchor: createCategory
+- id: no_global_5
+  selector:
+    anchor: Category(context
+- id: no_global_6
+  selector:
+    anchor: TaskListViewModel
+- id: no_global_7
+  selector:
+    anchor: loadTasks
+- id: no_global_8
+  selector:
+    anchor: completeTask
+- id: no_global_9
+  selector:
+    anchor: PersistenceController
+- id: no_global_10
+  selector:
+    anchor: NSPersistentContainer
+- id: no_global_11
+  selector:
+    anchor: viewContext
+- id: no_global_12
+  selector:
+    anchor: extension Project
+- id: no_global_13
+  selector:
+    anchor: isArchived
+- id: no_global_14
+  selector:
+    anchor: deadline
+oracle:
+  required:
+  - taskrepository
+  - taskrepository_1
+  - taskrepository_2
+  - taskitem_coredataproperties
+  - taskitem_coredataproperties_1
+  - taskitem_coredataproperties_2
+  - taskitem_coredataproperties_3
+  - taskitem_coredataproperties_4
+  allowed: []
+  forbidden:
+  - no_category_coredataproperties
+  - no_categoryrepository
+  - no_tasklistviewmodel
+  - no_persistencecontroller
+  - no_project_coredataproperties
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

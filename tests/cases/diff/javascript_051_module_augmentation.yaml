@@ -1,0 +1,136 @@
+name: javascript_051_module_augmentation
+repo:
+  initial_files:
+    original.ts: |
+      export interface User {
+          id: string;
+          name: string;
+      }
+
+      export function createUser(name: string): User {
+          return { id: Date.now().toString(), name };
+      }
+    augmentation.ts: |
+      import { User } from './original';
+
+      declare module './original' {
+          interface User {
+              email?: string;
+          }
+      }
+
+      export function createUserWithEmail(name: string, email: string): User {
+          return { id: Date.now().toString(), name, email };
+      }
+    user-permissions.ts: |
+      type Role = 'admin' | 'user' | 'guest';
+
+      const permissions: Record<Role, string[]> = {
+          admin: ['read', 'write', 'delete'],
+          user: ['read', 'write'],
+          guest: ['read'],
+      };
+
+      export function hasPermission(role: Role, action: string): boolean {
+          return permissions[role]?.includes(action) ?? false;
+      }
+    user-serializer.ts: |
+      export function serializeUser(user: { id: string; name: string }): string {
+          return JSON.stringify(user);
+      }
+
+      export function deserializeUser(json: string): { id: string; name: string } {
+          return JSON.parse(json);
+      }
+  changed_files:
+    original.ts: |
+      export interface User {
+          id: string;
+          name: string;
+      }
+
+      export function createUser(name: string): User {
+          return { id: Date.now().toString(), name };
+      }
+    augmentation.ts: |
+      import { User } from './original';
+
+      declare module './original' {
+          interface User {
+              email?: string;
+              role?: 'admin' | 'user';
+          }
+      }
+
+      export function createUserWithEmail(name: string, email: string, role?: 'admin' | 'user'): User {
+          return { id: Date.now().toString(), name, email, role };
+      }
+    user-permissions.ts: |
+      type Role = 'admin' | 'user' | 'guest';
+
+      const permissions: Record<Role, string[]> = {
+          admin: ['read', 'write', 'delete'],
+          user: ['read', 'write'],
+          guest: ['read'],
+      };
+
+      export function hasPermission(role: Role, action: string): boolean {
+          return permissions[role]?.includes(action) ?? false;
+      }
+    user-serializer.ts: |
+      export function serializeUser(user: { id: string; name: string }): string {
+          return JSON.stringify(user);
+      }
+
+      export function deserializeUser(json: string): { id: string; name: string } {
+          return JSON.parse(json);
+      }
+  commit_message: Update files
+fragments:
+- id: original
+  selector:
+    path: original.ts
+    anchor: interface User {
+- id: original_1
+  selector:
+    path: original.ts
+    anchor: 'id: string'
+- id: original_2
+  selector:
+    path: original.ts
+    anchor: 'name: string'
+- id: no_user_permissions
+  selector:
+    path: user-permissions.ts
+- id: no_user_serializer
+  selector:
+    path: user-serializer.ts
+- id: no_global_0
+  selector:
+    anchor: hasPermission
+- id: no_global_1
+  selector:
+    anchor: permissions
+- id: no_global_2
+  selector:
+    anchor: guest
+- id: no_global_3
+  selector:
+    anchor: serializeUser
+- id: no_global_4
+  selector:
+    anchor: deserializeUser
+oracle:
+  required:
+  - original
+  - original_1
+  - original_2
+  allowed: []
+  forbidden:
+  - no_user_permissions
+  - no_user_serializer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

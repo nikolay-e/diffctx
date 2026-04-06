@@ -1,0 +1,39 @@
+name: internals_056_concepts_covered_by_core
+repo:
+  initial_files:
+    core_a.py: |
+      pass
+    core_b.py: |
+      pass
+  changed_files:
+    core_a.py: |
+      def func_with_concept_x():
+          concept_x_work()
+
+      def func_with_concept_y():
+          concept_y_work()
+    core_b.py: |
+      def func_with_concept_z():
+          concept_z_work()
+  commit_message: Update files
+fragments:
+- id: core_a_file
+  selector:
+    path: core_a.py
+- id: core_b_file
+  selector:
+    path: core_b.py
+- id: req_global_0
+  selector:
+    anchor: 'def func_with_concept_x():'
+- id: req_global_1
+  selector:
+    anchor: 'def func_with_concept_y():'
+oracle:
+  required:
+  - core_a_file
+  - core_b_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

@@ -1,0 +1,216 @@
+name: javascript_extended_044_required_type
+repo:
+  initial_files:
+    src/options.ts: |
+      export interface Options {
+          name?: string;
+          value?: number;
+          enabled?: boolean;
+      }
+
+      export function createOptions(overrides?: Partial<Options>): Options {
+          return {
+              name: overrides?.name,
+              value: overrides?.value,
+              enabled: overrides?.enabled,
+          };
+      }
+    src/validator.ts: |
+      console.log('placeholder');
+    src/defaults.ts: |
+      import { Options } from './options';
+
+      export const DEFAULT_OPTIONS: Required<Options> = {
+          name: 'default',
+          value: 0,
+          enabled: true,
+      };
+
+      export function applyDefaults(partial: Options): Required<Options> {
+          return {
+              name: partial.name ?? DEFAULT_OPTIONS.name,
+              value: partial.value ?? DEFAULT_OPTIONS.value,
+              enabled: partial.enabled ?? DEFAULT_OPTIONS.enabled,
+          };
+      }
+
+      export function isDefault(options: Required<Options>): boolean {
+          return (
+              options.name === DEFAULT_OPTIONS.name &&
+              options.value === DEFAULT_OPTIONS.value &&
+              options.enabled === DEFAULT_OPTIONS.enabled
+          );
+      }
+    src/parser.ts: |
+      import { Options } from './options';
+
+      export function parseCliArgs(args: string[]): Options {
+          const options: Options = {};
+          for (let i = 0; i < args.length; i++) {
+              switch (args[i]) {
+                  case '--name':
+                      options.name = args[++i];
+                      break;
+                  case '--value':
+                      options.value = parseInt(args[++i], 10);
+                      break;
+                  case '--enabled':
+                      options.enabled = args[++i] === 'true';
+                      break;
+              }
+          }
+          return options;
+      }
+
+      export function parseEnvOptions(): Options {
+          return {
+              name: process.env.OPT_NAME,
+              value: process.env.OPT_VALUE ? parseInt(process.env.OPT_VALUE, 10) : undefined,
+              enabled: process.env.OPT_ENABLED ? process.env.OPT_ENABLED === 'true' : undefined,
+          };
+      }
+    src/merger.ts: |
+      import { Options } from './options';
+
+      export function mergeOptions(...optionsList: Options[]): Options {
+          const merged: Options = {};
+          for (const opts of optionsList) {
+              if (opts.name !== undefined) merged.name = opts.name;
+              if (opts.value !== undefined) merged.value = opts.value;
+              if (opts.enabled !== undefined) merged.enabled = opts.enabled;
+          }
+          return merged;
+      }
+
+      export function overrideOptions(base: Options, override: Options): Options {
+          return {
+              name: override.name ?? base.name,
+              value: override.value ?? base.value,
+              enabled: override.enabled ?? base.enabled,
+          };
+      }
+    src/formatter.ts: |
+      import { Options } from './options';
+
+      export function formatOptions(options: Options): string {
+          const parts: string[] = [];
+          if (options.name !== undefined) parts.push(`name=${options.name}`);
+          if (options.value !== undefined) parts.push(`value=${options.value}`);
+          if (options.enabled !== undefined) parts.push(`enabled=${options.enabled}`);
+          return parts.join(', ');
+      }
+
+      export function toJson(options: Options): string {
+          return JSON.stringify(options, null, 2);
+      }
+
+      export function toQueryString(options: Options): string {
+          const params = new URLSearchParams();
+          if (options.name) params.set('name', options.name);
+          if (options.value !== undefined) params.set('value', String(options.value));
+          if (options.enabled !== undefined) params.set('enabled', String(options.enabled));
+          return params.toString();
+      }
+  changed_files:
+    src/validator.ts: |
+      import { Options } from './options';
+
+      type StrictOptions = Required<Options>;
+
+      export function validate(options: StrictOptions): boolean {
+          return options.name.length > 0 && options.value >= 0 && typeof options.enabled === 'boolean';
+      }
+
+      export function validateWithErrors(options: StrictOptions): string[] {
+          const errors: string[] = [];
+          if (options.name.length === 0) errors.push('Name must not be empty');
+          if (options.value < 0) errors.push('Value must be non-negative');
+          if (typeof options.enabled !== 'boolean') errors.push('Enabled must be a boolean');
+          return errors;
+      }
+  commit_message: Update files
+fragments:
+- id: options
+  selector:
+    path: src/options.ts
+    anchor: Options
+- id: options_1
+  selector:
+    path: src/options.ts
+    anchor: 'name?: string'
+- id: options_2
+  selector:
+    path: src/options.ts
+    anchor: 'value?: number'
+- id: options_3
+  selector:
+    path: src/options.ts
+    anchor: 'enabled?: boolean'
+- id: no_defaults
+  selector:
+    path: src/defaults.ts
+- id: no_parser
+  selector:
+    path: src/parser.ts
+- id: no_merger
+  selector:
+    path: src/merger.ts
+- id: no_formatter
+  selector:
+    path: src/formatter.ts
+- id: no_global_0
+  selector:
+    anchor: DEFAULT_OPTIONS
+- id: no_global_1
+  selector:
+    anchor: applyDefaults
+- id: no_global_2
+  selector:
+    anchor: isDefault
+- id: no_global_3
+  selector:
+    anchor: parseCliArgs
+- id: no_global_4
+  selector:
+    anchor: parseEnvOptions
+- id: no_global_5
+  selector:
+    anchor: OPT_NAME
+- id: no_global_6
+  selector:
+    anchor: mergeOptions
+- id: no_global_7
+  selector:
+    anchor: overrideOptions
+- id: no_global_8
+  selector:
+    anchor: formatOptions
+- id: no_global_9
+  selector:
+    anchor: toQueryString
+- id: no_global_10
+  selector:
+    anchor: toJson
+oracle:
+  required:
+  - options
+  - options_1
+  - options_2
+  - options_3
+  allowed: []
+  forbidden:
+  - no_defaults
+  - no_parser
+  - no_merger
+  - no_formatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

@@ -1,0 +1,379 @@
+name: php_020_phpunit
+repo:
+  initial_files:
+    User.php: |
+      <?php
+      class User {
+          public function __construct(
+              public string $name,
+              public string $email
+          ) {}
+
+          public function isValidEmail(): bool {
+              return filter_var($this->email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function getDisplayName(): string {
+              return ucfirst($this->name);
+          }
+
+          public function toArray(): array {
+              return ['name' => $this->name, 'email' => $this->email];
+          }
+      }
+    UserTest.php: |
+      <?php
+      class UserTest {}
+    ProductTest.php: |
+      <?php
+      class ProductTest {
+          public function testProductCreation(): void {
+              $name = 'Widget';
+              $price = 9.99;
+              assert($name === 'Widget');
+              assert($price > 0);
+          }
+
+          public function testPriceValidation(): void {
+              $price = -5.0;
+              $isValid = $price > 0;
+              assert($isValid === false);
+          }
+
+          public function testProductDisplay(): void {
+              $name = 'Gadget';
+              assert(ucfirst($name) === 'Gadget');
+          }
+      }
+    EmailValidator.php: |
+      <?php
+      class EmailValidator {
+          public function isValidEmail(string $email): bool {
+              return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function getDomain(string $email): string {
+              $parts = explode('@', $email);
+              return $parts[1] ?? '';
+          }
+
+          public function isDisposable(string $email): bool {
+              $disposable = ['tempmail.com', 'throwaway.com', 'mailinator.com'];
+              return in_array($this->getDomain($email), $disposable);
+          }
+
+          public function normalize(string $email): string {
+              return strtolower(trim($email));
+          }
+      }
+    UserRepository.php: |
+      <?php
+      class UserRepository {
+          private array $store = [];
+
+          public function find(int $id): ?array {
+              return $this->store[$id] ?? null;
+          }
+
+          public function save(array $userData): bool {
+              $this->store[] = $userData;
+              return true;
+          }
+
+          public function findByEmail(string $email): ?array {
+              foreach ($this->store as $user) {
+                  if (($user['email'] ?? '') === $email) {
+                      return $user;
+                  }
+              }
+              return null;
+          }
+      }
+    AdminTest.php: |
+      <?php
+      class AdminTest {
+          public function testAdminCreation(): void {
+              $name = 'SuperAdmin';
+              $role = 'admin';
+              assert($name === 'SuperAdmin');
+              assert($role === 'admin');
+          }
+
+          public function testPermissions(): void {
+              $permissions = ['read', 'write', 'delete'];
+              assert(count($permissions) === 3);
+              assert(in_array('delete', $permissions));
+          }
+      }
+    UserFixture.php: |
+      <?php
+      class UserFixture {
+          public static function createTestUser(): array {
+              return ['name' => 'TestUser', 'email' => 'test@example.com'];
+          }
+
+          public static function createInvalidUser(): array {
+              return ['name' => 'Invalid', 'email' => 'not-an-email'];
+          }
+
+          public static function createBatch(int $count): array {
+              $users = [];
+              for ($i = 0; $i < $count; $i++) {
+                  $users[] = ['name' => "User{$i}", 'email' => "user{$i}@test.com"];
+              }
+              return $users;
+          }
+      }
+  changed_files:
+    User.php: |
+      <?php
+      class User {
+          public function __construct(
+              public string $name,
+              public string $email
+          ) {}
+
+          public function isValidEmail(): bool {
+              return filter_var($this->email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function getDisplayName(): string {
+              return ucfirst($this->name);
+          }
+
+          public function toArray(): array {
+              return ['name' => $this->name, 'email' => $this->email];
+          }
+      }
+    UserTest.php: |
+      <?php
+      require_once 'User.php';
+
+      class UserTest {
+          public function testUserCreation(): void {
+              $user = new User('John', 'john@example.com');
+
+              assert($user->name === 'John');
+              assert($user->email === 'john@example.com');
+          }
+
+          public function testEmailValidation(): void {
+              $validUser = new User('John', 'john@example.com');
+              $invalidUser = new User('Jane', 'invalid-email');
+
+              assert($validUser->isValidEmail() === true);
+              assert($invalidUser->isValidEmail() === false);
+          }
+      }
+    ProductTest.php: |
+      <?php
+      class ProductTest {
+          public function testProductCreation(): void {
+              $name = 'Widget';
+              $price = 9.99;
+              assert($name === 'Widget');
+              assert($price > 0);
+          }
+
+          public function testPriceValidation(): void {
+              $price = -5.0;
+              $isValid = $price > 0;
+              assert($isValid === false);
+          }
+
+          public function testProductDisplay(): void {
+              $name = 'Gadget';
+              assert(ucfirst($name) === 'Gadget');
+          }
+      }
+    EmailValidator.php: |
+      <?php
+      class EmailValidator {
+          public function isValidEmail(string $email): bool {
+              return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function getDomain(string $email): string {
+              $parts = explode('@', $email);
+              return $parts[1] ?? '';
+          }
+
+          public function isDisposable(string $email): bool {
+              $disposable = ['tempmail.com', 'throwaway.com', 'mailinator.com'];
+              return in_array($this->getDomain($email), $disposable);
+          }
+
+          public function normalize(string $email): string {
+              return strtolower(trim($email));
+          }
+      }
+    UserRepository.php: |
+      <?php
+      class UserRepository {
+          private array $store = [];
+
+          public function find(int $id): ?array {
+              return $this->store[$id] ?? null;
+          }
+
+          public function save(array $userData): bool {
+              $this->store[] = $userData;
+              return true;
+          }
+
+          public function findByEmail(string $email): ?array {
+              foreach ($this->store as $user) {
+                  if (($user['email'] ?? '') === $email) {
+                      return $user;
+                  }
+              }
+              return null;
+          }
+      }
+    AdminTest.php: |
+      <?php
+      class AdminTest {
+          public function testAdminCreation(): void {
+              $name = 'SuperAdmin';
+              $role = 'admin';
+              assert($name === 'SuperAdmin');
+              assert($role === 'admin');
+          }
+
+          public function testPermissions(): void {
+              $permissions = ['read', 'write', 'delete'];
+              assert(count($permissions) === 3);
+              assert(in_array('delete', $permissions));
+          }
+      }
+    UserFixture.php: |
+      <?php
+      class UserFixture {
+          public static function createTestUser(): array {
+              return ['name' => 'TestUser', 'email' => 'test@example.com'];
+          }
+
+          public static function createInvalidUser(): array {
+              return ['name' => 'Invalid', 'email' => 'not-an-email'];
+          }
+
+          public static function createBatch(int $count): array {
+              $users = [];
+              for ($i = 0; $i < $count; $i++) {
+                  $users[] = ['name' => "User{$i}", 'email' => "user{$i}@test.com"];
+              }
+              return $users;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: usertest
+  selector:
+    path: UserTest.php
+    anchor: new User('John', 'john@example.com')
+- id: usertest_1
+  selector:
+    path: UserTest.php
+    anchor: isValidEmail
+- id: usertest_2
+  selector:
+    path: UserTest.php
+    anchor: $user->name === 'John'
+- id: user
+  selector:
+    path: User.php
+    anchor: 'public function isValidEmail(): bool'
+- id: user_1
+  selector:
+    path: User.php
+    anchor: public string $name
+- id: user_2
+  selector:
+    path: User.php
+    anchor: public string $email
+- id: no_producttest
+  selector:
+    path: ProductTest.php
+- id: no_emailvalidator
+  selector:
+    path: EmailValidator.php
+- id: no_userrepository
+  selector:
+    path: UserRepository.php
+- id: no_admintest
+  selector:
+    path: AdminTest.php
+- id: no_userfixture
+  selector:
+    path: UserFixture.php
+- id: no_global_0
+  selector:
+    anchor: class ProductTest
+- id: no_global_1
+  selector:
+    anchor: testProductCreation
+- id: no_global_2
+  selector:
+    anchor: testPriceValidation
+- id: no_global_3
+  selector:
+    anchor: class EmailValidator
+- id: no_global_4
+  selector:
+    anchor: isDisposable
+- id: no_global_5
+  selector:
+    anchor: getDomain
+- id: no_global_6
+  selector:
+    anchor: class UserRepository
+- id: no_global_7
+  selector:
+    anchor: findByEmail
+- id: no_global_8
+  selector:
+    anchor: class AdminTest
+- id: no_global_9
+  selector:
+    anchor: testAdminCreation
+- id: no_global_10
+  selector:
+    anchor: testPermissions
+- id: no_global_11
+  selector:
+    anchor: class UserFixture
+- id: no_global_12
+  selector:
+    anchor: createTestUser
+- id: no_global_13
+  selector:
+    anchor: createInvalidUser
+oracle:
+  required:
+  - usertest
+  - usertest_1
+  - usertest_2
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_producttest
+  - no_emailvalidator
+  - no_userrepository
+  - no_admintest
+  - no_userfixture
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

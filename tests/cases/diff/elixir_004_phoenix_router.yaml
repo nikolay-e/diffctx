@@ -1,0 +1,280 @@
+name: elixir_004_phoenix_router
+repo:
+  initial_files:
+    lib/myapp_web/router.ex: |
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+
+        pipeline :api do
+          plug :accepts, ["json"]
+          plug MyAppWeb.Plugs.AuthPlug
+        end
+
+        scope "/api", MyAppWeb.Controllers do
+          pipe_through :api
+
+          get "/products", ProductController, :index
+          get "/products/:id", ProductController, :show
+          post "/products", ProductController, :create
+
+          get "/users/me", UserController, :current
+          put "/users/me", UserController, :update
+        end
+      end
+    lib/myapp_web/controllers/product_controller.ex: |
+      defmodule MyAppWeb.Controllers.ProductController do
+        use MyAppWeb, :controller
+
+        def index(conn, params) do
+          page = Map.get(params, "page", "1") |> String.to_integer()
+          products = list_products(page)
+          json(conn, %{data: products, page: page})
+        end
+
+        def show(conn, %{"id" => id}) do
+          case get_product(id) do
+            nil -> conn |> put_status(:not_found) |> json(%{error: "not found"})
+            product -> json(conn, %{data: product})
+          end
+        end
+
+        def create(conn, %{"product" => product_params}) do
+          product = Map.put(product_params, "id", generate_id())
+          conn |> put_status(:created) |> json(%{data: product})
+        end
+
+        def create_review(conn, %{"id" => product_id, "review" => review_params}) do
+          review = Map.merge(review_params, %{
+            "product_id" => product_id,
+            "id" => generate_id(),
+            "created_at" => DateTime.utc_now()
+          })
+          conn |> put_status(:created) |> json(%{data: review})
+        end
+
+        defp list_products(_page), do: []
+        defp get_product(_id), do: %{id: "1", name: "Widget"}
+        defp generate_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+      end
+    lib/myapp_web/controllers/user_controller.ex: |
+      defmodule MyAppWeb.Controllers.UserController do
+        use MyAppWeb, :controller
+
+        def current(conn, _params) do
+          user = conn.assigns[:current_user]
+          json(conn, %{data: user})
+        end
+
+        def update(conn, %{"user" => user_params}) do
+          json(conn, %{data: user_params})
+        end
+
+        def garbage_marker_a, do: "GARBAGE_ELIXIR_004_A_USER_CTRL"
+        def garbage_marker_b, do: "GARBAGE_ELIXIR_004_B_PROFILE"
+      end
+    lib/myapp_web/plugs/auth_plug.ex: |
+      defmodule MyAppWeb.Plugs.AuthPlug do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          case get_req_header(conn, "authorization") do
+            ["Bearer " <> token] ->
+              conn |> assign(:current_user, %{id: "1", token: token})
+            _ ->
+              conn |> put_status(:unauthorized) |> halt()
+          end
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_004_C_JWT"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_004_D_HMAC"
+      end
+    lib/myapp_web/views/product_view.ex: |
+      defmodule MyAppWeb.Views.ProductView do
+        def render("index.json", %{products: products}) do
+          %{data: Enum.map(products, &render_product/1)}
+        end
+
+        def render("show.json", %{product: product}) do
+          %{data: render_product(product)}
+        end
+
+        defp render_product(product) do
+          Map.take(product, [:id, :name, :price])
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_004_E_TEMPLATE"
+      end
+  changed_files:
+    lib/myapp_web/router.ex: |
+      defmodule MyAppWeb.Router do
+        use MyAppWeb, :router
+
+        pipeline :api do
+          plug :accepts, ["json"]
+          plug MyAppWeb.Plugs.AuthPlug
+        end
+
+        scope "/api", MyAppWeb.Controllers do
+          pipe_through :api
+
+          get "/products", ProductController, :index
+          get "/products/:id", ProductController, :show
+          post "/products", ProductController, :create
+          post "/products/:id/reviews", ProductController, :create_review
+
+          get "/users/me", UserController, :current
+          put "/users/me", UserController, :update
+        end
+      end
+    lib/myapp_web/controllers/product_controller.ex: |
+      defmodule MyAppWeb.Controllers.ProductController do
+        use MyAppWeb, :controller
+
+        def index(conn, params) do
+          page = Map.get(params, "page", "1") |> String.to_integer()
+          products = list_products(page)
+          json(conn, %{data: products, page: page})
+        end
+
+        def show(conn, %{"id" => id}) do
+          case get_product(id) do
+            nil -> conn |> put_status(:not_found) |> json(%{error: "not found"})
+            product -> json(conn, %{data: product})
+          end
+        end
+
+        def create(conn, %{"product" => product_params}) do
+          product = Map.put(product_params, "id", generate_id())
+          conn |> put_status(:created) |> json(%{data: product})
+        end
+
+        def create_review(conn, %{"id" => product_id, "review" => review_params}) do
+          review = Map.merge(review_params, %{
+            "product_id" => product_id,
+            "id" => generate_id(),
+            "created_at" => DateTime.utc_now()
+          })
+          conn |> put_status(:created) |> json(%{data: review})
+        end
+
+        defp list_products(_page), do: []
+        defp get_product(_id), do: %{id: "1", name: "Widget"}
+        defp generate_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+      end
+    lib/myapp_web/controllers/user_controller.ex: |
+      defmodule MyAppWeb.Controllers.UserController do
+        use MyAppWeb, :controller
+
+        def current(conn, _params) do
+          user = conn.assigns[:current_user]
+          json(conn, %{data: user})
+        end
+
+        def update(conn, %{"user" => user_params}) do
+          json(conn, %{data: user_params})
+        end
+
+        def garbage_marker_a, do: "GARBAGE_ELIXIR_004_A_USER_CTRL"
+        def garbage_marker_b, do: "GARBAGE_ELIXIR_004_B_PROFILE"
+      end
+    lib/myapp_web/plugs/auth_plug.ex: |
+      defmodule MyAppWeb.Plugs.AuthPlug do
+        import Plug.Conn
+
+        def init(opts), do: opts
+
+        def call(conn, _opts) do
+          case get_req_header(conn, "authorization") do
+            ["Bearer " <> token] ->
+              conn |> assign(:current_user, %{id: "1", token: token})
+            _ ->
+              conn |> put_status(:unauthorized) |> halt()
+          end
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_004_C_JWT"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_004_D_HMAC"
+      end
+    lib/myapp_web/views/product_view.ex: |
+      defmodule MyAppWeb.Views.ProductView do
+        def render("index.json", %{products: products}) do
+          %{data: Enum.map(products, &render_product/1)}
+        end
+
+        def render("show.json", %{product: product}) do
+          %{data: render_product(product)}
+        end
+
+        defp render_product(product) do
+          Map.take(product, [:id, :name, :price])
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_004_E_TEMPLATE"
+      end
+  commit_message: Update files
+fragments:
+- id: router
+  selector:
+    path: lib/myapp_web/router.ex
+    anchor: post "/products/:id/reviews", ProductController, :create_review
+- id: product_controller
+  selector:
+    path: lib/myapp_web/controllers/product_controller.ex
+    anchor: def create_review(conn
+- id: product_controller_1
+  selector:
+    path: lib/myapp_web/controllers/product_controller.ex
+    anchor: '"product_id" => product_id'
+- id: no_user_controller
+  selector:
+    path: lib/myapp_web/controllers/user_controller.ex
+- id: no_auth_plug
+  selector:
+    path: lib/myapp_web/plugs/auth_plug.ex
+- id: no_product_view
+  selector:
+    path: lib/myapp_web/views/product_view.ex
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ELIXIR_004_A_USER_CTRL
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ELIXIR_004_B_PROFILE
+- id: no_global_2
+  selector:
+    anchor: UserController
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ELIXIR_004_C_JWT
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ELIXIR_004_D_HMAC
+- id: no_global_5
+  selector:
+    anchor: AuthPlug
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ELIXIR_004_E_TEMPLATE
+- id: no_global_7
+  selector:
+    anchor: render_product
+oracle:
+  required:
+  - router
+  - product_controller
+  - product_controller_1
+  allowed: []
+  forbidden:
+  - no_user_controller
+  - no_auth_plug
+  - no_product_view
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,224 @@
+name: java_022_gradle_plugin
+repo:
+  initial_files:
+    build.gradle: |
+      plugins {
+          id 'java'
+          id 'org.springframework.boot' version '3.2.0'
+      }
+
+      group = 'com.example'
+      version = '1.0.0'
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-web'
+      }
+
+      test {
+          useJUnitPlatform()
+      }
+    src/main/java/com/example/webapp/WebApplication.java: |
+      package com.example.webapp;
+
+      import org.springframework.boot.SpringApplication;
+      import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+      @SpringBootApplication
+      public class WebApplication {
+          public static void main(String[] args) {
+              SpringApplication.run(WebApplication.class, args);
+          }
+      }
+    src/main/java/com/example/webapp/controller/IndexController.java: |
+      package com.example.webapp.controller;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class IndexController {
+          @GetMapping("/")
+          public String index() {
+              return "Welcome to the web application";
+          }
+      }
+    src/main/java/com/example/webapp/health/HealthIndicator.java: |
+      package com.example.webapp.health;
+
+      import org.springframework.boot.actuate.health.Health;
+      import org.springframework.boot.actuate.health.AbstractHealthIndicator;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class HealthIndicator extends AbstractHealthIndicator {
+          @Override
+          protected void doHealthCheck(Health.Builder builder) throws Exception {
+              builder.up()
+                  .withDetail("app", "running")
+                  .withDetail("version", "1.0.0");
+          }
+      }
+  changed_files:
+    build.gradle: |
+      plugins {
+          id 'java'
+          id 'org.springframework.boot' version '3.2.0'
+          id 'io.spring.dependency-management' version '1.1.4'
+          id 'jacoco'
+      }
+
+      group = 'com.example'
+      version = '1.0.0'
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-web'
+          implementation 'org.springframework.boot:spring-boot-starter-actuator'
+          testImplementation 'org.springframework.boot:spring-boot-starter-test'
+      }
+
+      test {
+          useJUnitPlatform()
+          finalizedBy jacocoTestReport
+      }
+
+      jacoco {
+          toolVersion = "0.8.11"
+      }
+
+      jacocoTestReport {
+          dependsOn test
+          reports {
+              xml.required = true
+              html.required = true
+          }
+      }
+    src/main/java/com/example/webapp/WebApplication.java: |
+      package com.example.webapp;
+
+      import org.springframework.boot.SpringApplication;
+      import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+      @SpringBootApplication
+      public class WebApplication {
+          public static void main(String[] args) {
+              SpringApplication.run(WebApplication.class, args);
+          }
+      }
+    src/main/java/com/example/webapp/controller/IndexController.java: |
+      package com.example.webapp.controller;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class IndexController {
+          @GetMapping("/")
+          public String index() {
+              return "Welcome to the web application";
+          }
+      }
+    src/main/java/com/example/webapp/health/HealthIndicator.java: |
+      package com.example.webapp.health;
+
+      import org.springframework.boot.actuate.health.Health;
+      import org.springframework.boot.actuate.health.AbstractHealthIndicator;
+      import org.springframework.stereotype.Component;
+
+      @Component
+      public class HealthIndicator extends AbstractHealthIndicator {
+          @Override
+          protected void doHealthCheck(Health.Builder builder) throws Exception {
+              builder.up()
+                  .withDetail("app", "running")
+                  .withDetail("version", "1.0.0");
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: build
+  selector:
+    path: build.gradle
+    anchor: id 'io.spring.dependency-management' version '1.1.4'
+- id: build_1
+  selector:
+    path: build.gradle
+    anchor: id 'jacoco'
+- id: build_2
+  selector:
+    path: build.gradle
+    anchor: spring-boot-starter-actuator
+- id: build_3
+  selector:
+    path: build.gradle
+    anchor: spring-boot-starter-test
+- id: build_4
+  selector:
+    path: build.gradle
+    anchor: finalizedBy jacocoTestReport
+- id: no_webapplication
+  selector:
+    path: src/main/java/com/example/webapp/WebApplication.java
+- id: no_indexcontroller
+  selector:
+    path: src/main/java/com/example/webapp/controller/IndexController.java
+- id: no_healthindicator
+  selector:
+    path: src/main/java/com/example/webapp/health/HealthIndicator.java
+- id: no_global_0
+  selector:
+    anchor: WebApplication
+- id: no_global_1
+  selector:
+    anchor: SpringApplication.run
+- id: no_global_2
+  selector:
+    anchor: IndexController
+- id: no_global_3
+  selector:
+    anchor: Welcome to the web application
+- id: no_global_4
+  selector:
+    anchor: AbstractHealthIndicator
+- id: no_global_5
+  selector:
+    anchor: doHealthCheck
+- id: no_global_6
+  selector:
+    anchor: builder.up()
+oracle:
+  required:
+  - build
+  - build_1
+  - build_2
+  - build_3
+  - build_4
+  allowed: []
+  forbidden:
+  - no_webapplication
+  - no_indexcontroller
+  - no_healthindicator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

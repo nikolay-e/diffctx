@@ -1,0 +1,221 @@
+name: helm_040_umbrella_chart
+repo:
+  initial_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+    charts/frontend/Chart.yaml: |
+      apiVersion: v2
+      name: frontend
+      version: 1.0.0
+      description: Frontend web application
+    charts/backend/Chart.yaml: |
+      apiVersion: v2
+      name: backend
+      version: 1.0.0
+      description: Backend API service
+    charts/frontend/values.yaml: |
+      replicaCount: 2
+      image:
+        repository: frontend-app
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 3000
+    charts/backend/values.yaml: |
+      replicaCount: 3
+      image:
+        repository: backend-api
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 8080
+    charts/frontend/templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "frontend.fullname" . }}
+      spec:
+        type: {{ .Values.service.type }}
+        ports:
+          - port: {{ .Values.service.port }}
+    charts/backend/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "backend.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: backend
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    values.yaml: |
+      frontend:
+        replicaCount: 2
+      backend:
+        replicaCount: 3
+      redis:
+        auth:
+          enabled: false
+  changed_files:
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+      dependencies:
+        - name: frontend
+          version: 1.0.0
+          repository: file://./charts/frontend
+        - name: backend
+          version: 1.0.0
+          repository: file://./charts/backend
+        - name: redis
+          version: 17.0.0
+          repository: https://charts.bitnami.com/bitnami
+    charts/frontend/Chart.yaml: |
+      apiVersion: v2
+      name: frontend
+      version: 1.0.0
+      description: Frontend web application
+    charts/backend/Chart.yaml: |
+      apiVersion: v2
+      name: backend
+      version: 1.0.0
+      description: Backend API service
+    charts/frontend/values.yaml: |
+      replicaCount: 2
+      image:
+        repository: frontend-app
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 3000
+    charts/backend/values.yaml: |
+      replicaCount: 3
+      image:
+        repository: backend-api
+        tag: "1.0.0"
+      service:
+        type: ClusterIP
+        port: 8080
+    charts/frontend/templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "frontend.fullname" . }}
+      spec:
+        type: {{ .Values.service.type }}
+        ports:
+          - port: {{ .Values.service.port }}
+    charts/backend/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "backend.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: backend
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    values.yaml: |
+      frontend:
+        replicaCount: 2
+      backend:
+        replicaCount: 3
+      redis:
+        auth:
+          enabled: false
+  commit_message: Update files
+fragments:
+- id: chart
+  selector:
+    path: Chart.yaml
+    anchor: 'dependencies:'
+- id: chart_1
+  selector:
+    path: Chart.yaml
+    anchor: 'repository: file://./charts/frontend'
+- id: chart_2
+  selector:
+    path: Chart.yaml
+    anchor: 'repository: file://./charts/backend'
+- id: chart_3
+  selector:
+    path: charts/frontend/Chart.yaml
+    anchor: 'name: frontend'
+- id: chart_4
+  selector:
+    path: charts/frontend/Chart.yaml
+    anchor: 'version: 1.0.0'
+- id: chart_5
+  selector:
+    path: charts/backend/Chart.yaml
+    anchor: 'name: backend'
+- id: chart_6
+  selector:
+    path: charts/backend/Chart.yaml
+    anchor: 'version: 1.0.0'
+- id: no_values
+  selector:
+    path: charts/frontend/values.yaml
+- id: no_values_1
+  selector:
+    path: charts/backend/values.yaml
+- id: no_service
+  selector:
+    path: charts/frontend/templates/service.yaml
+- id: no_deployment
+  selector:
+    path: charts/backend/templates/deployment.yaml
+- id: no_values_2
+  selector:
+    path: values.yaml
+- id: no_global_0
+  selector:
+    anchor: 'repository: frontend-app'
+- id: no_global_1
+  selector:
+    anchor: 'port: 3000'
+- id: no_global_2
+  selector:
+    anchor: backend.fullname
+- id: no_global_3
+  selector:
+    anchor: backend-api
+- id: no_global_4
+  selector:
+    anchor: frontend.fullname
+- id: no_global_5
+  selector:
+    anchor: 'auth:'
+- id: no_global_6
+  selector:
+    anchor: 'enabled: false'
+oracle:
+  required:
+  - chart
+  - chart_1
+  - chart_2
+  - chart_3
+  - chart_4
+  - chart_5
+  - chart_6
+  allowed: []
+  forbidden:
+  - no_values
+  - no_values_1
+  - no_service
+  - no_deployment
+  - no_values_2
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

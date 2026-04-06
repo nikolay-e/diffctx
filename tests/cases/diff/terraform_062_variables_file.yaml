@@ -1,0 +1,113 @@
+name: terraform_062_variables_file
+repo:
+  initial_files:
+    variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+
+      variable "instance_type" {
+        type    = string
+        default = "t3.micro"
+      }
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = "ami-12345678"
+        instance_type = var.instance_type
+        tags = {
+          Environment = var.environment
+        }
+      }
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-${var.environment}"
+        vpc_id = var.vpc_id
+
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    modules/database/variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+
+      variable "instance_class" {
+        type    = string
+        default = "db.t3.micro"
+      }
+    outputs.tf: |
+      output "instance_id" {
+        value = aws_instance.web.id
+      }
+  changed_files:
+    variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "prod"
+      }
+
+      variable "instance_type" {
+        type    = string
+        default = "t3.large"
+      }
+
+      variable "vpc_id" {
+        type = string
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: default = "prod"
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: default = "t3.large"
+- id: variables_2
+  selector:
+    path: variables.tf
+    anchor: variable "vpc_id" {
+- id: main
+  selector:
+    path: main.tf
+    anchor: instance_type = var.instance_type
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: Environment = var.environment
+- id: no_variables
+  selector:
+    path: modules/database/variables.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_global_0
+  selector:
+    anchor: instance_class
+- id: no_global_1
+  selector:
+    anchor: db.t3.micro
+- id: no_global_2
+  selector:
+    anchor: output "instance_id" {
+oracle:
+  required:
+  - variables
+  - variables_1
+  - variables_2
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_variables
+  - no_outputs
+  - no_global_0
+  - no_global_1
+  - no_global_2

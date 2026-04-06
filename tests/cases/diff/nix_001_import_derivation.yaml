@@ -1,0 +1,255 @@
+name: nix_001_import_derivation
+repo:
+  initial_files:
+    default.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      let
+        myapp = import ./packages/myapp.nix { inherit pkgs; };
+        utils = import ./packages/utils.nix { inherit pkgs; };
+      in
+      pkgs.buildEnv {
+        name = "myproject-env";
+        paths = [
+          myapp
+          utils
+        ];
+      }
+    packages/myapp.nix: |
+      { pkgs }:
+
+      pkgs.stdenv.mkDerivation {
+        pname = "myapp";
+        version = "1.0.0";
+
+        src = ../src/myapp;
+
+        buildInputs = [
+          pkgs.python3
+          pkgs.zlib
+        ];
+
+        buildPhase = ''
+          python3 setup.py build
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          cp -r build/lib/* $out/bin/
+        '';
+      }
+    packages/utils.nix: |
+      { pkgs }:
+
+      GARBAGE_NIX_001_A = "noise_utils_nix";
+
+      pkgs.stdenv.mkDerivation {
+        pname = "utils";
+        version = "0.5.0";
+
+        src = ../src/utils;
+
+        buildInputs = [
+          pkgs.python3
+        ];
+
+        buildPhase = ''
+          python3 setup.py build
+        '';
+
+        installPhase = ''
+          mkdir -p $out/lib
+          cp -r build/lib/* $out/lib/
+        '';
+      }
+    packages/cli.nix: |
+      { pkgs }:
+
+      GARBAGE_NIX_001_B = "noise_cli_nix";
+
+      pkgs.stdenv.mkDerivation {
+        pname = "cli-tool";
+        version = "0.2.0";
+
+        src = ../src/cli;
+
+        buildInputs = [
+          pkgs.go
+        ];
+
+        buildPhase = ''
+          go build -o cli-tool .
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          cp cli-tool $out/bin/
+        '';
+      }
+    shell.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_001_C = "noise_shell_nix";
+
+      pkgs.mkShell {
+        buildInputs = [
+          pkgs.python3
+          pkgs.go
+          pkgs.nodejs
+        ];
+      }
+  changed_files:
+    default.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      let
+        myapp = import ./packages/myapp.nix { inherit pkgs; };
+        utils = import ./packages/utils.nix { inherit pkgs; };
+      in
+      pkgs.buildEnv {
+        name = "myproject-env";
+        paths = [
+          myapp
+          utils
+        ];
+      }
+    packages/myapp.nix: |
+      { pkgs }:
+
+      pkgs.stdenv.mkDerivation {
+        pname = "myapp";
+        version = "1.1.0";
+
+        src = ../src/myapp;
+
+        buildInputs = [
+          pkgs.python3
+          pkgs.zlib
+          pkgs.openssl
+          pkgs.curl
+        ];
+
+        nativeBuildInputs = [
+          pkgs.pkg-config
+        ];
+
+        buildPhase = ''
+          export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
+          python3 setup.py build
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          cp -r build/lib/* $out/bin/
+        '';
+      }
+    packages/utils.nix: |
+      { pkgs }:
+
+      GARBAGE_NIX_001_A = "noise_utils_nix";
+
+      pkgs.stdenv.mkDerivation {
+        pname = "utils";
+        version = "0.5.0";
+
+        src = ../src/utils;
+
+        buildInputs = [
+          pkgs.python3
+        ];
+
+        buildPhase = ''
+          python3 setup.py build
+        '';
+
+        installPhase = ''
+          mkdir -p $out/lib
+          cp -r build/lib/* $out/lib/
+        '';
+      }
+    packages/cli.nix: |
+      { pkgs }:
+
+      GARBAGE_NIX_001_B = "noise_cli_nix";
+
+      pkgs.stdenv.mkDerivation {
+        pname = "cli-tool";
+        version = "0.2.0";
+
+        src = ../src/cli;
+
+        buildInputs = [
+          pkgs.go
+        ];
+
+        buildPhase = ''
+          go build -o cli-tool .
+        '';
+
+        installPhase = ''
+          mkdir -p $out/bin
+          cp cli-tool $out/bin/
+        '';
+      }
+    shell.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_001_C = "noise_shell_nix";
+
+      pkgs.mkShell {
+        buildInputs = [
+          pkgs.python3
+          pkgs.go
+          pkgs.nodejs
+        ];
+      }
+  commit_message: Update files
+fragments:
+- id: myapp
+  selector:
+    path: packages/myapp.nix
+    anchor: pkgs.openssl
+- id: myapp_1
+  selector:
+    path: packages/myapp.nix
+    anchor: pkgs.curl
+- id: myapp_2
+  selector:
+    path: packages/myapp.nix
+    anchor: pkg-config
+- id: default
+  selector:
+    path: default.nix
+    anchor: ./packages/myapp.nix
+- id: no_utils
+  selector:
+    path: packages/utils.nix
+- id: no_cli
+  selector:
+    path: packages/cli.nix
+- id: no_shell
+  selector:
+    path: shell.nix
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIX_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIX_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_NIX_001_C
+oracle:
+  required:
+  - myapp
+  - myapp_1
+  - myapp_2
+  - default
+  allowed: []
+  forbidden:
+  - no_utils
+  - no_cli
+  - no_shell
+  - no_global_0
+  - no_global_1
+  - no_global_2

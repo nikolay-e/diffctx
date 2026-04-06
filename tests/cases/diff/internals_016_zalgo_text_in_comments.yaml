@@ -1,0 +1,25 @@
+name: internals_016_zalgo_text_in_comments
+repo:
+  initial_files:
+    zalgo.py: |
+      def placeholder():
+          pass
+  changed_files:
+    zalgo.py: |
+      # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̈́̈͊ͅC̷̱̲̥͎̾́͆̀O̵̝̟̞͙͆̈̓̔M̴̨̰̱̾̅̑̕Ę̷̡͎̰̐̊̾S̴̨̺̟̈̿̀͝
+      def process_data(items):
+          return items
+  commit_message: Update files
+fragments:
+- id: zalgo_file
+  selector:
+    path: zalgo.py
+- id: req_global_0
+  selector:
+    anchor: 'def process_data(items):'
+oracle:
+  required:
+  - zalgo_file
+  - req_global_0
+  allowed: []
+  forbidden: []

@@ -1,0 +1,108 @@
+name: terraform_043_remote_state_data
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        subnet_id     = "subnet-12345"
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket = "terraform-state"
+          key    = "app/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+    database/remote_state.tf: |
+      data "terraform_remote_state" "database" {
+        backend = "s3"
+        config = {
+          bucket = "terraform-state"
+          key    = "database/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+
+      resource "aws_db_subnet_group" "main" {
+        name       = "db-subnet-group"
+        subnet_ids = data.terraform_remote_state.database.outputs.subnet_ids
+      }
+    cdn/cloudfront.tf: |
+      resource "aws_cloudfront_distribution" "static" {
+        enabled             = true
+        default_root_object = "index.html"
+
+        origin {
+          domain_name = "static-assets.s3.amazonaws.com"
+          origin_id   = "s3-static"
+        }
+
+        default_cache_behavior {
+          allowed_methods        = ["GET", "HEAD"]
+          cached_methods         = ["GET", "HEAD"]
+          target_origin_id       = "s3-static"
+          viewer_protocol_policy = "redirect-to-https"
+        }
+      }
+  changed_files:
+    main.tf: |
+      data "terraform_remote_state" "vpc" {
+        backend = "s3"
+        config = {
+          bucket = "terraform-state"
+          key    = "vpc/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        subnet_id     = data.terraform_remote_state.vpc.outputs.subnet_id
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: backend
+  selector:
+    path: backend.tf
+    anchor: bucket = "terraform-state"
+- id: backend_1
+  selector:
+    path: backend.tf
+    anchor: backend "s3" {
+- id: no_remote_state
+  selector:
+    path: database/remote_state.tf
+- id: no_cloudfront
+  selector:
+    path: cdn/cloudfront.tf
+- id: no_global_0
+  selector:
+    anchor: database/terraform.tfstate
+- id: no_global_1
+  selector:
+    anchor: db-subnet-group
+- id: no_global_2
+  selector:
+    anchor: aws_cloudfront_distribution
+oracle:
+  required:
+  - backend
+  - backend_1
+  allowed: []
+  forbidden:
+  - no_remote_state
+  - no_cloudfront
+  - no_global_0
+  - no_global_1
+  - no_global_2

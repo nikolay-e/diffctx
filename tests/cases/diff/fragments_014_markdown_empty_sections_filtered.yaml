@@ -1,0 +1,78 @@
+name: fragments_014_markdown_empty_sections_filtered
+repo:
+  initial_files:
+    sparse.md: |+
+      # Section 1
+
+      # Section 2
+
+      Content here.
+
+      # Section 3
+
+    garbage_sparse_053.md: |
+      # Empty Garbage Doc Section GARBAGE_FRAG_garbempty053
+
+      # Garbage Doc With Content GARBAGE_FRAG_garbcontent053
+      GARBAGE_FRAG_garbline053a
+
+      # Another Empty GARBAGE_FRAG_garbanotherempty053
+
+      GARBAGE_FRAG_garbline053b
+  changed_files:
+    sparse.md: |+
+      # Section 1
+
+      # Section 2
+
+      Modified content here.
+
+      # Section 3
+
+    garbage_sparse_053.md: |
+      # Empty Garbage Doc Section GARBAGE_FRAG_garbempty053
+
+      # Garbage Doc With Content GARBAGE_FRAG_garbcontent053
+      GARBAGE_FRAG_garbline053a
+
+      # Another Empty GARBAGE_FRAG_garbanotherempty053
+
+      GARBAGE_FRAG_garbline053b
+  commit_message: Update files
+fragments:
+- id: sparse_file
+  selector:
+    path: sparse.md
+- id: req_global_0
+  selector:
+    anchor: Modified content here.
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_FRAG_garbanotherempty053
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_FRAG_garbcontent053
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_FRAG_garbempty053
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_FRAG_garbline053a
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_FRAG_garbline053b
+- id: no_global_5
+  selector:
+    anchor: garbage_sparse_053.md
+oracle:
+  required:
+  - sparse_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

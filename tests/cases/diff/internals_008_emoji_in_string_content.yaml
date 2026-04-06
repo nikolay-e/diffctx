@@ -1,0 +1,103 @@
+name: internals_008_emoji_in_string_content
+repo:
+  initial_files:
+    src/status/reporter.py: |
+      from src.status.formatter import format_status_line
+      def get_system_status() -> dict:
+          return {"state": "running", "uptime": 3600}
+      def report_status() -> str:
+          status = get_system_status()
+          return format_status_line(status)
+    src/status/formatter.py: |
+      def format_status_line(status: dict) -> str:
+          return "State: " + status["state"]
+      def format_uptime(seconds: int) -> str:
+          return str(seconds // 3600) + "h"
+    garbage_status_dashboard.py: |
+      GARBAGE_INT_008_DASH_MARKER_A = "panel"
+      GARBAGE_INT_008_WIDGET_MARKER_B = "chart"
+
+      class GarbageStatusDashboard:
+          def noop(self):
+              pass
+    garbage_alert_manager.py: |
+      GARBAGE_INT_008_ALERT_MARKER_C = "pager"
+      GARBAGE_INT_008_ESCALATE_MARKER_D = "oncall"
+
+      class GarbageAlertManager:
+          def noop(self):
+              pass
+  changed_files:
+    src/status/reporter.py: |
+      from src.status.formatter import format_status_line
+      def get_system_status() -> dict:
+          return {"state": "active", "emoji": "🔥🚀", "uptime": 3600}
+      def report_status() -> str:
+          status = get_system_status()
+          return format_status_line(status)
+    src/status/formatter.py: |
+      def format_status_line(status: dict) -> str:
+          emoji = status.get("emoji", "")
+          return "Status: " + emoji + " " + status["state"]
+      def format_uptime(seconds: int) -> str:
+          return str(seconds // 3600) + "h"
+    garbage_status_dashboard.py: |
+      GARBAGE_INT_008_DASH_MARKER_A = "panel"
+      GARBAGE_INT_008_WIDGET_MARKER_B = "chart"
+
+      class GarbageStatusDashboard:
+          def noop(self):
+              pass
+    garbage_alert_manager.py: |
+      GARBAGE_INT_008_ALERT_MARKER_C = "pager"
+      GARBAGE_INT_008_ESCALATE_MARKER_D = "oncall"
+
+      class GarbageAlertManager:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: formatter_file
+  selector:
+    path: src/status/formatter.py
+- id: reporter_file
+  selector:
+    path: src/status/reporter.py
+- id: req_global_0
+  selector:
+    anchor: emoji = status.get("emoji", "")
+- id: req_global_1
+  selector:
+    anchor: 'return {"state": "active", "emoji": "🔥🚀", "uptime": 3600}'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_008_ALERT_MARKER_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_008_DASH_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_008_ESCALATE_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_008_WIDGET_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: garbage_alert_manager.py
+- id: no_global_5
+  selector:
+    anchor: garbage_status_dashboard.py
+oracle:
+  required:
+  - formatter_file
+  - reporter_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

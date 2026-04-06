@@ -1,0 +1,325 @@
+name: elixir_005_mix_config
+repo:
+  initial_files:
+    config/config.exs: |
+      import Config
+
+      config :myapp, MyApp.Repo,
+        database: "myapp_dev",
+        hostname: "localhost",
+        pool_size: 10
+
+      config :myapp, MyApp.Gateway,
+        port: 4000,
+        max_connections: 1000
+
+      config :myapp, MyApp.Mailer,
+        adapter: Bamboo.SMTPAdapter,
+        server: "smtp.example.com",
+        port: 587
+    lib/myapp/gateway.ex: |
+      defmodule MyApp.Gateway do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          config = Application.get_env(:myapp, __MODULE__, [])
+          port = Keyword.get(config, :port, 4000)
+          max_conn = Keyword.get(config, :max_connections, 500)
+          rate_limit = Keyword.get(config, :rate_limit, 100)
+          rate_window = Keyword.get(config, :rate_window_ms, 60_000)
+
+          state = %{
+            port: port,
+            max_connections: max_conn,
+            rate_limit: rate_limit,
+            rate_window_ms: rate_window,
+            connections: %{},
+            request_counts: %{}
+          }
+
+          {:ok, state}
+        end
+
+        @impl true
+        def handle_call({:check_rate, client_id}, _from, state) do
+          count = Map.get(state.request_counts, client_id, 0)
+          allowed = count < state.rate_limit
+          new_counts = Map.put(state.request_counts, client_id, count + 1)
+          {:reply, allowed, %{state | request_counts: new_counts}}
+        end
+
+        @impl true
+        def handle_info(:reset_counts, state) do
+          Process.send_after(self(), :reset_counts, state.rate_window_ms)
+          {:noreply, %{state | request_counts: %{}}}
+        end
+      end
+    config/dev.exs: |
+      import Config
+
+      config :myapp, MyApp.Repo,
+        database: "myapp_dev",
+        show_sensitive_data_on_connection_error: true
+
+      config :myapp, MyApp.Gateway,
+        port: 4001
+
+      def garbage_dev_a, do: "GARBAGE_ELIXIR_005_A_DEV_PORT"
+      def garbage_dev_b, do: "GARBAGE_ELIXIR_005_B_DEV_LOG"
+    lib/myapp/rate_limiter.ex: |
+      defmodule MyApp.RateLimiter do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(opts) do
+          limit = Keyword.get(opts, :limit, 60)
+          window = Keyword.get(opts, :window_ms, 60_000)
+          {:ok, %{limit: limit, window: window, buckets: %{}}}
+        end
+
+        def check(client_id) do
+          GenServer.call(__MODULE__, {:check, client_id})
+        end
+
+        @impl true
+        def handle_call({:check, client_id}, _from, state) do
+          count = Map.get(state.buckets, client_id, 0)
+          {:reply, count < state.limit, %{state | buckets: Map.put(state.buckets, client_id, count + 1)}}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_005_C_BUCKET"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_005_D_SLIDING"
+      end
+    lib/myapp/mailer.ex: |
+      defmodule MyApp.Mailer do
+        use Bamboo.Mailer, otp_app: :myapp
+
+        def send_welcome(email) do
+          new_email()
+          |> to(email)
+          |> from("noreply@example.com")
+          |> subject("Welcome!")
+          |> text_body("Welcome to our app")
+          |> deliver_now()
+        end
+
+        defp new_email, do: Bamboo.Email.new_email()
+        defp to(e, addr), do: Map.put(e, :to, addr)
+        defp from(e, addr), do: Map.put(e, :from, addr)
+        defp subject(e, s), do: Map.put(e, :subject, s)
+        defp text_body(e, b), do: Map.put(e, :text_body, b)
+        defp deliver_now(e), do: {:ok, e}
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_005_E_SMTP_HOST"
+      end
+  changed_files:
+    config/config.exs: |
+      import Config
+
+      config :myapp, MyApp.Repo,
+        database: "myapp_dev",
+        hostname: "localhost",
+        pool_size: 10
+
+      config :myapp, MyApp.Gateway,
+        port: 4000,
+        max_connections: 1000,
+        rate_limit: 200,
+        rate_window_ms: 30_000
+
+      config :myapp, MyApp.Mailer,
+        adapter: Bamboo.SMTPAdapter,
+        server: "smtp.example.com",
+        port: 587
+    lib/myapp/gateway.ex: |
+      defmodule MyApp.Gateway do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          config = Application.get_env(:myapp, __MODULE__, [])
+          port = Keyword.get(config, :port, 4000)
+          max_conn = Keyword.get(config, :max_connections, 500)
+          rate_limit = Keyword.get(config, :rate_limit, 100)
+          rate_window = Keyword.get(config, :rate_window_ms, 60_000)
+
+          state = %{
+            port: port,
+            max_connections: max_conn,
+            rate_limit: rate_limit,
+            rate_window_ms: rate_window,
+            connections: %{},
+            request_counts: %{}
+          }
+
+          {:ok, state}
+        end
+
+        @impl true
+        def handle_call({:check_rate, client_id}, _from, state) do
+          count = Map.get(state.request_counts, client_id, 0)
+          allowed = count < state.rate_limit
+          new_counts = Map.put(state.request_counts, client_id, count + 1)
+          {:reply, allowed, %{state | request_counts: new_counts}}
+        end
+
+        @impl true
+        def handle_info(:reset_counts, state) do
+          Process.send_after(self(), :reset_counts, state.rate_window_ms)
+          {:noreply, %{state | request_counts: %{}}}
+        end
+      end
+    config/dev.exs: |
+      import Config
+
+      config :myapp, MyApp.Repo,
+        database: "myapp_dev",
+        show_sensitive_data_on_connection_error: true
+
+      config :myapp, MyApp.Gateway,
+        port: 4001
+
+      def garbage_dev_a, do: "GARBAGE_ELIXIR_005_A_DEV_PORT"
+      def garbage_dev_b, do: "GARBAGE_ELIXIR_005_B_DEV_LOG"
+    lib/myapp/rate_limiter.ex: |
+      defmodule MyApp.RateLimiter do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(opts) do
+          limit = Keyword.get(opts, :limit, 60)
+          window = Keyword.get(opts, :window_ms, 60_000)
+          {:ok, %{limit: limit, window: window, buckets: %{}}}
+        end
+
+        def check(client_id) do
+          GenServer.call(__MODULE__, {:check, client_id})
+        end
+
+        @impl true
+        def handle_call({:check, client_id}, _from, state) do
+          count = Map.get(state.buckets, client_id, 0)
+          {:reply, count < state.limit, %{state | buckets: Map.put(state.buckets, client_id, count + 1)}}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_005_C_BUCKET"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_005_D_SLIDING"
+      end
+    lib/myapp/mailer.ex: |
+      defmodule MyApp.Mailer do
+        use Bamboo.Mailer, otp_app: :myapp
+
+        def send_welcome(email) do
+          new_email()
+          |> to(email)
+          |> from("noreply@example.com")
+          |> subject("Welcome!")
+          |> text_body("Welcome to our app")
+          |> deliver_now()
+        end
+
+        defp new_email, do: Bamboo.Email.new_email()
+        defp to(e, addr), do: Map.put(e, :to, addr)
+        defp from(e, addr), do: Map.put(e, :from, addr)
+        defp subject(e, s), do: Map.put(e, :subject, s)
+        defp text_body(e, b), do: Map.put(e, :text_body, b)
+        defp deliver_now(e), do: {:ok, e}
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_005_E_SMTP_HOST"
+      end
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: config/config.exs
+    anchor: 'rate_limit: 200'
+- id: config_1
+  selector:
+    path: config/config.exs
+    anchor: 'rate_window_ms: 30_000'
+- id: gateway
+  selector:
+    path: lib/myapp/gateway.ex
+    anchor: Keyword.get(config, :rate_limit, 100)
+- id: gateway_1
+  selector:
+    path: lib/myapp/gateway.ex
+    anchor: Keyword.get(config, :rate_window_ms, 60_000)
+- id: gateway_2
+  selector:
+    path: lib/myapp/gateway.ex
+    anchor: count < state.rate_limit
+- id: no_dev
+  selector:
+    path: config/dev.exs
+- id: no_rate_limiter
+  selector:
+    path: lib/myapp/rate_limiter.ex
+- id: no_mailer
+  selector:
+    path: lib/myapp/mailer.ex
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ELIXIR_005_A_DEV_PORT
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ELIXIR_005_B_DEV_LOG
+- id: no_global_2
+  selector:
+    anchor: show_sensitive_data_on_connection_error
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ELIXIR_005_C_BUCKET
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ELIXIR_005_D_SLIDING
+- id: no_global_5
+  selector:
+    anchor: MyApp.RateLimiter
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ELIXIR_005_E_SMTP_HOST
+- id: no_global_7
+  selector:
+    anchor: send_welcome
+- id: no_global_8
+  selector:
+    anchor: Bamboo.SMTPAdapter
+oracle:
+  required:
+  - config
+  - config_1
+  - gateway
+  - gateway_1
+  - gateway_2
+  allowed: []
+  forbidden:
+  - no_dev
+  - no_rate_limiter
+  - no_mailer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

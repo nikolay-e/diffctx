@@ -1,0 +1,203 @@
+name: javascript_extended_049_vi_fn
+repo:
+  initial_files:
+    src/callback.ts: |
+      export type Callback = (value: number) => void;
+
+      export function processNumbers(numbers: number[], callback: Callback): void {
+          numbers.forEach(n => callback(n));
+      }
+
+      export function processWithTransform(
+          numbers: number[],
+          transform: (n: number) => number,
+          callback: Callback
+      ): void {
+          numbers.forEach(n => callback(transform(n)));
+      }
+
+      export function sumNumbers(numbers: number[]): number {
+          return numbers.reduce((acc, n) => acc + n, 0);
+      }
+    src/callback.test.ts: |
+      console.log('placeholder');
+    src/formatter.ts: |
+      export function formatCurrency(amount: number, currency: string = 'USD'): string {
+          return new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency,
+          }).format(amount);
+      }
+
+      export function formatPercentage(value: number, decimals: number = 1): string {
+          return `${(value * 100).toFixed(decimals)}%`;
+      }
+
+      export function truncate(text: string, maxLength: number): string {
+          if (text.length <= maxLength) return text;
+          return text.slice(0, maxLength - 3) + '...';
+      }
+    src/validator.ts: |
+      export interface ValidationResult {
+          valid: boolean;
+          errors: string[];
+      }
+
+      export function validateEmail(email: string): ValidationResult {
+          const errors: string[] = [];
+          if (!email.includes('@')) errors.push('Missing @ symbol');
+          if (!email.includes('.')) errors.push('Missing domain');
+          return { valid: errors.length === 0, errors };
+      }
+
+      export function validateRange(value: number, min: number, max: number): ValidationResult {
+          const errors: string[] = [];
+          if (value < min) errors.push(`Value below minimum ${min}`);
+          if (value > max) errors.push(`Value above maximum ${max}`);
+          return { valid: errors.length === 0, errors };
+      }
+    src/aggregator.ts: |
+      import { processNumbers, Callback } from './callback';
+
+      export function collectValues(numbers: number[]): number[] {
+          const collected: number[] = [];
+          const collector: Callback = (value) => collected.push(value);
+          processNumbers(numbers, collector);
+          return collected;
+      }
+
+      export function countPositive(numbers: number[]): number {
+          let count = 0;
+          processNumbers(numbers, (value) => {
+              if (value > 0) count++;
+          });
+          return count;
+      }
+    vitest.config.ts: |
+      import { defineConfig } from 'vitest/config';
+
+      export default defineConfig({
+          test: {
+              globals: true,
+              environment: 'node',
+              include: ['src/**/*.test.ts'],
+              coverage: {
+                  provider: 'v8',
+                  reporter: ['text', 'lcov'],
+              },
+          },
+      });
+  changed_files:
+    src/callback.test.ts: |
+      import { describe, it, expect, vi } from 'vitest';
+      import { processNumbers, processWithTransform } from './callback';
+
+      describe('processNumbers', () => {
+          it('should call callback for each number', () => {
+              const callback = vi.fn();
+              processNumbers([1, 2, 3], callback);
+              expect(callback).toHaveBeenCalledTimes(3);
+              expect(callback).toHaveBeenCalledWith(1);
+              expect(callback).toHaveBeenCalledWith(2);
+              expect(callback).toHaveBeenCalledWith(3);
+          });
+
+          it('should not call callback for empty array', () => {
+              const callback = vi.fn();
+              processNumbers([], callback);
+              expect(callback).not.toHaveBeenCalled();
+          });
+      });
+
+      describe('processWithTransform', () => {
+          it('should apply transform before callback', () => {
+              const callback = vi.fn();
+              const double = (n: number) => n * 2;
+              processWithTransform([1, 2, 3], double, callback);
+              expect(callback).toHaveBeenCalledWith(2);
+              expect(callback).toHaveBeenCalledWith(4);
+              expect(callback).toHaveBeenCalledWith(6);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: callback
+  selector:
+    path: src/callback.ts
+    anchor: processNumbers
+- id: callback_1
+  selector:
+    path: src/callback.ts
+    anchor: forEach
+- id: callback_2
+  selector:
+    path: src/callback.ts
+    anchor: processWithTransform
+- id: callback_3
+  selector:
+    path: src/callback.ts
+    anchor: Callback
+- id: no_formatter
+  selector:
+    path: src/formatter.ts
+- id: no_validator
+  selector:
+    path: src/validator.ts
+- id: no_aggregator
+  selector:
+    path: src/aggregator.ts
+- id: no_vitest_config
+  selector:
+    path: vitest.config.ts
+- id: no_global_0
+  selector:
+    anchor: formatCurrency
+- id: no_global_1
+  selector:
+    anchor: formatPercentage
+- id: no_global_2
+  selector:
+    anchor: validateEmail
+- id: no_global_3
+  selector:
+    anchor: validateRange
+- id: no_global_4
+  selector:
+    anchor: ValidationResult
+- id: no_global_5
+  selector:
+    anchor: collectValues
+- id: no_global_6
+  selector:
+    anchor: countPositive
+- id: no_global_7
+  selector:
+    anchor: collected.push
+- id: no_global_8
+  selector:
+    anchor: defineConfig
+- id: no_global_9
+  selector:
+    anchor: 'provider: ''v8'''
+oracle:
+  required:
+  - callback
+  - callback_1
+  - callback_2
+  - callback_3
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_validator
+  - no_aggregator
+  - no_vitest_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

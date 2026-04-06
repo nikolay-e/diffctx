@@ -1,0 +1,231 @@
+name: scripting_004_interface
+repo:
+  initial_files:
+    src/Handlers/ApiHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      class ApiHandler {
+      }
+    src/Contracts/RequestHandler.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface RequestHandler {
+          public function handle(array $request): array;
+          public function validate(array $request): bool;
+      }
+    src/Contracts/EventListener.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface EventListener {
+          public function onEvent(string $eventName, array $payload): void;
+          public function getSubscribedEvents(): array;
+      }
+    src/Contracts/Cacheable.php: |
+      <?php
+      namespace App\Contracts;
+
+      interface Cacheable {
+          public function getCacheKey(): string;
+          public function getCacheTtl(): int;
+      }
+    src/Middleware/AuthMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      class AuthMiddleware {
+          private string $tokenHeader;
+
+          public function __construct(string $tokenHeader = 'Authorization') {
+              $this->tokenHeader = $tokenHeader;
+          }
+
+          public function process(array $request, callable $next): array {
+              if (!isset($request['headers'][$this->tokenHeader])) {
+                  return ['error' => 'Unauthorized', 'status' => 401];
+              }
+              return $next($request);
+          }
+      }
+    src/Handlers/WebhookHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      use App\Contracts\RequestHandler;
+
+      class WebhookHandler implements RequestHandler {
+          public function handle(array $request): array {
+              if (!$this->validate($request)) {
+                  return ['error' => 'Invalid webhook payload'];
+              }
+              return [
+                  'success' => true,
+                  'event' => $request['event'] ?? 'unknown',
+                  'processed' => true,
+              ];
+          }
+
+          public function validate(array $request): bool {
+              return isset($request['event']) && isset($request['signature']);
+          }
+      }
+    src/Handlers/FormHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      use App\Contracts\RequestHandler;
+
+      class FormHandler implements RequestHandler {
+          public function handle(array $request): array {
+              if (!$this->validate($request)) {
+                  return ['error' => 'Missing form fields'];
+              }
+              return [
+                  'success' => true,
+                  'fields' => array_keys($request['fields'] ?? []),
+              ];
+          }
+
+          public function validate(array $request): bool {
+              return isset($request['fields']) && is_array($request['fields']);
+          }
+      }
+    tests/ApiHandlerTest.php: |
+      <?php
+      namespace Tests;
+
+      use App\Handlers\ApiHandler;
+      use PHPUnit\Framework\TestCase;
+
+      class ApiHandlerTest extends TestCase {
+          private ApiHandler $handler;
+
+          protected function setUp(): void {
+              $this->handler = new ApiHandler();
+          }
+
+          public function testHandleValidRequest(): void {
+              $result = $this->handler->handle(['action' => 'create']);
+              $this->assertTrue($result['success']);
+          }
+
+          public function testValidateRejectsEmpty(): void {
+              $this->assertFalse($this->handler->validate([]));
+          }
+      }
+  changed_files:
+    src/Handlers/ApiHandler.php: |
+      <?php
+      namespace App\Handlers;
+
+      use App\Contracts\RequestHandler;
+
+      class ApiHandler implements RequestHandler {
+          public function handle(array $request): array {
+              if (!$this->validate($request)) {
+                  return ['error' => 'Invalid request'];
+              }
+              return [
+                  'success' => true,
+                  'action' => $request['action'],
+              ];
+          }
+
+          public function validate(array $request): bool {
+              return isset($request['action']) && is_string($request['action']);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: requesthandler
+  selector:
+    path: src/Contracts/RequestHandler.php
+    anchor: 'public function handle(array $request): array'
+- id: requesthandler_1
+  selector:
+    path: src/Contracts/RequestHandler.php
+    anchor: 'public function validate(array $request): bool'
+- id: no_eventlistener
+  selector:
+    path: src/Contracts/EventListener.php
+- id: no_cacheable
+  selector:
+    path: src/Contracts/Cacheable.php
+- id: no_authmiddleware
+  selector:
+    path: src/Middleware/AuthMiddleware.php
+- id: no_webhookhandler
+  selector:
+    path: src/Handlers/WebhookHandler.php
+- id: no_formhandler
+  selector:
+    path: src/Handlers/FormHandler.php
+- id: no_apihandlertest
+  selector:
+    path: tests/ApiHandlerTest.php
+- id: no_global_0
+  selector:
+    anchor: interface EventListener
+- id: no_global_1
+  selector:
+    anchor: onEvent
+- id: no_global_2
+  selector:
+    anchor: getSubscribedEvents
+- id: no_global_3
+  selector:
+    anchor: interface Cacheable
+- id: no_global_4
+  selector:
+    anchor: getCacheKey
+- id: no_global_5
+  selector:
+    anchor: class AuthMiddleware
+- id: no_global_6
+  selector:
+    anchor: Unauthorized
+- id: no_global_7
+  selector:
+    anchor: class WebhookHandler
+- id: no_global_8
+  selector:
+    anchor: Invalid webhook payload
+- id: no_global_9
+  selector:
+    anchor: class FormHandler
+- id: no_global_10
+  selector:
+    anchor: Missing form fields
+- id: no_global_11
+  selector:
+    anchor: class ApiHandlerTest
+- id: no_global_12
+  selector:
+    anchor: testHandleValidRequest
+oracle:
+  required:
+  - requesthandler
+  - requesthandler_1
+  allowed: []
+  forbidden:
+  - no_eventlistener
+  - no_cacheable
+  - no_authmiddleware
+  - no_webhookhandler
+  - no_formhandler
+  - no_apihandlertest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

@@ -1,0 +1,201 @@
+name: docker_026_healthcheck
+repo:
+  initial_files:
+    app.py: |
+      from flask import Flask, jsonify
+      import os
+      import time
+
+      app = Flask(__name__)
+      START_TIME = time.time()
+
+      @app.route('/health')
+      def health():
+          return 'OK', 200
+
+      @app.route('/healthz')
+      def healthz():
+          uptime = time.time() - START_TIME
+          return jsonify({
+              'status': 'healthy',
+              'uptime_seconds': round(uptime, 2)
+          })
+
+      @app.route('/ready')
+      def ready():
+          return jsonify({'status': 'ready'})
+
+      if __name__ == '__main__':
+          app.run(host='0.0.0.0', port=8080)
+    config.py: |
+      import os
+
+      HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))
+      HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))
+      START_PERIOD = int(os.getenv('START_PERIOD', '5'))
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+    Dockerfile: |
+      FROM python:3.11-slim
+      COPY app.py .
+      RUN pip install flask
+      CMD ["python", "app.py"]
+    scripts/health_test.sh: |
+      #!/bin/bash
+      set -e
+      curl -f http://localhost:8080/health
+      curl -f http://localhost:8080/healthz
+      curl -f http://localhost:8080/ready
+      echo "All health checks passed"
+    k8s/probes.yaml: |
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 30
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 8080
+    prometheus/scrape.yml: |
+      scrape_configs:
+        - job_name: flask-app
+          metrics_path: /metrics
+          static_configs:
+            - targets: ['localhost:8080']
+  changed_files:
+    app.py: |
+      from flask import Flask, jsonify
+      import os
+      import time
+
+      app = Flask(__name__)
+      START_TIME = time.time()
+
+      @app.route('/health')
+      def health():
+          return 'OK', 200
+
+      @app.route('/healthz')
+      def healthz():
+          uptime = time.time() - START_TIME
+          return jsonify({
+              'status': 'healthy',
+              'uptime_seconds': round(uptime, 2)
+          })
+
+      @app.route('/ready')
+      def ready():
+          return jsonify({'status': 'ready'})
+
+      if __name__ == '__main__':
+          app.run(host='0.0.0.0', port=8080)
+    config.py: |
+      import os
+
+      HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))
+      HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))
+      START_PERIOD = int(os.getenv('START_PERIOD', '5'))
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+    Dockerfile: |
+      # Build stage
+      FROM python:3.12-slim AS builder
+      WORKDIR /build
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+      # Production stage
+      FROM python:3.12-slim AS production
+      WORKDIR /app
+
+      # Install curl for health checks
+      RUN apt-get update && \
+          apt-get install -y --no-install-recommends curl && \
+          rm -rf /var/lib/apt/lists/* && \
+          useradd --create-home --shell /bin/bash appuser
+
+      # Copy dependencies and application
+      COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+      COPY app.py config.py ./
+
+      ENV PYTHONUNBUFFERED=1
+      ENV PYTHONDONTWRITEBYTECODE=1
+
+      USER appuser
+      EXPOSE 8080
+
+      # Comprehensive health check configuration
+      HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+          CMD curl -f http://localhost:8080/health || exit 1
+
+      CMD ["python", "app.py"]
+    scripts/health_test.sh: |
+      #!/bin/bash
+      set -e
+      curl -f http://localhost:8080/health
+      curl -f http://localhost:8080/healthz
+      curl -f http://localhost:8080/ready
+      echo "All health checks passed"
+    k8s/probes.yaml: |
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 30
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 8080
+    prometheus/scrape.yml: |
+      scrape_configs:
+        - job_name: flask-app
+          metrics_path: /metrics
+          static_configs:
+            - targets: ['localhost:8080']
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.py
+    anchor: '@app.route(''/health'')'
+- id: app_1
+  selector:
+    path: app.py
+    anchor: return 'OK', 200
+- id: config
+  selector:
+    path: config.py
+    anchor: HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))
+- id: config_1
+  selector:
+    path: config.py
+    anchor: HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))
+- id: dockerfile_file
+  selector:
+    path: Dockerfile
+- id: no_health_test
+  selector:
+    path: scripts/health_test.sh
+- id: no_probes
+  selector:
+    path: k8s/probes.yaml
+- id: no_scrape
+  selector:
+    path: prometheus/scrape.yml
+oracle:
+  required:
+  - app
+  - app_1
+  - config
+  - config_1
+  - dockerfile_file
+  allowed: []
+  forbidden:
+  - no_health_test
+  - no_probes
+  - no_scrape

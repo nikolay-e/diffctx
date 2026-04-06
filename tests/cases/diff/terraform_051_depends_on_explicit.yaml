@@ -1,0 +1,128 @@
+name: terraform_051_depends_on_explicit
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_lambda_function" "api" {
+        function_name = "api-handler"
+        runtime       = "python3.11"
+        handler       = "main.handler"
+        role          = aws_iam_role.lambda.arn
+        filename      = "lambda.zip"
+
+        vpc_config {
+          subnet_ids         = var.private_subnet_ids
+          security_group_ids = [aws_security_group.lambda.id]
+        }
+      }
+    iam.tf: |
+      resource "aws_iam_role_policy_attachment" "lambda_logs" {
+        role       = aws_iam_role.lambda.name
+        policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      }
+
+      resource "aws_iam_role" "lambda" {
+        name = "api-lambda-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+    logging.tf: |
+      resource "aws_cloudwatch_log_group" "lambda" {
+        name              = "/aws/lambda/api-handler"
+        retention_in_days = 14
+      }
+    ecs/service.tf: |
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = "main-cluster"
+        task_definition = "app:1"
+
+        depends_on = [
+          aws_lb_listener.https,
+          aws_iam_role_policy.ecs_task,
+        ]
+      }
+    variables.tf: |
+      variable "private_subnet_ids" {
+        type = list(string)
+      }
+
+      variable "environment" {
+        default = "staging"
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_lambda_function" "api" {
+        function_name = "api-handler"
+        runtime       = "python3.11"
+        handler       = "main.handler"
+        role          = aws_iam_role.lambda.arn
+        filename      = "lambda.zip"
+
+        vpc_config {
+          subnet_ids         = var.private_subnet_ids
+          security_group_ids = [aws_security_group.lambda.id]
+        }
+
+        depends_on = [
+          aws_iam_role_policy_attachment.lambda_logs,
+          aws_cloudwatch_log_group.lambda,
+          aws_vpc_endpoint.s3,
+        ]
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: depends_on = [
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: aws_iam_role_policy_attachment.lambda_logs,
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: aws_cloudwatch_log_group.lambda,
+- id: iam
+  selector:
+    path: iam.tf
+    anchor: resource "aws_iam_role_policy_attachment" "lambda_logs" {
+- id: logging
+  selector:
+    path: logging.tf
+    anchor: resource "aws_cloudwatch_log_group" "lambda" {
+- id: no_service
+  selector:
+    path: ecs/service.tf
+- id: no_variables
+  selector:
+    path: variables.tf
+- id: no_global_0
+  selector:
+    anchor: app-service
+- id: no_global_1
+  selector:
+    anchor: ecs_task
+- id: no_global_2
+  selector:
+    anchor: variable "environment" {
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - iam
+  - logging
+  allowed: []
+  forbidden:
+  - no_service
+  - no_variables
+  - no_global_0
+  - no_global_1
+  - no_global_2

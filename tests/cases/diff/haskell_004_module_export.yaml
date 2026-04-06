@@ -1,0 +1,263 @@
+name: haskell_004_module_export
+repo:
+  initial_files:
+    src/MathUtils.hs: |
+      module MathUtils
+        ( factorial
+        , fibonacci
+        ) where
+
+      factorial :: Integer -> Integer
+      factorial 0 = 1
+      factorial n = n * factorial (n - 1)
+
+      fibonacci :: Integer -> Integer
+      fibonacci 0 = 0
+      fibonacci 1 = 1
+      fibonacci n = fibonacci (n - 1) + fibonacci (n - 2)
+    src/Stats.hs: |
+      module Stats
+        ( mean
+        , variance
+        ) where
+
+      import MathUtils (factorial)
+
+      mean :: [Double] -> Double
+      mean xs = sum xs / fromIntegral (length xs)
+
+      variance :: [Double] -> Double
+      variance xs =
+        let m = mean xs
+        in mean (map (\x -> (x - m) ^ 2) xs)
+    src/Combinatorics.hs: |
+      module Combinatorics
+        ( permutations
+        , combinations
+        ) where
+
+      import MathUtils (factorial)
+      GARBAGE_HS_004_COMBI_MARKER_A = "combinatorics"
+      GARBAGE_HS_004_PERM_CALC_B = True
+
+      permutations :: Integer -> Integer -> Integer
+      permutations n r = factorial n `div` factorial (n - r)
+
+      combinations :: Integer -> Integer -> Integer
+      combinations n r = permutations n r `div` factorial r
+    src/Numeric.hs: |
+      module Numeric
+        ( isPrime
+        , gcd'
+        ) where
+
+      GARBAGE_HS_004_NUMERIC_MARKER_C = "numeric"
+      GARBAGE_HS_004_PRIME_CHECK_D = True
+
+      isPrime :: Integer -> Bool
+      isPrime n
+        | n < 2     = False
+        | otherwise = all (\i -> n `mod` i /= 0) [2..floor (sqrt (fromIntegral n))]
+
+      gcd' :: Integer -> Integer -> Integer
+      gcd' a 0 = a
+      gcd' a b = gcd' b (a `mod` b)
+    src/StringUtils.hs: |
+      module StringUtils
+        ( capitalize
+        ) where
+
+      GARBAGE_HS_004_STRUTIL_MARKER_E = "string-utils"
+      GARBAGE_HS_004_CASE_CONV_F = True
+
+      capitalize :: String -> String
+      capitalize []     = []
+      capitalize (x:xs) = toUpper x : xs
+        where toUpper c = if c >= 'a' && c <= 'z' then toEnum (fromEnum c - 32) else c
+    src/IOUtils.hs: |
+      module IOUtils
+        ( readFileStrict
+        ) where
+
+      GARBAGE_HS_004_IOUTILS_MARKER_G = "io-utils"
+      GARBAGE_HS_004_FILE_READ_H = True
+
+      readFileStrict :: FilePath -> IO String
+      readFileStrict path = do
+        contents <- readFile path
+        length contents `seq` return contents
+  changed_files:
+    src/MathUtils.hs: |
+      module MathUtils
+        ( factorial
+        , fibonacci
+        , binomialCoeff
+        ) where
+
+      factorial :: Integer -> Integer
+      factorial 0 = 1
+      factorial n = n * factorial (n - 1)
+
+      fibonacci :: Integer -> Integer
+      fibonacci 0 = 0
+      fibonacci 1 = 1
+      fibonacci n = fibonacci (n - 1) + fibonacci (n - 2)
+
+      binomialCoeff :: Integer -> Integer -> Integer
+      binomialCoeff n k = factorial n `div` (factorial k * factorial (n - k))
+    src/Stats.hs: |
+      module Stats
+        ( mean
+        , variance
+        , probabilityMass
+        ) where
+
+      import MathUtils (factorial, binomialCoeff)
+
+      mean :: [Double] -> Double
+      mean xs = sum xs / fromIntegral (length xs)
+
+      variance :: [Double] -> Double
+      variance xs =
+        let m = mean xs
+        in mean (map (\x -> (x - m) ^ 2) xs)
+
+      probabilityMass :: Integer -> Integer -> Double -> Double
+      probabilityMass n k p =
+        let coeff = fromIntegral (binomialCoeff n k)
+        in coeff * (p ^ k) * ((1 - p) ^ (n - k))
+    src/Combinatorics.hs: |
+      module Combinatorics
+        ( permutations
+        , combinations
+        ) where
+
+      import MathUtils (factorial)
+      GARBAGE_HS_004_COMBI_MARKER_A = "combinatorics"
+      GARBAGE_HS_004_PERM_CALC_B = True
+
+      permutations :: Integer -> Integer -> Integer
+      permutations n r = factorial n `div` factorial (n - r)
+
+      combinations :: Integer -> Integer -> Integer
+      combinations n r = permutations n r `div` factorial r
+    src/Numeric.hs: |
+      module Numeric
+        ( isPrime
+        , gcd'
+        ) where
+
+      GARBAGE_HS_004_NUMERIC_MARKER_C = "numeric"
+      GARBAGE_HS_004_PRIME_CHECK_D = True
+
+      isPrime :: Integer -> Bool
+      isPrime n
+        | n < 2     = False
+        | otherwise = all (\i -> n `mod` i /= 0) [2..floor (sqrt (fromIntegral n))]
+
+      gcd' :: Integer -> Integer -> Integer
+      gcd' a 0 = a
+      gcd' a b = gcd' b (a `mod` b)
+    src/StringUtils.hs: |
+      module StringUtils
+        ( capitalize
+        ) where
+
+      GARBAGE_HS_004_STRUTIL_MARKER_E = "string-utils"
+      GARBAGE_HS_004_CASE_CONV_F = True
+
+      capitalize :: String -> String
+      capitalize []     = []
+      capitalize (x:xs) = toUpper x : xs
+        where toUpper c = if c >= 'a' && c <= 'z' then toEnum (fromEnum c - 32) else c
+    src/IOUtils.hs: |
+      module IOUtils
+        ( readFileStrict
+        ) where
+
+      GARBAGE_HS_004_IOUTILS_MARKER_G = "io-utils"
+      GARBAGE_HS_004_FILE_READ_H = True
+
+      readFileStrict :: FilePath -> IO String
+      readFileStrict path = do
+        contents <- readFile path
+        length contents `seq` return contents
+  commit_message: Update files
+fragments:
+- id: mathutils
+  selector:
+    path: src/MathUtils.hs
+    anchor: 'binomialCoeff :: Integer -> Integer -> Integer'
+- id: mathutils_1
+  selector:
+    path: src/MathUtils.hs
+    anchor: binomialCoeff n k = factorial n
+- id: stats
+  selector:
+    path: src/Stats.hs
+    anchor: import MathUtils (factorial, binomialCoeff)
+- id: stats_1
+  selector:
+    path: src/Stats.hs
+    anchor: 'probabilityMass :: Integer -> Integer -> Double -> Double'
+- id: stats_2
+  selector:
+    path: src/Stats.hs
+    anchor: coeff = fromIntegral (binomialCoeff n k)
+- id: no_combinatorics
+  selector:
+    path: src/Combinatorics.hs
+- id: no_numeric
+  selector:
+    path: src/Numeric.hs
+- id: no_stringutils
+  selector:
+    path: src/StringUtils.hs
+- id: no_ioutils
+  selector:
+    path: src/IOUtils.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_HS_004_COMBI_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_HS_004_PERM_CALC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HS_004_NUMERIC_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_HS_004_PRIME_CHECK_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_HS_004_STRUTIL_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_HS_004_CASE_CONV_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_HS_004_IOUTILS_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_HS_004_FILE_READ_H
+oracle:
+  required:
+  - mathutils
+  - mathutils_1
+  - stats
+  - stats_1
+  - stats_2
+  allowed: []
+  forbidden:
+  - no_combinatorics
+  - no_numeric
+  - no_stringutils
+  - no_ioutils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

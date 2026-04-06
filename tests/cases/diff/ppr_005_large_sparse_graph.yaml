@@ -1,0 +1,614 @@
+name: ppr_005_large_sparse_graph
+repo:
+  initial_files:
+    chain/main_chain.py: |
+      def chain_node_0():
+          return "base_value"
+
+      def chain_node_1():
+          return chain_node_0()
+
+      def chain_node_2():
+          return chain_node_1()
+
+      def chain_node_3():
+          return chain_node_2()
+
+      def chain_node_4():
+          return chain_node_3()
+
+      def chain_node_5():
+          return chain_node_4()
+
+      def chain_node_6():
+          return chain_node_5()
+
+      def chain_node_7():
+          return chain_node_6()
+
+      def chain_node_8():
+          return chain_node_7()
+
+      def chain_node_9():
+          return chain_node_8()
+
+      def chain_node_10():
+          return chain_node_9()
+
+      def chain_node_11():
+          return chain_node_10()
+
+      def chain_node_12():
+          return chain_node_11()
+
+      def chain_node_13():
+          return chain_node_12()
+
+      def chain_node_14():
+          return chain_node_13()
+
+      def chain_node_15():
+          return chain_node_14()
+
+      def chain_entry():
+          return chain_node_15()
+    chain/branch_a.py: |
+      from chain.main_chain import chain_node_5
+
+      def branch_a_leaf():
+          return chain_node_5() + "_branch_a"
+
+      def branch_a_intermediate():
+          return branch_a_leaf()
+
+      def branch_a_entry():
+          return branch_a_intermediate()
+    chain/branch_b.py: |
+      from chain.main_chain import chain_node_10
+
+      def branch_b_leaf():
+          return chain_node_10() + "_branch_b"
+
+      def branch_b_intermediate():
+          return branch_b_leaf()
+
+      def branch_b_entry():
+          return branch_b_intermediate()
+    isolated_chain/separate.py: |
+      def iso_chain_0():
+          return "isolated_base"
+
+      def iso_chain_1():
+          return iso_chain_0()
+
+      def iso_chain_2():
+          return iso_chain_1()
+
+      def iso_chain_3():
+          return iso_chain_2()
+
+      def iso_chain_4():
+          return iso_chain_3()
+
+      def iso_chain_5():
+          return iso_chain_4()
+
+      def iso_chain_entry():
+          return iso_chain_5()
+    isolated_chain/another.py: |
+      def another_iso_0():
+          return "another_isolated"
+
+      def another_iso_1():
+          return another_iso_0()
+
+      def another_iso_2():
+          return another_iso_1()
+
+      def another_iso_3():
+          return another_iso_2()
+
+      def another_iso_entry():
+          return another_iso_3()
+    chain/garbage_chain_collision.py: |
+      GARBAGE_PPR_005_CHAIN_COLLISION_A = "chain_collision"
+      GARBAGE_PPR_005_CHAIN_COLLISION_B = True
+
+      def chain_node_0():
+          return "totally_different_chain_node_0"
+
+      def chain_node_0_reporter():
+          return chain_node_0() + "_report"
+    chain/garbage_chain_consumer.py: |
+      from chain.main_chain import chain_node_0
+      GARBAGE_PPR_005_CHAIN_IMPORT_C = "chain_import_consumer"
+      GARBAGE_PPR_005_CHAIN_IMPORT_D = 77
+
+      class ChainNodeConsumer:
+          def consume(self):
+              return chain_node_0()
+
+          def report(self):
+              return f"consumed: {self.consume()}"
+    chain/garbage_chain_sibling.py: |
+      GARBAGE_PPR_005_CHAIN_SIBLING_E = "chain_sibling"
+      GARBAGE_PPR_005_CHAIN_SIBLING_F = 55
+
+      def sibling_chain_base():
+          return "sibling_base"
+
+      def sibling_chain_mid():
+          return sibling_chain_base() + "_mid"
+
+      def sibling_chain_top():
+          return sibling_chain_mid() + "_top"
+    garbage/GARBAGE_PPR_k1l2m3_sparse_noise.py: |
+      GARBAGE_SPARSE_MARKER_PPR010 = "sparse_garbage"
+
+      def garbage_sparse_ppr010_node0():
+          return GARBAGE_SPARSE_MARKER_PPR010
+
+      def garbage_sparse_ppr010_node1():
+          return garbage_sparse_ppr010_node0()
+
+      def garbage_sparse_ppr010_node2():
+          return garbage_sparse_ppr010_node1()
+
+      def garbage_sparse_ppr010_node3():
+          return garbage_sparse_ppr010_node2()
+
+      def garbage_sparse_ppr010_node4():
+          return garbage_sparse_ppr010_node3()
+
+      def garbage_sparse_ppr010_entry():
+          return garbage_sparse_ppr010_node4()
+    garbage/GARBAGE_PPR_n4o5p6_fake_chain.py: |
+      FAKE_CHAIN_CONST_PPR010 = 42
+
+      def fake_chain_ppr010_base():
+          return FAKE_CHAIN_CONST_PPR010
+
+      def fake_chain_ppr010_mid1():
+          return fake_chain_ppr010_base() + 1
+
+      def fake_chain_ppr010_mid2():
+          return fake_chain_ppr010_mid1() + 2
+
+      def fake_chain_ppr010_mid3():
+          return fake_chain_ppr010_mid2() + 3
+
+      def fake_chain_ppr010_top():
+          return fake_chain_ppr010_mid3() + 4
+
+      class FakeChainClassPPR010:
+          def chain_method_0(self):
+              return "method_0"
+
+          def chain_method_1(self):
+              return self.chain_method_0()
+
+          def chain_method_2(self):
+              return self.chain_method_1()
+    garbage/GARBAGE_PPR_q7r8s9_decoy_sparse.py: |
+      DECOY_SPARSE_FLAG_PPR010 = True
+
+      def decoy_sparse_ppr010_alpha():
+          return DECOY_SPARSE_FLAG_PPR010
+
+      def decoy_sparse_ppr010_beta():
+          return decoy_sparse_ppr010_alpha()
+
+      def decoy_sparse_ppr010_gamma():
+          return decoy_sparse_ppr010_beta()
+
+      def decoy_sparse_ppr010_delta():
+          return decoy_sparse_ppr010_gamma()
+
+      def decoy_sparse_ppr010_epsilon():
+          return decoy_sparse_ppr010_delta()
+  changed_files:
+    chain/main_chain.py: |
+      def chain_node_0():
+          return "modified_base_value"
+
+      def chain_node_1():
+          return chain_node_0()
+
+      def chain_node_2():
+          return chain_node_1()
+
+      def chain_node_3():
+          return chain_node_2()
+
+      def chain_node_4():
+          return chain_node_3()
+
+      def chain_node_5():
+          return chain_node_4()
+
+      def chain_node_6():
+          return chain_node_5()
+
+      def chain_node_7():
+          return chain_node_6()
+
+      def chain_node_8():
+          return chain_node_7()
+
+      def chain_node_9():
+          return chain_node_8()
+
+      def chain_node_10():
+          return chain_node_9()
+
+      def chain_node_11():
+          return chain_node_10()
+
+      def chain_node_12():
+          return chain_node_11()
+
+      def chain_node_13():
+          return chain_node_12()
+
+      def chain_node_14():
+          return chain_node_13()
+
+      def chain_node_15():
+          return chain_node_14()
+
+      def chain_entry():
+          return chain_node_15()
+    chain/branch_a.py: |
+      from chain.main_chain import chain_node_5
+
+      def branch_a_leaf():
+          return chain_node_5() + "_branch_a"
+
+      def branch_a_intermediate():
+          return branch_a_leaf()
+
+      def branch_a_entry():
+          return branch_a_intermediate()
+    chain/branch_b.py: |
+      from chain.main_chain import chain_node_10
+
+      def branch_b_leaf():
+          return chain_node_10() + "_branch_b"
+
+      def branch_b_intermediate():
+          return branch_b_leaf()
+
+      def branch_b_entry():
+          return branch_b_intermediate()
+    isolated_chain/separate.py: |
+      def iso_chain_0():
+          return "isolated_base"
+
+      def iso_chain_1():
+          return iso_chain_0()
+
+      def iso_chain_2():
+          return iso_chain_1()
+
+      def iso_chain_3():
+          return iso_chain_2()
+
+      def iso_chain_4():
+          return iso_chain_3()
+
+      def iso_chain_5():
+          return iso_chain_4()
+
+      def iso_chain_entry():
+          return iso_chain_5()
+    isolated_chain/another.py: |
+      def another_iso_0():
+          return "another_isolated"
+
+      def another_iso_1():
+          return another_iso_0()
+
+      def another_iso_2():
+          return another_iso_1()
+
+      def another_iso_3():
+          return another_iso_2()
+
+      def another_iso_entry():
+          return another_iso_3()
+    chain/garbage_chain_collision.py: |
+      GARBAGE_PPR_005_CHAIN_COLLISION_A = "chain_collision"
+      GARBAGE_PPR_005_CHAIN_COLLISION_B = True
+
+      def chain_node_0():
+          return "totally_different_chain_node_0"
+
+      def chain_node_0_reporter():
+          return chain_node_0() + "_report"
+    chain/garbage_chain_consumer.py: |
+      from chain.main_chain import chain_node_0
+      GARBAGE_PPR_005_CHAIN_IMPORT_C = "chain_import_consumer"
+      GARBAGE_PPR_005_CHAIN_IMPORT_D = 77
+
+      class ChainNodeConsumer:
+          def consume(self):
+              return chain_node_0()
+
+          def report(self):
+              return f"consumed: {self.consume()}"
+    chain/garbage_chain_sibling.py: |
+      GARBAGE_PPR_005_CHAIN_SIBLING_E = "chain_sibling"
+      GARBAGE_PPR_005_CHAIN_SIBLING_F = 55
+
+      def sibling_chain_base():
+          return "sibling_base"
+
+      def sibling_chain_mid():
+          return sibling_chain_base() + "_mid"
+
+      def sibling_chain_top():
+          return sibling_chain_mid() + "_top"
+    garbage/GARBAGE_PPR_k1l2m3_sparse_noise.py: |
+      GARBAGE_SPARSE_MARKER_PPR010 = "sparse_garbage"
+
+      def garbage_sparse_ppr010_node0():
+          return GARBAGE_SPARSE_MARKER_PPR010
+
+      def garbage_sparse_ppr010_node1():
+          return garbage_sparse_ppr010_node0()
+
+      def garbage_sparse_ppr010_node2():
+          return garbage_sparse_ppr010_node1()
+
+      def garbage_sparse_ppr010_node3():
+          return garbage_sparse_ppr010_node2()
+
+      def garbage_sparse_ppr010_node4():
+          return garbage_sparse_ppr010_node3()
+
+      def garbage_sparse_ppr010_entry():
+          return garbage_sparse_ppr010_node4()
+    garbage/GARBAGE_PPR_n4o5p6_fake_chain.py: |
+      FAKE_CHAIN_CONST_PPR010 = 42
+
+      def fake_chain_ppr010_base():
+          return FAKE_CHAIN_CONST_PPR010
+
+      def fake_chain_ppr010_mid1():
+          return fake_chain_ppr010_base() + 1
+
+      def fake_chain_ppr010_mid2():
+          return fake_chain_ppr010_mid1() + 2
+
+      def fake_chain_ppr010_mid3():
+          return fake_chain_ppr010_mid2() + 3
+
+      def fake_chain_ppr010_top():
+          return fake_chain_ppr010_mid3() + 4
+
+      class FakeChainClassPPR010:
+          def chain_method_0(self):
+              return "method_0"
+
+          def chain_method_1(self):
+              return self.chain_method_0()
+
+          def chain_method_2(self):
+              return self.chain_method_1()
+    garbage/GARBAGE_PPR_q7r8s9_decoy_sparse.py: |
+      DECOY_SPARSE_FLAG_PPR010 = True
+
+      def decoy_sparse_ppr010_alpha():
+          return DECOY_SPARSE_FLAG_PPR010
+
+      def decoy_sparse_ppr010_beta():
+          return decoy_sparse_ppr010_alpha()
+
+      def decoy_sparse_ppr010_gamma():
+          return decoy_sparse_ppr010_beta()
+
+      def decoy_sparse_ppr010_delta():
+          return decoy_sparse_ppr010_gamma()
+
+      def decoy_sparse_ppr010_epsilon():
+          return decoy_sparse_ppr010_delta()
+  commit_message: Update files
+fragments:
+- id: main_chain
+  selector:
+    path: chain/main_chain.py
+    anchor: 'def chain_node_0():'
+- id: main_chain_1
+  selector:
+    path: chain/main_chain.py
+    anchor: return "modified_base_value"
+- id: no_garbage_ppr_k1l2m3_sparse_noise
+  selector:
+    path: garbage/GARBAGE_PPR_k1l2m3_sparse_noise.py
+- id: no_garbage_ppr_n4o5p6_fake_chain
+  selector:
+    path: garbage/GARBAGE_PPR_n4o5p6_fake_chain.py
+- id: no_garbage_ppr_q7r8s9_decoy_sparse
+  selector:
+    path: garbage/GARBAGE_PPR_q7r8s9_decoy_sparse.py
+- id: no_garbage_chain_collision
+  selector:
+    path: chain/garbage_chain_collision.py
+- id: no_garbage_chain_consumer
+  selector:
+    path: chain/garbage_chain_consumer.py
+- id: no_garbage_chain_sibling
+  selector:
+    path: chain/garbage_chain_sibling.py
+- id: no_separate
+  selector:
+    path: isolated_chain/separate.py
+- id: no_another
+  selector:
+    path: isolated_chain/another.py
+- id: no_global_0
+  selector:
+    anchor: iso_chain_0
+- id: no_global_1
+  selector:
+    anchor: iso_chain_1
+- id: no_global_2
+  selector:
+    anchor: iso_chain_2
+- id: no_global_3
+  selector:
+    anchor: iso_chain_3
+- id: no_global_4
+  selector:
+    anchor: iso_chain_4
+- id: no_global_5
+  selector:
+    anchor: iso_chain_5
+- id: no_global_6
+  selector:
+    anchor: iso_chain_entry
+- id: no_global_7
+  selector:
+    anchor: another_iso_0
+- id: no_global_8
+  selector:
+    anchor: another_iso_1
+- id: no_global_9
+  selector:
+    anchor: another_iso_2
+- id: no_global_10
+  selector:
+    anchor: another_iso_3
+- id: no_global_11
+  selector:
+    anchor: another_iso_entry
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_SPARSE_MARKER_PPR010
+- id: no_global_13
+  selector:
+    anchor: garbage_sparse_ppr010_node0
+- id: no_global_14
+  selector:
+    anchor: garbage_sparse_ppr010_node1
+- id: no_global_15
+  selector:
+    anchor: garbage_sparse_ppr010_node2
+- id: no_global_16
+  selector:
+    anchor: garbage_sparse_ppr010_node3
+- id: no_global_17
+  selector:
+    anchor: garbage_sparse_ppr010_node4
+- id: no_global_18
+  selector:
+    anchor: garbage_sparse_ppr010_entry
+- id: no_global_19
+  selector:
+    anchor: FAKE_CHAIN_CONST_PPR010
+- id: no_global_20
+  selector:
+    anchor: fake_chain_ppr010_base
+- id: no_global_21
+  selector:
+    anchor: fake_chain_ppr010_mid1
+- id: no_global_22
+  selector:
+    anchor: fake_chain_ppr010_mid2
+- id: no_global_23
+  selector:
+    anchor: fake_chain_ppr010_mid3
+- id: no_global_24
+  selector:
+    anchor: fake_chain_ppr010_top
+- id: no_global_25
+  selector:
+    anchor: FakeChainClassPPR010
+- id: no_global_26
+  selector:
+    anchor: DECOY_SPARSE_FLAG_PPR010
+- id: no_global_27
+  selector:
+    anchor: decoy_sparse_ppr010_alpha
+- id: no_global_28
+  selector:
+    anchor: decoy_sparse_ppr010_beta
+- id: no_global_29
+  selector:
+    anchor: decoy_sparse_ppr010_gamma
+- id: no_global_30
+  selector:
+    anchor: decoy_sparse_ppr010_delta
+- id: no_global_31
+  selector:
+    anchor: decoy_sparse_ppr010_epsilon
+- id: no_global_32
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_COLLISION_A
+- id: no_global_33
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_COLLISION_B
+- id: no_global_34
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_IMPORT_C
+- id: no_global_35
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_IMPORT_D
+- id: no_global_36
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_SIBLING_E
+- id: no_global_37
+  selector:
+    anchor: GARBAGE_PPR_005_CHAIN_SIBLING_F
+oracle:
+  required:
+  - main_chain
+  - main_chain_1
+  allowed: []
+  forbidden:
+  - no_garbage_ppr_k1l2m3_sparse_noise
+  - no_garbage_ppr_n4o5p6_fake_chain
+  - no_garbage_ppr_q7r8s9_decoy_sparse
+  - no_garbage_chain_collision
+  - no_garbage_chain_consumer
+  - no_garbage_chain_sibling
+  - no_separate
+  - no_another
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21
+  - no_global_22
+  - no_global_23
+  - no_global_24
+  - no_global_25
+  - no_global_26
+  - no_global_27
+  - no_global_28
+  - no_global_29
+  - no_global_30
+  - no_global_31
+  - no_global_32
+  - no_global_33
+  - no_global_34
+  - no_global_35
+  - no_global_36
+  - no_global_37

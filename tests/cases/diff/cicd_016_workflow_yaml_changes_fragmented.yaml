@@ -1,0 +1,212 @@
+name: cicd_016_workflow_yaml_changes_fragmented
+repo:
+  initial_files:
+    .github/workflows/cd.yml: |
+      name: CD
+      on:
+        push:
+          branches: [main]
+
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          permissions:
+            contents: read
+            packages: write
+          steps:
+            - uses: actions/checkout@v4
+
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push
+              run: |
+                TAG="main-$(git rev-parse --short HEAD)"
+                docker build -t ghcr.io/${{ github.repository }}:$TAG .
+                docker push ghcr.io/${{ github.repository }}:$TAG
+    pyproject.toml: |
+      [project]
+      name = "myapp"
+      version = "1.0.0"
+      requires-python = ">=3.11"
+
+      [project.scripts]
+      myapp = "myapp.cli:main"
+    garbage_lint.py: |
+      GARBAGE_CICD016_LINT_MARKER_A = "lint module"
+      GARBAGE_CICD016_CHECK_MARKER_B = True
+
+      class LintRunner:
+          GARBAGE_CICD016_RUNNER_MARKER_C = "runner"
+
+          def run_checks(self, path: str) -> bool:
+              GARBAGE_CICD016_RESULT_MARKER_D = "passed"
+              return True
+
+          def format_report(self, results: list) -> str:
+              GARBAGE_CICD016_REPORT_MARKER_E = "report"
+              return ""
+    garbage_migrate.py: |
+      GARBAGE_CICD016_MIGRATE_MARKER_F = "migrate module"
+      GARBAGE_CICD016_SCHEMA_MARKER_G = 42
+
+      class MigrationRunner:
+          GARBAGE_CICD016_MIGRATION_MARKER_H = "migration"
+
+          def apply(self, version: int) -> None:
+              GARBAGE_CICD016_APPLY_MARKER_I = "applied"
+              pass
+
+          def rollback(self, version: int) -> None:
+              GARBAGE_CICD016_ROLLBACK_MARKER_J = "rolled back"
+              pass
+  changed_files:
+    .github/workflows/cd.yml: |
+      name: CD
+      on:
+        push:
+          branches: [main]
+
+      env:
+        REGISTRY: ghcr.io
+        IMAGE_NAME: ${{ github.repository }}
+
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          permissions:
+            contents: read
+            packages: write
+          steps:
+            - uses: actions/checkout@v4
+
+            - name: Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Generate image tags
+              id: tags
+              run: |
+                PRIMARY_TAG="main-$(git rev-parse --short HEAD)"
+                echo "primary_tag=${PRIMARY_TAG}" >> "$GITHUB_OUTPUT"
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Build and push
+              uses: docker/build-push-action@v6
+              with:
+                context: .
+                push: true
+                tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.primary_tag }}
+                build-args: |
+                  GIT_SHA=${{ steps.tags.outputs.primary_tag }}
+    pyproject.toml: |
+      [project]
+      name = "myapp"
+      version = "1.0.0"
+      requires-python = ">=3.11"
+
+      [project.scripts]
+      myapp = "myapp.cli:main"
+    garbage_lint.py: |
+      GARBAGE_CICD016_LINT_MARKER_A = "lint module"
+      GARBAGE_CICD016_CHECK_MARKER_B = True
+
+      class LintRunner:
+          GARBAGE_CICD016_RUNNER_MARKER_C = "runner"
+
+          def run_checks(self, path: str) -> bool:
+              GARBAGE_CICD016_RESULT_MARKER_D = "passed"
+              return True
+
+          def format_report(self, results: list) -> str:
+              GARBAGE_CICD016_REPORT_MARKER_E = "report"
+              return ""
+    garbage_migrate.py: |
+      GARBAGE_CICD016_MIGRATE_MARKER_F = "migrate module"
+      GARBAGE_CICD016_SCHEMA_MARKER_G = 42
+
+      class MigrationRunner:
+          GARBAGE_CICD016_MIGRATION_MARKER_H = "migration"
+
+          def apply(self, version: int) -> None:
+              GARBAGE_CICD016_APPLY_MARKER_I = "applied"
+              pass
+
+          def rollback(self, version: int) -> None:
+              GARBAGE_CICD016_ROLLBACK_MARKER_J = "rolled back"
+              pass
+  commit_message: Update files
+fragments:
+- id: cd_file
+  selector:
+    path: .github/workflows/cd.yml
+- id: req_global_0
+  selector:
+    anchor: docker/build-push-action@v6
+- id: req_global_1
+  selector:
+    anchor: GIT_SHA
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD016_LINT_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD016_CHECK_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD016_RUNNER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD016_RESULT_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD016_REPORT_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD016_MIGRATE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD016_SCHEMA_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD016_MIGRATION_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD016_APPLY_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD016_ROLLBACK_MARKER_J
+- id: no_global_10
+  selector:
+    anchor: garbage_lint.py
+- id: no_global_11
+  selector:
+    anchor: garbage_migrate.py
+oracle:
+  required:
+  - cd_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

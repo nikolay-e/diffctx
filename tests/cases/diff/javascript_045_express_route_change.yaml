@@ -1,0 +1,122 @@
+name: javascript_045_express_route_change
+repo:
+  initial_files:
+    routes.ts: |
+      import { Router } from 'express';
+
+      export const userRouter = Router();
+
+      userRouter.get('/:id', (req, res) => {
+          res.json({ id: req.params.id });
+      });
+    middleware.ts: |
+      import { userRouter } from './routes';
+
+      export function setupRoutes(app: any) {
+          app.use('/users', userRouter);
+      }
+    auth-middleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function requireAuth(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) return res.status(401).json({ error: 'Unauthorized' });
+          next();
+      }
+
+      export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+          const role = (req as any).user?.role;
+          if (role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+          next();
+      }
+    user-validator.ts: |
+      export function validateUserBody(body: unknown): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!body || typeof body !== 'object') return { valid: false, errors: ['Body required'] };
+          const obj = body as Record<string, unknown>;
+          if (!obj.name) errors.push('Name required');
+          if (!obj.email) errors.push('Email required');
+          return { valid: errors.length === 0, errors };
+      }
+  changed_files:
+    routes.ts: |
+      import { Router } from 'express';
+
+      export const userRouter = Router();
+
+      userRouter.get('/:id', (req, res) => {
+          res.json({ id: req.params.id });
+      });
+
+      userRouter.post('/', (req, res) => {
+          res.status(201).json(req.body);
+      });
+
+      userRouter.delete('/:id', (req, res) => {
+          res.status(204).send();
+      });
+    middleware.ts: |
+      import { userRouter } from './routes';
+
+      export function setupRoutes(app: any) {
+          app.use('/users', userRouter);
+      }
+    auth-middleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+
+      export function requireAuth(req: Request, res: Response, next: NextFunction) {
+          const token = req.headers.authorization;
+          if (!token) return res.status(401).json({ error: 'Unauthorized' });
+          next();
+      }
+
+      export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+          const role = (req as any).user?.role;
+          if (role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+          next();
+      }
+    user-validator.ts: |
+      export function validateUserBody(body: unknown): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!body || typeof body !== 'object') return { valid: false, errors: ['Body required'] };
+          const obj = body as Record<string, unknown>;
+          if (!obj.name) errors.push('Name required');
+          if (!obj.email) errors.push('Email required');
+          return { valid: errors.length === 0, errors };
+      }
+  commit_message: Update files
+fragments:
+- id: middleware
+  selector:
+    path: middleware.ts
+    anchor: import { userRouter } from './routes'
+- id: middleware_1
+  selector:
+    path: middleware.ts
+    anchor: app.use('/users', userRouter)
+- id: no_auth_middleware
+  selector:
+    path: auth-middleware.ts
+- id: no_user_validator
+  selector:
+    path: user-validator.ts
+- id: no_global_0
+  selector:
+    anchor: requireAuth
+- id: no_global_1
+  selector:
+    anchor: requireAdmin
+- id: no_global_2
+  selector:
+    anchor: validateUserBody
+oracle:
+  required:
+  - middleware
+  - middleware_1
+  allowed: []
+  forbidden:
+  - no_auth_middleware
+  - no_user_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2

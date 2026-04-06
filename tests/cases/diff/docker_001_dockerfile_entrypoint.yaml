@@ -1,0 +1,209 @@
+name: docker_001_dockerfile_entrypoint
+repo:
+  initial_files:
+    src/main.py: |
+      import os
+      import sys
+      import logging
+
+      logging.basicConfig(level=logging.INFO)
+      logger = logging.getLogger(__name__)
+
+      def parse_arguments():
+          return {"mode": os.getenv("APP_MODE", "server")}
+
+      def run_server():
+          logger.info("Starting HTTP server on port 8080")
+
+      def run_worker():
+          logger.info("Starting background worker")
+
+      def main():
+          args = parse_arguments()
+          if args["mode"] == "server":
+              run_server()
+          else:
+              run_worker()
+
+      if __name__ == "__main__":
+          main()
+    src/config.py: |
+      import os
+
+      DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+      REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+      LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+      redis==5.0.0
+      sqlalchemy==2.0.0
+    Dockerfile: |
+      FROM python:3.11
+      WORKDIR /app
+      COPY . .
+      ENTRYPOINT ["python", "src/main.py"]
+    scripts/start.sh: |
+      #!/bin/bash
+      python src/main.py
+    tests/test_main.py: |
+      def test_main():
+          pass
+    k8s/pod.yaml: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: app
+      spec:
+        containers:
+          - name: app
+            image: python:3.11
+            command: ["python", "src/main.py"]
+  changed_files:
+    src/main.py: |
+      import os
+      import sys
+      import logging
+
+      logging.basicConfig(level=logging.INFO)
+      logger = logging.getLogger(__name__)
+
+      def parse_arguments():
+          return {"mode": os.getenv("APP_MODE", "server")}
+
+      def run_server():
+          logger.info("Starting HTTP server on port 8080")
+
+      def run_worker():
+          logger.info("Starting background worker")
+
+      def main():
+          args = parse_arguments()
+          if args["mode"] == "server":
+              run_server()
+          else:
+              run_worker()
+
+      if __name__ == "__main__":
+          main()
+    src/config.py: |
+      import os
+
+      DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+      REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+      LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    requirements.txt: |
+      flask==2.3.0
+      gunicorn==21.2.0
+      redis==5.0.0
+      sqlalchemy==2.0.0
+    Dockerfile: |
+      # Build stage
+      FROM python:3.12-slim AS builder
+      WORKDIR /build
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+      # Production stage
+      FROM python:3.12-slim AS production
+      WORKDIR /app
+
+      # Security: run as non-root user
+      RUN useradd --create-home --shell /bin/bash appuser
+
+      # Copy dependencies and source
+      COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+      COPY src/ ./src/
+      COPY requirements.txt .
+
+      # Set environment variables
+      ENV PYTHONUNBUFFERED=1
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV APP_MODE=server
+
+      USER appuser
+      EXPOSE 8080
+
+      ENTRYPOINT ["python", "-m", "src.main"]
+      CMD ["--mode", "server"]
+    scripts/start.sh: |
+      #!/bin/bash
+      python src/main.py
+    tests/test_main.py: |
+      def test_main():
+          pass
+    k8s/pod.yaml: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: app
+      spec:
+        containers:
+          - name: app
+            image: python:3.11
+            command: ["python", "src/main.py"]
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: ENTRYPOINT ["python", "-m", "src.main"]
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: COPY src/ ./src/
+- id: main
+  selector:
+    path: src/main.py
+    anchor: if __name__ == "__main__"
+- id: main_1
+  selector:
+    path: src/main.py
+    anchor: 'def main():'
+- id: requirements
+  selector:
+    path: requirements.txt
+    anchor: flask==2.3.0
+- id: requirements_1
+  selector:
+    path: requirements.txt
+    anchor: gunicorn==21.2.0
+- id: no_start
+  selector:
+    path: scripts/start.sh
+- id: no_test_main
+  selector:
+    path: tests/test_main.py
+- id: no_pod
+  selector:
+    path: k8s/pod.yaml
+- id: no_global_0
+  selector:
+    anchor: '#!/bin/bash'
+- id: no_global_1
+  selector:
+    anchor: 'apiVersion: v1'
+- id: no_global_2
+  selector:
+    anchor: 'kind: Pod'
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - main
+  - main_1
+  - requirements
+  - requirements_1
+  allowed: []
+  forbidden:
+  - no_start
+  - no_test_main
+  - no_pod
+  - no_global_0
+  - no_global_1
+  - no_global_2

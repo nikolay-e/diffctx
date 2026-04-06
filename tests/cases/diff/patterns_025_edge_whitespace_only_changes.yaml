@@ -1,0 +1,100 @@
+name: patterns_025_edge_whitespace_only_changes
+repo:
+  initial_files:
+    test.py: |
+      def hello():
+          x = 1
+          return x
+    formatter.py: |
+      def adjust_indent(text, spaces=4):
+          lines = text.split('\n')
+          return '\n'.join(' ' * spaces + line.lstrip() for line in lines)
+
+      def normalize_whitespace(text):
+          return ' '.join(text.split())
+
+      class CodeFormatter:
+          def format(self, source):
+              return adjust_indent(source)
+    style_config.py: |
+      INDENT_SIZE = 4
+      TAB_WIDTH = 4
+      MAX_LINE_LENGTH = 120
+
+      class StyleRules:
+          def __init__(self):
+              self.indent = INDENT_SIZE
+              self.max_line = MAX_LINE_LENGTH
+
+          def validate(self, line):
+              return len(line) <= self.max_line
+  changed_files:
+    test.py: |
+      def hello():
+              x = 1
+              return x
+    formatter.py: |
+      def adjust_indent(text, spaces=4):
+          lines = text.split('\n')
+          return '\n'.join(' ' * spaces + line.lstrip() for line in lines)
+
+      def normalize_whitespace(text):
+          return ' '.join(text.split())
+
+      class CodeFormatter:
+          def format(self, source):
+              return adjust_indent(source)
+    style_config.py: |
+      INDENT_SIZE = 4
+      TAB_WIDTH = 4
+      MAX_LINE_LENGTH = 120
+
+      class StyleRules:
+          def __init__(self):
+              self.indent = INDENT_SIZE
+              self.max_line = MAX_LINE_LENGTH
+
+          def validate(self, line):
+              return len(line) <= self.max_line
+  commit_message: Update files
+fragments:
+- id: test_file
+  selector:
+    path: test.py
+- id: no_formatter
+  selector:
+    path: formatter.py
+- id: no_style_config
+  selector:
+    path: style_config.py
+- id: no_global_0
+  selector:
+    anchor: adjust_indent
+- id: no_global_1
+  selector:
+    anchor: normalize_whitespace
+- id: no_global_2
+  selector:
+    anchor: CodeFormatter
+- id: no_global_3
+  selector:
+    anchor: INDENT_SIZE
+- id: no_global_4
+  selector:
+    anchor: StyleRules
+- id: no_global_5
+  selector:
+    anchor: MAX_LINE_LENGTH
+oracle:
+  required:
+  - test_file
+  allowed: []
+  forbidden:
+  - no_formatter
+  - no_style_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

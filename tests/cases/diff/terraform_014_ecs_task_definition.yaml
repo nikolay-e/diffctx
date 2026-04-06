@@ -1,0 +1,264 @@
+name: terraform_014_ecs_task_definition
+repo:
+  initial_files:
+    ecs.tf: |
+      resource "aws_ecs_cluster" "main" {
+        name = "main-cluster"
+
+        setting {
+          name  = "containerInsights"
+          value = "enabled"
+        }
+      }
+    iam.tf: |
+      resource "aws_iam_role" "ecs_task_exec" {
+        name = "ecs-task-execution-role"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { Service = "ecs-tasks.amazonaws.com" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy_attachment" "ecs_task_exec" {
+        role       = aws_iam_role.ecs_task_exec.name
+        policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+      }
+
+      resource "aws_iam_role" "ecs_task" {
+        name = "ecs-task-role"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { Service = "ecs-tasks.amazonaws.com" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+    service.tf: |
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+        launch_type     = "FARGATE"
+
+        network_configuration {
+          subnets          = var.private_subnet_ids
+          security_groups  = [aws_security_group.ecs.id]
+          assign_public_ip = false
+        }
+
+        load_balancer {
+          target_group_arn = aws_lb_target_group.app.arn
+          container_name   = "app"
+          container_port   = 8080
+        }
+      }
+    ecs_cron.tf: |
+      resource "aws_ecs_task_definition" "cron" {
+        family                   = "cron-task"
+        network_mode             = "awsvpc"
+        requires_compatibilities = ["FARGATE"]
+        cpu                      = "128"
+        memory                   = "256"
+        execution_role_arn       = aws_iam_role.ecs_task_exec.arn
+
+        container_definitions = jsonencode([{
+          name    = "cron"
+          image   = "cron-runner:latest"
+          command = ["python", "run_cron.py"]
+          logConfiguration = {
+            logDriver = "awslogs"
+            options = {
+              "awslogs-group"  = "/ecs/cron"
+              "awslogs-region" = var.aws_region
+            }
+          }
+        }])
+      }
+    ecs_worker.tf: |
+      resource "aws_ecs_task_definition" "worker" {
+        family                   = "worker-task"
+        network_mode             = "awsvpc"
+        requires_compatibilities = ["FARGATE"]
+        cpu                      = "512"
+        memory                   = "1024"
+        execution_role_arn       = aws_iam_role.ecs_task_exec.arn
+        task_role_arn            = aws_iam_role.ecs_task.arn
+
+        container_definitions = jsonencode([{
+          name  = "worker"
+          image = "task-worker:latest"
+          environment = [{
+            name  = "WORKER_CONCURRENCY"
+            value = "4"
+          }]
+        }])
+      }
+    Dockerfile: |
+      FROM node:18-alpine
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci --production
+      COPY . .
+      EXPOSE 8080
+      CMD ["node", "server.js"]
+    ecr.tf: |
+      resource "aws_ecr_repository" "app" {
+        name                 = "myapp"
+        image_tag_mutability = "MUTABLE"
+
+        image_scanning_configuration {
+          scan_on_push = true
+        }
+      }
+
+      resource "aws_ecr_lifecycle_policy" "app" {
+        repository = aws_ecr_repository.app.name
+
+        policy = jsonencode({
+          rules = [{
+            rulePriority = 1
+            description  = "Keep last 10 images"
+            selection = {
+              tagStatus   = "any"
+              countType   = "imageCountMoreThan"
+              countNumber = 10
+            }
+            action = { type = "expire" }
+          }]
+        })
+      }
+  changed_files:
+    ecs.tf: |
+      resource "aws_ecs_cluster" "main" {
+        name = "main-cluster"
+
+        setting {
+          name  = "containerInsights"
+          value = "enabled"
+        }
+      }
+
+      resource "aws_ecs_task_definition" "app" {
+        family                   = "app-task"
+        network_mode             = "awsvpc"
+        requires_compatibilities = ["FARGATE"]
+        cpu                      = "256"
+        memory                   = "512"
+        execution_role_arn       = aws_iam_role.ecs_task_exec.arn
+
+        container_definitions = jsonencode([{
+          name  = "app"
+          image = "myapp:latest"
+          portMappings = [{
+            containerPort = 8080
+          }]
+          environment = [{
+            name  = "NODE_ENV"
+            value = "production"
+          }]
+        }])
+      }
+  commit_message: Update files
+fragments:
+- id: iam
+  selector:
+    path: iam.tf
+    anchor: resource "aws_iam_role" "ecs_task_exec" {
+- id: iam_1
+  selector:
+    path: iam.tf
+    anchor: AmazonECSTaskExecutionRolePolicy
+- id: service
+  selector:
+    path: service.tf
+    anchor: task_definition = aws_ecs_task_definition.app.arn
+- id: service_1
+  selector:
+    path: service.tf
+    anchor: container_name   = "app"
+- id: service_2
+  selector:
+    path: service.tf
+    anchor: container_port   = 8080
+- id: no_ecs_cron
+  selector:
+    path: ecs_cron.tf
+- id: no_ecs_worker
+  selector:
+    path: ecs_worker.tf
+- id: no_dockerfile
+  selector:
+    path: Dockerfile
+- id: no_ecr
+  selector:
+    path: ecr.tf
+- id: no_global_0
+  selector:
+    anchor: cron-task
+- id: no_global_1
+  selector:
+    anchor: cron-runner:latest
+- id: no_global_2
+  selector:
+    anchor: run_cron.py
+- id: no_global_3
+  selector:
+    anchor: /ecs/cron
+- id: no_global_4
+  selector:
+    anchor: worker-task
+- id: no_global_5
+  selector:
+    anchor: task-worker:latest
+- id: no_global_6
+  selector:
+    anchor: WORKER_CONCURRENCY
+- id: no_global_7
+  selector:
+    anchor: FROM node:18-alpine
+- id: no_global_8
+  selector:
+    anchor: npm ci --production
+- id: no_global_9
+  selector:
+    anchor: aws_ecr_repository
+- id: no_global_10
+  selector:
+    anchor: scan_on_push
+- id: no_global_11
+  selector:
+    anchor: imageCountMoreThan
+oracle:
+  required:
+  - iam
+  - iam_1
+  - service
+  - service_1
+  - service_2
+  allowed: []
+  forbidden:
+  - no_ecs_cron
+  - no_ecs_worker
+  - no_dockerfile
+  - no_ecr
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

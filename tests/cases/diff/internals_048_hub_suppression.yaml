@@ -1,0 +1,42 @@
+name: internals_048_hub_suppression
+repo:
+  initial_files:
+    hub.py: |
+      pass
+  changed_files:
+    hub.py: |
+      def hub_function():
+          pass
+
+      def caller_0():
+          hub_function()
+
+      def caller_1():
+          hub_function()
+
+      def caller_2():
+          hub_function()
+
+      def caller_3():
+          hub_function()
+
+      def caller_4():
+          hub_function()
+  commit_message: Update files
+fragments:
+- id: hub_file
+  selector:
+    path: hub.py
+- id: req_global_0
+  selector:
+    anchor: 'def hub_function():'
+- id: req_global_1
+  selector:
+    anchor: 'def caller_0():'
+oracle:
+  required:
+  - hub_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

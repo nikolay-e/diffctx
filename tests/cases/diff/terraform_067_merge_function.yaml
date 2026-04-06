@@ -1,0 +1,105 @@
+name: terraform_067_merge_function
+repo:
+  initial_files:
+    main.tf: |
+      variable "extra_tags" {
+        type    = map(string)
+        default = {}
+      }
+
+      locals {
+        base_tags = {
+          Project   = "webapp"
+          ManagedBy = "terraform"
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345678"
+        instance_type = "t3.micro"
+        tags          = merge(local.base_tags, var.extra_tags)
+      }
+    cache/instances.tf: |
+      resource "aws_instance" "cache" {
+        ami           = "ami-44556677"
+        instance_type = "r5.large"
+        tags          = merge(local.base_tags, { Role = "cache" })
+      }
+    ecr/repository.tf: |
+      resource "aws_ecr_repository" "app" {
+        name = "app-images"
+        image_scanning_configuration {
+          scan_on_push = true
+        }
+      }
+  changed_files:
+    main.tf: |
+      variable "extra_tags" {
+        type    = map(string)
+        default = {}
+      }
+
+      locals {
+        base_tags = {
+          Project     = "webapp"
+          ManagedBy   = "terraform"
+          Environment = terraform.workspace
+        }
+
+        security_tags = {
+          Compliance = "pci-dss"
+          DataClass  = "confidential"
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = "ami-12345678"
+        instance_type = "t3.micro"
+        tags          = merge(local.base_tags, local.security_tags, var.extra_tags)
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: Environment = terraform.workspace
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: security_tags = {
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: Compliance = "pci-dss"
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: merge(local.base_tags, local.security_tags, var.extra_tags)
+- id: no_instances
+  selector:
+    path: cache/instances.tf
+- id: no_repository
+  selector:
+    path: ecr/repository.tf
+- id: no_global_0
+  selector:
+    anchor: Role = "cache"
+- id: no_global_1
+  selector:
+    anchor: r5.large
+- id: no_global_2
+  selector:
+    anchor: app-images
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  allowed: []
+  forbidden:
+  - no_instances
+  - no_repository
+  - no_global_0
+  - no_global_1
+  - no_global_2

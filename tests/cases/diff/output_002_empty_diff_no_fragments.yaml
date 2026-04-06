@@ -1,0 +1,130 @@
+name: output_002_empty_diff_no_fragments
+repo:
+  initial_files:
+    test.py: |
+      x = 1
+    services/session_store.py: |
+      from datetime import datetime, timedelta
+
+      DEFAULT_TTL = timedelta(hours=24)
+
+      class SessionStore:
+          def __init__(self, ttl: timedelta = DEFAULT_TTL):
+              self.ttl = ttl
+              self._sessions: dict[str, datetime] = {}
+
+          def create(self, session_id: str) -> None:
+              self._sessions[session_id] = datetime.utcnow()
+
+          def is_valid(self, session_id: str) -> bool:
+              created = self._sessions.get(session_id)
+              if created is None:
+                  return False
+              return datetime.utcnow() - created < self.ttl
+
+          def revoke(self, session_id: str) -> bool:
+              return self._sessions.pop(session_id, None) is not None
+    services/auth_provider.py: |
+      from hashlib import sha256
+
+      AUTH_SCHEME = "Bearer"
+      TOKEN_LENGTH = 64
+
+      class AuthProvider:
+          def __init__(self, secret: str):
+              self._secret = secret
+
+          def generate_token(self, user_id: str) -> str:
+              payload = f"{user_id}:{self._secret}"
+              return sha256(payload.encode()).hexdigest()[:TOKEN_LENGTH]
+
+          def verify_token(self, user_id: str, token: str) -> bool:
+              expected = self.generate_token(user_id)
+              return token == expected
+  changed_files:
+    test.py: |
+      x = 1
+    services/session_store.py: |
+      from datetime import datetime, timedelta
+
+      DEFAULT_TTL = timedelta(hours=24)
+
+      class SessionStore:
+          def __init__(self, ttl: timedelta = DEFAULT_TTL):
+              self.ttl = ttl
+              self._sessions: dict[str, datetime] = {}
+
+          def create(self, session_id: str) -> None:
+              self._sessions[session_id] = datetime.utcnow()
+
+          def is_valid(self, session_id: str) -> bool:
+              created = self._sessions.get(session_id)
+              if created is None:
+                  return False
+              return datetime.utcnow() - created < self.ttl
+
+          def revoke(self, session_id: str) -> bool:
+              return self._sessions.pop(session_id, None) is not None
+    services/auth_provider.py: |
+      from hashlib import sha256
+
+      AUTH_SCHEME = "Bearer"
+      TOKEN_LENGTH = 64
+
+      class AuthProvider:
+          def __init__(self, secret: str):
+              self._secret = secret
+
+          def generate_token(self, user_id: str) -> str:
+              payload = f"{user_id}:{self._secret}"
+              return sha256(payload.encode()).hexdigest()[:TOKEN_LENGTH]
+
+          def verify_token(self, user_id: str, token: str) -> bool:
+              expected = self.generate_token(user_id)
+              return token == expected
+  commit_message: Update files
+fragments:
+- id: no_session_store
+  selector:
+    path: services/session_store.py
+- id: no_auth_provider
+  selector:
+    path: services/auth_provider.py
+- id: no_global_0
+  selector:
+    anchor: x = 1
+- id: no_global_1
+  selector:
+    anchor: SessionStore
+- id: no_global_2
+  selector:
+    anchor: AuthProvider
+- id: no_global_3
+  selector:
+    anchor: DEFAULT_TTL
+- id: no_global_4
+  selector:
+    anchor: AUTH_SCHEME
+- id: no_global_5
+  selector:
+    anchor: TOKEN_LENGTH
+- id: no_global_6
+  selector:
+    anchor: session_store.py
+- id: no_global_7
+  selector:
+    anchor: auth_provider.py
+oracle:
+  required: []
+  allowed: []
+  forbidden:
+  - no_session_store
+  - no_auth_provider
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

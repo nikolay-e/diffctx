@@ -1,0 +1,227 @@
+name: dart_002_part_of_directive
+repo:
+  initial_files:
+    lib/auth_library.dart: |
+      library auth_library;
+
+      part 'src/session_manager.dart';
+
+      class AuthLibrary with SessionManager {
+        final String baseUrl;
+
+        AuthLibrary({required this.baseUrl});
+
+        Future<bool> authenticate(String username, String password) async {
+          final session = await createSession(username, password);
+          return session != null;
+        }
+      }
+    lib/src/session_manager.dart: |
+      part of '../auth_library.dart';
+
+      mixin SessionManager {
+        Future<String?> createSession(String username, String password) async {
+          if (username.isNotEmpty && password.length >= 8) {
+            return 'session_${DateTime.now().millisecondsSinceEpoch}';
+          }
+          return null;
+        }
+
+        void destroySession(String sessionId) {
+          // Session cleanup logic
+        }
+      }
+    lib/src/encryption_helper.dart: |
+      class EncryptionHelper {
+        static String encrypt(String plaintext, String key) {
+          return plaintext.split('').reversed.join();
+        }
+
+        static String decrypt(String ciphertext, String key) {
+          return ciphertext.split('').reversed.join();
+        }
+
+        static String get GARBAGE_DART_002_A_ALGO => 'rot13';
+        static int get GARBAGE_DART_002_B_KEY_LEN => 256;
+      }
+    lib/http_client.dart: |
+      import 'dart:convert';
+
+      class HttpClient {
+        final String baseUrl;
+
+        HttpClient({required this.baseUrl});
+
+        Future<Map<String, dynamic>> get(String path) async {
+          return {'status': 'ok', 'path': path};
+        }
+
+        Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+          return {'status': 'created', 'data': jsonEncode(body)};
+        }
+
+        String get GARBAGE_DART_002_C_CLIENT_ID => 'http_v1';
+        int get GARBAGE_DART_002_D_TIMEOUT => 30;
+      }
+  changed_files:
+    lib/auth_library.dart: |
+      library auth_library;
+
+      part 'src/session_manager.dart';
+      part 'src/token_store.dart';
+
+      class AuthLibrary with SessionManager, TokenStore {
+        final String baseUrl;
+
+        AuthLibrary({required this.baseUrl});
+
+        Future<bool> authenticate(String username, String password) async {
+          final session = await createSession(username, password);
+          if (session != null) {
+            await saveToken(session);
+            return true;
+          }
+          return false;
+        }
+
+        Future<void> logout() async {
+          final token = await loadToken();
+          if (token != null) {
+            destroySession(token);
+            await clearToken();
+          }
+        }
+      }
+    lib/src/session_manager.dart: |
+      part of '../auth_library.dart';
+
+      mixin SessionManager {
+        Future<String?> createSession(String username, String password) async {
+          if (username.isNotEmpty && password.length >= 8) {
+            return 'session_${DateTime.now().millisecondsSinceEpoch}';
+          }
+          return null;
+        }
+
+        void destroySession(String sessionId) {
+          // Session cleanup logic
+        }
+      }
+    lib/src/token_store.dart: |
+      part of '../auth_library.dart';
+
+      mixin TokenStore {
+        String? _cachedToken;
+
+        Future<void> saveToken(String token) async {
+          _cachedToken = token;
+        }
+
+        Future<String?> loadToken() async {
+          return _cachedToken;
+        }
+
+        Future<void> clearToken() async {
+          _cachedToken = null;
+        }
+      }
+    lib/src/encryption_helper.dart: |
+      class EncryptionHelper {
+        static String encrypt(String plaintext, String key) {
+          return plaintext.split('').reversed.join();
+        }
+
+        static String decrypt(String ciphertext, String key) {
+          return ciphertext.split('').reversed.join();
+        }
+
+        static String get GARBAGE_DART_002_A_ALGO => 'rot13';
+        static int get GARBAGE_DART_002_B_KEY_LEN => 256;
+      }
+    lib/http_client.dart: |
+      import 'dart:convert';
+
+      class HttpClient {
+        final String baseUrl;
+
+        HttpClient({required this.baseUrl});
+
+        Future<Map<String, dynamic>> get(String path) async {
+          return {'status': 'ok', 'path': path};
+        }
+
+        Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+          return {'status': 'created', 'data': jsonEncode(body)};
+        }
+
+        String get GARBAGE_DART_002_C_CLIENT_ID => 'http_v1';
+        int get GARBAGE_DART_002_D_TIMEOUT => 30;
+      }
+  commit_message: Update files
+fragments:
+- id: auth_library
+  selector:
+    path: lib/auth_library.dart
+    anchor: part 'src/token_store.dart'
+- id: auth_library_1
+  selector:
+    path: lib/auth_library.dart
+    anchor: with SessionManager, TokenStore
+- id: auth_library_2
+  selector:
+    path: lib/auth_library.dart
+    anchor: await saveToken(session)
+- id: token_store
+  selector:
+    path: lib/src/token_store.dart
+    anchor: part of '../auth_library.dart'
+- id: token_store_1
+  selector:
+    path: lib/src/token_store.dart
+    anchor: mixin TokenStore
+- id: token_store_2
+  selector:
+    path: lib/src/token_store.dart
+    anchor: Future<void> saveToken(String token)
+- id: no_encryption_helper
+  selector:
+    path: lib/src/encryption_helper.dart
+- id: no_http_client
+  selector:
+    path: lib/http_client.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DART_002_A_ALGO
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DART_002_B_KEY_LEN
+- id: no_global_2
+  selector:
+    anchor: EncryptionHelper
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DART_002_C_CLIENT_ID
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DART_002_D_TIMEOUT
+- id: no_global_5
+  selector:
+    anchor: HttpClient
+oracle:
+  required:
+  - auth_library
+  - auth_library_1
+  - auth_library_2
+  - token_store
+  - token_store_1
+  - token_store_2
+  allowed: []
+  forbidden:
+  - no_encryption_helper
+  - no_http_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

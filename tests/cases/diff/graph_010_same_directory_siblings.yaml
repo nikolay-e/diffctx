@@ -1,0 +1,332 @@
+name: graph_010_same_directory_siblings
+repo:
+  initial_files:
+    utils/helper1.py: |
+      from utils.helper2 import helper2
+      from utils.helper3 import helper3
+
+      def helper1():
+          return helper2() + helper3()
+
+      def process_data(data):
+          validated = validate_data(data)
+          return transform_data(validated)
+
+      def validate_data(data):
+          return data is not None
+
+      def transform_data(data):
+          return {"transformed": data}
+    utils/helper2.py: |
+      from utils.helper3 import helper3
+
+      def helper2():
+          base = helper3()
+          return base * 2
+
+      def format_output(value):
+          return f"[{value}]"
+
+      def clean_input(text):
+          return text.strip().lower()
+    utils/helper3.py: |
+      def helper3():
+          return 10
+
+      def compute_hash(value):
+          return hash(str(value))
+
+      def generate_id():
+          import uuid
+          return str(uuid.uuid4())
+    utils/helper4.py: |
+      from utils.helper1 import helper1
+      from utils.helper2 import format_output
+
+      def helper4():
+          result = helper1()
+          return format_output(result)
+
+      def aggregate_results(*results):
+          return sum(results)
+    utils/__init__.py: |
+      from utils.helper1 import helper1, process_data
+      from utils.helper2 import helper2, format_output
+      from utils.helper3 import helper3, generate_id
+      from utils.helper4 import helper4, aggregate_results
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/string_utils_GARBAGE_GRAPH_bcd001.py: |
+      def capitalize_words_GARBAGE_GRAPH_bcd001(text):
+          return " ".join(word.capitalize() for word in text.split())
+
+      def count_words_GARBAGE_GRAPH_bcd001(text):
+          return len(text.split())
+
+      def truncate_GARBAGE_GRAPH_bcd001(text, max_len):
+          return text[:max_len] + "..." if len(text) > max_len else text
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/number_utils_GARBAGE_GRAPH_bcd001.py: |
+      def clamp_GARBAGE_GRAPH_bcd001(value, min_val, max_val):
+          return max(min_val, min(value, max_val))
+
+      def round_to_GARBAGE_GRAPH_bcd001(value, decimals):
+          return round(value, decimals)
+
+      def percentage_GARBAGE_GRAPH_bcd001(part, whole):
+          return (part / whole) * 100 if whole else 0
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/date_utils_GARBAGE_GRAPH_bcd001.py: |
+      from datetime import datetime, timedelta
+
+      def days_between_GARBAGE_GRAPH_bcd001(date1, date2):
+          return abs((date2 - date1).days)
+
+      def add_days_GARBAGE_GRAPH_bcd001(date, days):
+          return date + timedelta(days=days)
+
+      def format_date_GARBAGE_GRAPH_bcd001(date, fmt="%Y-%m-%d"):
+          return date.strftime(fmt)
+    garbage/data_enricher.py: |
+      GARBAGE_GRAPH_010_ENRICHER_MAIN_A = "data_enricher_module"
+      GARBAGE_GRAPH_010_ENRICHER_FLAG_B = False
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+
+      def process_data(data):
+          validated = validate_data(data)
+          return enrich_data(validated)
+
+      def validate_data(data):
+          return data is not None
+    garbage/helper_consumer.py: |
+      from utils.helper2 import helper2
+      from utils.helper3 import helper3
+      GARBAGE_GRAPH_010_CONSUMER_IMPORT_C = "consumer_import"
+      GARBAGE_GRAPH_010_CONSUMER_CALL_D = 99
+
+      def consume_helpers():
+          return helper2() + helper3()
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+    garbage/transform_pipeline.py: |
+      GARBAGE_GRAPH_010_PIPELINE_MAIN_E = "transform_pipeline"
+      GARBAGE_GRAPH_010_PIPELINE_VER_F = 2
+
+      def transform_data(data):
+          return {"transformed": data}
+
+      def validate_data(data):
+          return data is not None
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+  changed_files:
+    utils/helper1.py: |
+      from utils.helper2 import helper2
+      from utils.helper3 import helper3
+
+      def helper1():
+          return helper2() + helper3()
+
+      def process_data(data):
+          validated = validate_data(data)
+          transformed = transform_data(validated)
+          return enrich_data(transformed)
+
+      def validate_data(data):
+          return data is not None
+
+      def transform_data(data):
+          return {"transformed": data}
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+    utils/helper2.py: |
+      from utils.helper3 import helper3
+
+      def helper2():
+          base = helper3()
+          return base * 2
+
+      def format_output(value):
+          return f"[{value}]"
+
+      def clean_input(text):
+          return text.strip().lower()
+    utils/helper3.py: |
+      def helper3():
+          return 10
+
+      def compute_hash(value):
+          return hash(str(value))
+
+      def generate_id():
+          import uuid
+          return str(uuid.uuid4())
+    utils/helper4.py: |
+      from utils.helper1 import helper1
+      from utils.helper2 import format_output
+
+      def helper4():
+          result = helper1()
+          return format_output(result)
+
+      def aggregate_results(*results):
+          return sum(results)
+    utils/__init__.py: |
+      from utils.helper1 import helper1, process_data
+      from utils.helper2 import helper2, format_output
+      from utils.helper3 import helper3, generate_id
+      from utils.helper4 import helper4, aggregate_results
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/string_utils_GARBAGE_GRAPH_bcd001.py: |
+      def capitalize_words_GARBAGE_GRAPH_bcd001(text):
+          return " ".join(word.capitalize() for word in text.split())
+
+      def count_words_GARBAGE_GRAPH_bcd001(text):
+          return len(text.split())
+
+      def truncate_GARBAGE_GRAPH_bcd001(text, max_len):
+          return text[:max_len] + "..." if len(text) > max_len else text
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/number_utils_GARBAGE_GRAPH_bcd001.py: |
+      def clamp_GARBAGE_GRAPH_bcd001(value, min_val, max_val):
+          return max(min_val, min(value, max_val))
+
+      def round_to_GARBAGE_GRAPH_bcd001(value, decimals):
+          return round(value, decimals)
+
+      def percentage_GARBAGE_GRAPH_bcd001(part, whole):
+          return (part / whole) * 100 if whole else 0
+    garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/date_utils_GARBAGE_GRAPH_bcd001.py: |
+      from datetime import datetime, timedelta
+
+      def days_between_GARBAGE_GRAPH_bcd001(date1, date2):
+          return abs((date2 - date1).days)
+
+      def add_days_GARBAGE_GRAPH_bcd001(date, days):
+          return date + timedelta(days=days)
+
+      def format_date_GARBAGE_GRAPH_bcd001(date, fmt="%Y-%m-%d"):
+          return date.strftime(fmt)
+    garbage/data_enricher.py: |
+      GARBAGE_GRAPH_010_ENRICHER_MAIN_A = "data_enricher_module"
+      GARBAGE_GRAPH_010_ENRICHER_FLAG_B = False
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+
+      def process_data(data):
+          validated = validate_data(data)
+          return enrich_data(validated)
+
+      def validate_data(data):
+          return data is not None
+    garbage/helper_consumer.py: |
+      from utils.helper2 import helper2
+      from utils.helper3 import helper3
+      GARBAGE_GRAPH_010_CONSUMER_IMPORT_C = "consumer_import"
+      GARBAGE_GRAPH_010_CONSUMER_CALL_D = 99
+
+      def consume_helpers():
+          return helper2() + helper3()
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+    garbage/transform_pipeline.py: |
+      GARBAGE_GRAPH_010_PIPELINE_MAIN_E = "transform_pipeline"
+      GARBAGE_GRAPH_010_PIPELINE_VER_F = 2
+
+      def transform_data(data):
+          return {"transformed": data}
+
+      def validate_data(data):
+          return data is not None
+
+      def enrich_data(data):
+          data["enriched"] = True
+          return data
+  commit_message: Update files
+fragments:
+- id: helper1
+  selector:
+    path: utils/helper1.py
+    anchor: transformed = transform_data(validated)
+- id: helper1_1
+  selector:
+    path: utils/helper1.py
+    anchor: 'def enrich_data(data):'
+- id: helper1_2
+  selector:
+    path: utils/helper1.py
+    anchor: return enrich_data(transformed)
+- id: no_string_utils_garbage_graph_bcd001
+  selector:
+    path: garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/string_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_number_utils_garbage_graph_bcd001
+  selector:
+    path: garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/number_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_date_utils_garbage_graph_bcd001
+  selector:
+    path: garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/date_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_data_enricher
+  selector:
+    path: garbage/data_enricher.py
+- id: no_helper_consumer
+  selector:
+    path: garbage/helper_consumer.py
+- id: no_transform_pipeline
+  selector:
+    path: garbage/transform_pipeline.py
+- id: no_global_0
+  selector:
+    anchor: date_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_global_1
+  selector:
+    anchor: number_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_global_2
+  selector:
+    anchor: string_utils_GARBAGE_GRAPH_bcd001.py
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GRAPH_010_ENRICHER_MAIN_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GRAPH_010_ENRICHER_FLAG_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GRAPH_010_CONSUMER_IMPORT_C
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_GRAPH_010_CONSUMER_CALL_D
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_GRAPH_010_PIPELINE_MAIN_E
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_GRAPH_010_PIPELINE_VER_F
+oracle:
+  required:
+  - helper1
+  - helper1_1
+  - helper1_2
+  allowed: []
+  forbidden:
+  - no_string_utils_garbage_graph_bcd001
+  - no_number_utils_garbage_graph_bcd001
+  - no_date_utils_garbage_graph_bcd001
+  - no_data_enricher
+  - no_helper_consumer
+  - no_transform_pipeline
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

@@ -1,0 +1,146 @@
+name: cicd_and_docs_016_gha_composite_action
+repo:
+  initial_files:
+    .github/actions/setup/action.yml: |
+      name: Setup
+      description: Setup environment
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 18
+            - run: npm ci
+            - run: npm run build
+    package.json: |
+      {
+        "name": "composite-action-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "test": "jest"
+        }
+      }
+    garbage_action.ts: |
+      const GARBAGE_CICD_DOCS_016_ACTION_MARKER_A = "javascript";
+      const GARBAGE_CICD_DOCS_016_RUNTIME_MARKER_B = "node20";
+
+      class GarbageActionRunner {
+        static GARBAGE_CICD_DOCS_016_TIMEOUT_MARKER_C = 60000;
+        run(): void {}
+      }
+    garbage_input.ts: |
+      const GARBAGE_CICD_DOCS_016_INPUT_MARKER_D = "required";
+      const GARBAGE_CICD_DOCS_016_DEFAULT_MARKER_E = "latest";
+
+      class GarbageInputParser {
+        static GARBAGE_CICD_DOCS_016_VALIDATE_MARKER_F = true;
+        parse(): Record<string, string> { return {}; }
+      }
+  changed_files:
+    .github/actions/setup/action.yml: |
+      name: Setup
+      description: Setup environment
+      runs:
+        using: composite
+        steps:
+          - uses: actions/setup-node@v4
+            with:
+              node-version: 18
+          - run: npm ci
+            shell: bash
+          - run: npm run build
+            shell: bash
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/setup
+    package.json: |
+      {
+        "name": "composite-action-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "test": "jest"
+        }
+      }
+    garbage_action.ts: |
+      const GARBAGE_CICD_DOCS_016_ACTION_MARKER_A = "javascript";
+      const GARBAGE_CICD_DOCS_016_RUNTIME_MARKER_B = "node20";
+
+      class GarbageActionRunner {
+        static GARBAGE_CICD_DOCS_016_TIMEOUT_MARKER_C = 60000;
+        run(): void {}
+      }
+    garbage_input.ts: |
+      const GARBAGE_CICD_DOCS_016_INPUT_MARKER_D = "required";
+      const GARBAGE_CICD_DOCS_016_DEFAULT_MARKER_E = "latest";
+
+      class GarbageInputParser {
+        static GARBAGE_CICD_DOCS_016_VALIDATE_MARKER_F = true;
+        parse(): Record<string, string> { return {}; }
+      }
+  commit_message: Update files
+fragments:
+- id: action_file
+  selector:
+    path: .github/actions/setup/action.yml
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'using: composite'
+- id: req_global_1
+  selector:
+    anchor: '- uses: ./.github/actions/setup'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_ACTION_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_DEFAULT_MARKER_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_INPUT_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_RUNTIME_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_TIMEOUT_MARKER_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_016_VALIDATE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: garbage_action.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_input.ts
+oracle:
+  required:
+  - action_file
+  - ci_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

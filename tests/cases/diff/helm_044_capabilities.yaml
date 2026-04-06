@@ -1,0 +1,242 @@
+name: helm_044_capabilities
+repo:
+  initial_files:
+    templates/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        rules:
+          {{- range .Values.ingress.hosts }}
+          - host: {{ .host }}
+            http:
+              paths:
+                {{- range .paths }}
+                - path: {{ .path }}
+                  pathType: {{ .pathType }}
+                  backend:
+                    service:
+                      name: {{ include "myapp.fullname" $ }}
+                      port:
+                        number: {{ $.Values.service.port }}
+                {{- end }}
+          {{- end }}
+    values.yaml: |
+      ingress:
+        enabled: true
+        hosts:
+          - host: myapp.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+        tls: []
+      service:
+        type: ClusterIP
+        port: 80
+    values-staging.yaml: |
+      ingress:
+        enabled: true
+        hosts:
+          - host: staging.myapp.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+      service:
+        port: 8080
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        type: {{ .Values.service.type }}
+        ports:
+          - port: {{ .Values.service.port }}
+            targetPort: http
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+  changed_files:
+    templates/ingress.yaml: |
+      {{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}
+      apiVersion: networking.k8s.io/v1
+      {{- else }}
+      apiVersion: extensions/v1beta1
+      {{- end }}
+      kind: Ingress
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        rules:
+          {{- range .Values.ingress.hosts }}
+          - host: {{ .host }}
+            http:
+              paths:
+                {{- range .paths }}
+                - path: {{ .path }}
+                  pathType: {{ .pathType }}
+                  backend:
+                    service:
+                      name: {{ include "myapp.fullname" $ }}
+                      port:
+                        number: {{ $.Values.service.port }}
+                {{- end }}
+          {{- end }}
+    values.yaml: |
+      ingress:
+        enabled: true
+        hosts:
+          - host: myapp.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+        tls: []
+      service:
+        type: ClusterIP
+        port: 80
+    values-staging.yaml: |
+      ingress:
+        enabled: true
+        hosts:
+          - host: staging.myapp.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+      service:
+        port: 8080
+    templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "myapp.fullname" . }}
+      spec:
+        type: {{ .Values.service.type }}
+        ports:
+          - port: {{ .Values.service.port }}
+            targetPort: http
+    templates/_helpers.tpl: |
+      {{- define "myapp.fullname" -}}
+      {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+      {{- end -}}
+    Chart.yaml: |
+      apiVersion: v2
+      name: myapp
+      version: 1.0.0
+  commit_message: Update files
+fragments:
+- id: ingress
+  selector:
+    path: templates/ingress.yaml
+    anchor: '{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}'
+- id: ingress_1
+  selector:
+    path: templates/ingress.yaml
+    anchor: extensions/v1beta1
+- id: ingress_2
+  selector:
+    path: templates/ingress.yaml
+    anchor: .Values.ingress.hosts
+- id: values
+  selector:
+    path: values.yaml
+    anchor: 'host: myapp.example.com'
+- id: values_1
+  selector:
+    path: values.yaml
+    anchor: 'pathType: Prefix'
+- id: values_2
+  selector:
+    path: values.yaml
+    anchor: 'port: 80'
+- id: no_values_staging
+  selector:
+    path: values-staging.yaml
+- id: no_deployment
+  selector:
+    path: templates/deployment.yaml
+- id: no_service
+  selector:
+    path: templates/service.yaml
+- id: no_helpers
+  selector:
+    path: templates/_helpers.tpl
+- id: no_chart
+  selector:
+    path: Chart.yaml
+- id: no_global_0
+  selector:
+    anchor: staging.myapp.example.com
+- id: no_global_1
+  selector:
+    anchor: 'port: 8080'
+- id: no_global_2
+  selector:
+    anchor: .Values.replicaCount
+- id: no_global_3
+  selector:
+    anchor: .Values.image.repository
+- id: no_global_4
+  selector:
+    anchor: 'targetPort: http'
+- id: no_global_5
+  selector:
+    anchor: .Values.service.type
+- id: no_global_6
+  selector:
+    anchor: myapp.fullname
+- id: no_global_7
+  selector:
+    anchor: 'version: 1.0.0'
+oracle:
+  required:
+  - ingress
+  - ingress_1
+  - ingress_2
+  - values
+  - values_1
+  - values_2
+  allowed: []
+  forbidden:
+  - no_values_staging
+  - no_deployment
+  - no_service
+  - no_helpers
+  - no_chart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

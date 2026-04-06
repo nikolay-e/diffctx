@@ -1,0 +1,238 @@
+name: shell_017_exit_codes
+repo:
+  initial_files:
+    validate.sh: |
+      #!/bin/bash
+      source ./error_handler.sh
+
+      if [[ -z "$1" ]]; then
+          echo "Error: No input provided"
+          exit 2
+      fi
+    error_handler.sh: |
+      #!/bin/bash
+
+      handle_error() {
+          local code=$1
+          case $code in
+              0) echo "Success" ;;
+              1) echo "General error" ;;
+              2) echo "Invalid argument" ;;
+              *) echo "Unknown error: $code" ;;
+          esac
+      }
+
+      log_error() {
+          local msg=$1
+          echo "[ERROR] $(date +%T) $msg" >> /var/log/app/errors.log
+      }
+    scripts/lint.sh: |
+      #!/bin/bash
+      shellcheck validate.sh error_handler.sh
+      echo "Lint: $?"
+    scripts/test_validate.sh: |
+      #!/bin/bash
+      echo "Test 1: missing arg"
+      ./validate.sh
+      echo "Exit: $?"
+      echo "Test 2: valid file"
+      ./validate.sh /etc/hosts
+      echo "Exit: $?"
+    scripts/retry.sh: |
+      #!/bin/bash
+      source ./error_handler.sh
+      MAX_ATTEMPTS=3
+      attempt=0
+      while [[ $attempt -lt $MAX_ATTEMPTS ]]; do
+          ./validate.sh "$1"
+          exit_code=$?
+          handle_error $exit_code
+          if [[ $exit_code -eq 0 ]]; then
+              break
+          fi
+          log_error "Attempt $attempt failed with code $exit_code"
+          ((attempt++))
+          sleep 2
+      done
+    scripts/notify_error.sh: |
+      #!/bin/bash
+      ./validate.sh "$1"
+      code=$?
+      if [[ $code -ne 0 ]]; then
+          echo "ALERT: validate.sh exited with code $code" | mail -s "Validation Failed" admin@example.com
+      fi
+    lib/exit_codes.sh: |
+      #!/bin/bash
+      readonly EXIT_SUCCESS=0
+      readonly EXIT_GENERAL=1
+      readonly EXIT_INVALID_ARG=2
+      readonly EXIT_NOT_FOUND=127
+  changed_files:
+    validate.sh: |
+      #!/bin/bash
+      source ./error_handler.sh
+
+      if [[ -z "$1" ]]; then
+          log_error "No input provided"
+          echo "Error: No input provided"
+          exit 2
+      fi
+
+      if [[ ! -f "$1" ]]; then
+          log_error "File not found: $1"
+          echo "Error: File not found"
+          exit 1
+      fi
+
+      echo "Validation passed for: $1"
+      handle_error $?
+      exit 0
+    error_handler.sh: |
+      #!/bin/bash
+
+      handle_error() {
+          local code=$1
+          case $code in
+              0) echo "Success" ;;
+              1) echo "General error" ;;
+              2) echo "Invalid argument" ;;
+              *) echo "Unknown error: $code" ;;
+          esac
+      }
+
+      log_error() {
+          local msg=$1
+          echo "[ERROR] $(date +%T) $msg" >> /var/log/app/errors.log
+      }
+    scripts/lint.sh: |
+      #!/bin/bash
+      shellcheck validate.sh error_handler.sh
+      echo "Lint: $?"
+    scripts/test_validate.sh: |
+      #!/bin/bash
+      echo "Test 1: missing arg"
+      ./validate.sh
+      echo "Exit: $?"
+      echo "Test 2: valid file"
+      ./validate.sh /etc/hosts
+      echo "Exit: $?"
+    scripts/retry.sh: |
+      #!/bin/bash
+      source ./error_handler.sh
+      MAX_ATTEMPTS=3
+      attempt=0
+      while [[ $attempt -lt $MAX_ATTEMPTS ]]; do
+          ./validate.sh "$1"
+          exit_code=$?
+          handle_error $exit_code
+          if [[ $exit_code -eq 0 ]]; then
+              break
+          fi
+          log_error "Attempt $attempt failed with code $exit_code"
+          ((attempt++))
+          sleep 2
+      done
+    scripts/notify_error.sh: |
+      #!/bin/bash
+      ./validate.sh "$1"
+      code=$?
+      if [[ $code -ne 0 ]]; then
+          echo "ALERT: validate.sh exited with code $code" | mail -s "Validation Failed" admin@example.com
+      fi
+    lib/exit_codes.sh: |
+      #!/bin/bash
+      readonly EXIT_SUCCESS=0
+      readonly EXIT_GENERAL=1
+      readonly EXIT_INVALID_ARG=2
+      readonly EXIT_NOT_FOUND=127
+  commit_message: Update files
+fragments:
+- id: error_handler
+  selector:
+    path: error_handler.sh
+    anchor: handle_error()
+- id: error_handler_1
+  selector:
+    path: error_handler.sh
+    anchor: log_error()
+- id: error_handler_2
+  selector:
+    path: error_handler.sh
+    anchor: 2) echo
+- id: validate
+  selector:
+    path: validate.sh
+    anchor: handle_error $?
+- id: validate_1
+  selector:
+    path: validate.sh
+    anchor: log_error
+- id: no_lint
+  selector:
+    path: scripts/lint.sh
+- id: no_test_validate
+  selector:
+    path: scripts/test_validate.sh
+- id: no_retry
+  selector:
+    path: scripts/retry.sh
+- id: no_notify_error
+  selector:
+    path: scripts/notify_error.sh
+- id: no_exit_codes
+  selector:
+    path: lib/exit_codes.sh
+- id: no_global_0
+  selector:
+    anchor: shellcheck
+- id: no_global_1
+  selector:
+    anchor: 'Lint:'
+- id: no_global_2
+  selector:
+    anchor: 'Test 1: missing arg'
+- id: no_global_3
+  selector:
+    anchor: 'Test 2: valid file'
+- id: no_global_4
+  selector:
+    anchor: MAX_ATTEMPTS
+- id: no_global_5
+  selector:
+    anchor: Attempt $attempt failed
+- id: no_global_6
+  selector:
+    anchor: 'ALERT:'
+- id: no_global_7
+  selector:
+    anchor: Validation Failed
+- id: no_global_8
+  selector:
+    anchor: EXIT_SUCCESS
+- id: no_global_9
+  selector:
+    anchor: EXIT_NOT_FOUND
+oracle:
+  required:
+  - error_handler
+  - error_handler_1
+  - error_handler_2
+  - validate
+  - validate_1
+  allowed: []
+  forbidden:
+  - no_lint
+  - no_test_validate
+  - no_retry
+  - no_notify_error
+  - no_exit_codes
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

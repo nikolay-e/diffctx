@@ -1,0 +1,171 @@
+name: yaml_019_validation_rules
+repo:
+  initial_files:
+    config/validation.yaml: |
+      validation:
+        username:
+          min_length: 3
+          max_length: 20
+        password:
+          min_length: 8
+    src/validators.py: |
+      import re
+
+      def validate_username(username: str, min_len: int = 3, max_len: int = 20) -> bool:
+          return min_len <= len(username) <= max_len
+
+      def validate_password(password: str, min_len: int = 8) -> bool:
+          return len(password) >= min_len
+
+      def validate_email(email: str) -> bool:
+          pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+          return bool(re.match(pattern, email))
+    config/permissions.yaml: |
+      permissions:
+        roles:
+          admin:
+            - read
+            - write
+            - delete
+            - manage_users
+          editor:
+            - read
+            - write
+          viewer:
+            - read
+        default_role: viewer
+        super_admin: root
+    src/sanitizer.py: |
+      import html
+      import re
+
+      class InputSanitizer:
+          DANGEROUS_PATTERNS = [
+              r"<script.*?>.*?</script>",
+              r"javascript:",
+              r"on\w+\s*=",
+          ]
+
+          def sanitize_html(self, text: str) -> str:
+              return html.escape(text)
+
+          def strip_tags(self, text: str) -> str:
+              return re.sub(r"<[^>]+>", "", text)
+
+          def is_safe(self, text: str) -> bool:
+              for pattern in self.DANGEROUS_PATTERNS:
+                  if re.search(pattern, text, re.IGNORECASE):
+                      return False
+              return True
+  changed_files:
+    config/validation.yaml: |
+      validation:
+        username:
+          min_length: 4
+          max_length: 30
+          pattern: "^[a-zA-Z0-9_]+$"
+        password:
+          min_length: 12
+          require_special: true
+    src/validators.py: |
+      import re
+
+      def validate_username(username: str, min_len: int = 3, max_len: int = 20) -> bool:
+          return min_len <= len(username) <= max_len
+
+      def validate_password(password: str, min_len: int = 8) -> bool:
+          return len(password) >= min_len
+
+      def validate_email(email: str) -> bool:
+          pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+          return bool(re.match(pattern, email))
+    config/permissions.yaml: |
+      permissions:
+        roles:
+          admin:
+            - read
+            - write
+            - delete
+            - manage_users
+          editor:
+            - read
+            - write
+          viewer:
+            - read
+        default_role: viewer
+        super_admin: root
+    src/sanitizer.py: |
+      import html
+      import re
+
+      class InputSanitizer:
+          DANGEROUS_PATTERNS = [
+              r"<script.*?>.*?</script>",
+              r"javascript:",
+              r"on\w+\s*=",
+          ]
+
+          def sanitize_html(self, text: str) -> str:
+              return html.escape(text)
+
+          def strip_tags(self, text: str) -> str:
+              return re.sub(r"<[^>]+>", "", text)
+
+          def is_safe(self, text: str) -> bool:
+              for pattern in self.DANGEROUS_PATTERNS:
+                  if re.search(pattern, text, re.IGNORECASE):
+                      return False
+              return True
+  commit_message: Update files
+fragments:
+- id: validators
+  selector:
+    path: src/validators.py
+    anchor: min_len <= len(username) <= max_len
+- id: validators_1
+  selector:
+    path: src/validators.py
+    anchor: len(password) >= min_len
+- id: validators_2
+  selector:
+    path: src/validators.py
+    anchor: 'min_len: int = 3, max_len: int = 20'
+- id: no_permissions
+  selector:
+    path: config/permissions.yaml
+- id: no_sanitizer
+  selector:
+    path: src/sanitizer.py
+- id: no_global_0
+  selector:
+    anchor: manage_users
+- id: no_global_1
+  selector:
+    anchor: default_role
+- id: no_global_2
+  selector:
+    anchor: super_admin
+- id: no_global_3
+  selector:
+    anchor: InputSanitizer
+- id: no_global_4
+  selector:
+    anchor: DANGEROUS_PATTERNS
+- id: no_global_5
+  selector:
+    anchor: strip_tags
+oracle:
+  required:
+  - validators
+  - validators_1
+  - validators_2
+  allowed: []
+  forbidden:
+  - no_permissions
+  - no_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

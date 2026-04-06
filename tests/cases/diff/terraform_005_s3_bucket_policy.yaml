@@ -1,0 +1,310 @@
+name: terraform_005_s3_bucket_policy
+repo:
+  initial_files:
+    infrastructure/variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+
+      variable "logging_bucket_id" {
+        type    = string
+        default = null
+      }
+
+      variable "domain_name" {
+        type    = string
+        default = "example.com"
+      }
+
+      variable "region" {
+        type    = string
+        default = "us-east-1"
+      }
+    infrastructure/locals.tf: |
+      locals {
+        common_tags = {
+          Environment = var.environment
+          ManagedBy   = "terraform"
+          Project     = "myapp"
+        }
+
+        bucket_prefix = "myapp-${var.environment}"
+      }
+    infrastructure/static_site.tf: |
+      resource "aws_s3_bucket" "static_site" {
+        bucket = "${local.bucket_prefix}-static"
+        tags   = local.common_tags
+      }
+
+      resource "aws_s3_bucket_cors_configuration" "static_site" {
+        bucket = aws_s3_bucket.static_site.id
+
+        cors_rule {
+          allowed_headers = ["*"]
+          allowed_methods = ["GET"]
+          allowed_origins = ["https://${var.domain_name}"]
+          max_age_seconds = 3600
+        }
+      }
+    networking/main.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+
+        tags = {
+          Name        = "main-vpc"
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_subnet_cidrs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = var.public_subnet_cidrs[count.index]
+        availability_zone = var.availability_zones[count.index]
+
+        tags = {
+          Name = "public-${count.index}"
+        }
+      }
+
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+      }
+    networking/variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "public_subnet_cidrs" {
+        type    = list(string)
+        default = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+
+      variable "availability_zones" {
+        type    = list(string)
+        default = ["us-east-1a", "us-east-1b"]
+      }
+
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+  changed_files:
+    infrastructure/variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+
+      variable "logging_bucket_id" {
+        type    = string
+        default = null
+      }
+
+      variable "domain_name" {
+        type    = string
+        default = "example.com"
+      }
+
+      variable "region" {
+        type    = string
+        default = "us-east-1"
+      }
+    infrastructure/locals.tf: |
+      locals {
+        common_tags = {
+          Environment = var.environment
+          ManagedBy   = "terraform"
+          Project     = "myapp"
+        }
+
+        bucket_prefix = "myapp-${var.environment}"
+      }
+    infrastructure/static_site.tf: |
+      resource "aws_s3_bucket" "static_site" {
+        bucket = "${local.bucket_prefix}-static"
+        tags   = local.common_tags
+      }
+
+      resource "aws_s3_bucket_policy" "static_site" {
+        bucket = aws_s3_bucket.static_site.id
+        policy = data.aws_iam_policy_document.static_site_combined.json
+      }
+
+      resource "aws_s3_bucket_cors_configuration" "static_site" {
+        bucket = aws_s3_bucket.static_site.id
+
+        cors_rule {
+          allowed_headers = ["*"]
+          allowed_methods = ["GET", "HEAD"]
+          allowed_origins = [
+            "https://${var.domain_name}",
+            "https://app.${var.domain_name}"
+          ]
+          expose_headers  = ["ETag", "Content-Length"]
+          max_age_seconds = 86400
+        }
+      }
+
+      resource "aws_s3_bucket_logging" "static_site" {
+        count         = var.logging_bucket_id != null ? 1 : 0
+        bucket        = aws_s3_bucket.static_site.id
+        target_bucket = var.logging_bucket_id
+        target_prefix = "static-site-access/"
+      }
+
+      data "aws_iam_policy_document" "static_site_combined" {
+        source_policy_documents = [
+          data.aws_iam_policy_document.cloudfront_access.json,
+          data.aws_iam_policy_document.ssl_only.json
+        ]
+      }
+
+      data "aws_iam_policy_document" "cloudfront_access" {
+        statement {
+          sid       = "AllowCloudFrontAccess"
+          effect    = "Allow"
+          actions   = ["s3:GetObject"]
+          resources = ["${aws_s3_bucket.static_site.arn}/*"]
+
+          principals {
+            type        = "Service"
+            identifiers = ["cloudfront.amazonaws.com"]
+          }
+        }
+      }
+
+      data "aws_iam_policy_document" "ssl_only" {
+        statement {
+          sid       = "DenyNonSSL"
+          effect    = "Deny"
+          actions   = ["s3:*"]
+          resources = [
+            aws_s3_bucket.static_site.arn,
+            "${aws_s3_bucket.static_site.arn}/*"
+          ]
+
+          principals {
+            type        = "*"
+            identifiers = ["*"]
+          }
+
+          condition {
+            test     = "Bool"
+            variable = "aws:SecureTransport"
+            values   = ["false"]
+          }
+        }
+      }
+    networking/main.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block           = var.vpc_cidr
+        enable_dns_support   = true
+        enable_dns_hostnames = true
+
+        tags = {
+          Name        = "main-vpc"
+          Environment = var.environment
+        }
+      }
+
+      resource "aws_subnet" "public" {
+        count             = length(var.public_subnet_cidrs)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = var.public_subnet_cidrs[count.index]
+        availability_zone = var.availability_zones[count.index]
+
+        tags = {
+          Name = "public-${count.index}"
+        }
+      }
+
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+      }
+    networking/variables.tf: |
+      variable "vpc_cidr" {
+        type    = string
+        default = "10.0.0.0/16"
+      }
+
+      variable "public_subnet_cidrs" {
+        type    = list(string)
+        default = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+
+      variable "availability_zones" {
+        type    = list(string)
+        default = ["us-east-1a", "us-east-1b"]
+      }
+
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+  commit_message: Update files
+fragments:
+- id: variables
+  selector:
+    path: infrastructure/variables.tf
+    anchor: variable "logging_bucket_id"
+- id: variables_1
+  selector:
+    path: infrastructure/variables.tf
+    anchor: variable "domain_name"
+- id: locals
+  selector:
+    path: infrastructure/locals.tf
+    anchor: common_tags
+- id: locals_1
+  selector:
+    path: infrastructure/locals.tf
+    anchor: bucket_prefix
+- id: static_site_file
+  selector:
+    path: infrastructure/static_site.tf
+- id: no_main
+  selector:
+    path: networking/main.tf
+- id: no_variables
+  selector:
+    path: networking/variables.tf
+- id: no_global_0
+  selector:
+    anchor: aws_vpc
+- id: no_global_1
+  selector:
+    anchor: aws_subnet
+- id: no_global_2
+  selector:
+    anchor: aws_internet_gateway
+- id: no_global_3
+  selector:
+    anchor: vpc_cidr
+- id: no_global_4
+  selector:
+    anchor: public_subnet_cidrs
+- id: no_global_5
+  selector:
+    anchor: availability_zones
+oracle:
+  required:
+  - variables
+  - variables_1
+  - locals
+  - locals_1
+  - static_site_file
+  allowed: []
+  forbidden:
+  - no_main
+  - no_variables
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

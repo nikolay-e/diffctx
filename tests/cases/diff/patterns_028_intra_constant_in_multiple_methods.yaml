@@ -1,0 +1,173 @@
+name: patterns_028_intra_constant_in_multiple_methods
+repo:
+  initial_files:
+    limits.py: |
+      class RateLimiter:
+          MAX_REQUESTS = 100
+          TIME_WINDOW = 60
+
+          def __init__(self):
+              self.requests = []
+
+          def can_proceed(self):
+              self._cleanup_old()
+              return len(self.requests) < self.MAX_REQUESTS
+
+          def record_request(self):
+              if len(self.requests) >= self.MAX_REQUESTS:
+                  raise Exception("Rate limit exceeded")
+              self.requests.append(time.time())
+
+          def get_remaining(self):
+              self._cleanup_old()
+              return self.MAX_REQUESTS - len(self.requests)
+
+          def _cleanup_old(self):
+              cutoff = time.time() - self.TIME_WINDOW
+              self.requests = [r for r in self.requests if r > cutoff]
+    throttle.py: |
+      class Throttle:
+          MAX_REQUESTS = 50
+          WINDOW_SECONDS = 30
+
+          def __init__(self):
+              self.timestamps = []
+
+          def allow(self):
+              self._prune()
+              if len(self.timestamps) >= self.MAX_REQUESTS:
+                  return False
+              self.timestamps.append(time.time())
+              return True
+
+          def _prune(self):
+              cutoff = time.time() - self.WINDOW_SECONDS
+              self.timestamps = [t for t in self.timestamps if t > cutoff]
+    quota.py: |
+      class ResourceQuota:
+          MAX_ITEMS = 1000
+          MAX_STORAGE_MB = 500
+
+          def __init__(self):
+              self.items_used = 0
+              self.storage_used = 0
+
+          def can_allocate(self, items=0, storage_mb=0):
+              return (self.items_used + items <= self.MAX_ITEMS and
+                      self.storage_used + storage_mb <= self.MAX_STORAGE_MB)
+
+          def allocate(self, items=0, storage_mb=0):
+              self.items_used += items
+              self.storage_used += storage_mb
+  changed_files:
+    limits.py: |
+      class RateLimiter:
+          MAX_REQUESTS = 200
+          TIME_WINDOW = 60
+
+          def __init__(self):
+              self.requests = []
+
+          def can_proceed(self):
+              self._cleanup_old()
+              return len(self.requests) < self.MAX_REQUESTS
+
+          def record_request(self):
+              if len(self.requests) >= self.MAX_REQUESTS:
+                  raise Exception("Rate limit exceeded")
+              self.requests.append(time.time())
+
+          def get_remaining(self):
+              self._cleanup_old()
+              return self.MAX_REQUESTS - len(self.requests)
+
+          def _cleanup_old(self):
+              cutoff = time.time() - self.TIME_WINDOW
+              self.requests = [r for r in self.requests if r > cutoff]
+    throttle.py: |
+      class Throttle:
+          MAX_REQUESTS = 50
+          WINDOW_SECONDS = 30
+
+          def __init__(self):
+              self.timestamps = []
+
+          def allow(self):
+              self._prune()
+              if len(self.timestamps) >= self.MAX_REQUESTS:
+                  return False
+              self.timestamps.append(time.time())
+              return True
+
+          def _prune(self):
+              cutoff = time.time() - self.WINDOW_SECONDS
+              self.timestamps = [t for t in self.timestamps if t > cutoff]
+    quota.py: |
+      class ResourceQuota:
+          MAX_ITEMS = 1000
+          MAX_STORAGE_MB = 500
+
+          def __init__(self):
+              self.items_used = 0
+              self.storage_used = 0
+
+          def can_allocate(self, items=0, storage_mb=0):
+              return (self.items_used + items <= self.MAX_ITEMS and
+                      self.storage_used + storage_mb <= self.MAX_STORAGE_MB)
+
+          def allocate(self, items=0, storage_mb=0):
+              self.items_used += items
+              self.storage_used += storage_mb
+  commit_message: Update files
+fragments:
+- id: limits
+  selector:
+    path: limits.py
+    anchor: MAX_REQUESTS = 200
+- id: limits_1
+  selector:
+    path: limits.py
+    anchor: len(self.requests) < self.MAX_REQUESTS
+- id: limits_2
+  selector:
+    path: limits.py
+    anchor: len(self.requests) >= self.MAX_REQUESTS
+- id: no_throttle
+  selector:
+    path: throttle.py
+- id: no_quota
+  selector:
+    path: quota.py
+- id: no_global_0
+  selector:
+    anchor: class Throttle
+- id: no_global_1
+  selector:
+    anchor: WINDOW_SECONDS
+- id: no_global_2
+  selector:
+    anchor: _prune
+- id: no_global_3
+  selector:
+    anchor: class ResourceQuota
+- id: no_global_4
+  selector:
+    anchor: MAX_ITEMS
+- id: no_global_5
+  selector:
+    anchor: MAX_STORAGE_MB
+oracle:
+  required:
+  - limits
+  - limits_1
+  - limits_2
+  allowed: []
+  forbidden:
+  - no_throttle
+  - no_quota
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

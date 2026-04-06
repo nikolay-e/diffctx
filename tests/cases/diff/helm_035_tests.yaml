@@ -1,0 +1,39 @@
+name: helm_035_tests
+repo:
+  initial_files:
+    templates/tests/test-connection.yaml: |
+      # Test placeholder
+    junk.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  changed_files:
+    templates/tests/test-connection.yaml: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: {{ .Release.Name }}-test
+        annotations:
+          "helm.sh/hook": test
+      spec:
+        containers:
+        - name: test
+          image: busybox
+          command: ['wget', '-qO-', 'http://{{ .Release.Name }}:80']
+        restartPolicy: Never
+    junk.txt: |
+      garbage_marker_12345
+      unused_marker_67890
+  commit_message: Update files
+fragments:
+- id: test_connection_file
+  selector:
+    path: templates/tests/test-connection.yaml
+- id: req_global_0
+  selector:
+    anchor: 'apiVersion: v1'
+oracle:
+  required:
+  - test_connection_file
+  - req_global_0
+  allowed: []
+  forbidden: []

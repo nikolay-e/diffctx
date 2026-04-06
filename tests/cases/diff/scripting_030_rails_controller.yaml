@@ -1,0 +1,158 @@
+name: scripting_030_rails_controller
+repo:
+  initial_files:
+    user_model.py: |
+      class User:
+          def __init__(self, user_id=None, name=None, email=None):
+              self.user_id = user_id
+              self.name = name
+              self.email = email
+
+          @classmethod
+          def find_by_id(cls, user_id):
+              return cls(user_id=user_id, name="User")
+
+          def save(self):
+              return True
+
+          def to_dict(self):
+              return {"user_id": self.user_id, "name": self.name, "email": self.email}
+    controller.py: |
+      class UserController:
+          pass
+    currency_converter.py: |
+      class CurrencyConverter:
+          def __init__(self):
+              self.rates = {"USD_EUR": 0.85, "EUR_GBP": 0.87}
+
+          def convert_amount(self, amount, from_currency, to_currency):
+              pair = f"{from_currency}_{to_currency}"
+              rate = self.rates.get(pair, 1.0)
+              return amount * rate
+
+          def add_exchange_rate(self, pair, rate):
+              self.rates[pair] = rate
+
+          def list_supported_pairs(self):
+              return list(self.rates.keys())
+    weather_forecast.py: |
+      class WeatherForecast:
+          def __init__(self, api_endpoint="https://weather.example.com"):
+              self.api_endpoint = api_endpoint
+              self.cache = {}
+
+          def get_temperature(self, city):
+              return self.cache.get(city, {"temp": 20, "unit": "celsius"})
+
+          def get_humidity(self, city):
+              return self.cache.get(f"{city}_humidity", 65)
+  changed_files:
+    user_model.py: |
+      class User:
+          def __init__(self, user_id=None, name=None, email=None):
+              self.user_id = user_id
+              self.name = name
+              self.email = email
+
+          @classmethod
+          def find_by_id(cls, user_id):
+              return cls(user_id=user_id, name="User")
+
+          def save(self):
+              return True
+
+          def to_dict(self):
+              return {"user_id": self.user_id, "name": self.name, "email": self.email}
+    controller.py: |
+      from user_model import User
+
+      class UserController:
+          def create_user(self, name, email):
+              user = User(name=name, email=email)
+              user.save()
+              return user.to_dict()
+
+          def get_user(self, user_id):
+              user = User.find_by_id(user_id)
+              return user.to_dict()
+
+          def user_params(self):
+              return {"name": "John", "email": "john@example.com"}
+    currency_converter.py: |
+      class CurrencyConverter:
+          def __init__(self):
+              self.rates = {"USD_EUR": 0.85, "EUR_GBP": 0.87}
+
+          def convert_amount(self, amount, from_currency, to_currency):
+              pair = f"{from_currency}_{to_currency}"
+              rate = self.rates.get(pair, 1.0)
+              return amount * rate
+
+          def add_exchange_rate(self, pair, rate):
+              self.rates[pair] = rate
+
+          def list_supported_pairs(self):
+              return list(self.rates.keys())
+    weather_forecast.py: |
+      class WeatherForecast:
+          def __init__(self, api_endpoint="https://weather.example.com"):
+              self.api_endpoint = api_endpoint
+              self.cache = {}
+
+          def get_temperature(self, city):
+              return self.cache.get(city, {"temp": 20, "unit": "celsius"})
+
+          def get_humidity(self, city):
+              return self.cache.get(f"{city}_humidity", 65)
+  commit_message: Update files
+fragments:
+- id: user_model
+  selector:
+    path: user_model.py
+    anchor: def find_by_id(cls, user_id)
+- id: user_model_1
+  selector:
+    path: user_model.py
+    anchor: def save(self)
+- id: no_currency_converter
+  selector:
+    path: currency_converter.py
+- id: no_weather_forecast
+  selector:
+    path: weather_forecast.py
+- id: no_global_0
+  selector:
+    anchor: CurrencyConverter
+- id: no_global_1
+  selector:
+    anchor: convert_amount
+- id: no_global_2
+  selector:
+    anchor: add_exchange_rate
+- id: no_global_3
+  selector:
+    anchor: list_supported_pairs
+- id: no_global_4
+  selector:
+    anchor: WeatherForecast
+- id: no_global_5
+  selector:
+    anchor: get_temperature
+- id: no_global_6
+  selector:
+    anchor: get_humidity
+oracle:
+  required:
+  - user_model
+  - user_model_1
+  allowed: []
+  forbidden:
+  - no_currency_converter
+  - no_weather_forecast
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

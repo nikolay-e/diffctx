@@ -1,0 +1,165 @@
+name: infrastructure_validation_003_javascript_import_resolution
+repo:
+  initial_files:
+    src/utils.ts: |
+      export interface UserResponse {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export function fetchUser(id: string): Promise<UserResponse> {
+          return fetch(`/api/users/${id}`).then(res => res.json());
+      }
+
+      export function fetchUsers(): Promise<UserResponse[]> {
+          return fetch('/api/users').then(res => res.json());
+      }
+
+      export function formatUserName(user: UserResponse): string {
+          return `${user.name} <${user.email}>`;
+      }
+    src/api.ts: |
+      import { fetchUser, fetchUsers, UserResponse } from './utils';
+
+      export async function getUserProfile(id: string): Promise<UserResponse> {
+          const user = await fetchUser(id);
+          return user;
+      }
+
+      export async function listActiveUsers(): Promise<UserResponse[]> {
+          const users = await fetchUsers();
+          return users.filter(u => u.email.includes('@'));
+      }
+    src/main.ts: |
+      console.log("initial");
+    scripts/build.sh: |
+      #!/bin/bash
+      tsc --outDir dist
+    tests/utils.test.ts: |
+      describe('utils', () => { it('passes', () => {}); });
+    docs/api-reference.md: |
+      # API Reference
+    config/tsconfig.json: |
+      {
+      }
+  changed_files:
+    src/utils.ts: |
+      export interface UserResponse {
+          id: string;
+          name: string;
+          email: string;
+      }
+
+      export function fetchUser(id: string): Promise<UserResponse> {
+          return fetch(`/api/users/${id}`).then(res => res.json());
+      }
+
+      export function fetchUsers(): Promise<UserResponse[]> {
+          return fetch('/api/users').then(res => res.json());
+      }
+
+      export function formatUserName(user: UserResponse): string {
+          return `${user.name} <${user.email}>`;
+      }
+    src/api.ts: |
+      import { fetchUser, fetchUsers, UserResponse } from './utils';
+
+      export async function getUserProfile(id: string): Promise<UserResponse> {
+          const user = await fetchUser(id);
+          return user;
+      }
+
+      export async function listActiveUsers(): Promise<UserResponse[]> {
+          const users = await fetchUsers();
+          return users.filter(u => u.email.includes('@'));
+      }
+    src/main.ts: |
+      import { fetchUser } from './utils';
+
+      async function main() {
+          const user = await fetchUser('123');
+          console.log(user);
+      }
+
+      main();
+    scripts/build.sh: |
+      #!/bin/bash
+      tsc --outDir dist
+    tests/utils.test.ts: |
+      describe('utils', () => { it('passes', () => {}); });
+    docs/api-reference.md: |
+      # API Reference
+    config/tsconfig.json: |
+      {
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main.ts
+    anchor: import { fetchUser } from './utils'
+- id: main_1
+  selector:
+    path: src/main.ts
+    anchor: await fetchUser('123')
+- id: utils
+  selector:
+    path: src/utils.ts
+    anchor: 'export function fetchUser(id: string): Promise<UserResponse>'
+- id: utils_1
+  selector:
+    path: src/utils.ts
+    anchor: export interface UserResponse
+- id: no_api
+  selector:
+    path: src/api.ts
+- id: no_build
+  selector:
+    path: scripts/build.sh
+- id: no_utils_test
+  selector:
+    path: tests/utils.test.ts
+- id: no_api_reference
+  selector:
+    path: docs/api-reference.md
+- id: no_tsconfig
+  selector:
+    path: config/tsconfig.json
+- id: no_global_0
+  selector:
+    anchor: getUserProfile
+- id: no_global_1
+  selector:
+    anchor: listActiveUsers
+- id: no_global_2
+  selector:
+    anchor: tsc --outDir
+- id: no_global_3
+  selector:
+    anchor: describe('utils'
+- id: no_global_4
+  selector:
+    anchor: '# API Reference'
+- id: no_global_5
+  selector:
+    anchor: tsconfig
+oracle:
+  required:
+  - main
+  - main_1
+  - utils
+  - utils_1
+  allowed: []
+  forbidden:
+  - no_api
+  - no_build
+  - no_utils_test
+  - no_api_reference
+  - no_tsconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

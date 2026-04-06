@@ -1,0 +1,196 @@
+name: kubernetes_023_nodeport
+repo:
+  initial_files:
+    k8s/apps/web/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-frontend
+        namespace: production
+        labels:
+          app: web-frontend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: web-frontend
+        template:
+          metadata:
+            labels:
+              app: web-frontend
+          spec:
+            containers:
+            - name: web
+              image: web-frontend:v1.0.0
+              ports:
+              - containerPort: 80
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+    k8s/apps/web/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-frontend
+        namespace: production
+      spec:
+        type: ClusterIP
+        selector:
+          app: web-frontend
+        ports:
+        - port: 80
+          targetPort: 80
+    k8s/infra/metallb-config.yaml: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: production-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+        - 192.168.1.240-192.168.1.250
+        autoAssign: true
+    k8s/apps/web/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-frontend-ingress
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: www.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-frontend
+                  port:
+                    number: 80
+  changed_files:
+    k8s/apps/web/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-frontend
+        namespace: production
+        labels:
+          app: web-frontend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: web-frontend
+        template:
+          metadata:
+            labels:
+              app: web-frontend
+          spec:
+            containers:
+            - name: web
+              image: web-frontend:v1.0.0
+              ports:
+              - containerPort: 80
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+    k8s/apps/web/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-frontend
+        namespace: production
+        labels:
+          app: web-frontend
+      spec:
+        type: NodePort
+        selector:
+          app: web-frontend
+        ports:
+        - name: http
+          port: 80
+          targetPort: 80
+          nodePort: 30080
+          protocol: TCP
+        externalTrafficPolicy: Local
+    k8s/infra/metallb-config.yaml: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: production-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+        - 192.168.1.240-192.168.1.250
+        autoAssign: true
+    k8s/apps/web/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-frontend-ingress
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: www.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-frontend
+                  port:
+                    number: 80
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: k8s/apps/web/service.yaml
+    anchor: 'type: NodePort'
+- id: service_1
+  selector:
+    path: k8s/apps/web/service.yaml
+    anchor: 'nodePort: 30080'
+- id: no_metallb_config
+  selector:
+    path: k8s/infra/metallb-config.yaml
+- id: no_ingress
+  selector:
+    path: k8s/apps/web/ingress.yaml
+- id: no_global_0
+  selector:
+    anchor: production-pool
+- id: no_global_1
+  selector:
+    anchor: IPAddressPool
+- id: no_global_2
+  selector:
+    anchor: metallb-system
+- id: no_global_3
+  selector:
+    anchor: web-frontend-ingress
+- id: no_global_4
+  selector:
+    anchor: ssl-redirect
+oracle:
+  required:
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_metallb_config
+  - no_ingress
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

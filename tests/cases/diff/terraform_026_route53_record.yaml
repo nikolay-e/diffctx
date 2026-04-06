@@ -1,0 +1,110 @@
+name: terraform_026_route53_record
+repo:
+  initial_files:
+    dns.tf: |
+      resource "aws_route53_zone" "main" {
+        name = "example.com"
+      }
+    lb.tf: |
+      resource "aws_lb" "main" {
+        name               = "${var.environment}-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+      }
+    mail_records.tf: |
+      resource "aws_route53_record" "mx" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "example.com"
+        type    = "MX"
+        ttl     = 3600
+        records = ["10 mail.example.com"]
+      }
+    acm.tf: |
+      resource "aws_route53_record" "cert_validation" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = aws_acm_certificate.main.domain_validation_options[0].resource_record_name
+        type    = aws_acm_certificate.main.domain_validation_options[0].resource_record_type
+        ttl     = 60
+        records = [aws_acm_certificate.main.domain_validation_options[0].resource_record_value]
+      }
+  changed_files:
+    dns.tf: |
+      resource "aws_route53_zone" "main" {
+        name = "example.com"
+      }
+
+      resource "aws_route53_record" "api" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "api.example.com"
+        type    = "A"
+
+        alias {
+          name                   = aws_lb.main.dns_name
+          zone_id                = aws_lb.main.zone_id
+          evaluate_target_health = true
+        }
+      }
+    lb.tf: |
+      resource "aws_lb" "main" {
+        name               = "${var.environment}-alb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+      }
+    mail_records.tf: |
+      resource "aws_route53_record" "mx" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "example.com"
+        type    = "MX"
+        ttl     = 3600
+        records = ["10 mail.example.com"]
+      }
+    acm.tf: |
+      resource "aws_route53_record" "cert_validation" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = aws_acm_certificate.main.domain_validation_options[0].resource_record_name
+        type    = aws_acm_certificate.main.domain_validation_options[0].resource_record_type
+        ttl     = 60
+        records = [aws_acm_certificate.main.domain_validation_options[0].resource_record_value]
+      }
+  commit_message: Update files
+fragments:
+- id: lb
+  selector:
+    path: lb.tf
+    anchor: resource "aws_lb" "main" {
+- id: lb_1
+  selector:
+    path: lb.tf
+    anchor: load_balancer_type = "application"
+- id: no_mail_records
+  selector:
+    path: mail_records.tf
+- id: no_acm
+  selector:
+    path: acm.tf
+- id: no_global_0
+  selector:
+    anchor: type    = "MX"
+- id: no_global_1
+  selector:
+    anchor: mail.example.com
+- id: no_global_2
+  selector:
+    anchor: cert_validation
+- id: no_global_3
+  selector:
+    anchor: domain_validation_options
+oracle:
+  required:
+  - lb
+  - lb_1
+  allowed: []
+  forbidden:
+  - no_mail_records
+  - no_acm
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

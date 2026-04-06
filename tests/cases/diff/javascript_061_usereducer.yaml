@@ -1,0 +1,116 @@
+name: javascript_061_usereducer
+repo:
+  initial_files:
+    reducer.ts: |
+      export type State = { count: number };
+      export type Action = { type: 'increment' } | { type: 'decrement' } | { type: 'reset' };
+
+      export function counterReducer(state: State, action: Action): State {
+          switch (action.type) {
+              case 'increment': return { count: state.count + 1 };
+              case 'decrement': return { count: state.count - 1 };
+              case 'reset': return { count: 0 };
+          }
+      }
+    Counter.tsx: |
+      console.log('initial');
+    actions.ts: |
+      export const increment = () => ({ type: 'increment' as const });
+      export const decrement = () => ({ type: 'decrement' as const });
+      export const reset = () => ({ type: 'reset' as const });
+    CounterDisplay.tsx: |
+      interface CounterDisplayProps {
+          value: number;
+      }
+
+      export function CounterDisplay({ value }: CounterDisplayProps) {
+          return <span className="counter-value">{value}</span>;
+      }
+  changed_files:
+    reducer.ts: |
+      export type State = { count: number };
+      export type Action = { type: 'increment' } | { type: 'decrement' } | { type: 'reset' };
+
+      export function counterReducer(state: State, action: Action): State {
+          switch (action.type) {
+              case 'increment': return { count: state.count + 1 };
+              case 'decrement': return { count: state.count - 1 };
+              case 'reset': return { count: 0 };
+          }
+      }
+    Counter.tsx: |
+      import { useReducer } from 'react';
+      import { counterReducer, State } from './reducer';
+
+      const initialState: State = { count: 0 };
+
+      export function Counter() {
+          const [state, dispatch] = useReducer(counterReducer, initialState);
+          return (
+              <div>
+                  <span>{state.count}</span>
+                  <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+              </div>
+          );
+      }
+    actions.ts: |
+      export const increment = () => ({ type: 'increment' as const });
+      export const decrement = () => ({ type: 'decrement' as const });
+      export const reset = () => ({ type: 'reset' as const });
+    CounterDisplay.tsx: |
+      interface CounterDisplayProps {
+          value: number;
+      }
+
+      export function CounterDisplay({ value }: CounterDisplayProps) {
+          return <span className="counter-value">{value}</span>;
+      }
+  commit_message: Update files
+fragments:
+- id: reducer
+  selector:
+    path: reducer.ts
+    anchor: 'type State = { count: number }'
+- id: reducer_1
+  selector:
+    path: reducer.ts
+    anchor: 'function counterReducer(state: State, action: Action): State'
+- id: reducer_2
+  selector:
+    path: reducer.ts
+    anchor: case 'increment'
+- id: no_actions
+  selector:
+    path: actions.ts
+- id: no_counterdisplay
+  selector:
+    path: CounterDisplay.tsx
+- id: no_global_0
+  selector:
+    anchor: increment = ()
+- id: no_global_1
+  selector:
+    anchor: decrement = ()
+- id: no_global_2
+  selector:
+    anchor: reset = ()
+- id: no_global_3
+  selector:
+    anchor: CounterDisplayProps
+- id: no_global_4
+  selector:
+    anchor: counter-value
+oracle:
+  required:
+  - reducer
+  - reducer_1
+  - reducer_2
+  allowed: []
+  forbidden:
+  - no_actions
+  - no_counterdisplay
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

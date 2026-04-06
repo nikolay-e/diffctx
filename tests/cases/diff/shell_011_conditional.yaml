@@ -1,0 +1,210 @@
+name: shell_011_conditional
+repo:
+  initial_files:
+    check.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+
+      if [[ -f "$CONFIG_FILE" ]]; then
+          echo "Config file exists"
+      else
+          echo "Config file missing"
+          exit 1
+      fi
+    defaults.sh: |
+      #!/bin/bash
+      export CONFIG_DIR="/etc/app"
+      export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+      export CONFIG_MODE="0644"
+      export LOG_LEVEL="info"
+    scripts/install.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      mkdir -p "$CONFIG_DIR"
+      cp templates/config.yaml "$CONFIG_FILE"
+      chmod "$CONFIG_MODE" "$CONFIG_FILE"
+      echo "Config installed to $CONFIG_FILE"
+    scripts/migrate.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      if [[ -f "${CONFIG_FILE}.v1" ]]; then
+          python3 convert.py "${CONFIG_FILE}.v1" "$CONFIG_FILE"
+          echo "Migration complete"
+      fi
+    scripts/validate_syntax.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      if command -v yq > /dev/null 2>&1; then
+          if yq eval '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+              echo "YAML syntax: valid"
+          else
+              echo "YAML syntax: invalid"
+              exit 1
+          fi
+      else
+          echo "yq not installed, skipping syntax check"
+      fi
+    scripts/backup_config.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      cp "$CONFIG_FILE" "${CONFIG_FILE}.${TIMESTAMP}.bak"
+      echo "Config backed up: ${CONFIG_FILE}.${TIMESTAMP}.bak"
+    config/defaults_staging.sh: |
+      #!/bin/bash
+      export CONFIG_DIR="/etc/app-staging"
+      export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+      export CONFIG_MODE="0644"
+      export LOG_LEVEL="debug"
+  changed_files:
+    check.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+
+      if [[ -f "$CONFIG_FILE" ]]; then
+          echo "Config file exists"
+          if [[ -r "$CONFIG_FILE" ]]; then
+              echo "Config file is readable"
+          else
+              echo "Config file is not readable (expected mode $CONFIG_MODE)"
+              exit 1
+          fi
+      elif [[ -d "$CONFIG_DIR" ]]; then
+          echo "Config directory exists, but file is missing"
+          exit 1
+      else
+          echo "Config directory $CONFIG_DIR does not exist"
+          mkdir -p "$CONFIG_DIR"
+      fi
+    defaults.sh: |
+      #!/bin/bash
+      export CONFIG_DIR="/etc/app"
+      export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+      export CONFIG_MODE="0644"
+      export LOG_LEVEL="info"
+    scripts/install.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      mkdir -p "$CONFIG_DIR"
+      cp templates/config.yaml "$CONFIG_FILE"
+      chmod "$CONFIG_MODE" "$CONFIG_FILE"
+      echo "Config installed to $CONFIG_FILE"
+    scripts/migrate.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      if [[ -f "${CONFIG_FILE}.v1" ]]; then
+          python3 convert.py "${CONFIG_FILE}.v1" "$CONFIG_FILE"
+          echo "Migration complete"
+      fi
+    scripts/validate_syntax.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      if command -v yq > /dev/null 2>&1; then
+          if yq eval '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+              echo "YAML syntax: valid"
+          else
+              echo "YAML syntax: invalid"
+              exit 1
+          fi
+      else
+          echo "yq not installed, skipping syntax check"
+      fi
+    scripts/backup_config.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      cp "$CONFIG_FILE" "${CONFIG_FILE}.${TIMESTAMP}.bak"
+      echo "Config backed up: ${CONFIG_FILE}.${TIMESTAMP}.bak"
+    config/defaults_staging.sh: |
+      #!/bin/bash
+      export CONFIG_DIR="/etc/app-staging"
+      export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+      export CONFIG_MODE="0644"
+      export LOG_LEVEL="debug"
+  commit_message: Update files
+fragments:
+- id: defaults
+  selector:
+    path: defaults.sh
+    anchor: CONFIG_DIR="/etc/app"
+- id: defaults_1
+  selector:
+    path: defaults.sh
+    anchor: CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+- id: defaults_2
+  selector:
+    path: defaults.sh
+    anchor: CONFIG_MODE="0644"
+- id: check
+  selector:
+    path: check.sh
+    anchor: source ./defaults.sh
+- id: check_1
+  selector:
+    path: check.sh
+    anchor: if [[ -r "$CONFIG_FILE" ]]
+- id: no_install
+  selector:
+    path: scripts/install.sh
+- id: no_migrate
+  selector:
+    path: scripts/migrate.sh
+- id: no_validate_syntax
+  selector:
+    path: scripts/validate_syntax.sh
+- id: no_backup_config
+  selector:
+    path: scripts/backup_config.sh
+- id: no_defaults_staging
+  selector:
+    path: config/defaults_staging.sh
+- id: no_global_0
+  selector:
+    anchor: cp templates/config.yaml
+- id: no_global_1
+  selector:
+    anchor: Config installed
+- id: no_global_2
+  selector:
+    anchor: convert.py
+- id: no_global_3
+  selector:
+    anchor: Migration complete
+- id: no_global_4
+  selector:
+    anchor: yq eval
+- id: no_global_5
+  selector:
+    anchor: YAML syntax
+- id: no_global_6
+  selector:
+    anchor: Config backed up
+- id: no_global_7
+  selector:
+    anchor: .bak
+- id: no_global_8
+  selector:
+    anchor: /etc/app-staging
+oracle:
+  required:
+  - defaults
+  - defaults_1
+  - defaults_2
+  - check
+  - check_1
+  allowed: []
+  forbidden:
+  - no_install
+  - no_migrate
+  - no_validate_syntax
+  - no_backup_config
+  - no_defaults_staging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

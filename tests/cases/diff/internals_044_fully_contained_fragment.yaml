@@ -1,0 +1,28 @@
+name: internals_044_fully_contained_fragment
+repo:
+  initial_files:
+    file.py: |
+      pass
+  changed_files:
+    file.py: |
+      class OuterClass:
+          def outer_method(self):
+              pass
+
+          class InnerClass:
+              def inner_method(self):
+                  pass
+  commit_message: Update files
+fragments:
+- id: file_file
+  selector:
+    path: file.py
+- id: req_global_0
+  selector:
+    anchor: 'class OuterClass:'
+oracle:
+  required:
+  - file_file
+  - req_global_0
+  allowed: []
+  forbidden: []

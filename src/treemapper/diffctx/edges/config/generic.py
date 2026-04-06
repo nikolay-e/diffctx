@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...constants import CODE_EXTENSIONS, expand_config_key
 from ...types import Fragment
 from ..base import EdgeBuilder, EdgeDict
@@ -74,16 +75,22 @@ _JSON_KEY_RE = re.compile(r'"([a-zA-Z_][a-zA-Z0-9_-]*)"\s*:')
 _TOML_KEY_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", re.MULTILINE)
 _INI_KEY_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", re.MULTILINE)
 _ENV_KEY_RE = re.compile(r"^([A-Za-z_]\w*)\s*=", re.MULTILINE)
+_PROPERTIES_KEY_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_./-]*)\s*[=:]", re.MULTILINE)
+_XML_ATTR_RE = re.compile(r"<([a-zA-Z_][\w.-]*)[>\s/]")
 
 
 def _get_patterns_for_suffix(suffix: str) -> list[re.Pattern[str]]:
-    patterns_map = {
+    patterns_map: dict[str, list[re.Pattern[str]]] = {
         ".yaml": [_CONFIG_KEY_RE],
         ".yml": [_CONFIG_KEY_RE],
         ".json": [_JSON_KEY_RE],
         ".toml": [_TOML_KEY_RE],
         ".ini": [_INI_KEY_RE],
         ".env": [_ENV_KEY_RE],
+        ".cfg": [_INI_KEY_RE],
+        ".conf": [_INI_KEY_RE],
+        ".properties": [_PROPERTIES_KEY_RE],
+        ".xml": [_XML_ATTR_RE],
     }
     return patterns_map.get(suffix, [])
 
@@ -107,8 +114,8 @@ def _is_code_file(path: Path) -> bool:
 
 
 class ConfigToCodeEdgeBuilder(EdgeBuilder):
-    weight = 0.45
-    reverse_weight_factor = 0.70
+    weight = EDGE_WEIGHTS["config_code"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["config_code"].reverse_factor
     category = "config_generic"
 
     def discover_related_files(

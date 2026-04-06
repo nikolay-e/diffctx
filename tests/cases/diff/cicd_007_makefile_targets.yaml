@@ -1,0 +1,283 @@
+name: cicd_007_makefile_targets
+repo:
+  initial_files:
+    Makefile: ".PHONY: build test clean install dev\n\nPYTHON := python3\nVENV := venv\nPIP := $(VENV)/bin/pip\nPYTEST :=\
+      \ $(VENV)/bin/pytest\n\nbuild:\n\tpython setup.py build\n\ntest:\n\tpytest tests/\n\nclean:\n\trm -rf build/ dist/ *.egg-info\n\
+      \tfind . -type d -name __pycache__ -exec rm -rf {} +\n\tfind . -type f -name \"*.pyc\" -delete\n\ninstall:\n\t$(PIP)\
+      \ install -e .\n\ndev:\n\t$(PIP) install -e \".[dev]\"\n"
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      APP_ENV="${1:-staging}"
+      ARTIFACT_BUCKET="s3://releases.internal"
+
+      echo "Building distribution..."
+      python -m build
+
+      echo "Uploading to $ARTIFACT_BUCKET..."
+      twine upload dist/*
+
+      echo "Deployed to $APP_ENV"
+    src/app.py: |
+      import logging
+      from typing import Optional
+      from dataclasses import dataclass
+
+      from .config import load_config, AppConfig
+      from .services import DatabaseService, CacheService
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class Application:
+          config: AppConfig
+          database: DatabaseService
+          cache: Optional[CacheService] = None
+
+          def run(self) -> None:
+              logger.info(f"Starting application in {self.config.environment} mode")
+              self.database.connect()
+              if self.cache:
+                  self.cache.connect()
+
+          def shutdown(self) -> None:
+              if self.cache:
+                  self.cache.disconnect()
+              self.database.disconnect()
+
+      def create_application() -> Application:
+          config = load_config()
+          database = DatabaseService(config.database)
+          cache = CacheService(config.cache) if config.cache.enabled else None
+          return Application(config=config, database=database, cache=cache)
+    src/config.py: |
+      import os
+      from dataclasses import dataclass
+
+      @dataclass
+      class DatabaseConfig:
+          host: str
+          port: int
+          name: str
+          user: str
+          password: str
+
+      @dataclass
+      class CacheConfig:
+          enabled: bool
+          host: str
+          port: int
+          ttl_seconds: int
+
+      @dataclass
+      class AppConfig:
+          environment: str
+          database: DatabaseConfig
+          cache: CacheConfig
+
+      def load_config() -> AppConfig:
+          return AppConfig(
+              environment=os.getenv("ENV", "development"),
+              database=DatabaseConfig(
+                  host=os.getenv("DB_HOST", "localhost"),
+                  port=int(os.getenv("DB_PORT", "5432")),
+                  name=os.getenv("DB_NAME", "app"),
+                  user=os.getenv("DB_USER", "postgres"),
+                  password=os.getenv("DB_PASSWORD", ""),
+              ),
+              cache=CacheConfig(
+                  enabled=os.getenv("CACHE_ENABLED", "false").lower() == "true",
+                  host=os.getenv("CACHE_HOST", "localhost"),
+                  port=int(os.getenv("CACHE_PORT", "6379")),
+                  ttl_seconds=int(os.getenv("CACHE_TTL", "300")),
+              ),
+          )
+    .github/workflows/ci.yml: |
+      name: CI Pipeline
+      on: [push, pull_request]
+      jobs:
+        quality:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Install tooling
+              run: pip install ruff pytest coverage
+            - name: Lint
+              run: ruff check src/
+            - name: Test
+              run: pytest tests/ --cov=src
+        release:
+          needs: quality
+          if: github.ref == 'refs/heads/main'
+          runs-on: ubuntu-latest
+          steps:
+            - name: Deploy
+              run: ./scripts/deploy.sh production
+    Makefile.ci: ".PHONY: lint test build\n\nCI_RUNNER = github-actions\nCOVERAGE_THRESHOLD = 80\n\nlint:\n\truff check src/\n\
+      \ntest:\n\tpytest tests/ --cov=src --cov-fail-under=$(COVERAGE_THRESHOLD)\n\nbuild:\n\tpython -m build --wheel\n"
+    pyproject.toml: |
+      [project]
+      name = "myapp"
+      version = "1.0.0"
+      requires-python = ">=3.11"
+
+      [tool.pytest.ini_options]
+      testpaths = ["tests"]
+      addopts = "--cov=src --cov-report=html"
+
+      [tool.ruff]
+      line-length = 88
+      target-version = "py311"
+    src/pipeline.py: |
+      class DeploymentPipeline:
+          def build_artifacts(self, source_dir: str) -> list:
+              return []
+
+          def deploy_to_staging(self, artifacts: list) -> bool:
+              return True
+
+          def run_smoke_tests(self) -> bool:
+              return True
+  changed_files:
+    Makefile: ".PHONY: build test lint deploy clean install dev\n\nPYTHON := python3\nVENV := venv\nPIP := $(VENV)/bin/pip\n\
+      PYTEST := $(VENV)/bin/pytest\n\nbuild:\n\tpython -m build\n\ntest:\n\tpytest tests/ --cov=src\n\nlint:\n\truff check\
+      \ src/\n\ndeploy:\n\t./scripts/deploy.sh\n\nclean:\n\trm -rf build/ dist/ *.egg-info\n\tfind . -type d -name __pycache__\
+      \ -exec rm -rf {} +\n\tfind . -type f -name \"*.pyc\" -delete\n\ninstall:\n\t$(PIP) install -e .\n\ndev:\n\t$(PIP) install\
+      \ -e \".[dev]\"\n"
+  commit_message: Update files
+fragments:
+- id: makefile
+  selector:
+    path: Makefile
+    anchor: python -m build
+- id: makefile_1
+  selector:
+    path: Makefile
+    anchor: pytest tests/ --cov=src
+- id: makefile_2
+  selector:
+    path: Makefile
+    anchor: ruff check src/
+- id: makefile_3
+  selector:
+    path: Makefile
+    anchor: ./scripts/deploy.sh
+- id: deploy
+  selector:
+    path: scripts/deploy.sh
+    anchor: twine upload
+- id: deploy_1
+  selector:
+    path: scripts/deploy.sh
+    anchor: ARTIFACT_BUCKET
+- id: no_ci
+  selector:
+    path: .github/workflows/ci.yml
+- id: no_makefile
+  selector:
+    path: Makefile.ci
+- id: no_pyproject
+  selector:
+    path: pyproject.toml
+- id: no_pipeline
+  selector:
+    path: src/pipeline.py
+- id: no_app
+  selector:
+    path: src/app.py
+- id: no_config
+  selector:
+    path: src/config.py
+- id: no_global_0
+  selector:
+    anchor: actions/checkout@v4
+- id: no_global_1
+  selector:
+    anchor: refs/heads/main
+- id: no_global_2
+  selector:
+    anchor: pip install ruff pytest coverage
+- id: no_global_3
+  selector:
+    anchor: CI_RUNNER
+- id: no_global_4
+  selector:
+    anchor: COVERAGE_THRESHOLD
+- id: no_global_5
+  selector:
+    anchor: cov-fail-under
+- id: no_global_6
+  selector:
+    anchor: cov-report=html
+- id: no_global_7
+  selector:
+    anchor: target-version
+- id: no_global_8
+  selector:
+    anchor: requires-python
+- id: no_global_9
+  selector:
+    anchor: DeploymentPipeline
+- id: no_global_10
+  selector:
+    anchor: build_artifacts
+- id: no_global_11
+  selector:
+    anchor: deploy_to_staging
+- id: no_global_12
+  selector:
+    anchor: run_smoke_tests
+- id: no_global_13
+  selector:
+    anchor: create_application
+- id: no_global_14
+  selector:
+    anchor: DatabaseService
+- id: no_global_15
+  selector:
+    anchor: CacheService
+- id: no_global_16
+  selector:
+    anchor: ttl_seconds
+- id: no_global_17
+  selector:
+    anchor: CACHE_TTL
+- id: no_global_18
+  selector:
+    anchor: DB_PASSWORD
+oracle:
+  required:
+  - makefile
+  - makefile_1
+  - makefile_2
+  - makefile_3
+  - deploy
+  - deploy_1
+  allowed: []
+  forbidden:
+  - no_ci
+  - no_makefile
+  - no_pyproject
+  - no_pipeline
+  - no_app
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

@@ -1,0 +1,26 @@
+name: internals_018_math_symbols_julia_style
+repo:
+  initial_files:
+    math_symbols.jl: |
+      x = 1
+  changed_files:
+    math_symbols.jl: |
+      ∑ = sum
+      ∏ = prod
+      α = 0.5
+      β = 0.3
+      result = calculate(α, β)
+  commit_message: Update files
+fragments:
+- id: math_symbols_file
+  selector:
+    path: math_symbols.jl
+- id: req_global_0
+  selector:
+    anchor: result = calculate(α, β)
+oracle:
+  required:
+  - math_symbols_file
+  - req_global_0
+  allowed: []
+  forbidden: []

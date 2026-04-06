@@ -1,0 +1,264 @@
+name: rust_003_basic_struct
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod models;
+      pub mod color;
+      pub mod transform;
+    src/models.rs: |
+      use std::fmt;
+
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Point {
+          pub x: f64,
+          pub y: f64,
+      }
+
+      impl Point {
+          pub fn new(x: f64, y: f64) -> Self {
+              Self { x, y }
+          }
+
+          pub fn origin() -> Self {
+              Self::new(0.0, 0.0)
+          }
+
+          pub fn distance_to(&self, other: &Point) -> f64 {
+              let dx = self.x - other.x;
+              let dy = self.y - other.y;
+              (dx * dx + dy * dy).sqrt()
+          }
+      }
+
+      impl fmt::Display for Point {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "({}, {})", self.x, self.y)
+          }
+      }
+
+      impl Default for Point {
+          fn default() -> Self {
+              Self::origin()
+          }
+      }
+    src/color.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Color {
+          pub r: u8,
+          pub g: u8,
+          pub b: u8,
+          pub a: u8,
+      }
+
+      impl Color {
+          pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+              Self { r, g, b, a }
+          }
+
+          pub fn white() -> Self {
+              Self::new(255, 255, 255, 255)
+          }
+
+          pub fn black() -> Self {
+              Self::new(0, 0, 0, 255)
+          }
+
+          pub fn to_hex(&self) -> String {
+              format!("#{:02x}{:02x}{:02x}{:02x}", self.r, self.g, self.b, self.a)
+          }
+      }
+    src/transform.rs: |
+      pub struct AffineTransform {
+          matrix: [[f64; 3]; 3],
+      }
+
+      impl AffineTransform {
+          pub fn identity() -> Self {
+              Self {
+                  matrix: [
+                      [1.0, 0.0, 0.0],
+                      [0.0, 1.0, 0.0],
+                      [0.0, 0.0, 1.0],
+                  ],
+              }
+          }
+
+          pub fn translate(dx: f64, dy: f64) -> Self {
+              let mut t = Self::identity();
+              t.matrix[0][2] = dx;
+              t.matrix[1][2] = dy;
+              t
+          }
+
+          pub fn scale(sx: f64, sy: f64) -> Self {
+              let mut t = Self::identity();
+              t.matrix[0][0] = sx;
+              t.matrix[1][1] = sy;
+              t
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod models;
+      pub mod color;
+      pub mod transform;
+    src/models.rs: |
+      use std::fmt;
+
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Point {
+          pub x: f64,
+          pub y: f64,
+          pub z: f64,
+      }
+
+      impl Point {
+          pub fn new(x: f64, y: f64, z: f64) -> Self {
+              Self { x, y, z }
+          }
+
+          pub fn origin() -> Self {
+              Self::new(0.0, 0.0, 0.0)
+          }
+
+          pub fn distance_to(&self, other: &Point) -> f64 {
+              let dx = self.x - other.x;
+              let dy = self.y - other.y;
+              let dz = self.z - other.z;
+              (dx * dx + dy * dy + dz * dz).sqrt()
+          }
+      }
+
+      impl fmt::Display for Point {
+          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+              write!(f, "({}, {}, {})", self.x, self.y, self.z)
+          }
+      }
+
+      impl Default for Point {
+          fn default() -> Self {
+              Self::origin()
+          }
+      }
+
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Rectangle {
+          pub width: f64,
+          pub height: f64,
+      }
+
+      impl Rectangle {
+          pub fn new(width: f64, height: f64) -> Self {
+              Self { width, height }
+          }
+
+          pub fn area(&self) -> f64 {
+              self.width * self.height
+          }
+
+          pub fn perimeter(&self) -> f64 {
+              2.0 * (self.width + self.height)
+          }
+
+          pub fn is_square(&self) -> bool {
+              (self.width - self.height).abs() < f64::EPSILON
+          }
+      }
+    src/color.rs: |
+      #[derive(Debug, Clone, PartialEq)]
+      pub struct Color {
+          pub r: u8,
+          pub g: u8,
+          pub b: u8,
+          pub a: u8,
+      }
+
+      impl Color {
+          pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+              Self { r, g, b, a }
+          }
+
+          pub fn white() -> Self {
+              Self::new(255, 255, 255, 255)
+          }
+
+          pub fn black() -> Self {
+              Self::new(0, 0, 0, 255)
+          }
+
+          pub fn to_hex(&self) -> String {
+              format!("#{:02x}{:02x}{:02x}{:02x}", self.r, self.g, self.b, self.a)
+          }
+      }
+    src/transform.rs: |
+      pub struct AffineTransform {
+          matrix: [[f64; 3]; 3],
+      }
+
+      impl AffineTransform {
+          pub fn identity() -> Self {
+              Self {
+                  matrix: [
+                      [1.0, 0.0, 0.0],
+                      [0.0, 1.0, 0.0],
+                      [0.0, 0.0, 1.0],
+                  ],
+              }
+          }
+
+          pub fn translate(dx: f64, dy: f64) -> Self {
+              let mut t = Self::identity();
+              t.matrix[0][2] = dx;
+              t.matrix[1][2] = dy;
+              t
+          }
+
+          pub fn scale(sx: f64, sy: f64) -> Self {
+              let mut t = Self::identity();
+              t.matrix[0][0] = sx;
+              t.matrix[1][1] = sy;
+              t
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: models_file
+  selector:
+    path: src/models.rs
+- id: req_global_0
+  selector:
+    anchor: 'pub fn new(x: f64, y: f64, z: f64) -> Self {'
+- id: req_global_1
+  selector:
+    anchor: let dz = self.z - other.z;
+- id: no_color
+  selector:
+    path: src/color.rs
+- id: no_transform
+  selector:
+    path: src/transform.rs
+- id: no_global_0
+  selector:
+    anchor: AffineTransform
+- id: no_global_1
+  selector:
+    anchor: to_hex
+- id: no_global_2
+  selector:
+    anchor: color.rs
+- id: no_global_3
+  selector:
+    anchor: transform.rs
+oracle:
+  required:
+  - models_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_color
+  - no_transform
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

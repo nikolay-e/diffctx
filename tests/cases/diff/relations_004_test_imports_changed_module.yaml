@@ -1,0 +1,162 @@
+name: relations_004_test_imports_changed_module
+repo:
+  initial_files:
+    auth/login.py: |
+      def authenticate(username, password):
+          return username == "admin" and password == "secret"
+    tests/auth/test_login.py: |
+      from auth.login import authenticate
+
+      def test_authenticate_success():
+          assert authenticate("admin", "secret") is True
+
+      def test_authenticate_failure():
+          assert authenticate("user", "wrong") is False
+    auth/session_manager.py: |
+      import time
+      import uuid
+
+      class SessionManager:
+          def __init__(self, timeout_seconds=3600):
+              self.sessions = {}
+              self.timeout = timeout_seconds
+
+          def create_session(self, user_id):
+              session_id = str(uuid.uuid4())
+              self.sessions[session_id] = {
+                  "user_id": user_id,
+                  "created_at": time.time(),
+              }
+              return session_id
+
+          def get_session(self, session_id):
+              session = self.sessions.get(session_id)
+              if session and time.time() - session["created_at"] < self.timeout:
+                  return session
+              return None
+
+          def invalidate(self, session_id):
+              self.sessions.pop(session_id, None)
+    auth/password_hasher.py: |
+      import hashlib
+
+      SALT_LENGTH = 16
+
+      def hash_password(password, salt=None):
+          if salt is None:
+              salt = "default_salt"
+          combined = f"{salt}{password}"
+          return hashlib.sha256(combined.encode()).hexdigest()
+
+      def verify_password(password, hashed, salt=None):
+          return hash_password(password, salt) == hashed
+  changed_files:
+    auth/login.py: |
+      def authenticate(username, password):
+          if not username or not password:
+              return False
+          return username == "admin" and password == "secret"
+    tests/auth/test_login.py: |
+      from auth.login import authenticate
+
+      def test_authenticate_success():
+          assert authenticate("admin", "secret") is True
+
+      def test_authenticate_failure():
+          assert authenticate("user", "wrong") is False
+    auth/session_manager.py: |
+      import time
+      import uuid
+
+      class SessionManager:
+          def __init__(self, timeout_seconds=3600):
+              self.sessions = {}
+              self.timeout = timeout_seconds
+
+          def create_session(self, user_id):
+              session_id = str(uuid.uuid4())
+              self.sessions[session_id] = {
+                  "user_id": user_id,
+                  "created_at": time.time(),
+              }
+              return session_id
+
+          def get_session(self, session_id):
+              session = self.sessions.get(session_id)
+              if session and time.time() - session["created_at"] < self.timeout:
+                  return session
+              return None
+
+          def invalidate(self, session_id):
+              self.sessions.pop(session_id, None)
+    auth/password_hasher.py: |
+      import hashlib
+
+      SALT_LENGTH = 16
+
+      def hash_password(password, salt=None):
+          if salt is None:
+              salt = "default_salt"
+          combined = f"{salt}{password}"
+          return hashlib.sha256(combined.encode()).hexdigest()
+
+      def verify_password(password, hashed, salt=None):
+          return hash_password(password, salt) == hashed
+  commit_message: Update files
+fragments:
+- id: login
+  selector:
+    path: auth/login.py
+    anchor: 'if not username or not password:'
+- id: login_1
+  selector:
+    path: auth/login.py
+    anchor: return False
+- id: test_login
+  selector:
+    path: tests/auth/test_login.py
+    anchor: from auth.login import authenticate
+- id: test_login_1
+  selector:
+    path: tests/auth/test_login.py
+    anchor: assert authenticate("admin", "secret") is True
+- id: no_session_manager
+  selector:
+    path: auth/session_manager.py
+- id: no_password_hasher
+  selector:
+    path: auth/password_hasher.py
+- id: no_global_0
+  selector:
+    anchor: SessionManager
+- id: no_global_1
+  selector:
+    anchor: create_session
+- id: no_global_2
+  selector:
+    anchor: invalidate
+- id: no_global_3
+  selector:
+    anchor: hash_password
+- id: no_global_4
+  selector:
+    anchor: verify_password
+- id: no_global_5
+  selector:
+    anchor: SALT_LENGTH
+oracle:
+  required:
+  - login
+  - login_1
+  - test_login
+  - test_login_1
+  allowed: []
+  forbidden:
+  - no_session_manager
+  - no_password_hasher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

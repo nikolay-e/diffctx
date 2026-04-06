@@ -1,0 +1,257 @@
+name: cicd_and_docs_079_new_yaml_templates_included
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                python-version: "3.12"
+            - run: pip install -e ".[dev]"
+            - run: pytest
+    README.md: |
+      # My Project
+
+      A sample project for testing.
+
+      ## Installation
+
+      ```bash
+      pip install myproject
+      ```
+
+      ## Usage
+
+      ```python
+      from myproject import main
+      main()
+      ```
+    garbage_queue.py: |
+      GARBAGE_CD079_QUEUE_MARKER_A = "queue module"
+      GARBAGE_CD079_BROKER_MARKER_B = True
+
+      class MessageQueue:
+          GARBAGE_CD079_MQ_MARKER_C = "mq"
+
+          def enqueue(self, message: str) -> None:
+              GARBAGE_CD079_ENQUEUE_MARKER_D = "enqueued"
+              pass
+
+          def dequeue(self) -> str:
+              GARBAGE_CD079_DEQUEUE_MARKER_E = "dequeued"
+              return ""
+    garbage_scheduler.py: |
+      GARBAGE_CD079_SCHED_MARKER_F = "scheduler"
+      GARBAGE_CD079_CRON_MARKER_G = 60
+
+      class TaskScheduler:
+          GARBAGE_CD079_TASK_MARKER_H = "task"
+
+          def schedule(self, task_name: str, interval: int) -> None:
+              GARBAGE_CD079_SCHEDULE_MARKER_I = "scheduled"
+              pass
+
+          def cancel(self, task_name: str) -> bool:
+              GARBAGE_CD079_CANCEL_MARKER_J = "cancelled"
+              return True
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                python-version: "3.12"
+            - run: pip install -e ".[dev]"
+            - run: pytest
+    .github/ISSUE_TEMPLATE/bug_report.yml: |
+      name: Bug Report
+      description: File a bug report
+      title: "[Bug]: "
+      labels: ["bug", "triage"]
+      body:
+        - type: markdown
+          attributes:
+            value: |
+              Thanks for taking the time to fill out this bug report!
+        - type: textarea
+          id: what-happened
+          attributes:
+            label: What happened?
+            description: A clear description of the bug.
+            placeholder: Tell us what you see!
+          validations:
+            required: true
+        - type: textarea
+          id: expected
+          attributes:
+            label: Expected behavior
+            description: What did you expect to happen?
+          validations:
+            required: true
+        - type: input
+          id: version
+          attributes:
+            label: Version
+            description: What version are you running?
+            placeholder: "1.0.0"
+          validations:
+            required: true
+    .github/ISSUE_TEMPLATE/feature_request.yml: |
+      name: Feature Request
+      description: Suggest a new feature
+      title: "[Feature]: "
+      labels: ["enhancement"]
+      body:
+        - type: markdown
+          attributes:
+            value: |
+              Thanks for suggesting a feature!
+        - type: textarea
+          id: problem
+          attributes:
+            label: Problem
+            description: What problem does this solve?
+          validations:
+            required: true
+        - type: textarea
+          id: solution
+          attributes:
+            label: Proposed solution
+            description: Describe your proposed solution.
+          validations:
+            required: true
+    .github/ISSUE_TEMPLATE/config.yml: |
+      blank_issues_enabled: false
+      contact_links:
+        - name: Documentation
+          url: https://example.com/docs
+          about: Check the docs before opening an issue
+    README.md: |
+      # My Project
+
+      A sample project for testing.
+
+      ## Installation
+
+      ```bash
+      pip install myproject
+      ```
+
+      ## Usage
+
+      ```python
+      from myproject import main
+      main()
+      ```
+
+      ## Contributing
+
+      Please use the issue templates when reporting bugs or requesting features.
+    garbage_queue.py: |
+      GARBAGE_CD079_QUEUE_MARKER_A = "queue module"
+      GARBAGE_CD079_BROKER_MARKER_B = True
+
+      class MessageQueue:
+          GARBAGE_CD079_MQ_MARKER_C = "mq"
+
+          def enqueue(self, message: str) -> None:
+              GARBAGE_CD079_ENQUEUE_MARKER_D = "enqueued"
+              pass
+
+          def dequeue(self) -> str:
+              GARBAGE_CD079_DEQUEUE_MARKER_E = "dequeued"
+              return ""
+    garbage_scheduler.py: |
+      GARBAGE_CD079_SCHED_MARKER_F = "scheduler"
+      GARBAGE_CD079_CRON_MARKER_G = 60
+
+      class TaskScheduler:
+          GARBAGE_CD079_TASK_MARKER_H = "task"
+
+          def schedule(self, task_name: str, interval: int) -> None:
+              GARBAGE_CD079_SCHEDULE_MARKER_I = "scheduled"
+              pass
+
+          def cancel(self, task_name: str) -> bool:
+              GARBAGE_CD079_CANCEL_MARKER_J = "cancelled"
+              return True
+  commit_message: Update files
+fragments:
+- id: bug_report_file
+  selector:
+    path: .github/ISSUE_TEMPLATE/bug_report.yml
+- id: feature_request_file
+  selector:
+    path: .github/ISSUE_TEMPLATE/feature_request.yml
+- id: req_global_0
+  selector:
+    anchor: 'name: Bug Report'
+- id: req_global_1
+  selector:
+    anchor: 'name: Feature Request'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CD079_QUEUE_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CD079_BROKER_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CD079_MQ_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CD079_ENQUEUE_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CD079_DEQUEUE_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CD079_SCHED_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CD079_CRON_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CD079_TASK_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CD079_SCHEDULE_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CD079_CANCEL_MARKER_J
+- id: no_global_10
+  selector:
+    anchor: garbage_queue.py
+- id: no_global_11
+  selector:
+    anchor: garbage_scheduler.py
+oracle:
+  required:
+  - bug_report_file
+  - feature_request_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

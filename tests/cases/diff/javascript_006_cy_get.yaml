@@ -1,0 +1,105 @@
+name: javascript_006_cy_get
+repo:
+  initial_files:
+    form.ts: |
+      export const FORM_SELECTORS = {
+          nameInput: '[data-testid=name-input]',
+          emailInput: '[data-testid=email-input]',
+          submitButton: '[data-testid=submit-btn]',
+      };
+    form.cy.ts: |
+      console.log('initial');
+    form.validators.ts: |
+      export function isValidEmail(email: string): boolean {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+
+      export function isValidName(name: string): boolean {
+          return name.trim().length >= 2;
+      }
+    api-client.ts: |
+      export async function submitForm(data: { name: string; email: string }) {
+          const response = await fetch('/api/contact', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+          });
+          return response.json();
+      }
+  changed_files:
+    form.ts: |
+      export const FORM_SELECTORS = {
+          nameInput: '[data-testid=name-input]',
+          emailInput: '[data-testid=email-input]',
+          submitButton: '[data-testid=submit-btn]',
+      };
+    form.cy.ts: |
+      import { FORM_SELECTORS } from './form';
+
+      describe('Contact Form', () => {
+          it('should submit form', () => {
+              cy.visit('/contact');
+              cy.get(FORM_SELECTORS.nameInput).type('John Doe');
+              cy.get(FORM_SELECTORS.emailInput).type('john@example.com');
+              cy.get(FORM_SELECTORS.submitButton).click();
+              cy.contains('Thank you').should('be.visible');
+          });
+      });
+    form.validators.ts: |
+      export function isValidEmail(email: string): boolean {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      }
+
+      export function isValidName(name: string): boolean {
+          return name.trim().length >= 2;
+      }
+    api-client.ts: |
+      export async function submitForm(data: { name: string; email: string }) {
+          const response = await fetch('/api/contact', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+          });
+          return response.json();
+      }
+  commit_message: Update files
+fragments:
+- id: form
+  selector:
+    path: form.ts
+    anchor: FORM_SELECTORS
+- id: form_1
+  selector:
+    path: form.ts
+    anchor: data-testid=name-input
+- id: form_2
+  selector:
+    path: form.ts
+    anchor: data-testid=submit-btn
+- id: no_form_validators
+  selector:
+    path: form.validators.ts
+- id: no_api_client
+  selector:
+    path: api-client.ts
+- id: no_global_0
+  selector:
+    anchor: isValidEmail
+- id: no_global_1
+  selector:
+    anchor: isValidName
+- id: no_global_2
+  selector:
+    anchor: submitForm
+oracle:
+  required:
+  - form
+  - form_1
+  - form_2
+  allowed: []
+  forbidden:
+  - no_form_validators
+  - no_api_client
+  - no_global_0
+  - no_global_1
+  - no_global_2

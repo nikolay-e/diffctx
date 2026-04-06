@@ -1,0 +1,200 @@
+name: ruby_013_refinement
+repo:
+  initial_files:
+    lib/string_ext.rb: |
+      module StringExtensions
+        refine String do
+          def titlecase
+            split(' ').map(&:capitalize).join(' ')
+          end
+
+          def truncate(length, omission: '...')
+            return self if size <= length
+            "#{self[0, length - omission.size]}#{omission}"
+          end
+
+          def word_count
+            split(/\s+/).size
+          end
+        end
+      end
+    lib/formatter.rb: |
+      class Formatter
+        def format(text)
+          text.to_s
+        end
+      end
+    lib/text_stats.rb: |
+      class TextStatistics
+        def initialize(text)
+          @text = text
+        end
+
+        def word_count
+          @text.split(/\s+/).size
+        end
+
+        def char_count
+          @text.length
+        end
+
+        def avg_word_length
+          words = @text.split(/\s+/)
+          return 0.0 if words.empty?
+          words.sum(&:length).to_f / words.size
+        end
+
+        def sentence_count
+          @text.scan(/[.!?]+/).size
+        end
+      end
+    lib/markdown_renderer.rb: |
+      class MarkdownRenderer
+        def render(markdown)
+          lines = markdown.split("\n")
+          lines.map { |line| render_line(line) }.join("\n")
+        end
+
+        private
+
+        def render_line(line)
+          case line
+          when /^# (.+)/
+            "<h1>#{$1}</h1>"
+          when /^## (.+)/
+            "<h2>#{$1}</h2>"
+          when /^\* (.+)/
+            "<li>#{$1}</li>"
+          else
+            "<p>#{line}</p>"
+          end
+        end
+      end
+  changed_files:
+    lib/string_ext.rb: |
+      module StringExtensions
+        refine String do
+          def titlecase
+            split(' ').map(&:capitalize).join(' ')
+          end
+
+          def truncate(length, omission: '...')
+            return self if size <= length
+            "#{self[0, length - omission.size]}#{omission}"
+          end
+
+          def word_count
+            split(/\s+/).size
+          end
+        end
+      end
+    lib/formatter.rb: |
+      require_relative 'string_ext'
+
+      class Formatter
+        using StringExtensions
+
+        def format_title(text)
+          text.titlecase
+        end
+
+        def format_summary(text, max_length: 100)
+          text.truncate(max_length)
+        end
+
+        def analyze(text)
+          { words: text.word_count, title: text.titlecase }
+        end
+      end
+    lib/text_stats.rb: |
+      class TextStatistics
+        def initialize(text)
+          @text = text
+        end
+
+        def word_count
+          @text.split(/\s+/).size
+        end
+
+        def char_count
+          @text.length
+        end
+
+        def avg_word_length
+          words = @text.split(/\s+/)
+          return 0.0 if words.empty?
+          words.sum(&:length).to_f / words.size
+        end
+
+        def sentence_count
+          @text.scan(/[.!?]+/).size
+        end
+      end
+    lib/markdown_renderer.rb: |
+      class MarkdownRenderer
+        def render(markdown)
+          lines = markdown.split("\n")
+          lines.map { |line| render_line(line) }.join("\n")
+        end
+
+        private
+
+        def render_line(line)
+          case line
+          when /^# (.+)/
+            "<h1>#{$1}</h1>"
+          when /^## (.+)/
+            "<h2>#{$1}</h2>"
+          when /^\* (.+)/
+            "<li>#{$1}</li>"
+          else
+            "<p>#{line}</p>"
+          end
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: formatter_file
+  selector:
+    path: lib/formatter.rb
+- id: req_global_0
+  selector:
+    anchor: using StringExtensions
+- id: no_text_stats
+  selector:
+    path: lib/text_stats.rb
+- id: no_markdown_renderer
+  selector:
+    path: lib/markdown_renderer.rb
+- id: no_global_0
+  selector:
+    anchor: TextStatistics
+- id: no_global_1
+  selector:
+    anchor: MarkdownRenderer
+- id: no_global_2
+  selector:
+    anchor: avg_word_length
+- id: no_global_3
+  selector:
+    anchor: render_line
+- id: no_global_4
+  selector:
+    anchor: text_stats.rb
+- id: no_global_5
+  selector:
+    anchor: markdown_renderer.rb
+oracle:
+  required:
+  - formatter_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_text_stats
+  - no_markdown_renderer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

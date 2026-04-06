@@ -1,0 +1,136 @@
+name: comprehensive_020_quality_pytest_function
+repo:
+  initial_files:
+    src/calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def subtract(a, b):
+          return a - b
+
+      def multiply(a, b):
+          return a * b
+
+      def divide(a, b):
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      def test_placeholder():
+          pass
+
+      def test_another():
+          pass
+    garbage_benchmark_runner.py: |
+      GARBAGE_COMP_020_WARMUP_ROUNDS_A = "iterations"
+      GARBAGE_COMP_020_STATS_METHOD_B = "percentile"
+
+      class GarbageBenchmarkRunner:
+          GARBAGE_COMP_020_TIMER_PRECISION_C = True
+          def benchmark(self):
+              pass
+    garbage_coverage_reporter.py: |
+      GARBAGE_COMP_020_BRANCH_COVERAGE_D = "instrumented"
+      GARBAGE_COMP_020_REPORT_FORMAT_E = "cobertura"
+
+      class GarbageCoverageReporter:
+          GARBAGE_COMP_020_MERGE_RESULTS_F = False
+          def report(self):
+              pass
+  changed_files:
+    src/calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def subtract(a, b):
+          return a - b
+
+      def multiply(a, b):
+          return a * b
+
+      def divide(a, b):
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import add, subtract, divide
+
+      def test_add_positive():
+          assert add(2, 3) == 5
+
+      def test_add_negative():
+          assert add(-1, -1) == -2
+
+      def test_subtract():
+          assert subtract(10, 4) == 6
+
+      def test_divide_by_zero():
+          with pytest.raises(ValueError):
+              divide(1, 0)
+    garbage_benchmark_runner.py: |
+      GARBAGE_COMP_020_WARMUP_ROUNDS_A = "iterations"
+      GARBAGE_COMP_020_STATS_METHOD_B = "percentile"
+
+      class GarbageBenchmarkRunner:
+          GARBAGE_COMP_020_TIMER_PRECISION_C = True
+          def benchmark(self):
+              pass
+    garbage_coverage_reporter.py: |
+      GARBAGE_COMP_020_BRANCH_COVERAGE_D = "instrumented"
+      GARBAGE_COMP_020_REPORT_FORMAT_E = "cobertura"
+
+      class GarbageCoverageReporter:
+          GARBAGE_COMP_020_MERGE_RESULTS_F = False
+          def report(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: test_calculator_file
+  selector:
+    path: tests/test_calculator.py
+- id: req_global_0
+  selector:
+    anchor: import pytest
+- id: req_global_1
+  selector:
+    anchor: 'def test_add_positive():'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_020_BRANCH_COVERAGE_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_020_MERGE_RESULTS_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_020_REPORT_FORMAT_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_020_STATS_METHOD_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_020_TIMER_PRECISION_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_020_WARMUP_ROUNDS_A
+- id: no_global_6
+  selector:
+    anchor: garbage_benchmark_runner.py
+- id: no_global_7
+  selector:
+    anchor: garbage_coverage_reporter.py
+oracle:
+  required:
+  - test_calculator_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

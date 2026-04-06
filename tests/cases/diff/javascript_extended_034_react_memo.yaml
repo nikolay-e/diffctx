@@ -1,0 +1,198 @@
+name: javascript_extended_034_react_memo
+repo:
+  initial_files:
+    src/components/ExpensiveList.tsx: |
+      import { memo } from 'react';
+
+      interface Item {
+          id: string;
+          name: string;
+      }
+
+      interface ExpensiveListProps {
+          items: Item[];
+      }
+
+      function ExpensiveListComponent({ items }: ExpensiveListProps) {
+          return (
+              <ul>
+                  {items.map(item => (
+                      <li key={item.id}>{item.name}</li>
+                  ))}
+              </ul>
+          );
+      }
+
+      export const ExpensiveList = memo(ExpensiveListComponent);
+    src/pages/Dashboard.tsx: |
+      console.log('initial');
+    src/db/pool.ts: |
+      interface PoolConfig {
+          maxConnections: number;
+          idleTimeout: number;
+          host: string;
+      }
+
+      export class ConnectionPool {
+          private available: number;
+
+          constructor(private config: PoolConfig) {
+              this.available = config.maxConnections;
+          }
+
+          acquire(): boolean {
+              if (this.available <= 0) return false;
+              this.available--;
+              return true;
+          }
+
+          release(): void {
+              this.available = Math.min(this.available + 1, this.config.maxConnections);
+          }
+      }
+    src/config/feature-flags.ts: |
+      interface FeatureFlag {
+          name: string;
+          enabled: boolean;
+          rolloutPercentage: number;
+      }
+
+      const flags: Map<string, FeatureFlag> = new Map();
+
+      export function registerFlag(flag: FeatureFlag): void {
+          flags.set(flag.name, flag);
+      }
+
+      export function isEnabled(flagName: string): boolean {
+          const flag = flags.get(flagName);
+          return flag?.enabled ?? false;
+      }
+  changed_files:
+    src/components/ExpensiveList.tsx: |
+      import { memo } from 'react';
+
+      interface Item {
+          id: string;
+          name: string;
+      }
+
+      interface ExpensiveListProps {
+          items: Item[];
+      }
+
+      function ExpensiveListComponent({ items }: ExpensiveListProps) {
+          return (
+              <ul>
+                  {items.map(item => (
+                      <li key={item.id}>{item.name}</li>
+                  ))}
+              </ul>
+          );
+      }
+
+      export const ExpensiveList = memo(ExpensiveListComponent);
+    src/pages/Dashboard.tsx: |
+      import { useState } from 'react';
+      import { ExpensiveList } from '../components/ExpensiveList';
+
+      export function Dashboard() {
+          const [items] = useState([{ id: '1', name: 'Item 1' }]);
+          const [count, setCount] = useState(0);
+
+          return (
+              <div>
+                  <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+                  <ExpensiveList items={items} />
+              </div>
+          );
+      }
+    src/db/pool.ts: |
+      interface PoolConfig {
+          maxConnections: number;
+          idleTimeout: number;
+          host: string;
+      }
+
+      export class ConnectionPool {
+          private available: number;
+
+          constructor(private config: PoolConfig) {
+              this.available = config.maxConnections;
+          }
+
+          acquire(): boolean {
+              if (this.available <= 0) return false;
+              this.available--;
+              return true;
+          }
+
+          release(): void {
+              this.available = Math.min(this.available + 1, this.config.maxConnections);
+          }
+      }
+    src/config/feature-flags.ts: |
+      interface FeatureFlag {
+          name: string;
+          enabled: boolean;
+          rolloutPercentage: number;
+      }
+
+      const flags: Map<string, FeatureFlag> = new Map();
+
+      export function registerFlag(flag: FeatureFlag): void {
+          flags.set(flag.name, flag);
+      }
+
+      export function isEnabled(flagName: string): boolean {
+          const flag = flags.get(flagName);
+          return flag?.enabled ?? false;
+      }
+  commit_message: Update files
+fragments:
+- id: expensivelist
+  selector:
+    path: src/components/ExpensiveList.tsx
+    anchor: memo
+- id: expensivelist_1
+  selector:
+    path: src/components/ExpensiveList.tsx
+    anchor: ExpensiveListProps
+- id: expensivelist_2
+  selector:
+    path: src/components/ExpensiveList.tsx
+    anchor: ExpensiveListComponent
+- id: no_pool
+  selector:
+    path: src/db/pool.ts
+- id: no_feature_flags
+  selector:
+    path: src/config/feature-flags.ts
+- id: no_global_0
+  selector:
+    anchor: PoolConfig
+- id: no_global_1
+  selector:
+    anchor: ConnectionPool
+- id: no_global_2
+  selector:
+    anchor: FeatureFlag
+- id: no_global_3
+  selector:
+    anchor: registerFlag
+- id: no_global_4
+  selector:
+    anchor: isEnabled
+oracle:
+  required:
+  - expensivelist
+  - expensivelist_1
+  - expensivelist_2
+  allowed: []
+  forbidden:
+  - no_pool
+  - no_feature_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

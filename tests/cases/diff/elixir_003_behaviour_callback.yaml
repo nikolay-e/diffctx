@@ -1,0 +1,279 @@
+name: elixir_003_behaviour_callback
+repo:
+  initial_files:
+    lib/myapp/jobs/worker.ex: |
+      defmodule MyApp.Jobs.Worker do
+        @callback perform(args :: map()) :: :ok | {:error, term()}
+
+        @callback handle_retry(reason :: term(), attempt :: integer()) :: :retry | :abort
+
+        defmacro __using__(_opts) do
+          quote do
+            @behaviour MyApp.Jobs.Worker
+          end
+        end
+      end
+    lib/myapp/jobs/report_job.ex: |
+      defmodule MyApp.Jobs.ReportJob do
+        @behaviour MyApp.Jobs.Worker
+
+        @impl true
+        def perform(%{"report_type" => type, "user_id" => user_id}) do
+          case generate_report(type, user_id) do
+            {:ok, _path} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        end
+
+        defp generate_report(type, user_id) do
+          {:ok, "/reports/#{type}_#{user_id}.pdf"}
+        end
+      end
+    lib/myapp/jobs/cleanup_job.ex: |
+      defmodule MyApp.Jobs.CleanupJob do
+        @behaviour MyApp.Jobs.Worker
+
+        @impl true
+        def perform(%{"older_than_days" => days}) do
+          count = cleanup_old_records(days)
+          if count >= 0, do: :ok, else: {:error, :cleanup_failed}
+        end
+
+        @impl true
+        def handle_retry(_reason, attempt) when attempt < 5, do: :retry
+        def handle_retry(_reason, _attempt), do: :abort
+
+        defp cleanup_old_records(days) do
+          days * 10
+        end
+
+        def garbage_marker_a, do: "GARBAGE_ELIXIR_003_A_CLEANUP"
+        def garbage_marker_b, do: "GARBAGE_ELIXIR_003_B_BATCH_SIZE"
+      end
+    lib/myapp/jobs/scheduler.ex: |
+      defmodule MyApp.Jobs.Scheduler do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          schedule_jobs()
+          {:ok, %{running: []}}
+        end
+
+        defp schedule_jobs do
+          Process.send_after(self(), :tick, 60_000)
+        end
+
+        @impl true
+        def handle_info(:tick, state) do
+          schedule_jobs()
+          {:noreply, state}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_003_C_INTERVAL"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_003_D_CRON"
+      end
+    lib/myapp/jobs/job_config.ex: |
+      defmodule MyApp.Jobs.JobConfig do
+        defstruct [:name, :max_retries, :timeout, :priority]
+
+        def default_config(name) do
+          %__MODULE__{
+            name: name,
+            max_retries: 3,
+            timeout: 30_000,
+            priority: :normal
+          }
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_003_E_PRIORITY"
+      end
+  changed_files:
+    lib/myapp/jobs/worker.ex: |
+      defmodule MyApp.Jobs.Worker do
+        @callback perform(args :: map()) :: :ok | {:error, term()}
+
+        @callback handle_retry(reason :: term(), attempt :: integer()) :: :retry | :abort
+
+        defmacro __using__(_opts) do
+          quote do
+            @behaviour MyApp.Jobs.Worker
+          end
+        end
+      end
+    lib/myapp/jobs/report_job.ex: |
+      defmodule MyApp.Jobs.ReportJob do
+        @behaviour MyApp.Jobs.Worker
+
+        @max_retries 3
+
+        @impl true
+        def perform(%{"report_type" => type, "user_id" => user_id}) do
+          case generate_report(type, user_id) do
+            {:ok, _path} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+        end
+
+        @impl true
+        def handle_retry(:timeout, attempt) when attempt < @max_retries do
+          :retry
+        end
+
+        def handle_retry(:invalid_data, _attempt) do
+          :abort
+        end
+
+        def handle_retry(_reason, attempt) when attempt < @max_retries do
+          :retry
+        end
+
+        def handle_retry(_reason, _attempt) do
+          :abort
+        end
+
+        defp generate_report(type, user_id) do
+          {:ok, "/reports/#{type}_#{user_id}.pdf"}
+        end
+      end
+    lib/myapp/jobs/cleanup_job.ex: |
+      defmodule MyApp.Jobs.CleanupJob do
+        @behaviour MyApp.Jobs.Worker
+
+        @impl true
+        def perform(%{"older_than_days" => days}) do
+          count = cleanup_old_records(days)
+          if count >= 0, do: :ok, else: {:error, :cleanup_failed}
+        end
+
+        @impl true
+        def handle_retry(_reason, attempt) when attempt < 5, do: :retry
+        def handle_retry(_reason, _attempt), do: :abort
+
+        defp cleanup_old_records(days) do
+          days * 10
+        end
+
+        def garbage_marker_a, do: "GARBAGE_ELIXIR_003_A_CLEANUP"
+        def garbage_marker_b, do: "GARBAGE_ELIXIR_003_B_BATCH_SIZE"
+      end
+    lib/myapp/jobs/scheduler.ex: |
+      defmodule MyApp.Jobs.Scheduler do
+        use GenServer
+
+        def start_link(opts) do
+          GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+        end
+
+        @impl true
+        def init(_opts) do
+          schedule_jobs()
+          {:ok, %{running: []}}
+        end
+
+        defp schedule_jobs do
+          Process.send_after(self(), :tick, 60_000)
+        end
+
+        @impl true
+        def handle_info(:tick, state) do
+          schedule_jobs()
+          {:noreply, state}
+        end
+
+        def garbage_marker_c, do: "GARBAGE_ELIXIR_003_C_INTERVAL"
+        def garbage_marker_d, do: "GARBAGE_ELIXIR_003_D_CRON"
+      end
+    lib/myapp/jobs/job_config.ex: |
+      defmodule MyApp.Jobs.JobConfig do
+        defstruct [:name, :max_retries, :timeout, :priority]
+
+        def default_config(name) do
+          %__MODULE__{
+            name: name,
+            max_retries: 3,
+            timeout: 30_000,
+            priority: :normal
+          }
+        end
+
+        def garbage_marker_e, do: "GARBAGE_ELIXIR_003_E_PRIORITY"
+      end
+  commit_message: Update files
+fragments:
+- id: report_job
+  selector:
+    path: lib/myapp/jobs/report_job.ex
+    anchor: def handle_retry(:timeout, attempt)
+- id: report_job_1
+  selector:
+    path: lib/myapp/jobs/report_job.ex
+    anchor: '@behaviour MyApp.Jobs.Worker'
+- id: worker
+  selector:
+    path: lib/myapp/jobs/worker.ex
+    anchor: '@callback handle_retry(reason :: term(), attempt :: integer()) :: :retry | :abort'
+- id: worker_1
+  selector:
+    path: lib/myapp/jobs/worker.ex
+    anchor: '@callback perform(args :: map())'
+- id: no_cleanup_job
+  selector:
+    path: lib/myapp/jobs/cleanup_job.ex
+- id: no_scheduler
+  selector:
+    path: lib/myapp/jobs/scheduler.ex
+- id: no_job_config
+  selector:
+    path: lib/myapp/jobs/job_config.ex
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ELIXIR_003_A_CLEANUP
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ELIXIR_003_B_BATCH_SIZE
+- id: no_global_2
+  selector:
+    anchor: CleanupJob
+- id: no_global_3
+  selector:
+    anchor: cleanup_old_records
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ELIXIR_003_C_INTERVAL
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ELIXIR_003_D_CRON
+- id: no_global_6
+  selector:
+    anchor: Scheduler
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ELIXIR_003_E_PRIORITY
+- id: no_global_8
+  selector:
+    anchor: JobConfig
+oracle:
+  required:
+  - report_job
+  - report_job_1
+  - worker
+  - worker_1
+  allowed: []
+  forbidden:
+  - no_cleanup_job
+  - no_scheduler
+  - no_job_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

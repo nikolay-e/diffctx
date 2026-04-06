@@ -1,0 +1,341 @@
+name: jvm_and_compiled_033_java_gradle_plugin
+repo:
+  initial_files:
+    build.gradle: |
+      plugins {
+          id 'java'
+          id 'org.springframework.boot' version '3.0.0'
+      }
+
+      group = 'com.example'
+      version = '0.0.1-SNAPSHOT'
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-web'
+      }
+    settings.gradle: |
+      rootProject.name = 'my-service'
+    build.gradle.kts: |
+      plugins {
+          java
+          id("org.springframework.boot") version "3.0.0"
+          id("io.spring.dependency-management") version "1.1.0"
+          jacoco
+      }
+
+      group = "com.example.other"
+      version = "1.0.0"
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation("org.springframework.boot:spring-boot-starter-web")
+          implementation("org.springframework.boot:spring-boot-starter-actuator")
+          testImplementation("org.springframework.boot:spring-boot-starter-test")
+      }
+
+      tasks.jacocoTestReport {
+          reports {
+              xml.required.set(true)
+              html.required.set(true)
+          }
+      }
+    pom.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project xmlns="http://maven.apache.org/POM/4.0.0">
+          <modelVersion>4.0.0</modelVersion>
+          <parent>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-parent</artifactId>
+              <version>3.0.0</version>
+          </parent>
+          <groupId>com.example</groupId>
+          <artifactId>legacy-service</artifactId>
+          <version>0.0.1-SNAPSHOT</version>
+          <dependencies>
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-web</artifactId>
+              </dependency>
+          </dependencies>
+      </project>
+    Dockerfile: |
+      FROM gradle:7-jdk17 AS builder
+      WORKDIR /app
+      COPY build.gradle settings.gradle ./
+      COPY src ./src
+      RUN gradle build --no-daemon -x test
+
+      FROM eclipse-temurin:17-jre-alpine
+      WORKDIR /app
+      COPY --from=builder /app/build/libs/*.jar app.jar
+      EXPOSE 8080
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+    gradle.properties: |
+      org.gradle.jvmargs=-Xmx512m
+      org.gradle.parallel=true
+      org.gradle.caching=true
+      spring.boot.mainclass=com.example.Application
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-java@v4
+              with:
+                java-version: '17'
+                distribution: 'temurin'
+            - name: Build
+              run: ./gradlew build
+            - name: Test
+              run: ./gradlew test
+  changed_files:
+    build.gradle: |
+      plugins {
+          id 'java'
+          id 'org.springframework.boot' version '3.0.0'
+          id 'io.spring.dependency-management' version '1.1.0'
+          id 'jacoco'
+      }
+
+      group = 'com.example'
+      version = '0.0.1-SNAPSHOT'
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-web'
+          implementation 'org.springframework.boot:spring-boot-starter-actuator'
+          testImplementation 'org.springframework.boot:spring-boot-starter-test'
+      }
+
+      jacoco {
+          toolVersion = "0.8.8"
+      }
+    settings.gradle: |
+      rootProject.name = 'my-service'
+    build.gradle.kts: |
+      plugins {
+          java
+          id("org.springframework.boot") version "3.0.0"
+          id("io.spring.dependency-management") version "1.1.0"
+          jacoco
+      }
+
+      group = "com.example.other"
+      version = "1.0.0"
+
+      java {
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+      }
+
+      repositories {
+          mavenCentral()
+      }
+
+      dependencies {
+          implementation("org.springframework.boot:spring-boot-starter-web")
+          implementation("org.springframework.boot:spring-boot-starter-actuator")
+          testImplementation("org.springframework.boot:spring-boot-starter-test")
+      }
+
+      tasks.jacocoTestReport {
+          reports {
+              xml.required.set(true)
+              html.required.set(true)
+          }
+      }
+    pom.xml: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project xmlns="http://maven.apache.org/POM/4.0.0">
+          <modelVersion>4.0.0</modelVersion>
+          <parent>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-parent</artifactId>
+              <version>3.0.0</version>
+          </parent>
+          <groupId>com.example</groupId>
+          <artifactId>legacy-service</artifactId>
+          <version>0.0.1-SNAPSHOT</version>
+          <dependencies>
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-web</artifactId>
+              </dependency>
+          </dependencies>
+      </project>
+    Dockerfile: |
+      FROM gradle:7-jdk17 AS builder
+      WORKDIR /app
+      COPY build.gradle settings.gradle ./
+      COPY src ./src
+      RUN gradle build --no-daemon -x test
+
+      FROM eclipse-temurin:17-jre-alpine
+      WORKDIR /app
+      COPY --from=builder /app/build/libs/*.jar app.jar
+      EXPOSE 8080
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+    gradle.properties: |
+      org.gradle.jvmargs=-Xmx512m
+      org.gradle.parallel=true
+      org.gradle.caching=true
+      spring.boot.mainclass=com.example.Application
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-java@v4
+              with:
+                java-version: '17'
+                distribution: 'temurin'
+            - name: Build
+              run: ./gradlew build
+            - name: Test
+              run: ./gradlew test
+  commit_message: Update files
+fragments:
+- id: build
+  selector:
+    path: build.gradle
+    anchor: id 'io.spring.dependency-management' version '1.1.0'
+- id: build_1
+  selector:
+    path: build.gradle
+    anchor: id 'jacoco'
+- id: build_2
+  selector:
+    path: build.gradle
+    anchor: spring-boot-starter-actuator
+- id: build_3
+  selector:
+    path: build.gradle
+    anchor: spring-boot-starter-test
+- id: build_4
+  selector:
+    path: build.gradle
+    anchor: toolVersion = "0.8.8"
+- id: no_build_gradle
+  selector:
+    path: build.gradle.kts
+- id: no_pom
+  selector:
+    path: pom.xml
+- id: no_dockerfile
+  selector:
+    path: Dockerfile
+- id: no_gradle
+  selector:
+    path: gradle.properties
+- id: no_ci
+  selector:
+    path: .github/workflows/ci.yml
+- id: no_global_0
+  selector:
+    anchor: build.gradle.kts
+- id: no_global_1
+  selector:
+    anchor: xml.required.set
+- id: no_global_2
+  selector:
+    anchor: jacocoTestReport
+- id: no_global_3
+  selector:
+    anchor: pom.xml
+- id: no_global_4
+  selector:
+    anchor: modelVersion
+- id: no_global_5
+  selector:
+    anchor: artifactId
+- id: no_global_6
+  selector:
+    anchor: legacy-service
+- id: no_global_7
+  selector:
+    anchor: Dockerfile
+- id: no_global_8
+  selector:
+    anchor: eclipse-temurin
+- id: no_global_9
+  selector:
+    anchor: ENTRYPOINT
+- id: no_global_10
+  selector:
+    anchor: org.gradle.jvmargs
+- id: no_global_11
+  selector:
+    anchor: org.gradle.parallel
+- id: no_global_12
+  selector:
+    anchor: spring.boot.mainclass
+- id: no_global_13
+  selector:
+    anchor: actions/checkout
+- id: no_global_14
+  selector:
+    anchor: actions/setup-java
+- id: no_global_15
+  selector:
+    anchor: gradlew
+oracle:
+  required:
+  - build
+  - build_1
+  - build_2
+  - build_3
+  - build_4
+  allowed: []
+  forbidden:
+  - no_build_gradle
+  - no_pom
+  - no_dockerfile
+  - no_gradle
+  - no_ci
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

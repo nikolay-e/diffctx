@@ -1,0 +1,223 @@
+name: operations_002_git_new_file_with_inheritance
+repo:
+  initial_files:
+    features/__init__.py: ''
+    features/base.py: |
+      from abc import ABC, abstractmethod
+      from typing import Any
+
+      class BaseFeature(ABC):
+          def __init__(self, name: str, enabled: bool = True):
+              self.name = name
+              self.enabled = enabled
+
+          @abstractmethod
+          def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+              pass
+
+          def is_enabled(self) -> bool:
+              return self.enabled
+
+          def disable(self) -> None:
+              self.enabled = False
+
+          def enable(self) -> None:
+              self.enabled = True
+
+          def __repr__(self) -> str:
+              status = "on" if self.enabled else "off"
+              return f"<{self.__class__.__name__}({self.name}, {status})>"
+    features/registry.py: |
+      from features.base import BaseFeature
+
+      _registry: dict[str, BaseFeature] = {}
+
+      def register(feature: BaseFeature) -> None:
+          _registry[feature.name] = feature
+
+      def get_feature(name: str) -> BaseFeature | None:
+          return _registry.get(name)
+
+      def list_enabled() -> list[str]:
+          return [name for name, f in _registry.items() if f.is_enabled()]
+    infra/event_bus.py: |
+      from typing import Callable, Any
+
+      class EventBus:
+          def __init__(self):
+              self._subscribers: dict[str, list[Callable]] = {}
+
+          def subscribe(self, topic: str, handler: Callable) -> None:
+              if topic not in self._subscribers:
+                  self._subscribers[topic] = []
+              self._subscribers[topic].append(handler)
+
+          def publish(self, topic: str, payload: Any) -> int:
+              handlers = self._subscribers.get(topic, [])
+              for h in handlers:
+                  h(payload)
+              return len(handlers)
+
+          def topics(self) -> list[str]:
+              return list(self._subscribers.keys())
+    infra/permission_manager.py: |
+      from enum import Enum
+
+      class Permission(Enum):
+          READ = "read"
+          WRITE = "write"
+          ADMIN = "admin"
+
+      class PermissionManager:
+          def __init__(self):
+              self._grants: dict[str, set[Permission]] = {}
+
+          def grant(self, user_id: str, perm: Permission) -> None:
+              if user_id not in self._grants:
+                  self._grants[user_id] = set()
+              self._grants[user_id].add(perm)
+
+          def has_permission(self, user_id: str, perm: Permission) -> bool:
+              return perm in self._grants.get(user_id, set())
+  changed_files:
+    features/__init__.py: ''
+    features/base.py: |
+      from abc import ABC, abstractmethod
+      from typing import Any
+
+      class BaseFeature(ABC):
+          def __init__(self, name: str, enabled: bool = True):
+              self.name = name
+              self.enabled = enabled
+
+          @abstractmethod
+          def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+              pass
+
+          def is_enabled(self) -> bool:
+              return self.enabled
+
+          def disable(self) -> None:
+              self.enabled = False
+
+          def enable(self) -> None:
+              self.enabled = True
+
+          def __repr__(self) -> str:
+              status = "on" if self.enabled else "off"
+              return f"<{self.__class__.__name__}({self.name}, {status})>"
+    features/registry.py: |
+      from features.base import BaseFeature
+
+      _registry: dict[str, BaseFeature] = {}
+
+      def register(feature: BaseFeature) -> None:
+          _registry[feature.name] = feature
+
+      def get_feature(name: str) -> BaseFeature | None:
+          return _registry.get(name)
+
+      def list_enabled() -> list[str]:
+          return [name for name, f in _registry.items() if f.is_enabled()]
+    features/new_feature.py: |
+      from typing import Any
+      from features.base import BaseFeature
+
+      class NewFeature(BaseFeature):
+          def __init__(self, threshold: float = 0.5):
+              super().__init__(name="new_feature", enabled=True)
+              self.threshold = threshold
+
+          def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+              score = context.get("score", 0.0)
+              if score >= self.threshold:
+                  return {"action": "proceed", "score": score}
+              return {"action": "skip", "score": score}
+
+          def adjust_threshold(self, new_threshold: float) -> None:
+              self.threshold = new_threshold
+    infra/event_bus.py: |
+      from typing import Callable, Any
+
+      class EventBus:
+          def __init__(self):
+              self._subscribers: dict[str, list[Callable]] = {}
+
+          def subscribe(self, topic: str, handler: Callable) -> None:
+              if topic not in self._subscribers:
+                  self._subscribers[topic] = []
+              self._subscribers[topic].append(handler)
+
+          def publish(self, topic: str, payload: Any) -> int:
+              handlers = self._subscribers.get(topic, [])
+              for h in handlers:
+                  h(payload)
+              return len(handlers)
+
+          def topics(self) -> list[str]:
+              return list(self._subscribers.keys())
+    infra/permission_manager.py: |
+      from enum import Enum
+
+      class Permission(Enum):
+          READ = "read"
+          WRITE = "write"
+          ADMIN = "admin"
+
+      class PermissionManager:
+          def __init__(self):
+              self._grants: dict[str, set[Permission]] = {}
+
+          def grant(self, user_id: str, perm: Permission) -> None:
+              if user_id not in self._grants:
+                  self._grants[user_id] = set()
+              self._grants[user_id].add(perm)
+
+          def has_permission(self, user_id: str, perm: Permission) -> bool:
+              return perm in self._grants.get(user_id, set())
+  commit_message: Update files
+fragments:
+- id: new_feature_file
+  selector:
+    path: features/new_feature.py
+- id: req_global_0
+  selector:
+    anchor: BaseFeature
+- id: req_global_1
+  selector:
+    anchor: class NewFeature
+- id: no_event_bus
+  selector:
+    path: infra/event_bus.py
+- id: no_permission_manager
+  selector:
+    path: infra/permission_manager.py
+- id: no_global_0
+  selector:
+    anchor: EventBus
+- id: no_global_1
+  selector:
+    anchor: PermissionManager
+- id: no_global_2
+  selector:
+    anchor: Permission
+- id: no_global_3
+  selector:
+    anchor: event_bus.py
+- id: no_global_4
+  selector:
+    anchor: permission_manager.py
+oracle:
+  required:
+  - new_feature_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_event_bus
+  - no_permission_manager
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

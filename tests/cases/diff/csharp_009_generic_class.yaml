@@ -1,0 +1,130 @@
+name: csharp_009_generic_class
+repo:
+  initial_files:
+    Collections/Cache.cs: |
+      namespace MyApp.Collections;
+
+      public class Cache<TKey, TValue> where TKey : notnull
+      {
+          private readonly Dictionary<TKey, TValue> _cache = new();
+
+          public void Set(TKey key, TValue value) => _cache[key] = value;
+
+          public TValue? Get(TKey key) =>
+              _cache.TryGetValue(key, out var value) ? value : default;
+
+          public bool Contains(TKey key) => _cache.ContainsKey(key);
+      }
+    Services/CacheService.cs: |
+      namespace MyApp.Services;
+
+      public class CacheService { }
+    Unrelated/RetryPolicy.cs: |
+      namespace MyApp.Unrelated;
+
+      public class RetryPolicy
+      {
+          private const string GARBAGE_CS_009_RETRY_POLICY_A = "retry_policy_marker";
+
+          public int MaxRetries => GARBAGE_CS_009_RETRY_POLICY_A.Length;
+      }
+    Unrelated/CorrelationIdProvider.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CorrelationIdProvider
+      {
+          public const string GARBAGE_CS_009_CORRELATION_ID_B = "correlation_id_marker";
+
+          public string Generate() => GARBAGE_CS_009_CORRELATION_ID_B + Guid.NewGuid();
+      }
+  changed_files:
+    Collections/Cache.cs: |
+      namespace MyApp.Collections;
+
+      public class Cache<TKey, TValue> where TKey : notnull
+      {
+          private readonly Dictionary<TKey, TValue> _cache = new();
+
+          public void Set(TKey key, TValue value) => _cache[key] = value;
+
+          public TValue? Get(TKey key) =>
+              _cache.TryGetValue(key, out var value) ? value : default;
+
+          public bool Contains(TKey key) => _cache.ContainsKey(key);
+      }
+    Services/CacheService.cs: |
+      using MyApp.Collections;
+      using MyApp.Models;
+
+      namespace MyApp.Services;
+
+      public class CacheService
+      {
+          private readonly Cache<string, User> _userCache = new();
+
+          public void CacheUser(string key, User user)
+          {
+              _userCache.Set(key, user);
+          }
+
+          public User? GetCachedUser(string key)
+          {
+              return _userCache.Get(key);
+          }
+      }
+    Unrelated/RetryPolicy.cs: |
+      namespace MyApp.Unrelated;
+
+      public class RetryPolicy
+      {
+          private const string GARBAGE_CS_009_RETRY_POLICY_A = "retry_policy_marker";
+
+          public int MaxRetries => GARBAGE_CS_009_RETRY_POLICY_A.Length;
+      }
+    Unrelated/CorrelationIdProvider.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CorrelationIdProvider
+      {
+          public const string GARBAGE_CS_009_CORRELATION_ID_B = "correlation_id_marker";
+
+          public string Generate() => GARBAGE_CS_009_CORRELATION_ID_B + Guid.NewGuid();
+      }
+  commit_message: Update files
+fragments:
+- id: cacheservice_file
+  selector:
+    path: Services/CacheService.cs
+- id: req_global_0
+  selector:
+    anchor: using MyApp.Collections;
+- id: req_global_1
+  selector:
+    anchor: public void CacheUser(string key, User user)
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_009_CORRELATION_ID_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_009_RETRY_POLICY_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CS_009_RETRY_POLICY_A.Length
+- id: no_global_3
+  selector:
+    anchor: CorrelationIdProvider.cs
+- id: no_global_4
+  selector:
+    anchor: RetryPolicy.cs
+oracle:
+  required:
+  - cacheservice_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

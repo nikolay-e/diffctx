@@ -1,0 +1,159 @@
+name: terraform_074_cloudwatch_alarm
+repo:
+  initial_files:
+    monitoring.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu" {
+        alarm_name          = "high-cpu"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+      }
+    src/metrics.py: |
+      import boto3
+
+      def get_cpu_metrics(instance_id: str):
+          cw = boto3.client("cloudwatch")
+          return cw.get_metric_statistics(
+              Namespace="AWS/EC2",
+              MetricName="CPUUtilization",
+              Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+              Period=300,
+              Statistics=["Average"],
+          )
+    garbage_cw_memory.tf: |
+      GARBAGE_TF_074_MEMORY_ALARM_MARKER_A = "memory-monitor"
+      GARBAGE_TF_074_CW_AGENT_MARKER_B = "installed"
+
+      resource "aws_cloudwatch_metric_alarm" "memory" {
+        alarm_name          = "high-memory"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 3
+        metric_name         = "MemoryUtilization"
+        namespace           = "CWAgent"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 85
+      }
+    garbage_scheduler.py: |
+      GARBAGE_TF_074_SCHEDULER_MARKER_C = "cron-jobs"
+      GARBAGE_TF_074_INTERVAL_MARKER_D = 3600
+
+      class TaskScheduler:
+          GARBAGE_TF_074_QUEUE_MARKER_E = True
+
+          def schedule(self, task: str, interval: int) -> None:
+              pass
+  changed_files:
+    monitoring.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cpu" {
+        alarm_name          = "critical-cpu"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 1
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 60
+        statistic           = "Average"
+        threshold           = 90
+      }
+    src/metrics.py: |
+      import boto3
+
+      def get_cpu_metrics(instance_id: str):
+          cw = boto3.client("cloudwatch")
+          return cw.get_metric_statistics(
+              Namespace="AWS/EC2",
+              MetricName="CPUUtilization",
+              Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+              Period=300,
+              Statistics=["Average"],
+          )
+    garbage_cw_memory.tf: |
+      GARBAGE_TF_074_MEMORY_ALARM_MARKER_A = "memory-monitor"
+      GARBAGE_TF_074_CW_AGENT_MARKER_B = "installed"
+
+      resource "aws_cloudwatch_metric_alarm" "memory" {
+        alarm_name          = "high-memory"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 3
+        metric_name         = "MemoryUtilization"
+        namespace           = "CWAgent"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 85
+      }
+    garbage_scheduler.py: |
+      GARBAGE_TF_074_SCHEDULER_MARKER_C = "cron-jobs"
+      GARBAGE_TF_074_INTERVAL_MARKER_D = 3600
+
+      class TaskScheduler:
+          GARBAGE_TF_074_QUEUE_MARKER_E = True
+
+          def schedule(self, task: str, interval: int) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: monitoring
+  selector:
+    path: monitoring.tf
+    anchor: alarm_name          = "critical-cpu"
+- id: monitoring_1
+  selector:
+    path: monitoring.tf
+    anchor: evaluation_periods  = 1
+- id: monitoring_2
+  selector:
+    path: monitoring.tf
+    anchor: period              = 60
+- id: monitoring_3
+  selector:
+    path: monitoring.tf
+    anchor: threshold           = 90
+- id: monitoring_4
+  selector:
+    path: monitoring.tf
+    anchor: resource "aws_cloudwatch_metric_alarm" "cpu"
+- id: no_garbage_cw_memory
+  selector:
+    path: garbage_cw_memory.tf
+- id: no_garbage_scheduler
+  selector:
+    path: garbage_scheduler.py
+- id: no_metrics
+  selector:
+    path: src/metrics.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_TF_074_MEMORY_ALARM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_TF_074_CW_AGENT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_TF_074_SCHEDULER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_TF_074_INTERVAL_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_TF_074_QUEUE_MARKER_E
+oracle:
+  required:
+  - monitoring
+  - monitoring_1
+  - monitoring_2
+  - monitoring_3
+  - monitoring_4
+  allowed: []
+  forbidden:
+  - no_garbage_cw_memory
+  - no_garbage_scheduler
+  - no_metrics
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

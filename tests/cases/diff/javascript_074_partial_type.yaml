@@ -1,0 +1,184 @@
+name: javascript_074_partial_type
+repo:
+  initial_files:
+    config.ts: |
+      export interface FullConfig {
+          host: string;
+          port: number;
+          ssl: boolean;
+          timeout: number;
+      }
+    updater.ts: |
+      console.log('initial');
+    config-loader.ts: |
+      import { FullConfig } from './config';
+
+      export function loadConfigFromEnv(): FullConfig {
+          return {
+              host: process.env.HOST ?? 'localhost',
+              port: parseInt(process.env.PORT ?? '3000', 10),
+              ssl: process.env.SSL === 'true',
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+          };
+      }
+    config-validator.ts: |
+      import { FullConfig } from './config';
+
+      export function validateConfig(config: FullConfig): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!config.host) errors.push('host is required');
+          if (config.port < 1 || config.port > 65535) errors.push('port out of range');
+          if (config.timeout < 0) errors.push('timeout must be non-negative');
+          return { valid: errors.length === 0, errors };
+      }
+    network-config.ts: |
+      export interface NetworkConfig {
+          host: string;
+          port: number;
+          protocol: 'http' | 'https';
+      }
+
+      export function updateNetworkConfig(
+          current: NetworkConfig,
+          updates: Partial<NetworkConfig>
+      ): NetworkConfig {
+          return { ...current, ...updates };
+      }
+  changed_files:
+    config.ts: |
+      export interface FullConfig {
+          host: string;
+          port: number;
+          ssl: boolean;
+          timeout: number;
+      }
+    updater.ts: |
+      import { FullConfig } from './config';
+
+      function updateConfig(current: FullConfig, updates: Partial<FullConfig>): FullConfig {
+          return { ...current, ...updates };
+      }
+    config-loader.ts: |
+      import { FullConfig } from './config';
+
+      export function loadConfigFromEnv(): FullConfig {
+          return {
+              host: process.env.HOST ?? 'localhost',
+              port: parseInt(process.env.PORT ?? '3000', 10),
+              ssl: process.env.SSL === 'true',
+              timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+          };
+      }
+    config-validator.ts: |
+      import { FullConfig } from './config';
+
+      export function validateConfig(config: FullConfig): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!config.host) errors.push('host is required');
+          if (config.port < 1 || config.port > 65535) errors.push('port out of range');
+          if (config.timeout < 0) errors.push('timeout must be non-negative');
+          return { valid: errors.length === 0, errors };
+      }
+    network-config.ts: |
+      export interface NetworkConfig {
+          host: string;
+          port: number;
+          protocol: 'http' | 'https';
+      }
+
+      export function updateNetworkConfig(
+          current: NetworkConfig,
+          updates: Partial<NetworkConfig>
+      ): NetworkConfig {
+          return { ...current, ...updates };
+      }
+  commit_message: Update files
+fragments:
+- id: updater
+  selector:
+    path: updater.ts
+    anchor: import { FullConfig } from './config'
+- id: updater_1
+  selector:
+    path: updater.ts
+    anchor: 'updates: Partial<FullConfig>'
+- id: updater_2
+  selector:
+    path: updater.ts
+    anchor: return { ...current, ...updates }
+- id: config
+  selector:
+    path: config.ts
+    anchor: interface FullConfig {
+- id: config_1
+  selector:
+    path: config.ts
+    anchor: 'host: string'
+- id: config_2
+  selector:
+    path: config.ts
+    anchor: 'port: number'
+- id: config_3
+  selector:
+    path: config.ts
+    anchor: 'ssl: boolean'
+- id: config_4
+  selector:
+    path: config.ts
+    anchor: 'timeout: number'
+- id: no_config_loader
+  selector:
+    path: config-loader.ts
+- id: no_config_validator
+  selector:
+    path: config-validator.ts
+- id: no_network_config
+  selector:
+    path: network-config.ts
+- id: no_global_0
+  selector:
+    anchor: loadConfigFromEnv
+- id: no_global_1
+  selector:
+    anchor: process.env
+- id: no_global_2
+  selector:
+    anchor: validateConfig
+- id: no_global_3
+  selector:
+    anchor: host is required
+- id: no_global_4
+  selector:
+    anchor: port out of range
+- id: no_global_5
+  selector:
+    anchor: NetworkConfig
+- id: no_global_6
+  selector:
+    anchor: updateNetworkConfig
+- id: no_global_7
+  selector:
+    anchor: protocol
+oracle:
+  required:
+  - updater
+  - updater_1
+  - updater_2
+  - config
+  - config_1
+  - config_2
+  - config_3
+  - config_4
+  allowed: []
+  forbidden:
+  - no_config_loader
+  - no_config_validator
+  - no_network_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

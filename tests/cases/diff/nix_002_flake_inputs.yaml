@@ -1,0 +1,294 @@
+name: nix_002_flake_inputs
+repo:
+  initial_files:
+    flake.nix: |
+      {
+        description = "My Rust project";
+
+        inputs = {
+          nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+          flake-utils.url = "github:numtide/flake-utils";
+        };
+
+        outputs = { self, nixpkgs, flake-utils }:
+          flake-utils.lib.eachDefaultSystem (system:
+            let
+              pkgs = nixpkgs.legacyPackages.${system};
+            in
+            {
+              packages.default = pkgs.rustPlatform.buildRustPackage {
+                pname = "myproject";
+                version = "0.1.0";
+                src = ./.;
+                cargoLock.lockFile = ./Cargo.lock;
+              };
+
+              devShells.default = pkgs.mkShell {
+                buildInputs = [
+                  pkgs.rustc
+                  pkgs.cargo
+                  pkgs.rust-analyzer
+                ];
+              };
+            }
+          );
+      }
+    flake.lock: |
+      {
+        "nodes": {
+          "flake-utils": {
+            "locked": {
+              "lastModified": 1701680307,
+              "narHash": "sha256-kAuep2h5ajznlPMD9rnQyffWG8EM/C73ber0Qla5STs=",
+              "owner": "numtide",
+              "repo": "flake-utils",
+              "rev": "4022d587cbbfd70fe950c1e2083a02621806a725",
+              "type": "github"
+            }
+          },
+          "nixpkgs": {
+            "locked": {
+              "lastModified": 1702350026,
+              "narHash": "sha256-RnEU1GSaxYEH0WkcgGKScaEb0gkMzx0GkFnSCnOxYNc=",
+              "owner": "NixOS",
+              "repo": "nixpkgs",
+              "rev": "a9bf124c46ef298113270b1f84a164865987a91c",
+              "type": "github"
+            }
+          },
+          "root": {
+            "inputs": {
+              "flake-utils": "flake-utils",
+              "nixpkgs": "nixpkgs"
+            }
+          }
+        },
+        "root": "root",
+        "version": 7
+      }
+    lib/default.nix: |
+      { lib }:
+
+      GARBAGE_NIX_002_A = "noise_lib_default";
+
+      {
+        formatVersion = version:
+          let
+            parts = lib.splitString "." version;
+          in
+            "v${builtins.elemAt parts 0}.${builtins.elemAt parts 1}";
+
+        mkConfig = name: value: {
+          inherit name value;
+          enabled = true;
+        };
+      }
+    ci/check.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_002_B = "noise_ci_check";
+
+      pkgs.runCommand "check-format" {
+        buildInputs = [ pkgs.rustfmt ];
+      } ''
+        cd ${../.}
+        cargo fmt -- --check
+        touch $out
+      ''
+    shell.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_002_C = "noise_shell";
+
+      pkgs.mkShell {
+        buildInputs = [
+          pkgs.rustc
+          pkgs.cargo
+        ];
+      }
+  changed_files:
+    flake.nix: |
+      {
+        description = "My Rust project";
+
+        inputs = {
+          nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+          flake-utils.url = "github:numtide/flake-utils";
+          crane = {
+            url = "github:ipetkov/crane";
+            inputs.nixpkgs.follows = "nixpkgs";
+          };
+        };
+
+        outputs = { self, nixpkgs, flake-utils, crane }:
+          flake-utils.lib.eachDefaultSystem (system:
+            let
+              pkgs = nixpkgs.legacyPackages.${system};
+              craneLib = crane.mkLib pkgs;
+              src = craneLib.cleanCargoSource (craneLib.path ./.);
+              commonArgs = {
+                inherit src;
+                buildInputs = [ pkgs.openssl pkgs.pkg-config ];
+              };
+              cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+            in
+            {
+              packages.default = craneLib.buildPackage (commonArgs // {
+                inherit cargoArtifacts;
+              });
+
+              checks.clippy = craneLib.cargoClippy (commonArgs // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              });
+
+              devShells.default = pkgs.mkShell {
+                buildInputs = [
+                  pkgs.rustc
+                  pkgs.cargo
+                  pkgs.rust-analyzer
+                  pkgs.clippy
+                ];
+              };
+            }
+          );
+      }
+    flake.lock: |
+      {
+        "nodes": {
+          "crane": {
+            "locked": {
+              "lastModified": 1702404566,
+              "narHash": "sha256-MhrvMBr3hB5veYlkfUzRGJ9G5P7IdTfKpMSGdGACmYA=",
+              "owner": "ipetkov",
+              "repo": "crane",
+              "rev": "2c653e4478476a52c6aa3ac0495e4dea7449ea0e",
+              "type": "github"
+            }
+          },
+          "flake-utils": {
+            "locked": {
+              "lastModified": 1701680307,
+              "narHash": "sha256-kAuep2h5ajznlPMD9rnQyffWG8EM/C73ber0Qla5STs=",
+              "owner": "numtide",
+              "repo": "flake-utils",
+              "rev": "4022d587cbbfd70fe950c1e2083a02621806a725",
+              "type": "github"
+            }
+          },
+          "nixpkgs": {
+            "locked": {
+              "lastModified": 1702350026,
+              "narHash": "sha256-RnEU1GSaxYEH0WkcgGKScaEb0gkMzx0GkFnSCnOxYNc=",
+              "owner": "NixOS",
+              "repo": "nixpkgs",
+              "rev": "a9bf124c46ef298113270b1f84a164865987a91c",
+              "type": "github"
+            }
+          },
+          "root": {
+            "inputs": {
+              "crane": "crane",
+              "flake-utils": "flake-utils",
+              "nixpkgs": "nixpkgs"
+            }
+          }
+        },
+        "root": "root",
+        "version": 7
+      }
+    lib/default.nix: |
+      { lib }:
+
+      GARBAGE_NIX_002_A = "noise_lib_default";
+
+      {
+        formatVersion = version:
+          let
+            parts = lib.splitString "." version;
+          in
+            "v${builtins.elemAt parts 0}.${builtins.elemAt parts 1}";
+
+        mkConfig = name: value: {
+          inherit name value;
+          enabled = true;
+        };
+      }
+    ci/check.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_002_B = "noise_ci_check";
+
+      pkgs.runCommand "check-format" {
+        buildInputs = [ pkgs.rustfmt ];
+      } ''
+        cd ${../.}
+        cargo fmt -- --check
+        touch $out
+      ''
+    shell.nix: |
+      { pkgs ? import <nixpkgs> {} }:
+
+      GARBAGE_NIX_002_C = "noise_shell";
+
+      pkgs.mkShell {
+        buildInputs = [
+          pkgs.rustc
+          pkgs.cargo
+        ];
+      }
+  commit_message: Update files
+fragments:
+- id: flake
+  selector:
+    path: flake.nix
+    anchor: ipetkov/crane
+- id: flake_1
+  selector:
+    path: flake.nix
+    anchor: craneLib
+- id: flake_2
+  selector:
+    path: flake.nix
+    anchor: crane.mkLib
+- id: flake_3
+  selector:
+    path: flake.lock
+    anchor: ipetkov
+- id: flake_4
+  selector:
+    path: flake.lock
+    anchor: crane
+- id: no_default
+  selector:
+    path: lib/default.nix
+- id: no_check
+  selector:
+    path: ci/check.nix
+- id: no_shell
+  selector:
+    path: shell.nix
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIX_002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIX_002_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_NIX_002_C
+oracle:
+  required:
+  - flake
+  - flake_1
+  - flake_2
+  - flake_3
+  - flake_4
+  allowed: []
+  forbidden:
+  - no_default
+  - no_check
+  - no_shell
+  - no_global_0
+  - no_global_1
+  - no_global_2

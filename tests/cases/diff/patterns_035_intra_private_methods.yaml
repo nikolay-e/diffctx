@@ -1,0 +1,127 @@
+name: patterns_035_intra_private_methods
+repo:
+  initial_files:
+    service.py: |
+      class UserService:
+          def _validate_email(self, email):
+              return "@" in email and "." in email
+
+          def _hash_password(self, password):
+              return f"hashed_{password}"
+
+          def _generate_token(self):
+              return "token_123"
+
+          def create_user(self, email, password):
+              if not self._validate_email(email):
+                  raise ValueError("Invalid email")
+              hashed = self._hash_password(password)
+              token = self._generate_token()
+              return {"email": email, "password": hashed, "token": token}
+    auth_service.py: |
+      class AuthService:
+          def _validate_credentials(self, username, password):
+              return len(username) > 0 and len(password) >= 8
+
+          def _hash_password(self, password):
+              import hashlib
+              return hashlib.sha256(password.encode()).hexdigest()
+
+          def authenticate(self, username, password):
+              if not self._validate_credentials(username, password):
+                  return None
+              return {"user": username, "hash": self._hash_password(password)}
+    user_profile.py: |
+      class UserProfile:
+          def __init__(self, user_id):
+              self.user_id = user_id
+              self.data = {}
+
+          def update(self, field, value):
+              self.data[field] = value
+              return self.data
+
+          def get_display_name(self):
+              return self.data.get('display_name', f'user_{self.user_id}')
+  changed_files:
+    service.py: |
+      class UserService:
+          def _validate_email(self, email):
+              return "@" in email and "." in email
+
+          def _hash_password(self, password):
+              return f"hashed_{password}"
+
+          def _generate_token(self):
+              return "token_123"
+
+          def create_user(self, email, password):
+              if not self._validate_email(email):
+                  raise ValueError("Invalid email")
+              hashed = self._hash_password(password)
+              token = self._generate_token()
+              return {"email": email, "password": hashed, "token": token, "verified": False}
+    auth_service.py: |
+      class AuthService:
+          def _validate_credentials(self, username, password):
+              return len(username) > 0 and len(password) >= 8
+
+          def _hash_password(self, password):
+              import hashlib
+              return hashlib.sha256(password.encode()).hexdigest()
+
+          def authenticate(self, username, password):
+              if not self._validate_credentials(username, password):
+                  return None
+              return {"user": username, "hash": self._hash_password(password)}
+    user_profile.py: |
+      class UserProfile:
+          def __init__(self, user_id):
+              self.user_id = user_id
+              self.data = {}
+
+          def update(self, field, value):
+              self.data[field] = value
+              return self.data
+
+          def get_display_name(self):
+              return self.data.get('display_name', f'user_{self.user_id}')
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: '"verified": False'
+- id: no_auth_service
+  selector:
+    path: auth_service.py
+- id: no_user_profile
+  selector:
+    path: user_profile.py
+- id: no_global_0
+  selector:
+    anchor: class AuthService
+- id: no_global_1
+  selector:
+    anchor: _validate_credentials
+- id: no_global_2
+  selector:
+    anchor: hashlib.sha256
+- id: no_global_3
+  selector:
+    anchor: class UserProfile
+- id: no_global_4
+  selector:
+    anchor: get_display_name
+oracle:
+  required:
+  - service
+  allowed: []
+  forbidden:
+  - no_auth_service
+  - no_user_profile
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

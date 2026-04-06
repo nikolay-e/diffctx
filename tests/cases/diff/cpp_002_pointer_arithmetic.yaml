@@ -1,0 +1,363 @@
+name: cpp_002_pointer_arithmetic
+repo:
+  initial_files:
+    include/memory/buffer_view.hpp: |
+      #pragma once
+      #include <cstddef>
+      #include <cstring>
+      #include <stdexcept>
+
+      namespace app::memory {
+
+      template<typename T>
+      class BufferView {
+      public:
+          BufferView(T* data, size_t size)
+              : data_(data), size_(size) {}
+
+          T* begin() { return data_; }
+          T* end() { return data_ + size_; }
+          const T* begin() const { return data_; }
+          const T* end() const { return data_ + size_; }
+
+          T& operator[](size_t index) {
+              if (index >= size_) throw std::out_of_range("Index out of bounds");
+              return data_[index];
+          }
+
+          const T& operator[](size_t index) const {
+              if (index >= size_) throw std::out_of_range("Index out of bounds");
+              return data_[index];
+          }
+
+          size_t size() const { return size_; }
+          bool empty() const { return size_ == 0; }
+
+          BufferView<T> subview(size_t offset, size_t count) const {
+              if (offset + count > size_) throw std::out_of_range("Subview out of bounds");
+              return BufferView<T>(data_ + offset, count);
+          }
+
+      private:
+          T* data_;
+          size_t size_;
+      };
+
+      inline size_t safeStrlen(const char* str) {
+          if (!str) return 0;
+          return strlen(str);
+      }
+
+      }
+    src/parser.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    include/network/socket_pool.hpp: |
+      #pragma once
+      #include <cstddef>
+      #include <vector>
+      #include <functional>
+
+      namespace app::network {
+
+      struct SocketHandle {
+          int fd;
+          bool active;
+          size_t bytesRead;
+          size_t bytesWritten;
+      };
+
+      class SocketPool {
+      public:
+          SocketPool(size_t maxConnections)
+              : maxConnections_(maxConnections) {
+              sockets_.reserve(maxConnections);
+          }
+
+          SocketHandle* acquire() {
+              for (auto& sock : sockets_) {
+                  if (!sock.active) {
+                      sock.active = true;
+                      return &sock;
+                  }
+              }
+              if (sockets_.size() < maxConnections_) {
+                  sockets_.push_back({-1, true, 0, 0});
+                  return &sockets_.back();
+              }
+              return nullptr;
+          }
+
+          void release(SocketHandle* handle) {
+              if (handle) {
+                  handle->active = false;
+                  handle->bytesRead = 0;
+                  handle->bytesWritten = 0;
+              }
+          }
+
+          size_t activeCount() const {
+              size_t count = 0;
+              for (const auto& s : sockets_) {
+                  if (s.active) ++count;
+              }
+              return count;
+          }
+
+      private:
+          std::vector<SocketHandle> sockets_;
+          size_t maxConnections_;
+      };
+
+      }
+    include/memory/allocator.hpp: |
+      #pragma once
+      #include <cstddef>
+      #include <cstdlib>
+      #include <new>
+
+      namespace app::memory {
+
+      class PoolAllocator {
+      public:
+          explicit PoolAllocator(size_t blockSize, size_t blockCount)
+              : blockSize_(blockSize), blockCount_(blockCount) {
+              pool_ = static_cast<char*>(std::malloc(blockSize * blockCount));
+              if (!pool_) throw std::bad_alloc();
+              freeList_ = pool_;
+              for (size_t i = 0; i < blockCount - 1; ++i) {
+                  char* current = pool_ + i * blockSize;
+                  char* next = pool_ + (i + 1) * blockSize;
+                  *reinterpret_cast<char**>(current) = next;
+              }
+              *reinterpret_cast<char**>(pool_ + (blockCount - 1) * blockSize) = nullptr;
+          }
+
+          ~PoolAllocator() { std::free(pool_); }
+
+          void* allocate() {
+              if (!freeList_) throw std::bad_alloc();
+              void* block = freeList_;
+              freeList_ = *reinterpret_cast<char**>(freeList_);
+              return block;
+          }
+
+          void deallocate(void* ptr) {
+              *reinterpret_cast<char**>(ptr) = freeList_;
+              freeList_ = static_cast<char*>(ptr);
+          }
+
+      private:
+          char* pool_;
+          char* freeList_;
+          size_t blockSize_;
+          size_t blockCount_;
+      };
+
+      }
+    CMakeLists.txt: |
+      cmake_minimum_required(VERSION 3.20)
+      project(app CXX)
+      set(CMAKE_CXX_STANDARD 20)
+      add_executable(parser src/parser.cpp)
+      target_include_directories(parser PRIVATE include)
+  changed_files:
+    src/parser.cpp: |
+      #include "memory/buffer_view.hpp"
+      #include <iostream>
+      #include <vector>
+      #include <cstring>
+
+      namespace app::parser {
+
+      struct Token {
+          enum class Type { Identifier, Number, Operator, EndOfInput };
+          Type type;
+          const char* start;
+          size_t length;
+      };
+
+      class Tokenizer {
+      public:
+          Tokenizer(const char* input, size_t length)
+              : current_(input)
+              , end_(input + length)
+              , start_(input) {}
+
+          Token nextToken() {
+              skipWhitespace();
+
+              if (current_ >= end_) {
+                  return Token{Token::Type::EndOfInput, current_, 0};
+              }
+
+              const char* tokenStart = current_;
+
+              if (isIdentifierStart(*current_)) {
+                  while (current_ < end_ && isIdentifierChar(*current_)) {
+                      ++current_;
+                  }
+                  return Token{Token::Type::Identifier, tokenStart,
+                               static_cast<size_t>(current_ - tokenStart)};
+              }
+
+              if (isDigit(*current_)) {
+                  while (current_ < end_ && isDigit(*current_)) {
+                      ++current_;
+                  }
+                  return Token{Token::Type::Number, tokenStart,
+                               static_cast<size_t>(current_ - tokenStart)};
+              }
+
+              ++current_;
+              return Token{Token::Type::Operator, tokenStart, 1};
+          }
+
+          size_t position() const {
+              return static_cast<size_t>(current_ - start_);
+          }
+
+          size_t remaining() const {
+              return static_cast<size_t>(end_ - current_);
+          }
+
+      private:
+          void skipWhitespace() {
+              while (current_ < end_ && (*current_ == ' ' || *current_ == '\t' || *current_ == '\n')) {
+                  ++current_;
+              }
+          }
+
+          static bool isIdentifierStart(char c) {
+              return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+          }
+
+          static bool isIdentifierChar(char c) {
+              return isIdentifierStart(c) || isDigit(c);
+          }
+
+          static bool isDigit(char c) {
+              return c >= '0' && c <= '9';
+          }
+
+          const char* current_;
+          const char* end_;
+          const char* start_;
+      };
+
+      void parseExpression(const char* input) {
+          size_t len = app::memory::safeStrlen(input);
+          Tokenizer tokenizer(input, len);
+
+          app::memory::BufferView<const char> view(input, len);
+          const char* ptr = view.begin();
+          const char* endPtr = view.end();
+
+          while (ptr < endPtr) {
+              Token token = tokenizer.nextToken();
+              if (token.type == Token::Type::EndOfInput) break;
+
+              std::cout << "Token at position " << tokenizer.position()
+                        << ", remaining: " << tokenizer.remaining() << "\n";
+          }
+      }
+
+      }
+
+      int main() {
+          app::parser::parseExpression("x + 42 * y");
+          return 0;
+      }
+  commit_message: Update files
+fragments:
+- id: parser
+  selector:
+    path: src/parser.cpp
+    anchor: namespace app::parser
+- id: parser_1
+  selector:
+    path: src/parser.cpp
+    anchor: enum class Type { Identifier, Number, Operator, EndOfInput }
+- id: parser_2
+  selector:
+    path: src/parser.cpp
+    anchor: app::memory::BufferView
+- id: parser_3
+  selector:
+    path: src/parser.cpp
+    anchor: app::memory::safeStrlen
+- id: buffer_view
+  selector:
+    path: include/memory/buffer_view.hpp
+    anchor: T* begin()
+- id: buffer_view_1
+  selector:
+    path: include/memory/buffer_view.hpp
+    anchor: T* end()
+- id: buffer_view_2
+  selector:
+    path: include/memory/buffer_view.hpp
+    anchor: inline size_t safeStrlen
+- id: no_socket_pool
+  selector:
+    path: include/network/socket_pool.hpp
+- id: no_allocator
+  selector:
+    path: include/memory/allocator.hpp
+- id: no_cmakelists
+  selector:
+    path: CMakeLists.txt
+- id: no_global_0
+  selector:
+    anchor: SocketPool
+- id: no_global_1
+  selector:
+    anchor: SocketHandle
+- id: no_global_2
+  selector:
+    anchor: acquire
+- id: no_global_3
+  selector:
+    anchor: bytesWritten
+- id: no_global_4
+  selector:
+    anchor: PoolAllocator
+- id: no_global_5
+  selector:
+    anchor: deallocate
+- id: no_global_6
+  selector:
+    anchor: freeList_
+- id: no_global_7
+  selector:
+    anchor: blockSize_
+- id: no_global_8
+  selector:
+    anchor: cmake_minimum_required
+- id: no_global_9
+  selector:
+    anchor: target_include_directories
+oracle:
+  required:
+  - parser
+  - parser_1
+  - parser_2
+  - parser_3
+  - buffer_view
+  - buffer_view_1
+  - buffer_view_2
+  allowed: []
+  forbidden:
+  - no_socket_pool
+  - no_allocator
+  - no_cmakelists
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

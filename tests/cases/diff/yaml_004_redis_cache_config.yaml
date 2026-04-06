@@ -1,0 +1,119 @@
+name: yaml_004_redis_cache_config
+repo:
+  initial_files:
+    config/cache.yaml: |
+      redis:
+        host: localhost
+        port: 6379
+        db: 0
+    src/cache.py: |
+      import redis
+
+      def get_redis_client():
+          return redis.Redis(host="localhost", port=6379, db=0)
+    config/session.yaml: |
+      session:
+        backend: redis
+        ttl: 3600
+        prefix: "sess:"
+        secure: true
+        http_only: true
+    src/pubsub.py: |
+      import redis
+
+      class PubSubManager:
+          def __init__(self, redis_url: str = "redis://localhost:6379"):
+              self.client = redis.from_url(redis_url)
+              self.pubsub = self.client.pubsub()
+
+          def subscribe(self, channel: str, callback):
+              self.pubsub.subscribe(**{channel: callback})
+
+          def publish(self, channel: str, message: str):
+              self.client.publish(channel, message)
+
+          def listen(self):
+              for message in self.pubsub.listen():
+                  if message["type"] == "message":
+                      yield message["data"]
+  changed_files:
+    config/cache.yaml: |
+      redis:
+        host: redis.cluster.local
+        port: 6379
+        db: 1
+        password: secret
+    src/cache.py: |
+      import redis
+
+      def get_redis_client():
+          return redis.Redis(host="localhost", port=6379, db=0)
+    config/session.yaml: |
+      session:
+        backend: redis
+        ttl: 3600
+        prefix: "sess:"
+        secure: true
+        http_only: true
+    src/pubsub.py: |
+      import redis
+
+      class PubSubManager:
+          def __init__(self, redis_url: str = "redis://localhost:6379"):
+              self.client = redis.from_url(redis_url)
+              self.pubsub = self.client.pubsub()
+
+          def subscribe(self, channel: str, callback):
+              self.pubsub.subscribe(**{channel: callback})
+
+          def publish(self, channel: str, message: str):
+              self.client.publish(channel, message)
+
+          def listen(self):
+              for message in self.pubsub.listen():
+                  if message["type"] == "message":
+                      yield message["data"]
+  commit_message: Update files
+fragments:
+- id: cache
+  selector:
+    path: config/cache.yaml
+    anchor: 'db: 1'
+- id: cache_1
+  selector:
+    path: config/cache.yaml
+    anchor: 'password: secret'
+- id: no_session
+  selector:
+    path: config/session.yaml
+- id: no_pubsub
+  selector:
+    path: src/pubsub.py
+- id: no_global_0
+  selector:
+    anchor: 'sess:'
+- id: no_global_1
+  selector:
+    anchor: http_only
+- id: no_global_2
+  selector:
+    anchor: PubSubManager
+- id: no_global_3
+  selector:
+    anchor: subscribe
+- id: no_global_4
+  selector:
+    anchor: listen
+oracle:
+  required:
+  - cache
+  - cache_1
+  allowed: []
+  forbidden:
+  - no_session
+  - no_pubsub
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

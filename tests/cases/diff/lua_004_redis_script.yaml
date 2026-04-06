@@ -1,0 +1,275 @@
+name: lua_004_redis_script
+repo:
+  initial_files:
+    scripts/constants.lua: |
+      local M = {}
+
+      M.KEY_PREFIX = "rl:"
+      M.MAX_WINDOW_SIZE = 3600
+      M.DEFAULT_LIMIT = 100
+      M.DEFAULT_TTL = 60
+      M.CLEANUP_BATCH_SIZE = 50
+
+      function M.make_key(identifier)
+          return M.KEY_PREFIX .. identifier
+      end
+
+      function M.timestamp()
+          return tonumber(redis.call("TIME")[1])
+      end
+
+      return M
+    scripts/rate_limiter.lua: |
+      local constants = require("scripts.constants")
+
+      local function check_rate(key, limit, window)
+          local current = tonumber(redis.call("GET", key) or "0")
+          if current >= limit then
+              return 0
+          end
+          local new_count = redis.call("INCR", key)
+          if new_count == 1 then
+              redis.call("EXPIRE", key, window)
+          end
+          return limit - new_count
+      end
+
+      return check_rate(KEYS[1], tonumber(ARGV[1]), tonumber(ARGV[2]))
+    scripts/cache_manager.lua: |
+      local GARBAGE_LUA_004_A = "noise_marker_cache"
+
+      local function evict_expired(prefix, batch_size)
+          local keys = redis.call("KEYS", prefix .. "*")
+          local evicted = 0
+          for i = 1, math.min(#keys, batch_size) do
+              local ttl = redis.call("TTL", keys[i])
+              if ttl == -1 then
+                  redis.call("DEL", keys[i])
+                  evicted = evicted + 1
+              end
+          end
+          return evicted
+      end
+
+      local function get_or_set(key, ttl)
+          local val = redis.call("GET", key)
+          if val then return val end
+          redis.call("SETEX", key, ttl, "")
+          return nil
+      end
+
+      return evict_expired(KEYS[1], tonumber(ARGV[1]))
+    scripts/session_store.lua: |
+      local GARBAGE_LUA_004_B = "noise_marker_session"
+
+      local SESSION_PREFIX = "sess:"
+      local SESSION_TTL = 1800
+
+      local function create_session(user_id, data)
+          local session_key = SESSION_PREFIX .. user_id
+          redis.call("HMSET", session_key, unpack(data))
+          redis.call("EXPIRE", session_key, SESSION_TTL)
+          return session_key
+      end
+
+      local function get_session(user_id)
+          local session_key = SESSION_PREFIX .. user_id
+          return redis.call("HGETALL", session_key)
+      end
+
+      local function destroy_session(user_id)
+          return redis.call("DEL", SESSION_PREFIX .. user_id)
+      end
+
+      return get_session(KEYS[1])
+  changed_files:
+    scripts/constants.lua: |
+      local M = {}
+
+      M.KEY_PREFIX = "rl:"
+      M.MAX_WINDOW_SIZE = 3600
+      M.DEFAULT_LIMIT = 100
+      M.DEFAULT_TTL = 60
+      M.CLEANUP_BATCH_SIZE = 50
+
+      function M.make_key(identifier)
+          return M.KEY_PREFIX .. identifier
+      end
+
+      function M.timestamp()
+          return tonumber(redis.call("TIME")[1])
+      end
+
+      return M
+    scripts/rate_limiter.lua: |
+      local constants = require("scripts.constants")
+
+      local function check_rate(key, limit, window)
+          local current = tonumber(redis.call("GET", key) or "0")
+          if current >= limit then
+              return 0
+          end
+          local new_count = redis.call("INCR", key)
+          if new_count == 1 then
+              redis.call("EXPIRE", key, window)
+          end
+          return limit - new_count
+      end
+
+      local function check_sliding_window(identifier, limit, window)
+          if window > constants.MAX_WINDOW_SIZE then
+              window = constants.MAX_WINDOW_SIZE
+          end
+          local key = constants.make_key(identifier)
+          local now = constants.timestamp()
+          local window_start = now - window
+
+          redis.call("ZREMRANGEBYSCORE", key, "-inf", window_start)
+          local count = redis.call("ZCARD", key)
+
+          if count >= limit then
+              return 0
+          end
+
+          redis.call("ZADD", key, now, now .. ":" .. math.random(1000000))
+          redis.call("EXPIRE", key, window)
+          return limit - count - 1
+      end
+
+      local mode = ARGV[3] or "fixed"
+      if mode == "sliding" then
+          return check_sliding_window(KEYS[1], tonumber(ARGV[1]), tonumber(ARGV[2]))
+      end
+      return check_rate(KEYS[1], tonumber(ARGV[1]), tonumber(ARGV[2]))
+    scripts/cache_manager.lua: |
+      local GARBAGE_LUA_004_A = "noise_marker_cache"
+
+      local function evict_expired(prefix, batch_size)
+          local keys = redis.call("KEYS", prefix .. "*")
+          local evicted = 0
+          for i = 1, math.min(#keys, batch_size) do
+              local ttl = redis.call("TTL", keys[i])
+              if ttl == -1 then
+                  redis.call("DEL", keys[i])
+                  evicted = evicted + 1
+              end
+          end
+          return evicted
+      end
+
+      local function get_or_set(key, ttl)
+          local val = redis.call("GET", key)
+          if val then return val end
+          redis.call("SETEX", key, ttl, "")
+          return nil
+      end
+
+      return evict_expired(KEYS[1], tonumber(ARGV[1]))
+    scripts/session_store.lua: |
+      local GARBAGE_LUA_004_B = "noise_marker_session"
+
+      local SESSION_PREFIX = "sess:"
+      local SESSION_TTL = 1800
+
+      local function create_session(user_id, data)
+          local session_key = SESSION_PREFIX .. user_id
+          redis.call("HMSET", session_key, unpack(data))
+          redis.call("EXPIRE", session_key, SESSION_TTL)
+          return session_key
+      end
+
+      local function get_session(user_id)
+          local session_key = SESSION_PREFIX .. user_id
+          return redis.call("HGETALL", session_key)
+      end
+
+      local function destroy_session(user_id)
+          return redis.call("DEL", SESSION_PREFIX .. user_id)
+      end
+
+      return get_session(KEYS[1])
+  commit_message: Update files
+fragments:
+- id: rate_limiter
+  selector:
+    path: scripts/rate_limiter.lua
+    anchor: constants.MAX_WINDOW_SIZE
+- id: rate_limiter_1
+  selector:
+    path: scripts/rate_limiter.lua
+    anchor: constants.make_key
+- id: rate_limiter_2
+  selector:
+    path: scripts/rate_limiter.lua
+    anchor: constants.timestamp
+- id: rate_limiter_3
+  selector:
+    path: scripts/rate_limiter.lua
+    anchor: check_sliding_window
+- id: constants
+  selector:
+    path: scripts/constants.lua
+    anchor: M.KEY_PREFIX = "rl:"
+- id: constants_1
+  selector:
+    path: scripts/constants.lua
+    anchor: M.MAX_WINDOW_SIZE = 3600
+- id: constants_2
+  selector:
+    path: scripts/constants.lua
+    anchor: function M.make_key(identifier)
+- id: no_cache_manager
+  selector:
+    path: scripts/cache_manager.lua
+- id: no_session_store
+  selector:
+    path: scripts/session_store.lua
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_LUA_004_A
+- id: no_global_1
+  selector:
+    anchor: evict_expired
+- id: no_global_2
+  selector:
+    anchor: get_or_set
+- id: no_global_3
+  selector:
+    anchor: SETEX
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_LUA_004_B
+- id: no_global_5
+  selector:
+    anchor: SESSION_PREFIX
+- id: no_global_6
+  selector:
+    anchor: SESSION_TTL
+- id: no_global_7
+  selector:
+    anchor: create_session
+- id: no_global_8
+  selector:
+    anchor: destroy_session
+oracle:
+  required:
+  - rate_limiter
+  - rate_limiter_1
+  - rate_limiter_2
+  - rate_limiter_3
+  - constants
+  - constants_1
+  - constants_2
+  allowed: []
+  forbidden:
+  - no_cache_manager
+  - no_session_store
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

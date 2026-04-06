@@ -1,0 +1,383 @@
+name: terraform_008_security_group_rule
+repo:
+  initial_files:
+    modules/security_group/main.tf: |
+      resource "aws_security_group" "this" {
+        name        = var.name
+        description = var.description
+        vpc_id      = var.vpc_id
+
+        dynamic "ingress" {
+          for_each = var.ingress_rules
+          content {
+            from_port       = ingress.value.from_port
+            to_port         = ingress.value.to_port
+            protocol        = ingress.value.protocol
+            cidr_blocks     = ingress.value.cidr_blocks
+            security_groups = ingress.value.security_groups
+            description     = ingress.value.description
+          }
+        }
+
+        dynamic "egress" {
+          for_each = var.egress_rules
+          content {
+            from_port       = egress.value.from_port
+            to_port         = egress.value.to_port
+            protocol        = egress.value.protocol
+            cidr_blocks     = egress.value.cidr_blocks
+            security_groups = egress.value.security_groups
+            description     = egress.value.description
+          }
+        }
+
+        tags = merge(var.tags, { Name = var.name })
+      }
+    modules/security_group/variables.tf: |
+      variable "name" {
+        type = string
+      }
+
+      variable "description" {
+        type    = string
+        default = "Managed by Terraform"
+      }
+
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "ingress_rules" {
+        type = list(object({
+          from_port       = number
+          to_port         = number
+          protocol        = string
+          cidr_blocks     = optional(list(string), [])
+          security_groups = optional(list(string), [])
+          description     = optional(string, "")
+        }))
+        default = []
+      }
+
+      variable "egress_rules" {
+        type = list(object({
+          from_port       = number
+          to_port         = number
+          protocol        = string
+          cidr_blocks     = optional(list(string), [])
+          security_groups = optional(list(string), [])
+          description     = optional(string, "")
+        }))
+        default = [{
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+          description = "Allow all outbound traffic"
+        }]
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/security.tf: |
+      module "web_sg" {
+        source      = "./modules/security_group"
+        name        = "web-sg-${var.environment}"
+        description = "Security group for web servers"
+        vpc_id      = module.vpc.vpc_id
+
+        tags = local.common_tags
+      }
+    infrastructure/bastion_sg.tf: |
+      module "bastion_sg" {
+        source      = "./modules/security_group"
+        name        = "bastion-sg-${var.environment}"
+        description = "Security group for bastion hosts"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress_rules = [
+          {
+            from_port   = 22
+            to_port     = 22
+            protocol    = "tcp"
+            cidr_blocks = var.admin_cidr_blocks
+            description = "SSH from admin IPs"
+          }
+        ]
+
+        tags = merge(local.common_tags, { Role = "bastion" })
+      }
+    infrastructure/monitoring_sg.tf: |
+      resource "aws_security_group" "monitoring" {
+        name        = "${var.environment}-monitoring-sg"
+        description = "Security group for monitoring stack"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress {
+          from_port   = 9090
+          to_port     = 9090
+          protocol    = "tcp"
+          cidr_blocks = var.monitoring_cidr_blocks
+          description = "Prometheus"
+        }
+      }
+    infrastructure/waf.tf: |
+      resource "aws_wafv2_web_acl" "main" {
+        name  = "${var.environment}-web-acl"
+        scope = "REGIONAL"
+
+        default_action {
+          allow {}
+        }
+
+        visibility_config {
+          cloudwatch_metrics_enabled = true
+          metric_name               = "${var.environment}-waf-metrics"
+          sampled_requests_enabled  = true
+        }
+      }
+  changed_files:
+    modules/security_group/main.tf: |
+      resource "aws_security_group" "this" {
+        name        = var.name
+        description = var.description
+        vpc_id      = var.vpc_id
+
+        dynamic "ingress" {
+          for_each = var.ingress_rules
+          content {
+            from_port       = ingress.value.from_port
+            to_port         = ingress.value.to_port
+            protocol        = ingress.value.protocol
+            cidr_blocks     = ingress.value.cidr_blocks
+            security_groups = ingress.value.security_groups
+            description     = ingress.value.description
+          }
+        }
+
+        dynamic "egress" {
+          for_each = var.egress_rules
+          content {
+            from_port       = egress.value.from_port
+            to_port         = egress.value.to_port
+            protocol        = egress.value.protocol
+            cidr_blocks     = egress.value.cidr_blocks
+            security_groups = egress.value.security_groups
+            description     = egress.value.description
+          }
+        }
+
+        tags = merge(var.tags, { Name = var.name })
+      }
+    modules/security_group/variables.tf: |
+      variable "name" {
+        type = string
+      }
+
+      variable "description" {
+        type    = string
+        default = "Managed by Terraform"
+      }
+
+      variable "vpc_id" {
+        type = string
+      }
+
+      variable "ingress_rules" {
+        type = list(object({
+          from_port       = number
+          to_port         = number
+          protocol        = string
+          cidr_blocks     = optional(list(string), [])
+          security_groups = optional(list(string), [])
+          description     = optional(string, "")
+        }))
+        default = []
+      }
+
+      variable "egress_rules" {
+        type = list(object({
+          from_port       = number
+          to_port         = number
+          protocol        = string
+          cidr_blocks     = optional(list(string), [])
+          security_groups = optional(list(string), [])
+          description     = optional(string, "")
+        }))
+        default = [{
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+          description = "Allow all outbound traffic"
+        }]
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/security.tf: |
+      module "web_sg" {
+        source      = "./modules/security_group"
+        name        = "web-sg-${var.environment}"
+        description = "Security group for web servers"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress_rules = [
+          {
+            from_port   = 443
+            to_port     = 443
+            protocol    = "tcp"
+            cidr_blocks = ["0.0.0.0/0"]
+            description = "HTTPS from anywhere"
+          },
+          {
+            from_port   = 80
+            to_port     = 80
+            protocol    = "tcp"
+            cidr_blocks = ["0.0.0.0/0"]
+            description = "HTTP from anywhere"
+          }
+        ]
+
+        tags = local.common_tags
+      }
+
+      module "app_sg" {
+        source      = "./modules/security_group"
+        name        = "app-sg-${var.environment}"
+        description = "Security group for application servers"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress_rules = [
+          {
+            from_port       = 8080
+            to_port         = 8080
+            protocol        = "tcp"
+            security_groups = [module.web_sg.security_group_id]
+            description     = "Application port from web tier"
+          }
+        ]
+
+        tags = local.common_tags
+      }
+
+      module "db_sg" {
+        source      = "./modules/security_group"
+        name        = "db-sg-${var.environment}"
+        description = "Security group for database"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress_rules = [
+          {
+            from_port       = 5432
+            to_port         = 5432
+            protocol        = "tcp"
+            security_groups = [module.app_sg.security_group_id]
+            description     = "PostgreSQL from application tier"
+          }
+        ]
+
+        egress_rules = []
+
+        tags = local.common_tags
+      }
+    infrastructure/bastion_sg.tf: |
+      module "bastion_sg" {
+        source      = "./modules/security_group"
+        name        = "bastion-sg-${var.environment}"
+        description = "Security group for bastion hosts"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress_rules = [
+          {
+            from_port   = 22
+            to_port     = 22
+            protocol    = "tcp"
+            cidr_blocks = var.admin_cidr_blocks
+            description = "SSH from admin IPs"
+          }
+        ]
+
+        tags = merge(local.common_tags, { Role = "bastion" })
+      }
+    infrastructure/monitoring_sg.tf: |
+      resource "aws_security_group" "monitoring" {
+        name        = "${var.environment}-monitoring-sg"
+        description = "Security group for monitoring stack"
+        vpc_id      = module.vpc.vpc_id
+
+        ingress {
+          from_port   = 9090
+          to_port     = 9090
+          protocol    = "tcp"
+          cidr_blocks = var.monitoring_cidr_blocks
+          description = "Prometheus"
+        }
+      }
+    infrastructure/waf.tf: |
+      resource "aws_wafv2_web_acl" "main" {
+        name  = "${var.environment}-web-acl"
+        scope = "REGIONAL"
+
+        default_action {
+          allow {}
+        }
+
+        visibility_config {
+          cloudwatch_metrics_enabled = true
+          metric_name               = "${var.environment}-waf-metrics"
+          sampled_requests_enabled  = true
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: modules/security_group/main.tf
+    anchor: security_groups = ingress.value.security_groups
+- id: main_1
+  selector:
+    path: modules/security_group/main.tf
+    anchor: dynamic "ingress" {
+- id: no_bastion_sg
+  selector:
+    path: infrastructure/bastion_sg.tf
+- id: no_monitoring_sg
+  selector:
+    path: infrastructure/monitoring_sg.tf
+- id: no_waf
+  selector:
+    path: infrastructure/waf.tf
+- id: no_global_0
+  selector:
+    anchor: admin_cidr_blocks
+- id: no_global_1
+  selector:
+    anchor: bastion-sg
+- id: no_global_2
+  selector:
+    anchor: monitoring-sg
+- id: no_global_3
+  selector:
+    anchor: Prometheus
+- id: no_global_4
+  selector:
+    anchor: aws_wafv2_web_acl
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_bastion_sg
+  - no_monitoring_sg
+  - no_waf
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

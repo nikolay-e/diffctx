@@ -1,0 +1,127 @@
+name: ppr_020_seeds_empty_uniform
+repo:
+  initial_files:
+    existing_a.py: |
+      def existing_a():
+          return "a"
+    existing_b.py: |
+      def existing_b():
+          return "b"
+    item_factory.py: |
+      def create_new_item():
+          return "created"
+
+      class NewItemHandler:
+          def handle(self):
+              return create_new_item()
+
+          def validate(self):
+              return True
+    existing_helper.py: |
+      def existing_c():
+          return "c"
+
+      class ExistingCProcessor:
+          def process(self):
+              return existing_c()
+    message_queue.py: |
+      QUEUE_SIZE = 256
+      QUEUE_TYPE = "fifo"
+
+      class MessageQueue:
+          def enqueue(self, item):
+              pass
+  changed_files:
+    existing_a.py: |
+      def existing_a():
+          return "a"
+    existing_b.py: |
+      def existing_b():
+          return "b"
+    new_file.py: |
+      def new_func():
+          return "new"
+    item_factory.py: |
+      def create_new_item():
+          return "created"
+
+      class NewItemHandler:
+          def handle(self):
+              return create_new_item()
+
+          def validate(self):
+              return True
+    existing_helper.py: |
+      def existing_c():
+          return "c"
+
+      class ExistingCProcessor:
+          def process(self):
+              return existing_c()
+    message_queue.py: |
+      QUEUE_SIZE = 256
+      QUEUE_TYPE = "fifo"
+
+      class MessageQueue:
+          def enqueue(self, item):
+              pass
+  commit_message: Update files
+fragments:
+- id: new_file
+  selector:
+    path: new_file.py
+    anchor: 'def new_func():'
+- id: new_file_1
+  selector:
+    path: new_file.py
+    anchor: return "new"
+- id: req_pattern_0
+  selector:
+    anchor: new_func
+- id: req_pattern_1
+  selector:
+    anchor: new
+- id: no_item_factory
+  selector:
+    path: item_factory.py
+- id: no_existing_helper
+  selector:
+    path: existing_helper.py
+- id: no_message_queue
+  selector:
+    path: message_queue.py
+- id: no_global_0
+  selector:
+    anchor: NewItemHandler
+- id: no_global_1
+  selector:
+    anchor: create_new_item
+- id: no_global_2
+  selector:
+    anchor: ExistingCProcessor
+- id: no_global_3
+  selector:
+    anchor: existing_c
+- id: no_global_4
+  selector:
+    anchor: MessageQueue
+- id: no_global_5
+  selector:
+    anchor: QUEUE_SIZE
+oracle:
+  required:
+  - new_file
+  - new_file_1
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_item_factory
+  - no_existing_helper
+  - no_message_queue
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

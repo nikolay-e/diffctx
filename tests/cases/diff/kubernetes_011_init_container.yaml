@@ -1,0 +1,268 @@
+name: kubernetes_011_init_container
+repo:
+  initial_files:
+    scripts/wait-for-db.sh: |
+      #!/bin/bash
+      set -e
+
+      until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+        echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+        sleep 2
+      done
+
+      echo "PostgreSQL is ready!"
+    k8s/apps/api/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+              tier: backend
+          spec:
+            containers:
+            - name: api
+              image: api-server:v1.0.0
+              ports:
+              - containerPort: 8080
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/api/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/database/postgres-statefulset.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: postgres
+        namespace: database
+      spec:
+        serviceName: postgres
+        replicas: 3
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15-alpine
+              ports:
+              - containerPort: 5432
+              env:
+              - name: POSTGRES_DB
+                value: production
+              - name: PGDATA
+                value: /var/lib/postgresql/data/pgdata
+    k8s/jobs/seed-data.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: seed-initial-data
+        namespace: production
+      spec:
+        backoffLimit: 2
+        template:
+          spec:
+            containers:
+            - name: seed
+              image: api-server:v1.0.0
+              command: ["python", "manage.py", "seed"]
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+            restartPolicy: Never
+  changed_files:
+    scripts/wait-for-db.sh: |
+      #!/bin/bash
+      set -e
+
+      until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+        echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+        sleep 2
+      done
+
+      echo "PostgreSQL is ready!"
+    k8s/apps/api/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+        labels:
+          app: api-server
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+              tier: backend
+          spec:
+            initContainers:
+            - name: wait-for-db
+              image: postgres:15-alpine
+              command: ['sh', '-c', 'until pg_isready -h $DB_HOST -p $DB_PORT; do echo waiting for database; sleep 2; done;']
+              env:
+              - name: DB_HOST
+                value: "postgres.database.svc.cluster.local"
+              - name: DB_PORT
+                value: "5432"
+            - name: run-migrations
+              image: api-server:v1.0.0
+              command: ['python', 'manage.py', 'migrate']
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+            containers:
+            - name: api
+              image: api-server:v1.0.0
+              ports:
+              - containerPort: 8080
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/apps/api/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/database/postgres-statefulset.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: postgres
+        namespace: database
+      spec:
+        serviceName: postgres
+        replicas: 3
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15-alpine
+              ports:
+              - containerPort: 5432
+              env:
+              - name: POSTGRES_DB
+                value: production
+              - name: PGDATA
+                value: /var/lib/postgresql/data/pgdata
+    k8s/jobs/seed-data.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: seed-initial-data
+        namespace: production
+      spec:
+        backoffLimit: 2
+        template:
+          spec:
+            containers:
+            - name: seed
+              image: api-server:v1.0.0
+              command: ["python", "manage.py", "seed"]
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: db-credentials
+                    key: url
+            restartPolicy: Never
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/api/deployment.yaml
+    anchor: 'initContainers:'
+- id: deployment_1
+  selector:
+    path: k8s/apps/api/deployment.yaml
+    anchor: 'name: wait-for-db'
+- id: no_postgres_statefulset
+  selector:
+    path: k8s/database/postgres-statefulset.yaml
+- id: no_seed_data
+  selector:
+    path: k8s/jobs/seed-data.yaml
+- id: no_global_0
+  selector:
+    anchor: seed-initial-data
+- id: no_global_1
+  selector:
+    anchor: manage.py", "seed
+- id: no_global_2
+  selector:
+    anchor: PGDATA
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  allowed: []
+  forbidden:
+  - no_postgres_statefulset
+  - no_seed_data
+  - no_global_0
+  - no_global_1
+  - no_global_2

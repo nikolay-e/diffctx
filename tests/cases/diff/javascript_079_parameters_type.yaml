@@ -1,0 +1,177 @@
+name: javascript_079_parameters_type
+repo:
+  initial_files:
+    api.ts: |
+      export function fetchData(url: string, options: { method: string; headers: Record<string, string> }) {
+          return fetch(url, options);
+      }
+
+      export function postData(url: string, body: unknown, options: { headers: Record<string, string> }) {
+          return fetch(url, { method: 'POST', body: JSON.stringify(body), ...options });
+      }
+    wrapper.ts: |
+      console.log('initial');
+    api-client.ts: |
+      import { fetchData } from './api';
+
+      export class ApiClient {
+          private baseUrl: string;
+
+          constructor(baseUrl: string) {
+              this.baseUrl = baseUrl;
+          }
+
+          async get(path: string, headers: Record<string, string> = {}) {
+              return fetchData(`${this.baseUrl}${path}`, { method: 'GET', headers });
+          }
+      }
+    fetch-interceptor.ts: |
+      type FetchFn = typeof globalThis.fetch;
+
+      export function createFetchInterceptor(originalFetch: FetchFn): FetchFn {
+          return async (input, init) => {
+              console.log('Intercepted:', typeof input === 'string' ? input : input.url);
+              const response = await originalFetch(input, init);
+              console.log('Response status:', response.status);
+              return response;
+          };
+      }
+    api.types.ts: |
+      export interface RequestOptions {
+          timeout?: number;
+          retries?: number;
+          cache?: boolean;
+      }
+
+      export type ResponseType = 'json' | 'text' | 'blob' | 'arrayBuffer';
+  changed_files:
+    api.ts: |
+      export function fetchData(url: string, options: { method: string; headers: Record<string, string> }) {
+          return fetch(url, options);
+      }
+
+      export function postData(url: string, body: unknown, options: { headers: Record<string, string> }) {
+          return fetch(url, { method: 'POST', body: JSON.stringify(body), ...options });
+      }
+    wrapper.ts: |
+      import { fetchData } from './api';
+
+      type FetchParams = Parameters<typeof fetchData>;
+
+      function wrappedFetch(...args: FetchParams) {
+          console.log('Fetching:', args[0]);
+          return fetchData(...args);
+      }
+    api-client.ts: |
+      import { fetchData } from './api';
+
+      export class ApiClient {
+          private baseUrl: string;
+
+          constructor(baseUrl: string) {
+              this.baseUrl = baseUrl;
+          }
+
+          async get(path: string, headers: Record<string, string> = {}) {
+              return fetchData(`${this.baseUrl}${path}`, { method: 'GET', headers });
+          }
+      }
+    fetch-interceptor.ts: |
+      type FetchFn = typeof globalThis.fetch;
+
+      export function createFetchInterceptor(originalFetch: FetchFn): FetchFn {
+          return async (input, init) => {
+              console.log('Intercepted:', typeof input === 'string' ? input : input.url);
+              const response = await originalFetch(input, init);
+              console.log('Response status:', response.status);
+              return response;
+          };
+      }
+    api.types.ts: |
+      export interface RequestOptions {
+          timeout?: number;
+          retries?: number;
+          cache?: boolean;
+      }
+
+      export type ResponseType = 'json' | 'text' | 'blob' | 'arrayBuffer';
+  commit_message: Update files
+fragments:
+- id: wrapper
+  selector:
+    path: wrapper.ts
+    anchor: import { fetchData } from './api'
+- id: wrapper_1
+  selector:
+    path: wrapper.ts
+    anchor: type FetchParams = Parameters<typeof fetchData>
+- id: wrapper_2
+  selector:
+    path: wrapper.ts
+    anchor: 'function wrappedFetch(...args: FetchParams)'
+- id: api
+  selector:
+    path: api.ts
+    anchor: 'function fetchData(url: string, options:'
+- id: api_1
+  selector:
+    path: api.ts
+    anchor: 'method: string'
+- id: api_2
+  selector:
+    path: api.ts
+    anchor: 'headers: Record<string, string>'
+- id: no_api_client
+  selector:
+    path: api-client.ts
+- id: no_fetch_interceptor
+  selector:
+    path: fetch-interceptor.ts
+- id: no_api_types
+  selector:
+    path: api.types.ts
+- id: no_global_0
+  selector:
+    anchor: ApiClient
+- id: no_global_1
+  selector:
+    anchor: baseUrl
+- id: no_global_2
+  selector:
+    anchor: async get(
+- id: no_global_3
+  selector:
+    anchor: createFetchInterceptor
+- id: no_global_4
+  selector:
+    anchor: FetchFn
+- id: no_global_5
+  selector:
+    anchor: 'Response status:'
+- id: no_global_6
+  selector:
+    anchor: RequestOptions
+- id: no_global_7
+  selector:
+    anchor: ResponseType
+oracle:
+  required:
+  - wrapper
+  - wrapper_1
+  - wrapper_2
+  - api
+  - api_1
+  - api_2
+  allowed: []
+  forbidden:
+  - no_api_client
+  - no_fetch_interceptor
+  - no_api_types
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,195 @@
+name: terraform_066_data_source
+repo:
+  initial_files:
+    data.tf: |
+      data "aws_ami" "amazon_linux" {
+        most_recent = true
+        owners      = ["amazon"]
+      }
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami                  = data.aws_ami.amazon_linux.id
+        instance_type        = var.instance_type
+        iam_instance_profile = aws_iam_instance_profile.web.name
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    templates.tf: |
+      resource "aws_launch_template" "web_fleet" {
+        name_prefix   = "web-fleet-"
+        image_id      = data.aws_ami.amazon_linux.id
+        instance_type = "t3.small"
+
+        tag_specifications {
+          resource_type = "instance"
+          tags = {
+            Name = "web-fleet-instance"
+          }
+        }
+      }
+    modules/worker/data.tf: |
+      data "aws_ami" "ubuntu" {
+        most_recent = true
+        owners      = ["099720109477"]
+
+        filter {
+          name   = "name"
+          values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-*"]
+        }
+      }
+
+      resource "aws_instance" "worker" {
+        ami           = data.aws_ami.ubuntu.id
+        instance_type = "t3.medium"
+      }
+    packer/build.pkr.hcl: |
+      source "amazon-ebs" "amazon_linux" {
+        ami_name      = "custom-amzn2-ami-hvm-{{timestamp}}"
+        instance_type = "t3.micro"
+        region        = "us-east-1"
+
+        source_ami_filter {
+          filters = {
+            name                = "amzn2-ami-hvm-*-x86_64-gp2"
+            root-device-type    = "ebs"
+            virtualization-type = "hvm"
+          }
+          most_recent = true
+          owners      = ["amazon"]
+        }
+      }
+
+      build {
+        sources = ["source.amazon-ebs.amazon_linux"]
+
+        provisioner "shell" {
+          script = "scripts/setup.sh"
+        }
+      }
+    variables.tf: |
+      variable "instance_type" {
+        type    = string
+        default = "t3.micro"
+      }
+
+      variable "key_name" {
+        type    = string
+        default = "web-keypair"
+      }
+    security/iam.tf: |
+      resource "aws_iam_instance_profile" "web" {
+        name = "web-instance-profile"
+        role = aws_iam_role.web.name
+      }
+
+      resource "aws_iam_role" "web" {
+        name = "web-role"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { Service = "ec2.amazonaws.com" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+  changed_files:
+    data.tf: |
+      data "aws_ami" "amazon_linux" {
+        most_recent = true
+        owners      = ["amazon"]
+        filter {
+          name   = "name"
+          values = ["amzn2-ami-hvm-*"]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: data
+  selector:
+    path: data.tf
+    anchor: name   = "name"
+- id: data_1
+  selector:
+    path: data.tf
+    anchor: values = ["amzn2-ami-hvm-*"]
+- id: main
+  selector:
+    path: main.tf
+    anchor: data.aws_ami.amazon_linux.id
+- id: templates
+  selector:
+    path: templates.tf
+    anchor: data.aws_ami.amazon_linux.id
+- id: templates_1
+  selector:
+    path: templates.tf
+    anchor: resource "aws_launch_template" "web_fleet"
+- id: no_data
+  selector:
+    path: modules/worker/data.tf
+- id: no_build_pkr
+  selector:
+    path: packer/build.pkr.hcl
+- id: no_variables
+  selector:
+    path: variables.tf
+- id: no_iam
+  selector:
+    path: security/iam.tf
+- id: no_global_0
+  selector:
+    anchor: ubuntu
+- id: no_global_1
+  selector:
+    anchor: 099720109477
+- id: no_global_2
+  selector:
+    anchor: ubuntu-jammy
+- id: no_global_3
+  selector:
+    anchor: amazon-ebs
+- id: no_global_4
+  selector:
+    anchor: scripts/setup.sh
+- id: no_global_5
+  selector:
+    anchor: source_ami_filter
+- id: no_global_6
+  selector:
+    anchor: variable "instance_type" {
+- id: no_global_7
+  selector:
+    anchor: web-keypair
+- id: no_global_8
+  selector:
+    anchor: web-instance-profile
+- id: no_global_9
+  selector:
+    anchor: sts:AssumeRole
+oracle:
+  required:
+  - data
+  - data_1
+  - main
+  - templates
+  - templates_1
+  allowed: []
+  forbidden:
+  - no_data
+  - no_build_pkr
+  - no_variables
+  - no_iam
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

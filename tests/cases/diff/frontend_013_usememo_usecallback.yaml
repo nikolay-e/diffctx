@@ -1,0 +1,207 @@
+name: frontend_013_usememo_usecallback
+repo:
+  initial_files:
+    src/utils.ts: |
+      export function expensiveCalculation(items: number[]): number {
+          return items.reduce((acc, item) => acc + item * item, 0);
+      }
+
+      export function formatNumber(num: number): string {
+          return new Intl.NumberFormat('en-US').format(num);
+      }
+    src/components/DataDisplay.tsx: |
+      import React from 'react';
+
+      export function DataDisplay() {
+          return <div>TODO</div>;
+      }
+    src/utils/math.ts: |
+      export function average(values: number[]): number {
+          if (values.length === 0) return 0;
+          return values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+
+      export function median(values: number[]): number {
+          const sorted = [...values].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 !== 0
+              ? sorted[mid]
+              : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+
+      export function standardDeviation(values: number[]): number {
+          const avg = average(values);
+          const squareDiffs = values.map(v => Math.pow(v - avg, 2));
+          return Math.sqrt(average(squareDiffs));
+      }
+    src/components/ChartDisplay.tsx: |
+      import React from 'react';
+
+      interface ChartDisplayProps {
+          data: { label: string; value: number }[];
+          type: 'bar' | 'line' | 'pie';
+          width?: number;
+          height?: number;
+      }
+
+      export function ChartDisplay({ data, type, width = 400, height = 300 }: ChartDisplayProps) {
+          const maxValue = Math.max(...data.map(d => d.value));
+          return (
+              <svg width={width} height={height}>
+                  {type === 'bar' && data.map((d, i) => (
+                      <rect
+                          key={i}
+                          x={i * (width / data.length)}
+                          y={height - (d.value / maxValue) * height}
+                          width={width / data.length - 2}
+                          height={(d.value / maxValue) * height}
+                          fill="#4a90d9"
+                      />
+                  ))}
+              </svg>
+          );
+      }
+  changed_files:
+    src/utils.ts: |
+      export function expensiveCalculation(items: number[]): number {
+          return items.reduce((acc, item) => acc + item * item, 0);
+      }
+
+      export function formatNumber(num: number): string {
+          return new Intl.NumberFormat('en-US').format(num);
+      }
+    src/components/DataDisplay.tsx: |
+      import React, { useMemo, useCallback, useState } from 'react';
+      import { expensiveCalculation, formatNumber } from '../utils';
+
+      interface DataDisplayProps {
+          items: number[];
+      }
+
+      export function DataDisplay({ items }: DataDisplayProps) {
+          const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+          const total = useMemo(() => {
+              return expensiveCalculation(items);
+          }, [items]);
+
+          const formattedTotal = useMemo(() => {
+              return formatNumber(total);
+          }, [total]);
+
+          const handleSelect = useCallback((index: number) => {
+              setSelectedIndex(index);
+          }, []);
+
+          return (
+              <div>
+                  <p>Total: {formattedTotal}</p>
+                  <ul>
+                      {items.map((item, index) => (
+                          <li key={index} onClick={() => handleSelect(index)}>
+                              {item}
+                          </li>
+                      ))}
+                  </ul>
+              </div>
+          );
+      }
+    src/utils/math.ts: |
+      export function average(values: number[]): number {
+          if (values.length === 0) return 0;
+          return values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+
+      export function median(values: number[]): number {
+          const sorted = [...values].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 !== 0
+              ? sorted[mid]
+              : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+
+      export function standardDeviation(values: number[]): number {
+          const avg = average(values);
+          const squareDiffs = values.map(v => Math.pow(v - avg, 2));
+          return Math.sqrt(average(squareDiffs));
+      }
+    src/components/ChartDisplay.tsx: |
+      import React from 'react';
+
+      interface ChartDisplayProps {
+          data: { label: string; value: number }[];
+          type: 'bar' | 'line' | 'pie';
+          width?: number;
+          height?: number;
+      }
+
+      export function ChartDisplay({ data, type, width = 400, height = 300 }: ChartDisplayProps) {
+          const maxValue = Math.max(...data.map(d => d.value));
+          return (
+              <svg width={width} height={height}>
+                  {type === 'bar' && data.map((d, i) => (
+                      <rect
+                          key={i}
+                          x={i * (width / data.length)}
+                          y={height - (d.value / maxValue) * height}
+                          width={width / data.length - 2}
+                          height={(d.value / maxValue) * height}
+                          fill="#4a90d9"
+                      />
+                  ))}
+              </svg>
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: utils
+  selector:
+    path: src/utils.ts
+    anchor: 'function expensiveCalculation(items: number[]): number {'
+- id: utils_1
+  selector:
+    path: src/utils.ts
+    anchor: items.reduce((acc, item) => acc + item * item, 0)
+- id: utils_2
+  selector:
+    path: src/utils.ts
+    anchor: 'function formatNumber(num: number): string {'
+- id: datadisplay_file
+  selector:
+    path: src/components/DataDisplay.tsx
+- id: no_math
+  selector:
+    path: src/utils/math.ts
+- id: no_chartdisplay
+  selector:
+    path: src/components/ChartDisplay.tsx
+- id: no_global_0
+  selector:
+    anchor: standardDeviation
+- id: no_global_1
+  selector:
+    anchor: median
+- id: no_global_2
+  selector:
+    anchor: ChartDisplay
+- id: no_global_3
+  selector:
+    anchor: ChartDisplayProps
+- id: no_global_4
+  selector:
+    anchor: maxValue
+oracle:
+  required:
+  - utils
+  - utils_1
+  - utils_2
+  - datadisplay_file
+  allowed: []
+  forbidden:
+  - no_math
+  - no_chartdisplay
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

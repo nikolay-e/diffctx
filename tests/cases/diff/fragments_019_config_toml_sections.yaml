@@ -1,0 +1,84 @@
+name: fragments_019_config_toml_sections
+repo:
+  initial_files:
+    config.toml: |
+      [database]
+      host = "localhost"
+      port = 5432
+      name = "mydb"
+
+      [database.credentials]
+      user = "admin"
+      password = "secret"
+
+      [server]
+      port = 8080
+      debug = true
+      workers = 4
+
+      [garbage_section_a]
+
+      [garbage_section_a.nested]
+
+      [garbage_section_b]
+
+      [logging]
+    garbage_config_071.toml: |
+      [garbage_root]
+      key = "GARBAGE_FRAG_garbroot_071"
+
+      [garbage_root.nested]
+      value = "GARBAGE_FRAG_garbnested_071"
+
+      [another_garbage]
+      items = ["GARBAGE_FRAG_garbitem1_071", "GARBAGE_FRAG_garbitem2_071"]
+  changed_files:
+    config.toml: |
+      [database]
+      host = "localhost"
+      port = 5433
+      name = "mydb"
+
+      [database.credentials]
+      user = "admin"
+      password = "secret"
+
+      [server]
+      port = 8080
+      debug = true
+      workers = 4
+
+      [garbage_section_a]
+
+      [garbage_section_a.nested]
+
+      [garbage_section_b]
+
+      [logging]
+    garbage_config_071.toml: |
+      [garbage_root]
+      key = "GARBAGE_FRAG_garbroot_071"
+
+      [garbage_root.nested]
+      value = "GARBAGE_FRAG_garbnested_071"
+
+      [another_garbage]
+      items = ["GARBAGE_FRAG_garbitem1_071", "GARBAGE_FRAG_garbitem2_071"]
+  commit_message: Update files
+fragments:
+- id: config_file
+  selector:
+    path: config.toml
+- id: req_global_0
+  selector:
+    anchor: port = 5433
+- id: no_global_0
+  selector:
+    anchor: garbage_config_071.toml
+oracle:
+  required:
+  - config_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

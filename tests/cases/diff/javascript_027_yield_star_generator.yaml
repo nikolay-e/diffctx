@@ -1,0 +1,172 @@
+name: javascript_027_yield_star_generator
+repo:
+  initial_files:
+    sub_generator.ts: |
+      export function* subGenerator() {
+          yield 1;
+          yield 2;
+          yield 3;
+      }
+    main_generator.ts: |
+      console.log('initial');
+    async-iterator.ts: |
+      export async function* fetchPages(baseUrl: string) {
+          let page = 1;
+          while (true) {
+              const response = await fetch(`${baseUrl}?page=${page}`);
+              const data = await response.json();
+              if (data.items.length === 0) return;
+              yield data.items;
+              page++;
+          }
+      }
+
+      export async function* retryableStream<T>(
+          generator: AsyncGenerator<T>,
+          maxRetries: number = 3
+      ) {
+          let retries = 0;
+          while (retries < maxRetries) {
+              try {
+                  yield* generator;
+                  return;
+              } catch {
+                  retries++;
+              }
+          }
+      }
+    range-iterator.ts: |
+      export class NumberRange {
+          constructor(private start: number, private end: number) {}
+
+          *[Symbol.iterator]() {
+              for (let i = this.start; i <= this.end; i++) {
+                  yield i;
+              }
+          }
+
+          toArray(): number[] {
+              return [...this];
+          }
+
+          contains(value: number): boolean {
+              return value >= this.start && value <= this.end;
+          }
+      }
+  changed_files:
+    sub_generator.ts: |
+      export function* subGenerator() {
+          yield 1;
+          yield 2;
+          yield 3;
+      }
+    main_generator.ts: |
+      import { subGenerator } from './sub_generator';
+
+      export function* mainGenerator() {
+          yield 0;
+          yield* subGenerator();
+          yield 4;
+      }
+    async-iterator.ts: |
+      export async function* fetchPages(baseUrl: string) {
+          let page = 1;
+          while (true) {
+              const response = await fetch(`${baseUrl}?page=${page}`);
+              const data = await response.json();
+              if (data.items.length === 0) return;
+              yield data.items;
+              page++;
+          }
+      }
+
+      export async function* retryableStream<T>(
+          generator: AsyncGenerator<T>,
+          maxRetries: number = 3
+      ) {
+          let retries = 0;
+          while (retries < maxRetries) {
+              try {
+                  yield* generator;
+                  return;
+              } catch {
+                  retries++;
+              }
+          }
+      }
+    range-iterator.ts: |
+      export class NumberRange {
+          constructor(private start: number, private end: number) {}
+
+          *[Symbol.iterator]() {
+              for (let i = this.start; i <= this.end; i++) {
+                  yield i;
+              }
+          }
+
+          toArray(): number[] {
+              return [...this];
+          }
+
+          contains(value: number): boolean {
+              return value >= this.start && value <= this.end;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: main_generator
+  selector:
+    path: main_generator.ts
+    anchor: import { subGenerator } from './sub_generator'
+- id: main_generator_1
+  selector:
+    path: main_generator.ts
+    anchor: yield* subGenerator()
+- id: sub_generator
+  selector:
+    path: sub_generator.ts
+    anchor: export function* subGenerator()
+- id: sub_generator_1
+  selector:
+    path: sub_generator.ts
+    anchor: yield 1
+- id: no_async_iterator
+  selector:
+    path: async-iterator.ts
+- id: no_range_iterator
+  selector:
+    path: range-iterator.ts
+- id: no_global_0
+  selector:
+    anchor: fetchPages
+- id: no_global_1
+  selector:
+    anchor: retryableStream
+- id: no_global_2
+  selector:
+    anchor: await fetch
+- id: no_global_3
+  selector:
+    anchor: NumberRange
+- id: no_global_4
+  selector:
+    anchor: Symbol.iterator
+- id: no_global_5
+  selector:
+    anchor: toArray
+oracle:
+  required:
+  - main_generator
+  - main_generator_1
+  - sub_generator
+  - sub_generator_1
+  allowed: []
+  forbidden:
+  - no_async_iterator
+  - no_range_iterator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

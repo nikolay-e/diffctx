@@ -1,0 +1,219 @@
+name: scala_004_companion_object
+repo:
+  initial_files:
+    src/models/User.scala: |
+      package models
+
+      case class User(id: String, name: String, role: String)
+
+      object User {
+        def apply(name: String): User =
+          User(java.util.UUID.randomUUID().toString, name, "user")
+
+        def fromJson(json: String): User = User("parsed-id", json, "user")
+
+        val anonymous: User = User("anon", "Anonymous", "guest")
+
+        def admin(name: String): User =
+          User(java.util.UUID.randomUUID().toString, name, "admin")
+      }
+    src/services/UserFactory.scala: |
+      package services
+
+      import models.User
+
+      class UserFactory {
+        def createBasicUser(name: String): User = User(name)
+      }
+    src/models/Role.scala: |
+      package models
+
+      sealed trait Role {
+        def name: String
+        def permissions: Set[String]
+      }
+
+      object Role {
+        case object Admin extends Role {
+          val name = "admin"
+          val permissions = Set("read", "write", "delete", "manage")
+        }
+
+        case object User extends Role {
+          val name = "user"
+          val permissions = Set("read", "write")
+        }
+
+        case object Guest extends Role {
+          val name = "guest"
+          val permissions = Set("read")
+        }
+
+        def fromString(s: String): Option[Role] = s match {
+          case "admin" => Some(Admin)
+          case "user"  => Some(User)
+          case "guest" => Some(Guest)
+          case _       => None
+        }
+      }
+    src/services/AuthService.scala: |
+      package services
+
+      class AuthService {
+        private var tokens: Map[String, String] = Map.empty
+
+        def login(username: String, password: String): Option[String] = {
+          if (password.nonEmpty) {
+            val token = java.util.UUID.randomUUID().toString
+            tokens = tokens + (token -> username)
+            Some(token)
+          } else None
+        }
+
+        def validate(token: String): Option[String] = tokens.get(token)
+
+        def logout(token: String): Unit = {
+          tokens = tokens - token
+        }
+      }
+  changed_files:
+    src/models/User.scala: |
+      package models
+
+      case class User(id: String, name: String, role: String)
+
+      object User {
+        def apply(name: String): User =
+          User(java.util.UUID.randomUUID().toString, name, "user")
+
+        def fromJson(json: String): User = User("parsed-id", json, "user")
+
+        val anonymous: User = User("anon", "Anonymous", "guest")
+
+        def admin(name: String): User =
+          User(java.util.UUID.randomUUID().toString, name, "admin")
+      }
+    src/services/UserFactory.scala: |
+      package services
+
+      import models.User
+
+      class UserFactory {
+        def createBasicUser(name: String): User = User(name)
+
+        def createFromJson(json: String): User = User.fromJson(json)
+
+        def createAdmin(name: String): User = User.admin(name)
+
+        def getAnonymous: User = User.anonymous
+
+        def createBatch(names: List[String]): List[User] =
+          names.map(User(_))
+
+        def createWithRole(name: String, role: String): User =
+          User(java.util.UUID.randomUUID().toString, name, role)
+      }
+    src/models/Role.scala: |
+      package models
+
+      sealed trait Role {
+        def name: String
+        def permissions: Set[String]
+      }
+
+      object Role {
+        case object Admin extends Role {
+          val name = "admin"
+          val permissions = Set("read", "write", "delete", "manage")
+        }
+
+        case object User extends Role {
+          val name = "user"
+          val permissions = Set("read", "write")
+        }
+
+        case object Guest extends Role {
+          val name = "guest"
+          val permissions = Set("read")
+        }
+
+        def fromString(s: String): Option[Role] = s match {
+          case "admin" => Some(Admin)
+          case "user"  => Some(User)
+          case "guest" => Some(Guest)
+          case _       => None
+        }
+      }
+    src/services/AuthService.scala: |
+      package services
+
+      class AuthService {
+        private var tokens: Map[String, String] = Map.empty
+
+        def login(username: String, password: String): Option[String] = {
+          if (password.nonEmpty) {
+            val token = java.util.UUID.randomUUID().toString
+            tokens = tokens + (token -> username)
+            Some(token)
+          } else None
+        }
+
+        def validate(token: String): Option[String] = tokens.get(token)
+
+        def logout(token: String): Unit = {
+          tokens = tokens - token
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: userfactory
+  selector:
+    path: src/services/UserFactory.scala
+    anchor: 'def createFromJson(json: String): User = User.fromJson(json)'
+- id: userfactory_1
+  selector:
+    path: src/services/UserFactory.scala
+    anchor: 'def createAdmin(name: String): User = User.admin(name)'
+- id: user
+  selector:
+    path: src/models/User.scala
+    anchor: object User {
+- id: no_role
+  selector:
+    path: src/models/Role.scala
+- id: no_authservice
+  selector:
+    path: src/services/AuthService.scala
+- id: no_global_0
+  selector:
+    anchor: sealed trait Role
+- id: no_global_1
+  selector:
+    anchor: fromString
+- id: no_global_2
+  selector:
+    anchor: permissions
+- id: no_global_3
+  selector:
+    anchor: AuthService
+- id: no_global_4
+  selector:
+    anchor: validate
+- id: no_global_5
+  selector:
+    anchor: logout
+oracle:
+  required:
+  - userfactory
+  - userfactory_1
+  - user
+  allowed: []
+  forbidden:
+  - no_role
+  - no_authservice
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

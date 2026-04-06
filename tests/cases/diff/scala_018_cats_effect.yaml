@@ -1,0 +1,169 @@
+name: scala_018_cats_effect
+repo:
+  initial_files:
+    Database.scala: |
+      import cats.effect.IO
+
+      object Database {
+        def connect(): IO[Unit] = IO(println("Connected"))
+        def disconnect(): IO[Unit] = IO(println("Disconnected"))
+        def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+      }
+    Program.scala: |
+      object Program {}
+    Cache.scala: |
+      import cats.effect.{IO, Ref}
+
+      class Cache(ref: Ref[IO, Map[String, String]]) {
+        def get(key: String): IO[Option[String]] =
+          ref.get.map(_.get(key))
+
+        def put(key: String, value: String): IO[Unit] =
+          ref.update(_ + (key -> value))
+
+        def remove(key: String): IO[Unit] =
+          ref.update(_ - key)
+
+        def size: IO[Int] =
+          ref.get.map(_.size)
+      }
+
+      object Cache {
+        def empty: IO[Cache] =
+          Ref.of[IO, Map[String, String]](Map.empty).map(new Cache(_))
+      }
+    Migrations.scala: |
+      import cats.effect.IO
+
+      object Migrations {
+        def runAll(): IO[Unit] = for {
+          _ <- IO(println("Running migration 1: create users table"))
+          _ <- IO(println("Running migration 2: create orders table"))
+          _ <- IO(println("Running migration 3: add indexes"))
+        } yield ()
+
+        def rollback(version: Int): IO[Unit] =
+          IO(println(s"Rolling back to version $version"))
+      }
+  changed_files:
+    Database.scala: |
+      import cats.effect.IO
+
+      object Database {
+        def connect(): IO[Unit] = IO(println("Connected"))
+        def disconnect(): IO[Unit] = IO(println("Disconnected"))
+        def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+      }
+    Program.scala: |
+      import cats.effect.{IO, IOApp, ExitCode}
+      import cats.syntax.all._
+
+      object Program extends IOApp {
+        def program: IO[Unit] = for {
+          _ <- Database.connect()
+          results <- Database.query("SELECT * FROM users")
+          _ <- IO(results.foreach(println))
+          _ <- Database.disconnect()
+        } yield ()
+
+        def run(args: List[String]): IO[ExitCode] = {
+          program.as(ExitCode.Success)
+        }
+      }
+    Cache.scala: |
+      import cats.effect.{IO, Ref}
+
+      class Cache(ref: Ref[IO, Map[String, String]]) {
+        def get(key: String): IO[Option[String]] =
+          ref.get.map(_.get(key))
+
+        def put(key: String, value: String): IO[Unit] =
+          ref.update(_ + (key -> value))
+
+        def remove(key: String): IO[Unit] =
+          ref.update(_ - key)
+
+        def size: IO[Int] =
+          ref.get.map(_.size)
+      }
+
+      object Cache {
+        def empty: IO[Cache] =
+          Ref.of[IO, Map[String, String]](Map.empty).map(new Cache(_))
+      }
+    Migrations.scala: |
+      import cats.effect.IO
+
+      object Migrations {
+        def runAll(): IO[Unit] = for {
+          _ <- IO(println("Running migration 1: create users table"))
+          _ <- IO(println("Running migration 2: create orders table"))
+          _ <- IO(println("Running migration 3: add indexes"))
+        } yield ()
+
+        def rollback(version: Int): IO[Unit] =
+          IO(println(s"Rolling back to version $version"))
+      }
+  commit_message: Update files
+fragments:
+- id: program
+  selector:
+    path: Program.scala
+    anchor: import cats.effect.{IO, IOApp, ExitCode}
+- id: program_1
+  selector:
+    path: Program.scala
+    anchor: _ <- Database.connect()
+- id: program_2
+  selector:
+    path: Program.scala
+    anchor: results <- Database.query
+- id: database
+  selector:
+    path: Database.scala
+    anchor: 'def connect(): IO[Unit]'
+- id: database_1
+  selector:
+    path: Database.scala
+    anchor: 'def query(sql: String): IO[List[String]]'
+- id: no_cache
+  selector:
+    path: Cache.scala
+- id: no_migrations
+  selector:
+    path: Migrations.scala
+- id: no_global_0
+  selector:
+    anchor: class Cache
+- id: no_global_1
+  selector:
+    anchor: Ref.of[IO
+- id: no_global_2
+  selector:
+    anchor: ref.update
+- id: no_global_3
+  selector:
+    anchor: Migrations
+- id: no_global_4
+  selector:
+    anchor: runAll
+- id: no_global_5
+  selector:
+    anchor: rollback
+oracle:
+  required:
+  - program
+  - program_1
+  - program_2
+  - database
+  - database_1
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_migrations
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

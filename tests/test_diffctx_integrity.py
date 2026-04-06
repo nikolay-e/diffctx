@@ -155,6 +155,26 @@ class TestPPRMathematicalInvariants:
                 assert score >= 0, f"Negative score for {node}: {score}"
                 assert math.isfinite(score), f"Non-finite score for {node}: {score}"
 
+    def test_ppr_rank_decays_with_graph_distance(self) -> None:
+        graph = self._create_graph_with_edges(
+            [
+                ("A", "B", 1.0),
+                ("B", "C", 1.0),
+                ("C", "D", 1.0),
+            ]
+        )
+        seeds = {_fid("A")}
+        scores = personalized_pagerank(graph, seeds)
+
+        score_a = scores.get(_fid("A"), 0.0)
+        score_b = scores.get(_fid("B"), 0.0)
+        score_c = scores.get(_fid("C"), 0.0)
+        score_d = scores.get(_fid("D"), 0.0)
+
+        assert score_a > score_b, f"Seed {score_a:.4f} must exceed hop-1 {score_b:.4f}"
+        assert score_b > score_c, f"Hop-1 {score_b:.4f} must exceed hop-2 {score_c:.4f}"
+        assert score_c > score_d, f"Hop-2 {score_c:.4f} must exceed hop-3 {score_d:.4f}"
+
 
 def _extract_content(context: dict[str, Any]) -> str:
     parts = []
@@ -551,6 +571,39 @@ class TestGraphBuildingIntegrity:
         neighbors = graph.neighbors(a)
         assert b not in neighbors, "Negative-weight edge should be filtered"
 
+    def test_hub_node_edges_are_dampened(self) -> None:
+        import math as _math
+
+        from treemapper.diffctx.graph import _apply_hub_suppression
+
+        hub = _fid("hub")
+        non_hub = _fid("non_hub")
+        sources = [_fid(f"src_{i}") for i in range(8)]
+
+        raw_weight = 0.9
+        edges: dict[tuple[FragmentId, FragmentId], float] = {}
+        for src in sources:
+            edges[(src, hub)] = raw_weight
+        edges[(sources[0], non_hub)] = raw_weight
+
+        categories: dict[tuple[FragmentId, FragmentId], str] = {k: "generic" for k in edges}
+
+        suppressed = _apply_hub_suppression(edges, categories)
+
+        hub_weight = suppressed[(sources[0], hub)]
+        non_hub_weight = suppressed[(sources[0], non_hub)]
+
+        assert hub_weight < non_hub_weight, (
+            f"Hub node edge weight ({hub_weight:.4f}) should be less than "
+            f"non-hub edge weight ({non_hub_weight:.4f}) after dampening"
+        )
+
+        hub_in_degree = 8
+        expected_dampened = raw_weight / _math.log(1 + hub_in_degree)
+        assert (
+            abs(hub_weight - expected_dampened) < 1e-9
+        ), f"Hub weight {hub_weight:.6f} does not match expected dampened value {expected_dampened:.6f}"
+
 
 class TestCICDSeparatorAwareMatching:
     def test_cicd_does_not_create_spurious_edges_from_greedy_prefix(self, tmp_path: Path) -> None:
@@ -659,3 +712,46 @@ class TestJVMInheritanceEdges:
         all_content = _extract_content(context)
         assert "Animal" in all_content, "Changed abstract class must be included"
         assert "Dog" in all_content, "Java subclass using 'extends' must appear in context after refactor"
+
+
+class TestSelectionTauThreshold:
+    def test_tau_controls_fragment_count(self, tmp_path: Path) -> None:
+        g = Pygit2Repo(tmp_path / "tau_repo")
+
+        chain_size = 15
+        lines: list[str] = []
+        for i in range(chain_size):
+            lines.append(f"def func_{i}():")
+            if i + 1 < chain_size:
+                lines.append(f"    return func_{i + 1}()")
+            else:
+                lines.append(f"    return {i}")
+            lines.append("")
+        g.add_file("chain.py", "\n".join(lines))
+        g.commit("init chain")
+
+        modified_lines = list(lines)
+        modified_lines[1] = "    result = func_1()\n    return result + 0"
+        g.add_file("chain.py", "\n".join(modified_lines))
+        g.commit("change func_0")
+
+        context_loose = build_diff_context(
+            root_dir=g.path,
+            diff_range="HEAD~1..HEAD",
+            budget_tokens=50000,
+            tau=0.001,
+        )
+        context_tight = build_diff_context(
+            root_dir=g.path,
+            diff_range="HEAD~1..HEAD",
+            budget_tokens=50000,
+            tau=0.95,
+        )
+
+        fragments_loose = len(context_loose.get("fragments", []))
+        fragments_tight = len(context_tight.get("fragments", []))
+
+        assert fragments_tight <= fragments_loose, (
+            f"Tight tau=0.95 selected {fragments_tight} fragments but loose tau=0.001 "
+            f"selected only {fragments_loose}; tighter tau must not select more"
+        )

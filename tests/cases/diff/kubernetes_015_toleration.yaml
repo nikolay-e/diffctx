@@ -1,0 +1,239 @@
+name: kubernetes_015_toleration
+repo:
+  initial_files:
+    k8s/apps/critical/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: critical-service
+        namespace: production
+        labels:
+          app: critical-service
+          priority: high
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: critical-service
+        template:
+          metadata:
+            labels:
+              app: critical-service
+              priority: high
+          spec:
+            containers:
+            - name: service
+              image: critical-service:v1.0.0
+              ports:
+              - containerPort: 8080
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 8080
+                initialDelaySeconds: 10
+                periodSeconds: 5
+    k8s/apps/critical/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: critical-service
+        namespace: production
+      spec:
+        selector:
+          app: critical-service
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/infra/taint-manager.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: taint-manager
+        namespace: kube-system
+      spec:
+        schedule: "*/30 * * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                serviceAccountName: taint-manager-sa
+                containers:
+                - name: taint-manager
+                  image: bitnami/kubectl:1.28
+                  command:
+                  - /bin/sh
+                  - -c
+                  - kubectl taint nodes --selector=dedicated=high-priority dedicated=high-priority:NoSchedule --overwrite
+                restartPolicy: Never
+    k8s/apps/critical/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: critical-service-pdb
+        namespace: production
+      spec:
+        minAvailable: 2
+        selector:
+          matchLabels:
+            app: critical-service
+  changed_files:
+    k8s/apps/critical/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: critical-service
+        namespace: production
+        labels:
+          app: critical-service
+          priority: high
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: critical-service
+        template:
+          metadata:
+            labels:
+              app: critical-service
+              priority: high
+          spec:
+            tolerations:
+            - key: "dedicated"
+              operator: "Equal"
+              value: "high-priority"
+              effect: "NoSchedule"
+            - key: "critical-workloads"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 3600
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 300
+            containers:
+            - name: service
+              image: critical-service:v1.0.0
+              ports:
+              - containerPort: 8080
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 8080
+                initialDelaySeconds: 10
+                periodSeconds: 5
+    k8s/apps/critical/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: critical-service
+        namespace: production
+      spec:
+        selector:
+          app: critical-service
+        ports:
+        - port: 80
+          targetPort: 8080
+    k8s/infra/taint-manager.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: taint-manager
+        namespace: kube-system
+      spec:
+        schedule: "*/30 * * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                serviceAccountName: taint-manager-sa
+                containers:
+                - name: taint-manager
+                  image: bitnami/kubectl:1.28
+                  command:
+                  - /bin/sh
+                  - -c
+                  - kubectl taint nodes --selector=dedicated=high-priority dedicated=high-priority:NoSchedule --overwrite
+                restartPolicy: Never
+    k8s/apps/critical/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: critical-service-pdb
+        namespace: production
+      spec:
+        minAvailable: 2
+        selector:
+          matchLabels:
+            app: critical-service
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/critical/deployment.yaml
+    anchor: 'key: "dedicated"'
+- id: deployment_1
+  selector:
+    path: k8s/apps/critical/deployment.yaml
+    anchor: 'tolerationSeconds: 3600'
+- id: deployment_2
+  selector:
+    path: k8s/apps/critical/deployment.yaml
+    anchor: 'tolerationSeconds: 300'
+- id: deployment_3
+  selector:
+    path: k8s/apps/critical/deployment.yaml
+    anchor: node.kubernetes.io/not-ready
+- id: no_taint_manager
+  selector:
+    path: k8s/infra/taint-manager.yaml
+- id: no_pdb
+  selector:
+    path: k8s/apps/critical/pdb.yaml
+- id: no_global_0
+  selector:
+    anchor: taint-manager
+- id: no_global_1
+  selector:
+    anchor: taint-manager-sa
+- id: no_global_2
+  selector:
+    anchor: bitnami/kubectl
+- id: no_global_3
+  selector:
+    anchor: critical-service-pdb
+- id: no_global_4
+  selector:
+    anchor: PodDisruptionBudget
+- id: no_global_5
+  selector:
+    anchor: 'minAvailable: 2'
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - deployment_3
+  allowed: []
+  forbidden:
+  - no_taint_manager
+  - no_pdb
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,319 @@
+name: selection_003_addition_hunk_handled
+repo:
+  initial_files:
+    add_test.py: |
+      def func1():
+          func1_value = "original_func1"
+          return func1_value
+
+      def func2():
+          func2_value = "original_func2"
+          return func2_value
+    existing_helpers.py: |
+      def existing_helper_alpha():
+          return "existing_alpha_result"
+
+      def existing_helper_beta():
+          return "existing_beta_result"
+
+      def existing_helper_gamma():
+          return "existing_gamma_result"
+
+      def existing_helper_delta():
+          return "existing_delta_result"
+    garbage_sel_003_services.py: |
+      class GARBAGE_SEL_003_ServiceAlpha:
+          def execute(self):
+              return "GARBAGE_SEL_003_service_alpha_execute"
+
+          def validate(self):
+              return "GARBAGE_SEL_003_service_alpha_validate"
+
+      class GARBAGE_SEL_003_ServiceBeta:
+          def execute(self):
+              return "GARBAGE_SEL_003_service_beta_execute"
+
+          def validate(self):
+              return "GARBAGE_SEL_003_service_beta_validate"
+
+      def GARBAGE_SEL_003_standalone_func():
+          return "GARBAGE_SEL_003_standalone_result"
+    garbage_sel_003_models.py: |
+      GARBAGE_SEL_003_MODEL_CONFIG = {
+          "key_one": "GARBAGE_SEL_003_config_value_one",
+          "key_two": "GARBAGE_SEL_003_config_value_two",
+          "key_three": "GARBAGE_SEL_003_config_value_three",
+      }
+
+      class GARBAGE_SEL_003_DataModel:
+          field_one = "GARBAGE_SEL_003_field_one_value"
+          field_two = "GARBAGE_SEL_003_field_two_value"
+
+          def get_data(self):
+              return "GARBAGE_SEL_003_data_result"
+    garbage_sel_003_utils.py: |
+      def GARBAGE_SEL_003_util_alpha():
+          return "GARBAGE_SEL_003_util_alpha_result"
+
+      def GARBAGE_SEL_003_util_beta():
+          return "GARBAGE_SEL_003_util_beta_result"
+
+      def GARBAGE_SEL_003_util_gamma():
+          return "GARBAGE_SEL_003_util_gamma_result"
+    tricky_new_func_collision.py: |
+      GARBAGE_SEL_003_NEWFUNC_COLLISION_A = "new_func_collision"
+      GARBAGE_SEL_003_NEWFUNC_VARIANT_B = True
+
+      def new_function():
+          x = 10
+          y = 20
+          new_function_marker = "newly_added_function"
+          return x + y
+
+      def func1():
+          func1_value = "original_func1"
+          return func1_value
+    tricky_add_sibling.py: |
+      GARBAGE_SEL_003_SIBLING_MODULE_C = "add_sibling"
+      GARBAGE_SEL_003_SIBLING_FLAG_D = 42
+
+      def func1():
+          func1_value = "sibling_func1"
+          return func1_value
+
+      def func2():
+          func2_value = "sibling_func2"
+          return func2_value
+
+      def func3():
+          return "sibling_func3"
+  changed_files:
+    add_test.py: |
+      def func1():
+          func1_value = "original_func1"
+          return func1_value
+
+      def new_function():
+          x = 1
+          y = 2
+          new_function_marker = "newly_added_function"
+          return x + y
+
+      def func2():
+          func2_value = "original_func2"
+          return func2_value
+    existing_helpers.py: |
+      def existing_helper_alpha():
+          return "existing_alpha_result"
+
+      def existing_helper_beta():
+          return "existing_beta_result"
+
+      def existing_helper_gamma():
+          return "existing_gamma_result"
+
+      def existing_helper_delta():
+          return "existing_delta_result"
+    garbage_sel_003_services.py: |
+      class GARBAGE_SEL_003_ServiceAlpha:
+          def execute(self):
+              return "GARBAGE_SEL_003_service_alpha_execute"
+
+          def validate(self):
+              return "GARBAGE_SEL_003_service_alpha_validate"
+
+      class GARBAGE_SEL_003_ServiceBeta:
+          def execute(self):
+              return "GARBAGE_SEL_003_service_beta_execute"
+
+          def validate(self):
+              return "GARBAGE_SEL_003_service_beta_validate"
+
+      def GARBAGE_SEL_003_standalone_func():
+          return "GARBAGE_SEL_003_standalone_result"
+    garbage_sel_003_models.py: |
+      GARBAGE_SEL_003_MODEL_CONFIG = {
+          "key_one": "GARBAGE_SEL_003_config_value_one",
+          "key_two": "GARBAGE_SEL_003_config_value_two",
+          "key_three": "GARBAGE_SEL_003_config_value_three",
+      }
+
+      class GARBAGE_SEL_003_DataModel:
+          field_one = "GARBAGE_SEL_003_field_one_value"
+          field_two = "GARBAGE_SEL_003_field_two_value"
+
+          def get_data(self):
+              return "GARBAGE_SEL_003_data_result"
+    garbage_sel_003_utils.py: |
+      def GARBAGE_SEL_003_util_alpha():
+          return "GARBAGE_SEL_003_util_alpha_result"
+
+      def GARBAGE_SEL_003_util_beta():
+          return "GARBAGE_SEL_003_util_beta_result"
+
+      def GARBAGE_SEL_003_util_gamma():
+          return "GARBAGE_SEL_003_util_gamma_result"
+    tricky_new_func_collision.py: |
+      GARBAGE_SEL_003_NEWFUNC_COLLISION_A = "new_func_collision"
+      GARBAGE_SEL_003_NEWFUNC_VARIANT_B = True
+
+      def new_function():
+          x = 10
+          y = 20
+          new_function_marker = "newly_added_function"
+          return x + y
+
+      def func1():
+          func1_value = "original_func1"
+          return func1_value
+    tricky_add_sibling.py: |
+      GARBAGE_SEL_003_SIBLING_MODULE_C = "add_sibling"
+      GARBAGE_SEL_003_SIBLING_FLAG_D = 42
+
+      def func1():
+          func1_value = "sibling_func1"
+          return func1_value
+
+      def func2():
+          func2_value = "sibling_func2"
+          return func2_value
+
+      def func3():
+          return "sibling_func3"
+  commit_message: Update files
+fragments:
+- id: add_test
+  selector:
+    path: add_test.py
+    anchor: 'def new_function():'
+- id: add_test_1
+  selector:
+    path: add_test.py
+    anchor: new_function_marker = "newly_added_function"
+- id: add_test_2
+  selector:
+    path: add_test.py
+    anchor: return x + y
+- id: req_pattern_0
+  selector:
+    anchor: new_function
+- id: req_pattern_1
+  selector:
+    anchor: newly_added_function
+- id: no_garbage_sel_003_services
+  selector:
+    path: garbage_sel_003_services.py
+- id: no_garbage_sel_003_models
+  selector:
+    path: garbage_sel_003_models.py
+- id: no_garbage_sel_003_utils
+  selector:
+    path: garbage_sel_003_utils.py
+- id: no_tricky_new_func_collision
+  selector:
+    path: tricky_new_func_collision.py
+- id: no_tricky_add_sibling
+  selector:
+    path: tricky_add_sibling.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_SEL_003_ServiceAlpha
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_SEL_003_ServiceBeta
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_SEL_003_service_alpha_execute
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_SEL_003_service_beta_execute
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_SEL_003_standalone_func
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_SEL_003_standalone_result
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_SEL_003_MODEL_CONFIG
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_SEL_003_config_value_one
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_SEL_003_DataModel
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_SEL_003_field_one_value
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_SEL_003_data_result
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_SEL_003_util_alpha
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_SEL_003_util_beta
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_SEL_003_util_gamma
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_SEL_003_util_alpha_result
+- id: no_global_15
+  selector:
+    anchor: garbage_sel_003_services.py
+- id: no_global_16
+  selector:
+    anchor: garbage_sel_003_models.py
+- id: no_global_17
+  selector:
+    anchor: garbage_sel_003_utils.py
+- id: no_global_18
+  selector:
+    anchor: GARBAGE_SEL_003_NEWFUNC_COLLISION_A
+- id: no_global_19
+  selector:
+    anchor: GARBAGE_SEL_003_NEWFUNC_VARIANT_B
+- id: no_global_20
+  selector:
+    anchor: GARBAGE_SEL_003_SIBLING_MODULE_C
+- id: no_global_21
+  selector:
+    anchor: GARBAGE_SEL_003_SIBLING_FLAG_D
+oracle:
+  required:
+  - add_test
+  - add_test_1
+  - add_test_2
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_garbage_sel_003_services
+  - no_garbage_sel_003_models
+  - no_garbage_sel_003_utils
+  - no_tricky_new_func_collision
+  - no_tricky_add_sibling
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21

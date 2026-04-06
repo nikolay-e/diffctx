@@ -1,0 +1,398 @@
+name: shell_001_associative_array
+repo:
+  initial_files:
+    lookup.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+
+      declare -A config
+      config[host]="localhost"
+      config[port]="8080"
+
+      get_config() {
+          local key=$1
+          if [[ -v config[$key] ]]; then
+              echo "${config[$key]}"
+          else
+              echo "default"
+          fi
+      }
+
+      print_config() {
+          for key in "${!config[@]}"; do
+              echo "$key = ${config[$key]}"
+          done
+      }
+    defaults.sh: |
+      #!/bin/bash
+      # Source of truth for default configuration values.
+      # Other scripts should call load_defaults() to populate their arrays.
+
+      DEFAULT_HOST="127.0.0.1"
+      DEFAULT_PORT="3000"
+      DEFAULT_TIMEOUT="60"
+      DEFAULT_DEBUG="false"
+
+      load_defaults() {
+          local -n target=$1
+          target[host]="${DEFAULT_HOST}"
+          target[port]="${DEFAULT_PORT}"
+          target[timeout]="${DEFAULT_TIMEOUT}"
+          target[debug]="${DEFAULT_DEBUG}"
+      }
+
+      get_default() {
+          local key=$1
+          local var="DEFAULT_${key^^}"
+          echo "${!var:-}"
+      }
+    app_runner.sh: |
+      #!/bin/bash
+      source ./lookup.sh
+
+      start_app() {
+          local host=$(get_config host)
+          local port=$(get_config port)
+
+          if has_config debug && [[ "$(get_config debug)" == "true" ]]; then
+              echo "[DEBUG] Starting on $host:$port"
+              export APP_DEBUG=1
+          fi
+
+          local timeout=$(get_config timeout)
+          echo "Starting app on $host:$port (timeout=${timeout}s)..."
+          exec ./app --host "$host" --port "$port" --timeout "$timeout"
+      }
+
+      stop_app() {
+          local pid_file="/var/run/app.pid"
+          if [[ -f "$pid_file" ]]; then
+              kill "$(cat "$pid_file")" 2>/dev/null
+              rm -f "$pid_file"
+              echo "App stopped"
+          fi
+      }
+
+      restart_app() {
+          stop_app
+          sleep 2
+          start_app
+      }
+
+      # Main
+      case "${1:-start}" in
+          start)   start_app ;;
+          stop)    stop_app ;;
+          restart) restart_app ;;
+          config)  print_config ;;
+          *)       echo "Usage: $0 {start|stop|restart|config}" ;;
+      esac
+    settings.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+
+      declare -A app_settings
+
+      init_settings() {
+          load_defaults app_settings
+          # Override specific values after loading defaults
+          app_settings[app_name]="myapp"
+          app_settings[version]="1.0.0"
+      }
+
+      get_setting() {
+          local key=$1
+          echo "${app_settings[$key]:-$(get_default "$key")}"
+      }
+
+      save_settings() {
+          local file=$1
+          for key in "${!app_settings[@]}"; do
+              echo "$key=${app_settings[$key]}" >> "$file"
+          done
+      }
+
+      reset_settings() {
+          unset app_settings
+          declare -gA app_settings
+          load_defaults app_settings
+      }
+    tests/test_lookup.sh: |
+      #!/bin/bash
+      source ./lookup.sh
+
+      PASS=0
+      FAIL=0
+
+      assert_eq() {
+          local desc="$1" expected="$2" actual="$3"
+          if [[ "$expected" == "$actual" ]]; then
+              ((PASS++))
+          else
+              ((FAIL++))
+              echo "FAIL: $desc — expected '$expected', got '$actual'"
+          fi
+      }
+
+      # Test get_config for existing keys
+      assert_eq "host" "localhost" "$(get_config host)"
+      assert_eq "port" "8080" "$(get_config port)"
+      assert_eq "debug" "true" "$(get_config debug)"
+      assert_eq "timeout" "30" "$(get_config timeout)"
+
+      # Test get_config for missing key
+      assert_eq "missing key" "default" "$(get_config nonexistent)"
+
+      # Test has_config
+      has_config host && assert_eq "has host" "yes" "yes" || assert_eq "has host" "yes" "no"
+      has_config debug && assert_eq "has debug" "yes" "yes" || assert_eq "has debug" "yes" "no"
+      has_config missing && assert_eq "has missing" "no" "yes" || assert_eq "has missing" "no" "no"
+
+      echo "Results: $PASS passed, $FAIL failed"
+      [[ "$FAIL" -eq 0 ]]
+    docs/CONFIG_KEYS.md: |
+      # Configuration Keys
+
+      All configuration is managed through bash associative arrays.
+      Default values are defined in `defaults.sh`.
+
+      ## Keys
+
+      | Key     | Type    | Default   | Description                      |
+      |---------|---------|-----------|----------------------------------|
+      | host    | string  | 127.0.0.1 | Server bind address             |
+      | port    | integer | 3000      | Server listen port              |
+      | debug   | boolean | false     | Enable debug logging            |
+      | timeout | integer | 60        | Request timeout in seconds      |
+
+      ## Usage
+
+      ```bash
+      source ./lookup.sh
+      echo "Host: $(get_config host)"
+
+      if has_config debug; then
+          echo "Debug is configured"
+      fi
+      ```
+
+      ## Defaults vs Overrides
+
+      Scripts should call `load_defaults` first, then override specific
+      values. See `settings.sh` for the canonical pattern.
+
+      **Note:** `lookup.sh` hardcodes some values instead of calling
+      `load_defaults`. This may lead to drift if defaults change.
+    lib/config_merge.sh: |
+      #!/bin/bash
+      # Utility for merging associative arrays.
+      # Usage: merge_config target_array source_array
+
+      merge_config() {
+          local -n _target=$1
+          local -n _source=$2
+          for key in "${!_source[@]}"; do
+              _target[$key]="${_source[$key]}"
+          done
+      }
+
+      merge_with_defaults() {
+          local -n _target=$1
+          source ./defaults.sh
+          load_defaults _target
+          # Then apply overrides from second array if provided
+          if [[ -n "${2:-}" ]]; then
+              local -n _overrides=$2
+              merge_config _target _overrides
+          fi
+      }
+
+      diff_configs() {
+          local -n _a=$1
+          local -n _b=$2
+          for key in "${!_a[@]}"; do
+              if [[ "${_a[$key]}" != "${_b[$key]:-}" ]]; then
+                  echo "DIFF: $key = '${_a[$key]}' vs '${_b[$key]:-<unset>}'"
+              fi
+          done
+      }
+  changed_files:
+    lookup.sh: |
+      #!/bin/bash
+      source ./defaults.sh
+
+      declare -A config
+      config[host]="localhost"
+      config[port]="8080"
+      config[debug]="true"
+      config[timeout]="30"
+
+      get_config() {
+          local key=$1
+          if [[ -v config[$key] ]]; then
+              echo "${config[$key]}"
+          else
+              echo "default"
+          fi
+      }
+
+      print_config() {
+          for key in "${!config[@]}"; do
+              echo "$key = ${config[$key]}"
+          done
+      }
+
+      has_config() {
+          local key=$1
+          [[ -v config[$key] ]]
+      }
+
+      if has_config debug && [[ "$(get_config debug)" == "true" ]]; then
+          echo "Debug mode: enabled"
+      fi
+  commit_message: Update files
+fragments:
+- id: lookup
+  selector:
+    path: lookup.sh
+    anchor: config[debug]="true"
+- id: lookup_1
+  selector:
+    path: lookup.sh
+    anchor: config[timeout]="30"
+- id: lookup_2
+  selector:
+    path: lookup.sh
+    anchor: has_config()
+- id: lookup_3
+  selector:
+    path: lookup.sh
+    anchor: 'echo "Debug mode: enabled"'
+- id: defaults
+  selector:
+    path: defaults.sh
+    anchor: DEFAULT_DEBUG="false"
+- id: defaults_1
+  selector:
+    path: defaults.sh
+    anchor: DEFAULT_TIMEOUT="60"
+- id: defaults_2
+  selector:
+    path: defaults.sh
+    anchor: load_defaults()
+- id: defaults_3
+  selector:
+    path: defaults.sh
+    anchor: get_default()
+- id: no_app_runner
+  selector:
+    path: app_runner.sh
+- id: no_settings
+  selector:
+    path: settings.sh
+- id: no_test_lookup
+  selector:
+    path: tests/test_lookup.sh
+- id: no_config_keys
+  selector:
+    path: docs/CONFIG_KEYS.md
+- id: no_config_merge
+  selector:
+    path: lib/config_merge.sh
+- id: no_global_0
+  selector:
+    anchor: start_app
+- id: no_global_1
+  selector:
+    anchor: stop_app
+- id: no_global_2
+  selector:
+    anchor: restart_app
+- id: no_global_3
+  selector:
+    anchor: exec ./app
+- id: no_global_4
+  selector:
+    anchor: APP_DEBUG
+- id: no_global_5
+  selector:
+    anchor: app_settings
+- id: no_global_6
+  selector:
+    anchor: init_settings
+- id: no_global_7
+  selector:
+    anchor: save_settings
+- id: no_global_8
+  selector:
+    anchor: reset_settings
+- id: no_global_9
+  selector:
+    anchor: assert_eq
+- id: no_global_10
+  selector:
+    anchor: PASS=
+- id: no_global_11
+  selector:
+    anchor: FAIL=
+- id: no_global_12
+  selector:
+    anchor: missing key
+- id: no_global_13
+  selector:
+    anchor: Configuration Keys
+- id: no_global_14
+  selector:
+    anchor: Default   | Description
+- id: no_global_15
+  selector:
+    anchor: may lead to drift
+- id: no_global_16
+  selector:
+    anchor: canonical pattern
+- id: no_global_17
+  selector:
+    anchor: merge_config
+- id: no_global_18
+  selector:
+    anchor: merge_with_defaults
+- id: no_global_19
+  selector:
+    anchor: diff_configs
+oracle:
+  required:
+  - lookup
+  - lookup_1
+  - lookup_2
+  - lookup_3
+  - defaults
+  - defaults_1
+  - defaults_2
+  - defaults_3
+  allowed: []
+  forbidden:
+  - no_app_runner
+  - no_settings
+  - no_test_lookup
+  - no_config_keys
+  - no_config_merge
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19

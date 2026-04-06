@@ -1,0 +1,265 @@
+name: go_016_error_wrapping
+repo:
+  initial_files:
+    internal/errors/sentinel.go: |
+      package errors
+
+      import "errors"
+
+      var (
+          ErrNotFound   = errors.New("not found")
+          ErrPermission = errors.New("permission denied")
+          ErrInvalid    = errors.New("invalid input")
+      )
+    internal/repository/user_repository.go: |
+      package repository
+
+      import (
+          "context"
+          "database/sql"
+      )
+
+      type User struct {
+          ID    int64
+          Name  string
+          Email string
+      }
+
+      type UserRepository struct {
+          db *sql.DB
+      }
+
+      func NewUserRepository(db *sql.DB) *UserRepository {
+          return &UserRepository{db: db}
+      }
+
+      func (r *UserRepository) FindByID(ctx context.Context, id int64) (*User, error) {
+          row := r.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id)
+          var user User
+          if err := row.Scan(&user.ID, &user.Name, &user.Email); err != nil {
+              return nil, err
+          }
+          return &user, nil
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import (
+          "context"
+          "myproject/internal/repository"
+      )
+
+      type UserService struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserService(repo *repository.UserRepository) *UserService {
+          return &UserService{repo: repo}
+      }
+
+      func (s *UserService) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+          return s.repo.FindByID(ctx, id)
+      }
+    internal/unrelated/logging/formatter.go: |
+      package logging
+
+      const GARBAGE_GO_LOG_FORMATTER_001 = "logging_garbage"
+
+      type GARBAGE_GO_TYPE_FORMATTER_002 struct {
+          pattern string
+      }
+
+      func GARBAGE_GO_FUNC_FORMATTER_003() string {
+          return "GARBAGE_GO_FORMATTER_UNUSED_004"
+      }
+    internal/unrelated/logging/writer.go: |
+      package logging
+
+      const GARBAGE_GO_LOG_WRITER_005 = "writer_garbage"
+
+      type GARBAGE_GO_TYPE_WRITER_006 struct {
+          output string
+      }
+
+      func GARBAGE_GO_FUNC_WRITER_007() {
+          println("GARBAGE_GO_WRITER_OUTPUT_008")
+      }
+  changed_files:
+    internal/errors/sentinel.go: |
+      package errors
+
+      import "errors"
+
+      var (
+          ErrNotFound   = errors.New("not found")
+          ErrPermission = errors.New("permission denied")
+          ErrInvalid    = errors.New("invalid input")
+      )
+    internal/repository/user_repository.go: |
+      package repository
+
+      import (
+          "context"
+          "database/sql"
+      )
+
+      type User struct {
+          ID    int64
+          Name  string
+          Email string
+      }
+
+      type UserRepository struct {
+          db *sql.DB
+      }
+
+      func NewUserRepository(db *sql.DB) *UserRepository {
+          return &UserRepository{db: db}
+      }
+
+      func (r *UserRepository) FindByID(ctx context.Context, id int64) (*User, error) {
+          row := r.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id)
+          var user User
+          if err := row.Scan(&user.ID, &user.Name, &user.Email); err != nil {
+              return nil, err
+          }
+          return &user, nil
+      }
+    internal/service/user_service.go: |
+      package service
+
+      import (
+          "context"
+          "database/sql"
+          "errors"
+          "fmt"
+          apperrors "myproject/internal/errors"
+          "myproject/internal/repository"
+      )
+
+      type UserService struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserService(repo *repository.UserRepository) *UserService {
+          return &UserService{repo: repo}
+      }
+
+      func (s *UserService) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+          user, err := s.repo.FindByID(ctx, id)
+          if err != nil {
+              if errors.Is(err, sql.ErrNoRows) {
+                  return nil, fmt.Errorf("GetUser(%d): %w", id, apperrors.ErrNotFound)
+              }
+              return nil, fmt.Errorf("GetUser(%d): repository error: %w", id, err)
+          }
+          return user, nil
+      }
+
+      func (s *UserService) GetUserOrDefault(ctx context.Context, id int64) *repository.User {
+          user, err := s.GetUser(ctx, id)
+          if err != nil {
+              if errors.Is(err, apperrors.ErrNotFound) {
+                  return &repository.User{Name: "Guest", Email: "guest@example.com"}
+              }
+              return nil
+          }
+          return user
+      }
+
+      func (s *UserService) UpdateUser(ctx context.Context, id int64, name, email string) error {
+          user, err := s.GetUser(ctx, id)
+          if err != nil {
+              return fmt.Errorf("UpdateUser: %w", err)
+          }
+          user.Name = name
+          user.Email = email
+          if err := s.repo.Update(ctx, user); err != nil {
+              return fmt.Errorf("UpdateUser: failed to update: %w", err)
+          }
+          return nil
+      }
+
+      func (s *UserService) DeleteUser(ctx context.Context, id int64) error {
+          if _, err := s.GetUser(ctx, id); err != nil {
+              return fmt.Errorf("DeleteUser: %w", err)
+          }
+          if err := s.repo.Delete(ctx, id); err != nil {
+              return fmt.Errorf("DeleteUser: failed to delete: %w", err)
+          }
+          return nil
+      }
+    internal/unrelated/logging/formatter.go: |
+      package logging
+
+      const GARBAGE_GO_LOG_FORMATTER_001 = "logging_garbage"
+
+      type GARBAGE_GO_TYPE_FORMATTER_002 struct {
+          pattern string
+      }
+
+      func GARBAGE_GO_FUNC_FORMATTER_003() string {
+          return "GARBAGE_GO_FORMATTER_UNUSED_004"
+      }
+    internal/unrelated/logging/writer.go: |
+      package logging
+
+      const GARBAGE_GO_LOG_WRITER_005 = "writer_garbage"
+
+      type GARBAGE_GO_TYPE_WRITER_006 struct {
+          output string
+      }
+
+      func GARBAGE_GO_FUNC_WRITER_007() {
+          println("GARBAGE_GO_WRITER_OUTPUT_008")
+      }
+  commit_message: Update files
+fragments:
+- id: user_service_file
+  selector:
+    path: internal/service/user_service.go
+- id: req_global_0
+  selector:
+    anchor: '"database/sql"'
+- id: req_global_1
+  selector:
+    anchor: user, err := s.repo.FindByID(ctx, id)
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GO_FUNC_FORMATTER_003
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GO_FUNC_WRITER_007
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GO_LOG_FORMATTER_001
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GO_LOG_WRITER_005
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GO_TYPE_FORMATTER_002
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GO_TYPE_WRITER_006
+- id: no_global_6
+  selector:
+    anchor: formatter.go
+- id: no_global_7
+  selector:
+    anchor: writer.go
+oracle:
+  required:
+  - user_service_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

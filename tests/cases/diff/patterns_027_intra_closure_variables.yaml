@@ -1,0 +1,151 @@
+name: patterns_027_intra_closure_variables
+repo:
+  initial_files:
+    counter.py: |
+      def make_counter(start=0):
+          count = start
+
+          def increment():
+              nonlocal count
+              count += 1
+              return count
+
+          def decrement():
+              nonlocal count
+              count -= 1
+              return count
+
+          def get_value():
+              return count
+
+          return increment, decrement, get_value
+    accumulator.py: |
+      def make_accumulator(initial=0.0):
+          total = initial
+
+          def add(value):
+              nonlocal total
+              total += value
+              return total
+
+          def reset():
+              nonlocal total
+              total = 0.0
+              return total
+
+          return add, reset
+    timer.py: |
+      import time
+
+      def make_timer(step=1.0):
+          start_time = time.time()
+          elapsed = 0.0
+
+          def tick():
+              nonlocal elapsed
+              elapsed += step
+              return elapsed
+
+          def get_elapsed():
+              return time.time() - start_time
+
+          return tick, get_elapsed
+  changed_files:
+    counter.py: |
+      def make_counter(start=0, step=1):
+          count = start
+
+          def increment():
+              nonlocal count
+              count += step
+              return count
+
+          def decrement():
+              nonlocal count
+              count -= step
+              return count
+
+          def get_value():
+              return count
+
+          return increment, decrement, get_value
+    accumulator.py: |
+      def make_accumulator(initial=0.0):
+          total = initial
+
+          def add(value):
+              nonlocal total
+              total += value
+              return total
+
+          def reset():
+              nonlocal total
+              total = 0.0
+              return total
+
+          return add, reset
+    timer.py: |
+      import time
+
+      def make_timer(step=1.0):
+          start_time = time.time()
+          elapsed = 0.0
+
+          def tick():
+              nonlocal elapsed
+              elapsed += step
+              return elapsed
+
+          def get_elapsed():
+              return time.time() - start_time
+
+          return tick, get_elapsed
+  commit_message: Update files
+fragments:
+- id: counter
+  selector:
+    path: counter.py
+    anchor: 'def make_counter(start=0, step=1):'
+- id: counter_1
+  selector:
+    path: counter.py
+    anchor: count += step
+- id: counter_2
+  selector:
+    path: counter.py
+    anchor: count -= step
+- id: no_accumulator
+  selector:
+    path: accumulator.py
+- id: no_timer
+  selector:
+    path: timer.py
+- id: no_global_0
+  selector:
+    anchor: make_accumulator
+- id: no_global_1
+  selector:
+    anchor: total += value
+- id: no_global_2
+  selector:
+    anchor: make_timer
+- id: no_global_3
+  selector:
+    anchor: time.time()
+- id: no_global_4
+  selector:
+    anchor: get_elapsed
+oracle:
+  required:
+  - counter
+  - counter_1
+  - counter_2
+  allowed: []
+  forbidden:
+  - no_accumulator
+  - no_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

@@ -1,0 +1,124 @@
+name: output_007_accurate_line_range
+repo:
+  initial_files:
+    accurate.py: |
+      def first():
+          pass
+
+      def second():
+          x = 1
+          y = 2
+          return x + y
+
+      def third():
+          pass
+    utils/rate_limiter.py: |
+      WINDOW_SIZE_SECONDS = 60
+      DEFAULT_LIMIT = 100
+
+      class RateLimiter:
+          def __init__(self, limit: int = DEFAULT_LIMIT):
+              self._limit = limit
+              self._calls: list[float] = []
+
+          def is_allowed(self, client_id: str) -> bool:
+              return len(self._calls) < self._limit
+
+          def record_call(self, client_id: str) -> None:
+              import time
+              self._calls.append(time.time())
+    utils/request_throttler.py: |
+      BASE_DELAY_SECONDS = 1.0
+      MAX_BACKOFF_SECONDS = 120
+
+      class RequestThrottler:
+          def __init__(self, base_delay: float = BASE_DELAY_SECONDS):
+              self.base_delay = base_delay
+
+          def get_delay(self, attempt: int) -> float:
+              return min(self.base_delay * (2 ** attempt), MAX_BACKOFF_SECONDS)
+
+          def should_retry(self, status_code: int) -> bool:
+              return status_code in (429, 500, 502, 503)
+  changed_files:
+    accurate.py: |
+      def first():
+          pass
+
+      def second():
+          x = 10
+          y = 20
+          return x + y
+
+      def third():
+          pass
+    utils/rate_limiter.py: |
+      WINDOW_SIZE_SECONDS = 60
+      DEFAULT_LIMIT = 100
+
+      class RateLimiter:
+          def __init__(self, limit: int = DEFAULT_LIMIT):
+              self._limit = limit
+              self._calls: list[float] = []
+
+          def is_allowed(self, client_id: str) -> bool:
+              return len(self._calls) < self._limit
+
+          def record_call(self, client_id: str) -> None:
+              import time
+              self._calls.append(time.time())
+    utils/request_throttler.py: |
+      BASE_DELAY_SECONDS = 1.0
+      MAX_BACKOFF_SECONDS = 120
+
+      class RequestThrottler:
+          def __init__(self, base_delay: float = BASE_DELAY_SECONDS):
+              self.base_delay = base_delay
+
+          def get_delay(self, attempt: int) -> float:
+              return min(self.base_delay * (2 ** attempt), MAX_BACKOFF_SECONDS)
+
+          def should_retry(self, status_code: int) -> bool:
+              return status_code in (429, 500, 502, 503)
+  commit_message: Update files
+fragments:
+- id: accurate_file
+  selector:
+    path: accurate.py
+- id: no_rate_limiter
+  selector:
+    path: utils/rate_limiter.py
+- id: no_request_throttler
+  selector:
+    path: utils/request_throttler.py
+- id: no_global_0
+  selector:
+    anchor: RateLimiter
+- id: no_global_1
+  selector:
+    anchor: WINDOW_SIZE_SECONDS
+- id: no_global_2
+  selector:
+    anchor: DEFAULT_LIMIT
+- id: no_global_3
+  selector:
+    anchor: RequestThrottler
+- id: no_global_4
+  selector:
+    anchor: BASE_DELAY_SECONDS
+- id: no_global_5
+  selector:
+    anchor: MAX_BACKOFF_SECONDS
+oracle:
+  required:
+  - accurate_file
+  allowed: []
+  forbidden:
+  - no_rate_limiter
+  - no_request_throttler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

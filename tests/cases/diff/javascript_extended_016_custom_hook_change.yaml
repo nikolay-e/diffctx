@@ -1,0 +1,141 @@
+name: javascript_extended_016_custom_hook_change
+repo:
+  initial_files:
+    hooks/useCounter.ts: |
+      import { useState } from 'react';
+
+      export function useCounter(initial = 0) {
+          const [count, setCount] = useState(initial);
+          const increment = () => setCount(c => c + 1);
+          const decrement = () => setCount(c => c - 1);
+          return { count, increment, decrement };
+      }
+    components/Counter.tsx: |
+      import { useCounter } from '../hooks/useCounter';
+
+      export function Counter() {
+          const { count, increment, decrement } = useCounter(0);
+          return (
+              <div>
+                  <span>{count}</span>
+                  <button onClick={increment}>+</button>
+                  <button onClick={decrement}>-</button>
+              </div>
+          );
+      }
+    hooks/useLocalStorage.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useLocalStorage<T>(key: string, initialValue: T) {
+          const [value, setValue] = useState<T>(() => {
+              const stored = localStorage.getItem(key);
+              return stored ? JSON.parse(stored) : initialValue;
+          });
+
+          useEffect(() => {
+              localStorage.setItem(key, JSON.stringify(value));
+          }, [key, value]);
+
+          return [value, setValue] as const;
+      }
+    components/CounterDisplay.tsx: |
+      interface CounterDisplayProps {
+          value: number;
+          label?: string;
+      }
+
+      export function CounterDisplay({ value, label = 'Count' }: CounterDisplayProps) {
+          return (
+              <div className="counter-display">
+                  <span className="label">{label}:</span>
+                  <span className="value">{value}</span>
+              </div>
+          );
+      }
+  changed_files:
+    hooks/useCounter.ts: |
+      import { useState, useCallback } from 'react';
+
+      export function useCounter(initial = 0, step = 1) {
+          const [count, setCount] = useState(initial);
+          const increment = useCallback(() => setCount(c => c + step), [step]);
+          const decrement = useCallback(() => setCount(c => c - step), [step]);
+          const reset = useCallback(() => setCount(initial), [initial]);
+          return { count, increment, decrement, reset };
+      }
+    components/Counter.tsx: |
+      import { useCounter } from '../hooks/useCounter';
+
+      export function Counter() {
+          const { count, increment, decrement } = useCounter(0);
+          return (
+              <div>
+                  <span>{count}</span>
+                  <button onClick={increment}>+</button>
+                  <button onClick={decrement}>-</button>
+              </div>
+          );
+      }
+    hooks/useLocalStorage.ts: |
+      import { useState, useEffect } from 'react';
+
+      export function useLocalStorage<T>(key: string, initialValue: T) {
+          const [value, setValue] = useState<T>(() => {
+              const stored = localStorage.getItem(key);
+              return stored ? JSON.parse(stored) : initialValue;
+          });
+
+          useEffect(() => {
+              localStorage.setItem(key, JSON.stringify(value));
+          }, [key, value]);
+
+          return [value, setValue] as const;
+      }
+    components/CounterDisplay.tsx: |
+      interface CounterDisplayProps {
+          value: number;
+          label?: string;
+      }
+
+      export function CounterDisplay({ value, label = 'Count' }: CounterDisplayProps) {
+          return (
+              <div className="counter-display">
+                  <span className="label">{label}:</span>
+                  <span className="value">{value}</span>
+              </div>
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: usecounter_file
+  selector:
+    path: hooks/useCounter.ts
+- id: req_global_0
+  selector:
+    anchor: import { useState, useCallback } from 'react';
+- id: req_global_1
+  selector:
+    anchor: '[count, setCount] = useState(initial)'
+- id: no_global_0
+  selector:
+    anchor: useLocalStorage
+- id: no_global_1
+  selector:
+    anchor: localStorage.getItem
+- id: no_global_2
+  selector:
+    anchor: CounterDisplay
+- id: no_global_3
+  selector:
+    anchor: CounterDisplayProps
+oracle:
+  required:
+  - usecounter_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

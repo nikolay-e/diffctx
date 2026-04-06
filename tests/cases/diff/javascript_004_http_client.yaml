@@ -1,0 +1,214 @@
+name: javascript_004_http_client
+repo:
+  initial_files:
+    api.config.ts: |
+      export const API_BASE = '/api';
+
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+      }
+    data.service.ts: |
+      console.log('initial');
+    data.service.test.ts: |
+      import { TestBed } from '@angular/core/testing';
+      import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+      import { DataService } from './data.service';
+
+      describe('DataService', () => {
+          let service: DataService;
+          let httpMock: HttpTestingController;
+
+          beforeEach(() => {
+              TestBed.configureTestingModule({
+                  imports: [HttpClientTestingModule],
+                  providers: [DataService],
+              });
+              service = TestBed.inject(DataService);
+              httpMock = TestBed.inject(HttpTestingController);
+          });
+
+          afterEach(() => httpMock.verify());
+
+          it('should extract data from ApiResponse', () => {
+              service.getData<string[]>('/users').subscribe(data => {
+                  expect(data).toEqual(['Alice', 'Bob']);
+              });
+              const req = httpMock.expectOne('/api/users');
+              req.flush({ data: ['Alice', 'Bob'], status: 200 });
+          });
+      });
+    auth.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient, HttpHeaders } from '@angular/common/http';
+      import { Observable, BehaviorSubject } from 'rxjs';
+      import { tap } from 'rxjs/operators';
+
+      @Injectable({ providedIn: 'root' })
+      export class AuthService {
+          private tokenSubject = new BehaviorSubject<string | null>(null);
+
+          constructor(private http: HttpClient) {}
+
+          login(email: string, password: string): Observable<{ token: string }> {
+              return this.http.post<{ token: string }>('/api/auth/login', { email, password })
+                  .pipe(tap(response => this.tokenSubject.next(response.token)));
+          }
+
+          logout(): void {
+              this.tokenSubject.next(null);
+          }
+
+          getToken(): Observable<string | null> {
+              return this.tokenSubject.asObservable();
+          }
+      }
+  changed_files:
+    api.config.ts: |
+      export const API_BASE = '/api';
+
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+      }
+    data.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient } from '@angular/common/http';
+      import { Observable } from 'rxjs';
+      import { map } from 'rxjs/operators';
+      import { API_BASE, ApiResponse } from './api.config';
+
+      @Injectable({ providedIn: 'root' })
+      export class DataService {
+          constructor(private http: HttpClient) {}
+
+          getData<T>(endpoint: string): Observable<T> {
+              return this.http.get<ApiResponse<T>>(`${API_BASE}${endpoint}`)
+                  .pipe(map(response => response.data));
+          }
+      }
+    data.service.test.ts: |
+      import { TestBed } from '@angular/core/testing';
+      import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+      import { DataService } from './data.service';
+
+      describe('DataService', () => {
+          let service: DataService;
+          let httpMock: HttpTestingController;
+
+          beforeEach(() => {
+              TestBed.configureTestingModule({
+                  imports: [HttpClientTestingModule],
+                  providers: [DataService],
+              });
+              service = TestBed.inject(DataService);
+              httpMock = TestBed.inject(HttpTestingController);
+          });
+
+          afterEach(() => httpMock.verify());
+
+          it('should extract data from ApiResponse', () => {
+              service.getData<string[]>('/users').subscribe(data => {
+                  expect(data).toEqual(['Alice', 'Bob']);
+              });
+              const req = httpMock.expectOne('/api/users');
+              req.flush({ data: ['Alice', 'Bob'], status: 200 });
+          });
+      });
+    auth.service.ts: |
+      import { Injectable } from '@angular/core';
+      import { HttpClient, HttpHeaders } from '@angular/common/http';
+      import { Observable, BehaviorSubject } from 'rxjs';
+      import { tap } from 'rxjs/operators';
+
+      @Injectable({ providedIn: 'root' })
+      export class AuthService {
+          private tokenSubject = new BehaviorSubject<string | null>(null);
+
+          constructor(private http: HttpClient) {}
+
+          login(email: string, password: string): Observable<{ token: string }> {
+              return this.http.post<{ token: string }>('/api/auth/login', { email, password })
+                  .pipe(tap(response => this.tokenSubject.next(response.token)));
+          }
+
+          logout(): void {
+              this.tokenSubject.next(null);
+          }
+
+          getToken(): Observable<string | null> {
+              return this.tokenSubject.asObservable();
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: data_service
+  selector:
+    path: data.service.ts
+    anchor: import { API_BASE, ApiResponse } from './api.config'
+- id: data_service_1
+  selector:
+    path: data.service.ts
+    anchor: '@Injectable({ providedIn: ''root'' })'
+- id: data_service_2
+  selector:
+    path: data.service.ts
+    anchor: 'getData<T>(endpoint: string)'
+- id: api_config
+  selector:
+    path: api.config.ts
+    anchor: API_BASE = '/api'
+- id: api_config_1
+  selector:
+    path: api.config.ts
+    anchor: interface ApiResponse<T>
+- id: api_config_2
+  selector:
+    path: api.config.ts
+    anchor: 'data: T'
+- id: no_data_service_test
+  selector:
+    path: data.service.test.ts
+- id: no_auth_service
+  selector:
+    path: auth.service.ts
+- id: no_global_0
+  selector:
+    anchor: HttpClientTestingModule
+- id: no_global_1
+  selector:
+    anchor: HttpTestingController
+- id: no_global_2
+  selector:
+    anchor: expectOne('/api/users')
+- id: no_global_3
+  selector:
+    anchor: AuthService
+- id: no_global_4
+  selector:
+    anchor: BehaviorSubject
+- id: no_global_5
+  selector:
+    anchor: tokenSubject
+- id: no_global_6
+  selector:
+    anchor: login
+oracle:
+  required:
+  - data_service
+  - data_service_1
+  - data_service_2
+  - api_config
+  - api_config_1
+  - api_config_2
+  allowed: []
+  forbidden:
+  - no_data_service_test
+  - no_auth_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

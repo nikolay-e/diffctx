@@ -1,0 +1,292 @@
+name: r_002_library_package
+repo:
+  initial_files:
+    R/timeseries.R: |
+      compute_moving_average <- function(x, window_size = 7) {
+        n <- length(x)
+        result <- rep(NA, n)
+        for (i in window_size:n) {
+          result[i] <- mean(x[(i - window_size + 1):i], na.rm = TRUE)
+        }
+        result
+      }
+
+      compute_exponential_smooth <- function(x, alpha = 0.3) {
+        n <- length(x)
+        result <- numeric(n)
+        result[1] <- x[1]
+        for (i in 2:n) {
+          val <- if (is.na(x[i])) result[i - 1] else x[i]
+          result[i] <- alpha * val + (1 - alpha) * result[i - 1]
+        }
+        result
+      }
+
+      detect_trend <- function(x) {
+        n <- length(x)
+        t <- 1:n
+        fit <- lm(x ~ t)
+        slope <- coef(fit)[2]
+        list(slope = slope, direction = ifelse(slope > 0, "up", "down"))
+      }
+
+      compute_seasonality <- function(x, period = 12) {
+        n <- length(x)
+        if (n < 2 * period) return(NULL)
+        seasonal <- tapply(x, rep(1:period, length.out = n), mean, na.rm = TRUE)
+        as.numeric(seasonal)
+      }
+    scripts/transform.R: |
+      library(dplyr)
+      source("R/timeseries.R")
+
+      raw_data <- read.csv("data/sensor_readings.csv")
+
+      cleaned <- raw_data %>%
+        filter(!is.na(value)) %>%
+        arrange(timestamp)
+
+      smoothed <- compute_exponential_smooth(cleaned$value, alpha = 0.2)
+      cleaned$smoothed <- smoothed
+
+      write.csv(cleaned, "output/transformed.csv", row.names = FALSE)
+      cat("Transformation complete:", nrow(cleaned), "rows\n")
+    scripts/visualize.R: |
+      GARBAGE_R_002_A <- "noise_marker_visualize"
+
+      library(ggplot2)
+      source("R/timeseries.R")
+
+      plot_timeseries <- function(data, value_col, date_col) {
+        ggplot(data, aes_string(x = date_col, y = value_col)) +
+          geom_line(color = "steelblue") +
+          theme_minimal() +
+          labs(title = "Time Series Plot", x = "Date", y = "Value")
+      }
+
+      plot_with_trend <- function(data, value_col) {
+        trend <- detect_trend(data[[value_col]])
+        cat("Trend direction:", trend$direction, "\n")
+        cat("Slope:", trend$slope, "\n")
+      }
+
+      save_timeseries_plot <- function(data, filename) {
+        ggsave(filename, width = 10, height = 6)
+      }
+    R/regression.R: |
+      GARBAGE_R_002_B <- "noise_marker_regression"
+
+      fit_linear_model <- function(data, formula_str) {
+        formula <- as.formula(formula_str)
+        model <- lm(formula, data = data)
+        model
+      }
+
+      compute_r_squared <- function(model) {
+        summary(model)$r.squared
+      }
+
+      predict_values <- function(model, new_data) {
+        predict(model, newdata = new_data, interval = "confidence")
+      }
+
+      cross_validate <- function(data, formula_str, k = 5) {
+        n <- nrow(data)
+        folds <- sample(rep(1:k, length.out = n))
+        errors <- numeric(k)
+        for (i in 1:k) {
+          train <- data[folds != i, ]
+          test <- data[folds == i, ]
+          model <- lm(as.formula(formula_str), data = train)
+          preds <- predict(model, newdata = test)
+          errors[i] <- mean((test$value - preds)^2)
+        }
+        mean(errors)
+      }
+  changed_files:
+    R/timeseries.R: |
+      compute_moving_average <- function(x, window_size = 7) {
+        n <- length(x)
+        result <- rep(NA, n)
+        for (i in window_size:n) {
+          result[i] <- mean(x[(i - window_size + 1):i], na.rm = TRUE)
+        }
+        result
+      }
+
+      compute_exponential_smooth <- function(x, alpha = 0.3) {
+        n <- length(x)
+        result <- numeric(n)
+        result[1] <- x[1]
+        for (i in 2:n) {
+          val <- if (is.na(x[i])) result[i - 1] else x[i]
+          result[i] <- alpha * val + (1 - alpha) * result[i - 1]
+        }
+        result
+      }
+
+      detect_trend <- function(x) {
+        n <- length(x)
+        t <- 1:n
+        fit <- lm(x ~ t)
+        slope <- coef(fit)[2]
+        list(slope = slope, direction = ifelse(slope > 0, "up", "down"))
+      }
+
+      compute_seasonality <- function(x, period = 12) {
+        n <- length(x)
+        if (n < 2 * period) return(NULL)
+        seasonal <- tapply(x, rep(1:period, length.out = n), mean, na.rm = TRUE)
+        as.numeric(seasonal)
+      }
+    scripts/transform.R: |
+      library(dplyr)
+      source("R/timeseries.R")
+
+      raw_data <- read.csv("data/sensor_readings.csv")
+
+      cleaned <- raw_data %>%
+        filter(!is.na(value)) %>%
+        arrange(timestamp)
+
+      smoothed <- compute_exponential_smooth(cleaned$value, alpha = 0.2)
+      cleaned$smoothed <- smoothed
+
+      ma_7day <- compute_moving_average(cleaned$value, window_size = 7)
+      ma_30day <- compute_moving_average(cleaned$value, window_size = 30)
+      cleaned$ma_7 <- ma_7day
+      cleaned$ma_30 <- ma_30day
+
+      trend_info <- detect_trend(cleaned$value)
+      cat("Trend:", trend_info$direction, "(slope:", trend_info$slope, ")\n")
+
+      write.csv(cleaned, "output/transformed.csv", row.names = FALSE)
+      cat("Transformation complete:", nrow(cleaned), "rows\n")
+    scripts/visualize.R: |
+      GARBAGE_R_002_A <- "noise_marker_visualize"
+
+      library(ggplot2)
+      source("R/timeseries.R")
+
+      plot_timeseries <- function(data, value_col, date_col) {
+        ggplot(data, aes_string(x = date_col, y = value_col)) +
+          geom_line(color = "steelblue") +
+          theme_minimal() +
+          labs(title = "Time Series Plot", x = "Date", y = "Value")
+      }
+
+      plot_with_trend <- function(data, value_col) {
+        trend <- detect_trend(data[[value_col]])
+        cat("Trend direction:", trend$direction, "\n")
+        cat("Slope:", trend$slope, "\n")
+      }
+
+      save_timeseries_plot <- function(data, filename) {
+        ggsave(filename, width = 10, height = 6)
+      }
+    R/regression.R: |
+      GARBAGE_R_002_B <- "noise_marker_regression"
+
+      fit_linear_model <- function(data, formula_str) {
+        formula <- as.formula(formula_str)
+        model <- lm(formula, data = data)
+        model
+      }
+
+      compute_r_squared <- function(model) {
+        summary(model)$r.squared
+      }
+
+      predict_values <- function(model, new_data) {
+        predict(model, newdata = new_data, interval = "confidence")
+      }
+
+      cross_validate <- function(data, formula_str, k = 5) {
+        n <- nrow(data)
+        folds <- sample(rep(1:k, length.out = n))
+        errors <- numeric(k)
+        for (i in 1:k) {
+          train <- data[folds != i, ]
+          test <- data[folds == i, ]
+          model <- lm(as.formula(formula_str), data = train)
+          preds <- predict(model, newdata = test)
+          errors[i] <- mean((test$value - preds)^2)
+        }
+        mean(errors)
+      }
+  commit_message: Update files
+fragments:
+- id: transform
+  selector:
+    path: scripts/transform.R
+    anchor: compute_moving_average
+- id: transform_1
+  selector:
+    path: scripts/transform.R
+    anchor: detect_trend
+- id: transform_2
+  selector:
+    path: scripts/transform.R
+    anchor: source("R/timeseries.R")
+- id: timeseries
+  selector:
+    path: R/timeseries.R
+    anchor: compute_moving_average <- function(x, window_size = 7)
+- id: timeseries_1
+  selector:
+    path: R/timeseries.R
+    anchor: na.rm = TRUE
+- id: timeseries_2
+  selector:
+    path: R/timeseries.R
+    anchor: detect_trend <- function(x)
+- id: no_visualize
+  selector:
+    path: scripts/visualize.R
+- id: no_regression
+  selector:
+    path: R/regression.R
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_R_002_A
+- id: no_global_1
+  selector:
+    anchor: plot_timeseries
+- id: no_global_2
+  selector:
+    anchor: save_timeseries_plot
+- id: no_global_3
+  selector:
+    anchor: ggplot
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_R_002_B
+- id: no_global_5
+  selector:
+    anchor: fit_linear_model
+- id: no_global_6
+  selector:
+    anchor: compute_r_squared
+- id: no_global_7
+  selector:
+    anchor: cross_validate
+oracle:
+  required:
+  - transform
+  - transform_1
+  - transform_2
+  - timeseries
+  - timeseries_1
+  - timeseries_2
+  allowed: []
+  forbidden:
+  - no_visualize
+  - no_regression
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

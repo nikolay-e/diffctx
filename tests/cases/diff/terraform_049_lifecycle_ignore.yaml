@@ -1,0 +1,224 @@
+name: terraform_049_lifecycle_ignore
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        user_data     = data.template_file.init.rendered
+
+        tags = merge(local.common_tags, {
+          Name        = "web-server"
+          LastModified = timestamp()
+        })
+      }
+    autoscaling.tf: |
+      resource "aws_autoscaling_group" "web" {
+        name                = "web-asg"
+        desired_capacity    = 2
+        max_size            = 4
+        min_size            = 1
+        vpc_zone_identifier = var.subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+
+        tag {
+          key                 = "Name"
+          value               = "web-asg-instance"
+          propagate_at_launch = true
+        }
+      }
+
+      resource "aws_launch_template" "web" {
+        name_prefix   = "web-"
+        image_id      = var.ami_id
+        instance_type = "t3.micro"
+        user_data     = base64encode(data.template_file.init.rendered)
+      }
+    userdata.tf: |
+      data "template_file" "init" {
+        template = file("${path.module}/scripts/init.sh")
+        vars = {
+          environment = var.environment
+          app_version = var.app_version
+        }
+      }
+    database/rds.tf: |
+      resource "aws_db_instance" "replica" {
+        identifier     = "read-replica"
+        engine         = "mysql"
+        instance_class = "db.t3.micro"
+
+        lifecycle {
+          ignore_changes = [
+            engine_version,
+          ]
+        }
+      }
+    cache/elasticache.tf: |
+      resource "aws_elasticache_cluster" "session" {
+        cluster_id           = "session-cache"
+        engine               = "redis"
+        node_type            = "cache.t3.micro"
+        num_cache_nodes      = 1
+        engine_version       = "7.0"
+
+        lifecycle {
+          ignore_changes = [
+            engine_version,
+          ]
+        }
+      }
+    dns/zone.tf: |
+      resource "aws_route53_zone" "primary" {
+        name = "example.com"
+      }
+
+      resource "aws_route53_record" "web" {
+        zone_id = aws_route53_zone.primary.zone_id
+        name    = "web.example.com"
+        type    = "A"
+        ttl     = 300
+        records = [aws_instance.web.public_ip]
+      }
+    ci/codedeploy.tf: |
+      resource "aws_codedeploy_app" "web" {
+        name             = "web-deploy"
+        compute_platform = "Server"
+      }
+
+      resource "aws_codedeploy_deployment_group" "web" {
+        app_name              = aws_codedeploy_app.web.name
+        deployment_group_name = "web-deploy-group"
+        service_role_arn      = aws_iam_role.codedeploy.arn
+
+        auto_rollback_configuration {
+          enabled = true
+          events  = ["DEPLOYMENT_FAILURE"]
+        }
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        user_data     = data.template_file.init.rendered
+
+        tags = merge(local.common_tags, {
+          Name        = "web-server"
+          LastModified = timestamp()
+        })
+
+        lifecycle {
+          ignore_changes = [
+            ami,
+            user_data,
+            tags["LastModified"],
+          ]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: ignore_changes = [
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: ami,
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: user_data,
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: resource "aws_instance" "web" {
+- id: autoscaling
+  selector:
+    path: autoscaling.tf
+    anchor: resource "aws_autoscaling_group" "web" {
+- id: autoscaling_1
+  selector:
+    path: autoscaling.tf
+    anchor: image_id      = var.ami_id
+- id: userdata
+  selector:
+    path: userdata.tf
+    anchor: data "template_file" "init" {
+- id: userdata_1
+  selector:
+    path: userdata.tf
+    anchor: app_version = var.app_version
+- id: no_rds
+  selector:
+    path: database/rds.tf
+- id: no_elasticache
+  selector:
+    path: cache/elasticache.tf
+- id: no_zone
+  selector:
+    path: dns/zone.tf
+- id: no_codedeploy
+  selector:
+    path: ci/codedeploy.tf
+- id: no_global_0
+  selector:
+    anchor: read-replica
+- id: no_global_1
+  selector:
+    anchor: engine_version
+- id: no_global_2
+  selector:
+    anchor: db.t3.micro
+- id: no_global_3
+  selector:
+    anchor: session-cache
+- id: no_global_4
+  selector:
+    anchor: cache.t3.micro
+- id: no_global_5
+  selector:
+    anchor: aws_route53_zone
+- id: no_global_6
+  selector:
+    anchor: web.example.com
+- id: no_global_7
+  selector:
+    anchor: web-deploy
+- id: no_global_8
+  selector:
+    anchor: DEPLOYMENT_FAILURE
+- id: no_global_9
+  selector:
+    anchor: aws_codedeploy_app
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - autoscaling
+  - autoscaling_1
+  - userdata
+  - userdata_1
+  allowed: []
+  forbidden:
+  - no_rds
+  - no_elasticache
+  - no_zone
+  - no_codedeploy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

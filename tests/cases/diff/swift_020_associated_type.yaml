@@ -1,0 +1,85 @@
+name: swift_020_associated_type
+repo:
+  initial_files:
+    Container.swift: |
+      protocol Container {
+          associatedtype Item
+          var count: Int { get }
+          mutating func append(_ item: Item)
+          subscript(i: Int) -> Item { get }
+      }
+
+      protocol IterableContainer: Container {
+          associatedtype Iterator: IteratorProtocol where Iterator.Element == Item
+          func makeIterator() -> Iterator
+      }
+      // unused_marker_67890
+    Stack.swift: |
+      // Initial
+      struct Stack {}
+  changed_files:
+    Container.swift: |
+      protocol Container {
+          associatedtype Item
+          var count: Int { get }
+          mutating func append(_ item: Item)
+          subscript(i: Int) -> Item { get }
+      }
+
+      protocol IterableContainer: Container {
+          associatedtype Iterator: IteratorProtocol where Iterator.Element == Item
+          func makeIterator() -> Iterator
+      }
+      // unused_marker_67890
+    Stack.swift: |
+      struct Stack<Element>: Container {
+          typealias Item = Element
+
+          private var items: [Element] = []
+
+          var count: Int {
+              return items.count
+          }
+
+          mutating func append(_ item: Element) {
+              items.append(item)
+          }
+
+          subscript(i: Int) -> Element {
+              return items[i]
+          }
+
+          mutating func push(_ item: Element) {
+              items.append(item)
+          }
+
+          mutating func pop() -> Element? {
+              return items.popLast()
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: req_pattern_0
+  selector:
+    anchor: Stack
+- id: req_pattern_1
+  selector:
+    anchor: Container
+- id: req_pattern_2
+  selector:
+    anchor: append
+- id: no_global_0
+  selector:
+    anchor: garbage_marker_12345
+- id: no_global_1
+  selector:
+    anchor: unused_marker_67890
+oracle:
+  required:
+  - req_pattern_0
+  - req_pattern_1
+  - req_pattern_2
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1

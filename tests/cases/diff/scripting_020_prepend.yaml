@@ -1,0 +1,237 @@
+name: scripting_020_prepend
+repo:
+  initial_files:
+    request_interceptor.rb: |
+      module RequestInterceptor
+        def process(payload)
+          puts "Before processing: #{payload.length} bytes"
+          result = super
+          puts "After processing: complete"
+          result
+        end
+
+        def validate(payload)
+          puts "Before validation"
+          result = super
+          puts "After validation"
+          result
+        end
+      end
+    request_handler.rb: |
+      class RequestHandler
+        def process(payload)
+          payload.upcase
+        end
+      end
+    text_formatter.rb: |
+      module TextFormatter
+        def self.titlecase(text)
+          text.split(' ').map(&:capitalize).join(' ')
+        end
+
+        def self.snakecase(text)
+          text.gsub(/([A-Z])/, '_\1').downcase.sub(/^_/, '')
+        end
+
+        def self.truncate(text, length: 50)
+          text.length > length ? text[0...length] + '...' : text
+        end
+
+        def self.wrap(text, width: 80)
+          text.gsub(/(.{1,#{width}})(\s+|$)/, "\\1\n").strip
+        end
+      end
+    audit_recorder.rb: |
+      class AuditRecorder
+        def initialize(log_path)
+          @log_path = log_path
+          @entries = []
+        end
+
+        def record(level, message)
+          timestamp = Time.now.strftime('%Y-%m-%d %H:%M:%S')
+          entry = "[#{timestamp}] #{level}: #{message}"
+          @entries << entry
+          File.open(@log_path, 'a') { |f| f.puts entry }
+        end
+
+        def record_info(message)
+          record('INFO', message)
+        end
+
+        def recent(count = 10)
+          @entries.last(count)
+        end
+      end
+    response_handler.rb: |
+      require_relative 'request_interceptor'
+
+      class ResponseHandler
+        prepend RequestInterceptor
+
+        def process(payload)
+          { status: 200, body: payload.downcase }
+        end
+
+        def validate(payload)
+          payload.is_a?(String) && !payload.empty?
+        end
+      end
+    lib/timing_interceptor.rb: |
+      module TimingInterceptor
+        def process(payload)
+          start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          result = super
+          elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
+          puts "Processing took #{elapsed.round(4)}s"
+          result
+        end
+      end
+    event_handler.rb: |
+      class EventHandler
+        def process(event)
+          case event[:type]
+          when :click then handle_click(event)
+          when :submit then handle_submit(event)
+          else { error: "Unknown event type" }
+          end
+        end
+
+        private
+
+        def handle_click(event)
+          { action: :clicked, target: event[:target] }
+        end
+
+        def handle_submit(event)
+          { action: :submitted, data: event[:data] }
+        end
+      end
+  changed_files:
+    request_interceptor.rb: |
+      module RequestInterceptor
+        def process(payload)
+          puts "Before processing: #{payload.length} bytes"
+          result = super
+          puts "After processing: complete"
+          result
+        end
+
+        def validate(payload)
+          puts "Before validation"
+          result = super
+          puts "After validation"
+          result
+        end
+      end
+    request_handler.rb: |
+      require_relative 'request_interceptor'
+
+      class RequestHandler
+        prepend RequestInterceptor
+
+        def process(payload)
+          payload.upcase
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: request_interceptor
+  selector:
+    path: request_interceptor.rb
+    anchor: def process(payload)
+- id: request_interceptor_1
+  selector:
+    path: request_interceptor.rb
+    anchor: result = super
+- id: request_handler
+  selector:
+    path: request_handler.rb
+    anchor: prepend RequestInterceptor
+- id: no_text_formatter
+  selector:
+    path: text_formatter.rb
+- id: no_audit_recorder
+  selector:
+    path: audit_recorder.rb
+- id: no_response_handler
+  selector:
+    path: response_handler.rb
+- id: no_timing_interceptor
+  selector:
+    path: lib/timing_interceptor.rb
+- id: no_event_handler
+  selector:
+    path: event_handler.rb
+- id: no_global_0
+  selector:
+    anchor: TextFormatter
+- id: no_global_1
+  selector:
+    anchor: titlecase
+- id: no_global_2
+  selector:
+    anchor: snakecase
+- id: no_global_3
+  selector:
+    anchor: wrap
+- id: no_global_4
+  selector:
+    anchor: AuditRecorder
+- id: no_global_5
+  selector:
+    anchor: record_info
+- id: no_global_6
+  selector:
+    anchor: recent
+- id: no_global_7
+  selector:
+    anchor: ResponseHandler
+- id: no_global_8
+  selector:
+    anchor: 'status: 200'
+- id: no_global_9
+  selector:
+    anchor: TimingInterceptor
+- id: no_global_10
+  selector:
+    anchor: clock_gettime
+- id: no_global_11
+  selector:
+    anchor: elapsed
+- id: no_global_12
+  selector:
+    anchor: EventHandler
+- id: no_global_13
+  selector:
+    anchor: handle_click
+- id: no_global_14
+  selector:
+    anchor: handle_submit
+oracle:
+  required:
+  - request_interceptor
+  - request_interceptor_1
+  - request_handler
+  allowed: []
+  forbidden:
+  - no_text_formatter
+  - no_audit_recorder
+  - no_response_handler
+  - no_timing_interceptor
+  - no_event_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

@@ -1,0 +1,237 @@
+name: javascript_extended_009_type_change
+repo:
+  initial_files:
+    src/types.ts: |
+      export type Config = {
+          apiUrl: string;
+          timeout: number;
+      };
+
+      export type Environment = 'development' | 'staging' | 'production';
+
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function createDefaultConfig(): Config {
+          return {
+              apiUrl: 'http://localhost:3000',
+              timeout: 5000,
+          };
+      }
+    src/app.ts: |
+      import { Config, Environment, createDefaultConfig } from './types';
+
+      export function initApp(env: Environment): Config {
+          const config = createDefaultConfig();
+          if (env === 'production') {
+              config.apiUrl = 'https://api.example.com';
+          }
+          return config;
+      }
+
+      export function getApiUrl(config: Config): string {
+          return config.apiUrl;
+      }
+    src/services/configPersistence.ts: |
+      import { Config, createDefaultConfig } from '../types';
+
+      const STORAGE_KEY = 'app_config';
+
+      export function saveConfig(config: Config): void {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      }
+
+      export function loadConfig(): Config {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) return createDefaultConfig();
+          return JSON.parse(stored) as Config;
+      }
+
+      export function clearConfig(): void {
+          localStorage.removeItem(STORAGE_KEY);
+      }
+    src/middleware/requestConfig.ts: |
+      import { Request, Response, NextFunction } from 'express';
+      import { Config } from '../types';
+
+      export function attachConfig(config: Config) {
+          return (req: Request, _res: Response, next: NextFunction) => {
+              (req as any).config = config;
+              next();
+          };
+      }
+
+      export function getRequestConfig(req: Request): Config {
+          return (req as any).config;
+      }
+    src/utils/envParser.ts: |
+      import { Config, LogLevel } from '../types';
+
+      export function parseEnvConfig(): Partial<Config> {
+          const result: Partial<Config> = {};
+          if (process.env.API_URL) result.apiUrl = process.env.API_URL;
+          if (process.env.TIMEOUT) result.timeout = parseInt(process.env.TIMEOUT);
+          if (process.env.DEBUG) result.debug = process.env.DEBUG === 'true';
+          if (process.env.LOG_LEVEL) result.logLevel = process.env.LOG_LEVEL as LogLevel;
+          return result;
+      }
+
+      export function validateEnvConfig(partial: Partial<Config>): string[] {
+          const errors: string[] = [];
+          if (partial.timeout !== undefined && partial.timeout < 0) errors.push('timeout must be positive');
+          return errors;
+      }
+  changed_files:
+    src/types.ts: |
+      export type Config = {
+          apiUrl: string;
+          timeout: number;
+          retries: number;
+          debug?: boolean;
+          logLevel?: LogLevel;
+      };
+
+      export type Environment = 'development' | 'staging' | 'production';
+
+      export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+      export function createDefaultConfig(): Config {
+          return {
+              apiUrl: 'http://localhost:3000',
+              timeout: 5000,
+              retries: 3,
+              debug: false,
+          };
+      }
+    src/app.ts: |
+      import { Config, Environment, createDefaultConfig } from './types';
+
+      export function initApp(env: Environment): Config {
+          const config = createDefaultConfig();
+          if (env === 'production') {
+              config.apiUrl = 'https://api.example.com';
+          }
+          return config;
+      }
+
+      export function getApiUrl(config: Config): string {
+          return config.apiUrl;
+      }
+    src/services/configPersistence.ts: |
+      import { Config, createDefaultConfig } from '../types';
+
+      const STORAGE_KEY = 'app_config';
+
+      export function saveConfig(config: Config): void {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      }
+
+      export function loadConfig(): Config {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) return createDefaultConfig();
+          return JSON.parse(stored) as Config;
+      }
+
+      export function clearConfig(): void {
+          localStorage.removeItem(STORAGE_KEY);
+      }
+    src/middleware/requestConfig.ts: |
+      import { Request, Response, NextFunction } from 'express';
+      import { Config } from '../types';
+
+      export function attachConfig(config: Config) {
+          return (req: Request, _res: Response, next: NextFunction) => {
+              (req as any).config = config;
+              next();
+          };
+      }
+
+      export function getRequestConfig(req: Request): Config {
+          return (req as any).config;
+      }
+    src/utils/envParser.ts: |
+      import { Config, LogLevel } from '../types';
+
+      export function parseEnvConfig(): Partial<Config> {
+          const result: Partial<Config> = {};
+          if (process.env.API_URL) result.apiUrl = process.env.API_URL;
+          if (process.env.TIMEOUT) result.timeout = parseInt(process.env.TIMEOUT);
+          if (process.env.DEBUG) result.debug = process.env.DEBUG === 'true';
+          if (process.env.LOG_LEVEL) result.logLevel = process.env.LOG_LEVEL as LogLevel;
+          return result;
+      }
+
+      export function validateEnvConfig(partial: Partial<Config>): string[] {
+          const errors: string[] = [];
+          if (partial.timeout !== undefined && partial.timeout < 0) errors.push('timeout must be positive');
+          return errors;
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: type Config = {
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: 'retries: number'
+- id: types_2
+  selector:
+    path: src/types.ts
+    anchor: 'debug?: boolean'
+- id: types_3
+  selector:
+    path: src/types.ts
+    anchor: type Environment = 'development' | 'staging' | 'production'
+- id: no_configpersistence
+  selector:
+    path: src/services/configPersistence.ts
+- id: no_requestconfig
+  selector:
+    path: src/middleware/requestConfig.ts
+- id: no_envparser
+  selector:
+    path: src/utils/envParser.ts
+- id: no_global_0
+  selector:
+    anchor: saveConfig
+- id: no_global_1
+  selector:
+    anchor: loadConfig
+- id: no_global_2
+  selector:
+    anchor: clearConfig
+- id: no_global_3
+  selector:
+    anchor: STORAGE_KEY
+- id: no_global_4
+  selector:
+    anchor: attachConfig
+- id: no_global_5
+  selector:
+    anchor: getRequestConfig
+- id: no_global_6
+  selector:
+    anchor: parseEnvConfig
+- id: no_global_7
+  selector:
+    anchor: validateEnvConfig
+oracle:
+  required:
+  - types
+  - types_1
+  - types_2
+  - types_3
+  allowed: []
+  forbidden:
+  - no_configpersistence
+  - no_requestconfig
+  - no_envparser
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

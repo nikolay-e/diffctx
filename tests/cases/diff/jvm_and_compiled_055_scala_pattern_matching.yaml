@@ -1,0 +1,114 @@
+name: jvm_and_compiled_055_scala_pattern_matching
+repo:
+  initial_files:
+    User.scala: |
+      case class User(name: String, age: Int, email: Option[String])
+    UserValidator.scala: |
+      // Initial
+      class UserValidator {}
+    UserSerializer.scala: |
+      object UserSerializer {
+        def toJson(user: User): String = {
+          val emailField = user.email.map(e => s""", "email": "$e"""").getOrElse("")
+          s"""{"name": "${user.name}", "age": ${user.age}$emailField}"""
+        }
+
+        def fromJson(json: String): Option[User] = {
+          None
+        }
+      }
+    ValidationResult.scala: |
+      sealed trait ValidationResult
+      case object Valid extends ValidationResult
+      case class Invalid(errors: List[String]) extends ValidationResult
+
+      object ValidationResult {
+        def combine(results: List[ValidationResult]): ValidationResult = {
+          val errors = results.collect { case Invalid(errs) => errs }.flatten
+          if (errors.isEmpty) Valid else Invalid(errors)
+        }
+      }
+  changed_files:
+    User.scala: |
+      case class User(name: String, age: Int, email: Option[String])
+    UserValidator.scala: |
+      class UserValidator {
+        def validate(user: User): String = user match {
+          case User(name, _, _) if name.isEmpty =>
+            "Name cannot be empty"
+          case User(_, age, _) if age < 0 =>
+            "Age cannot be negative"
+          case User(name, age, Some(email)) if email.contains("@") =>
+            s"Valid user: $name, $age, $email"
+          case User(name, age, None) =>
+            s"Valid user without email: $name, $age"
+          case _ =>
+            "Invalid user"
+        }
+
+        def extractEmail(user: User): String = user match {
+          case User(_, _, Some(email)) => email
+          case User(name, _, None) => s"$name@default.com"
+        }
+      }
+    UserSerializer.scala: |
+      object UserSerializer {
+        def toJson(user: User): String = {
+          val emailField = user.email.map(e => s""", "email": "$e"""").getOrElse("")
+          s"""{"name": "${user.name}", "age": ${user.age}$emailField}"""
+        }
+
+        def fromJson(json: String): Option[User] = {
+          None
+        }
+      }
+    ValidationResult.scala: |
+      sealed trait ValidationResult
+      case object Valid extends ValidationResult
+      case class Invalid(errors: List[String]) extends ValidationResult
+
+      object ValidationResult {
+        def combine(results: List[ValidationResult]): ValidationResult = {
+          val errors = results.collect { case Invalid(errs) => errs }.flatten
+          if (errors.isEmpty) Valid else Invalid(errors)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: uservalidator
+  selector:
+    path: UserValidator.scala
+    anchor: class UserValidator {
+- id: no_userserializer
+  selector:
+    path: UserSerializer.scala
+- id: no_validationresult
+  selector:
+    path: ValidationResult.scala
+- id: no_global_0
+  selector:
+    anchor: UserSerializer
+- id: no_global_1
+  selector:
+    anchor: toJson
+- id: no_global_2
+  selector:
+    anchor: fromJson
+- id: no_global_3
+  selector:
+    anchor: ValidationResult
+- id: no_global_4
+  selector:
+    anchor: Invalid
+oracle:
+  required:
+  - uservalidator
+  allowed: []
+  forbidden:
+  - no_userserializer
+  - no_validationresult
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

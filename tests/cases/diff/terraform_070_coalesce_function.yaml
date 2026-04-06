@@ -1,0 +1,296 @@
+name: terraform_070_coalesce_function
+repo:
+  initial_files:
+    config/queue.yaml: |
+      queue:
+        broker: redis://localhost:6379
+        backend: redis://localhost:6379
+    src/tasks.py: |
+      from celery import Celery
+      from typing import Optional
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      def create_celery_app(broker: str, backend: str) -> Celery:
+          app = Celery(__name__, broker=broker, backend=backend)
+          app.conf.update(
+              task_serializer='json',
+              accept_content=['json'],
+              result_serializer='json',
+              timezone='UTC',
+              enable_utc=True,
+          )
+          logger.info(f"Celery app created with broker={broker}")
+          return app
+
+      def send_email_task(to: str, subject: str, body: str) -> None:
+          logger.info(f"Sending email to {to}: {subject}")
+
+      def generate_report_task(report_id: str) -> dict:
+          logger.info(f"Generating report {report_id}")
+          return {"report_id": report_id, "status": "complete"}
+    src/config_loader.py: |
+      import yaml
+      import os
+      from typing import Any, Dict
+
+      CONFIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'config')
+
+      def load_yaml(filename: str) -> Dict[str, Any]:
+          path = os.path.join(CONFIG_DIR, filename)
+          with open(path) as f:
+              return yaml.safe_load(f)
+
+      def load_queue_config() -> Dict[str, str]:
+          raw = load_yaml('queue.yaml')
+          queue = raw.get('queue', {})
+          return {
+              'broker': queue.get('broker', 'redis://localhost:6379'),
+              'backend': queue.get('backend', 'redis://localhost:6379'),
+          }
+
+      def load_worker_config() -> Dict[str, Any]:
+          return load_yaml('workers.yaml').get('workers', {})
+    src/health/broker_health.py: |
+      import socket
+      from urllib.parse import urlparse
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      class BrokerHealthCheck:
+          def __init__(self, broker_url: str):
+              self.broker_url = broker_url
+              parsed = urlparse(broker_url)
+              self.host = parsed.hostname or 'localhost'
+              self.port = parsed.port or 5672
+
+          def check(self) -> dict:
+              try:
+                  sock = socket.create_connection((self.host, self.port), timeout=5)
+                  sock.close()
+                  return {"status": "healthy", "broker": self.broker_url}
+              except (socket.timeout, ConnectionRefusedError) as e:
+                  logger.error(f"Broker health check failed: {e}")
+                  return {"status": "unhealthy", "error": str(e)}
+
+          def is_healthy(self) -> bool:
+              return self.check()["status"] == "healthy"
+    docker-compose.yaml: |
+      version: "3.8"
+      services:
+        rabbitmq:
+          image: rabbitmq:3.12-management
+          ports:
+            - "5672:5672"
+            - "15672:15672"
+          environment:
+            RABBITMQ_DEFAULT_USER: guest
+            RABBITMQ_DEFAULT_PASS: guest
+          healthcheck:
+            test: rabbitmq-diagnostics -q ping
+            interval: 30s
+            timeout: 10s
+
+        redis:
+          image: redis:7-alpine
+          ports:
+            - "6379:6379"
+          command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+        worker:
+          build: .
+          command: celery -A app worker --loglevel=info
+          depends_on:
+            - rabbitmq
+            - redis
+          environment:
+            BROKER_URL: amqp://rabbitmq:5672
+            BACKEND_URL: redis://redis:6379
+    src/scheduler_jobs.py: |
+      from datetime import timedelta
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      class ScheduledJobs:
+          def __init__(self, app):
+              self.app = app
+
+          def register_periodic_tasks(self):
+              self.app.conf.beat_schedule = {
+                  "cleanup-expired": {
+                      "task": "tasks.cleanup_expired",
+                      "schedule": timedelta(hours=1),
+                  },
+                  "send-digest": {
+                      "task": "tasks.send_digest",
+                      "schedule": timedelta(days=1),
+                  },
+                  "health-check": {
+                      "task": "tasks.broker_health_check",
+                      "schedule": timedelta(minutes=5),
+                  },
+              }
+              logger.info(f"Registered {len(self.app.conf.beat_schedule)} periodic tasks")
+    config/workers.yaml: |
+      workers:
+        concurrency: 4
+        autoscale:
+          min: 2
+          max: 8
+        queues:
+          - default
+          - priority
+          - email
+        loglevel: info
+        prefetch_multiplier: 1
+    src/tasks/email_tasks.py: |
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      def send_welcome_email(user_email: str) -> None:
+          logger.info(f"Sending welcome email to {user_email}")
+
+      def send_password_reset(user_email: str, reset_token: str) -> None:
+          logger.info(f"Sending password reset to {user_email}")
+
+      def send_notification(user_email: str, message: str) -> None:
+          logger.info(f"Sending notification to {user_email}: {message}")
+  changed_files:
+    config/queue.yaml: |
+      queue:
+        broker: amqp://rabbitmq:5672
+        backend: redis://redis:6379
+        prefetch_count: 4
+  commit_message: Update files
+fragments:
+- id: tasks
+  selector:
+    path: src/tasks.py
+    anchor: Celery(__name__, broker=broker, backend=backend)
+- id: tasks_1
+  selector:
+    path: src/tasks.py
+    anchor: 'def create_celery_app(broker: str, backend: str) -> Celery:'
+- id: tasks_2
+  selector:
+    path: src/tasks.py
+    anchor: task_serializer='json'
+- id: no_config_loader
+  selector:
+    path: src/config_loader.py
+- id: no_broker_health
+  selector:
+    path: src/health/broker_health.py
+- id: no_docker_compose
+  selector:
+    path: docker-compose.yaml
+- id: no_scheduler_jobs
+  selector:
+    path: src/scheduler_jobs.py
+- id: no_workers
+  selector:
+    path: config/workers.yaml
+- id: no_email_tasks
+  selector:
+    path: src/tasks/email_tasks.py
+- id: no_global_0
+  selector:
+    anchor: load_queue_config
+- id: no_global_1
+  selector:
+    anchor: load_yaml
+- id: no_global_2
+  selector:
+    anchor: CONFIG_DIR
+- id: no_global_3
+  selector:
+    anchor: yaml.safe_load
+- id: no_global_4
+  selector:
+    anchor: BrokerHealthCheck
+- id: no_global_5
+  selector:
+    anchor: is_healthy
+- id: no_global_6
+  selector:
+    anchor: create_connection
+- id: no_global_7
+  selector:
+    anchor: rabbitmq:3.12-management
+- id: no_global_8
+  selector:
+    anchor: redis:7-alpine
+- id: no_global_9
+  selector:
+    anchor: RABBITMQ_DEFAULT_USER
+- id: no_global_10
+  selector:
+    anchor: rabbitmq-diagnostics
+- id: no_global_11
+  selector:
+    anchor: ScheduledJobs
+- id: no_global_12
+  selector:
+    anchor: beat_schedule
+- id: no_global_13
+  selector:
+    anchor: cleanup-expired
+- id: no_global_14
+  selector:
+    anchor: send-digest
+- id: no_global_15
+  selector:
+    anchor: autoscale
+- id: no_global_16
+  selector:
+    anchor: concurrency
+- id: no_global_17
+  selector:
+    anchor: prefetch_multiplier
+- id: no_global_18
+  selector:
+    anchor: send_welcome_email
+- id: no_global_19
+  selector:
+    anchor: send_password_reset
+- id: no_global_20
+  selector:
+    anchor: send_notification
+oracle:
+  required:
+  - tasks
+  - tasks_1
+  - tasks_2
+  allowed: []
+  forbidden:
+  - no_config_loader
+  - no_broker_health
+  - no_docker_compose
+  - no_scheduler_jobs
+  - no_workers
+  - no_email_tasks
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

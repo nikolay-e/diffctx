@@ -1,0 +1,287 @@
+name: algorithm_011_merge_adjacent_same_file
+repo:
+  initial_files:
+    src/validators/input_validators.py: |
+      from typing import Any, Optional
+      import re
+
+      def validate_email(email: str) -> bool:
+          pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+          return bool(re.match(pattern, email))
+
+      def validate_phone(phone: str) -> bool:
+          pattern = r'^\+?[1-9]\d{1,14}$'
+          return bool(re.match(pattern, phone))
+
+      def validate_username(username: str) -> bool:
+          if len(username) < 3 or len(username) > 20:
+              return False
+          pattern = r'^[a-zA-Z][a-zA-Z0-9_]*$'
+          return bool(re.match(pattern, username))
+
+      def validate_password(password: str) -> bool:
+          if len(password) < 8:
+              return False
+          has_upper = any(c.isupper() for c in password)
+          has_lower = any(c.islower() for c in password)
+          has_digit = any(c.isdigit() for c in password)
+          return has_upper and has_lower and has_digit
+
+      def validate_age(age: int) -> bool:
+          return 0 <= age <= 150
+
+      def validate_url(url: str) -> bool:
+          pattern = r'^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+          return bool(re.match(pattern, url))
+    src/validators/form_validators.py: |
+      import re
+      GARBAGE_ALGO_011_FORM_VALID_G = "form_validation"
+      GARBAGE_ALGO_011_FIELD_CHECK_H = True
+
+      def validate_email(email: str) -> bool:
+          GARBAGE_ALGO_011_EMAIL_FORM_I = True
+          return "@" in email and "." in email
+
+      def validate_phone(phone: str) -> bool:
+          return len(phone) >= 7
+
+      def validate_username(username: str) -> bool:
+          return len(username) >= 1
+    src/validators/address_validators.py: |
+      from typing import Optional
+      import re
+      GARBAGE_ALGO_011_ADDR_VALID_J = "address"
+      GARBAGE_ALGO_011_POSTAL_MARKER_K = True
+
+      def validate_postal_code(code: str) -> bool:
+          pattern = r'^\d{5}(-\d{4})?$'
+          return bool(re.match(pattern, code))
+
+      def validate_state(state: str) -> bool:
+          if len(state) < 2 or len(state) > 50:
+              return False
+          pattern = r'^[a-zA-Z\s]+$'
+          return bool(re.match(pattern, state))
+    src/validators/sanitizers.py: |
+      import re
+      from typing import Any, Optional, List
+      GARBAGE_ALGO_011_SANITIZER_MARKER_L = "sanitize"
+      GARBAGE_ALGO_011_CLEAN_INPUT_M = True
+
+      def sanitize_email(email: str) -> str:
+          return email.strip().lower()
+
+      def sanitize_phone(phone: str) -> str:
+          cleaned = re.sub(r'[\s\-\(\)]', '', phone)
+          return cleaned
+    garbage_transformers.py: |
+      GARBAGE_ALGO_011_TRANSFORM_MARKER_A = "transform"
+      GARBAGE_ALGO_011_CONVERT_MARKER_B = True
+
+      class DataTransformer:
+          GARBAGE_ALGO_011_MAPPER_MARKER_C = {}
+
+          def transform(self, data: dict) -> dict:
+              return data
+    garbage_serializers.py: |
+      GARBAGE_ALGO_011_SERIAL_MARKER_D = "serialize"
+      GARBAGE_ALGO_011_FORMAT_MARKER_E = "json"
+
+      class JSONSerializer:
+          GARBAGE_ALGO_011_ENCODE_MARKER_F = True
+
+          def serialize(self, obj: object) -> str:
+              return "{}"
+  changed_files:
+    src/validators/input_validators.py: |
+      from typing import Any, Optional, List
+      import re
+
+      def validate_email(email: str) -> bool:
+          if not email or '@' not in email:
+              return False
+          pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+          return bool(re.match(pattern, email.lower()))
+
+      def validate_phone(phone: str) -> bool:
+          cleaned = re.sub(r'[\s\-\(\)]', '', phone)
+          pattern = r'^\+?[1-9]\d{1,14}$'
+          return bool(re.match(pattern, cleaned))
+
+      def validate_username(username: str) -> bool:
+          if len(username) < 3 or len(username) > 20:
+              return False
+          pattern = r'^[a-zA-Z][a-zA-Z0-9_]*$'
+          return bool(re.match(pattern, username))
+
+      def validate_password(password: str) -> bool:
+          if len(password) < 8:
+              return False
+          has_upper = any(c.isupper() for c in password)
+          has_lower = any(c.islower() for c in password)
+          has_digit = any(c.isdigit() for c in password)
+          return has_upper and has_lower and has_digit
+
+      def validate_age(age: int) -> bool:
+          return 0 <= age <= 150
+
+      def validate_url(url: str) -> bool:
+          pattern = r'^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+          return bool(re.match(pattern, url))
+    src/validators/form_validators.py: |
+      import re
+      GARBAGE_ALGO_011_FORM_VALID_G = "form_validation"
+      GARBAGE_ALGO_011_FIELD_CHECK_H = True
+
+      def validate_email(email: str) -> bool:
+          GARBAGE_ALGO_011_EMAIL_FORM_I = True
+          return "@" in email and "." in email
+
+      def validate_phone(phone: str) -> bool:
+          return len(phone) >= 7
+
+      def validate_username(username: str) -> bool:
+          return len(username) >= 1
+    src/validators/address_validators.py: |
+      from typing import Optional
+      import re
+      GARBAGE_ALGO_011_ADDR_VALID_J = "address"
+      GARBAGE_ALGO_011_POSTAL_MARKER_K = True
+
+      def validate_postal_code(code: str) -> bool:
+          pattern = r'^\d{5}(-\d{4})?$'
+          return bool(re.match(pattern, code))
+
+      def validate_state(state: str) -> bool:
+          if len(state) < 2 or len(state) > 50:
+              return False
+          pattern = r'^[a-zA-Z\s]+$'
+          return bool(re.match(pattern, state))
+    src/validators/sanitizers.py: |
+      import re
+      from typing import Any, Optional, List
+      GARBAGE_ALGO_011_SANITIZER_MARKER_L = "sanitize"
+      GARBAGE_ALGO_011_CLEAN_INPUT_M = True
+
+      def sanitize_email(email: str) -> str:
+          return email.strip().lower()
+
+      def sanitize_phone(phone: str) -> str:
+          cleaned = re.sub(r'[\s\-\(\)]', '', phone)
+          return cleaned
+    garbage_transformers.py: |
+      GARBAGE_ALGO_011_TRANSFORM_MARKER_A = "transform"
+      GARBAGE_ALGO_011_CONVERT_MARKER_B = True
+
+      class DataTransformer:
+          GARBAGE_ALGO_011_MAPPER_MARKER_C = {}
+
+          def transform(self, data: dict) -> dict:
+              return data
+    garbage_serializers.py: |
+      GARBAGE_ALGO_011_SERIAL_MARKER_D = "serialize"
+      GARBAGE_ALGO_011_FORMAT_MARKER_E = "json"
+
+      class JSONSerializer:
+          GARBAGE_ALGO_011_ENCODE_MARKER_F = True
+
+          def serialize(self, obj: object) -> str:
+              return "{}"
+  commit_message: Update files
+fragments:
+- id: input_validators
+  selector:
+    path: src/validators/input_validators.py
+    anchor: from typing import Any, Optional, List
+- id: input_validators_1
+  selector:
+    path: src/validators/input_validators.py
+    anchor: 'if not email or ''@'' not in email:'
+- id: input_validators_2
+  selector:
+    path: src/validators/input_validators.py
+    anchor: return bool(re.match(pattern, email.lower()))
+- id: input_validators_3
+  selector:
+    path: src/validators/input_validators.py
+    anchor: cleaned = re.sub(r'[\s\-\(\)]', '', phone)
+- id: no_garbage_transformers
+  selector:
+    path: garbage_transformers.py
+- id: no_garbage_serializers
+  selector:
+    path: garbage_serializers.py
+- id: no_form_validators
+  selector:
+    path: src/validators/form_validators.py
+- id: no_address_validators
+  selector:
+    path: src/validators/address_validators.py
+- id: no_sanitizers
+  selector:
+    path: src/validators/sanitizers.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_011_TRANSFORM_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_011_CONVERT_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_011_MAPPER_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_011_SERIAL_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_011_FORMAT_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_011_ENCODE_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_011_FORM_VALID_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_011_FIELD_CHECK_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_011_EMAIL_FORM_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_011_ADDR_VALID_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_011_POSTAL_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_011_SANITIZER_MARKER_L
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_ALGO_011_CLEAN_INPUT_M
+oracle:
+  required:
+  - input_validators
+  - input_validators_1
+  - input_validators_2
+  - input_validators_3
+  allowed: []
+  forbidden:
+  - no_garbage_transformers
+  - no_garbage_serializers
+  - no_form_validators
+  - no_address_validators
+  - no_sanitizers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

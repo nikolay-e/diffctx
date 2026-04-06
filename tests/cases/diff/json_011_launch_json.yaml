@@ -1,0 +1,183 @@
+name: json_011_launch_json
+repo:
+  initial_files:
+    config/launch.json: |
+      {
+        "version": "0.2.0",
+        "configurations": [
+          {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Server",
+            "program": "${workspaceFolder}/src/index.js",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+          }
+        ]
+      }
+    src/index.js: |
+      const express = require('express');
+      const { connectDatabase } = require('./database');
+      const { setupRoutes } = require('./routes');
+
+      const app = express();
+      const PORT = process.env.PORT || 3000;
+
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
+
+      async function bootstrap() {
+          await connectDatabase();
+          setupRoutes(app);
+          app.listen(PORT, () => {
+              console.log(`Server listening on port ${PORT}`);
+          });
+      }
+
+      bootstrap().catch((err) => {
+          console.error('Failed to start server:', err);
+          process.exit(1);
+      });
+
+      module.exports = { app, bootstrap };
+    src/routes.js: |
+      const { getUsers, createUser } = require('./handlers');
+
+      function setupRoutes(app) {
+          app.get('/api/users', getUsers);
+          app.post('/api/users', createUser);
+          app.get('/api/health', (req, res) => {
+              res.json({ status: 'ok', timestamp: new Date().toISOString() });
+          });
+      }
+
+      module.exports = { setupRoutes };
+    src/middleware/cors.js: |
+      function corsMiddleware(req, res, next) {
+          res.header('Access-Control-Allow-Origin', '*');
+          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          if (req.method === 'OPTIONS') {
+              return res.sendStatus(200);
+          }
+          next();
+      }
+
+      module.exports = { corsMiddleware };
+    src/middleware/logger.js: |
+      function requestLogger(req, res, next) {
+          const start = Date.now();
+          res.on('finish', () => {
+              const duration = Date.now() - start;
+              console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+          });
+          next();
+      }
+
+      module.exports = { requestLogger };
+  changed_files:
+    config/launch.json: |
+      {
+        "version": "0.2.0",
+        "configurations": [
+          {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Server",
+            "program": "${workspaceFolder}/src/server.js",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"],
+            "env": {"NODE_ENV": "development", "LOG_LEVEL": "debug"}
+          }
+        ]
+      }
+    src/index.js: |
+      const express = require('express');
+      const { connectDatabase } = require('./database');
+      const { setupRoutes } = require('./routes');
+
+      const app = express();
+      const PORT = process.env.PORT || 3000;
+
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
+
+      async function bootstrap() {
+          await connectDatabase();
+          setupRoutes(app);
+          app.listen(PORT, () => {
+              console.log(`Server listening on port ${PORT}`);
+          });
+      }
+
+      bootstrap().catch((err) => {
+          console.error('Failed to start server:', err);
+          process.exit(1);
+      });
+
+      module.exports = { app, bootstrap };
+    src/routes.js: |
+      const { getUsers, createUser } = require('./handlers');
+
+      function setupRoutes(app) {
+          app.get('/api/users', getUsers);
+          app.post('/api/users', createUser);
+          app.get('/api/health', (req, res) => {
+              res.json({ status: 'ok', timestamp: new Date().toISOString() });
+          });
+      }
+
+      module.exports = { setupRoutes };
+    src/middleware/cors.js: |
+      function corsMiddleware(req, res, next) {
+          res.header('Access-Control-Allow-Origin', '*');
+          res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          if (req.method === 'OPTIONS') {
+              return res.sendStatus(200);
+          }
+          next();
+      }
+
+      module.exports = { corsMiddleware };
+    src/middleware/logger.js: |
+      function requestLogger(req, res, next) {
+          const start = Date.now();
+          res.on('finish', () => {
+              const duration = Date.now() - start;
+              console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+          });
+          next();
+      }
+
+      module.exports = { requestLogger };
+  commit_message: Update files
+fragments:
+- id: launch_file
+  selector:
+    path: config/launch.json
+- id: req_global_0
+  selector:
+    anchor: src/server.js
+- id: req_global_1
+  selector:
+    anchor: NODE_ENV
+- id: no_global_0
+  selector:
+    anchor: corsMiddleware
+- id: no_global_1
+  selector:
+    anchor: Access-Control-Allow-Origin
+- id: no_global_2
+  selector:
+    anchor: requestLogger
+oracle:
+  required:
+  - launch_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2

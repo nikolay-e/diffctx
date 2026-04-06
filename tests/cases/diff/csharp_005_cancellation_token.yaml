@@ -1,0 +1,172 @@
+name: csharp_005_cancellation_token
+repo:
+  initial_files:
+    Services/DownloadService.cs: |
+      using System;
+      using System.Net.Http;
+      using System.Threading;
+      using System.Threading.Tasks;
+
+      namespace MyApp.Services;
+
+      public class DownloadService
+      {
+          private readonly HttpClient _httpClient;
+
+          public DownloadService(HttpClient httpClient)
+          {
+              _httpClient = httpClient;
+          }
+
+          public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+          {
+              var response = await _httpClient.GetAsync(url, cancellationToken);
+              response.EnsureSuccessStatusCode();
+              return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+          }
+
+          public async Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
+          {
+              return await _httpClient.GetStringAsync(url, cancellationToken);
+          }
+      }
+    Program.cs: |
+      using System;
+
+      class Program
+      {
+          static void Main()
+          {
+              Console.WriteLine("Download client ready");
+          }
+      }
+    Unrelated/SessionStore.cs: |
+      namespace MyApp.Unrelated;
+
+      public class SessionStore
+      {
+          private const string GARBAGE_CS_005_SESSION_STORE_A = "session_store_marker";
+
+          public string GetSession(string id) => GARBAGE_CS_005_SESSION_STORE_A + id;
+      }
+    Unrelated/TokenBucket.cs: |
+      namespace MyApp.Unrelated;
+
+      public class TokenBucket
+      {
+          public const string GARBAGE_CS_005_TOKEN_BUCKET_B = "token_bucket_marker";
+
+          public bool TryConsume() => GARBAGE_CS_005_TOKEN_BUCKET_B.Length > 0;
+      }
+  changed_files:
+    Services/DownloadService.cs: |
+      using System;
+      using System.Net.Http;
+      using System.Threading;
+      using System.Threading.Tasks;
+
+      namespace MyApp.Services;
+
+      public class DownloadService
+      {
+          private readonly HttpClient _httpClient;
+
+          public DownloadService(HttpClient httpClient)
+          {
+              _httpClient = httpClient;
+          }
+
+          public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+          {
+              var response = await _httpClient.GetAsync(url, cancellationToken);
+              response.EnsureSuccessStatusCode();
+              return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+          }
+
+          public async Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
+          {
+              return await _httpClient.GetStringAsync(url, cancellationToken);
+          }
+      }
+    Program.cs: |
+      using System;
+      using System.Net.Http;
+      using System.Threading;
+      using System.Threading.Tasks;
+      using MyApp.Services;
+
+      class Program
+      {
+          static async Task Main()
+          {
+              using var httpClient = new HttpClient();
+              var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+              var service = new DownloadService(httpClient);
+
+              try
+              {
+                  var data = await service.DownloadAsync("https://example.com/file", cts.Token);
+                  Console.WriteLine($"Downloaded {data.Length} bytes");
+              }
+              catch (OperationCanceledException)
+              {
+                  Console.WriteLine("Download cancelled due to timeout");
+              }
+          }
+      }
+    Unrelated/SessionStore.cs: |
+      namespace MyApp.Unrelated;
+
+      public class SessionStore
+      {
+          private const string GARBAGE_CS_005_SESSION_STORE_A = "session_store_marker";
+
+          public string GetSession(string id) => GARBAGE_CS_005_SESSION_STORE_A + id;
+      }
+    Unrelated/TokenBucket.cs: |
+      namespace MyApp.Unrelated;
+
+      public class TokenBucket
+      {
+          public const string GARBAGE_CS_005_TOKEN_BUCKET_B = "token_bucket_marker";
+
+          public bool TryConsume() => GARBAGE_CS_005_TOKEN_BUCKET_B.Length > 0;
+      }
+  commit_message: Update files
+fragments:
+- id: program_file
+  selector:
+    path: Program.cs
+- id: req_global_0
+  selector:
+    anchor: using System.Net.Http;
+- id: req_global_1
+  selector:
+    anchor: static async Task Main()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_005_SESSION_STORE_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_005_TOKEN_BUCKET_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CS_005_TOKEN_BUCKET_B.Length
+- id: no_global_3
+  selector:
+    anchor: SessionStore.cs
+- id: no_global_4
+  selector:
+    anchor: TokenBucket.cs
+oracle:
+  required:
+  - program_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

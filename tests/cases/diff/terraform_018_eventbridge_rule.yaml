@@ -1,0 +1,111 @@
+name: terraform_018_eventbridge_rule
+repo:
+  initial_files:
+    events.tf: |
+      # EventBridge resources
+    lambda.tf: |
+      resource "aws_lambda_function" "cleanup" {
+        function_name = "daily-cleanup"
+        handler       = "cleanup.handler"
+        runtime       = "python3.11"
+        filename      = "cleanup.zip"
+        role          = aws_iam_role.cleanup_lambda.arn
+      }
+
+      resource "aws_lambda_function" "backup" {
+        function_name = "nightly-backup"
+        handler       = "backup.handler"
+        runtime       = "python3.11"
+        filename      = "backup.zip"
+        role          = aws_iam_role.backup_lambda.arn
+      }
+    backup_schedule.tf: |
+      resource "aws_cloudwatch_event_rule" "backup" {
+        name                = "nightly-backup"
+        schedule_expression = "cron(0 4 * * ? *)"
+      }
+
+      resource "aws_cloudwatch_event_target" "backup_lambda" {
+        rule      = aws_cloudwatch_event_rule.backup.name
+        target_id = "backup-lambda"
+        arn       = aws_lambda_function.backup.arn
+      }
+  changed_files:
+    events.tf: |
+      resource "aws_cloudwatch_event_rule" "schedule" {
+        name                = "daily-cleanup"
+        schedule_expression = "cron(0 2 * * ? *)"
+      }
+
+      resource "aws_cloudwatch_event_target" "lambda" {
+        rule      = aws_cloudwatch_event_rule.schedule.name
+        target_id = "cleanup-lambda"
+        arn       = aws_lambda_function.cleanup.arn
+      }
+
+      resource "aws_lambda_permission" "eventbridge" {
+        statement_id  = "AllowEventBridge"
+        action        = "lambda:InvokeFunction"
+        function_name = aws_lambda_function.cleanup.function_name
+        principal     = "events.amazonaws.com"
+        source_arn    = aws_cloudwatch_event_rule.schedule.arn
+      }
+    lambda.tf: |
+      resource "aws_lambda_function" "cleanup" {
+        function_name = "daily-cleanup"
+        handler       = "cleanup.handler"
+        runtime       = "python3.11"
+        filename      = "cleanup.zip"
+        role          = aws_iam_role.cleanup_lambda.arn
+      }
+
+      resource "aws_lambda_function" "backup" {
+        function_name = "nightly-backup"
+        handler       = "backup.handler"
+        runtime       = "python3.11"
+        filename      = "backup.zip"
+        role          = aws_iam_role.backup_lambda.arn
+      }
+    backup_schedule.tf: |
+      resource "aws_cloudwatch_event_rule" "backup" {
+        name                = "nightly-backup"
+        schedule_expression = "cron(0 4 * * ? *)"
+      }
+
+      resource "aws_cloudwatch_event_target" "backup_lambda" {
+        rule      = aws_cloudwatch_event_rule.backup.name
+        target_id = "backup-lambda"
+        arn       = aws_lambda_function.backup.arn
+      }
+  commit_message: Update files
+fragments:
+- id: lambda
+  selector:
+    path: lambda.tf
+    anchor: resource "aws_lambda_function" "cleanup" {
+- id: lambda_1
+  selector:
+    path: lambda.tf
+    anchor: function_name = "daily-cleanup"
+- id: no_backup_schedule
+  selector:
+    path: backup_schedule.tf
+- id: no_global_0
+  selector:
+    anchor: nightly-backup
+- id: no_global_1
+  selector:
+    anchor: backup-lambda
+- id: no_global_2
+  selector:
+    anchor: aws_lambda_function.backup.arn
+oracle:
+  required:
+  - lambda
+  - lambda_1
+  allowed: []
+  forbidden:
+  - no_backup_schedule
+  - no_global_0
+  - no_global_1
+  - no_global_2

@@ -1,0 +1,137 @@
+name: javascript_064_forward_ref
+repo:
+  initial_files:
+    src/Input.tsx: |
+      import { forwardRef } from 'react';
+
+      interface InputProps {
+          label: string;
+          type?: string;
+      }
+
+      export const Input = forwardRef<HTMLInputElement, InputProps>(
+          ({ label, type = 'text' }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <input ref={ref} type={type} />
+              </div>
+          )
+      );
+    src/Form.tsx: |
+      export function Form() {
+          return <form>Placeholder</form>;
+      }
+    src/TextArea.tsx: |
+      import { forwardRef } from 'react';
+
+      interface TextAreaProps {
+          label: string;
+          rows?: number;
+      }
+
+      export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
+          ({ label, rows = 3 }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <textarea ref={ref} rows={rows} />
+              </div>
+          )
+      );
+    src/form-validation.ts: |
+      export function validateRequired(value: string): string | null {
+          return value.trim().length === 0 ? 'This field is required' : null;
+      }
+
+      export function validateEmail(value: string): string | null {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email';
+      }
+  changed_files:
+    src/Input.tsx: |
+      import { forwardRef } from 'react';
+
+      interface InputProps {
+          label: string;
+          type?: string;
+      }
+
+      export const Input = forwardRef<HTMLInputElement, InputProps>(
+          ({ label, type = 'text' }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <input ref={ref} type={type} />
+              </div>
+          )
+      );
+    src/Form.tsx: |
+      import { useRef } from 'react';
+      import { Input } from './Input';
+
+      export function Form() {
+          const emailRef = useRef<HTMLInputElement>(null);
+
+          const handleSubmit = () => {
+              emailRef.current?.focus();
+          };
+
+          return (
+              <form onSubmit={handleSubmit}>
+                  <Input ref={emailRef} label="Email" type="email" />
+              </form>
+          );
+      }
+    src/TextArea.tsx: |
+      import { forwardRef } from 'react';
+
+      interface TextAreaProps {
+          label: string;
+          rows?: number;
+      }
+
+      export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
+          ({ label, rows = 3 }, ref) => (
+              <div>
+                  <label>{label}</label>
+                  <textarea ref={ref} rows={rows} />
+              </div>
+          )
+      );
+    src/form-validation.ts: |
+      export function validateRequired(value: string): string | null {
+          return value.trim().length === 0 ? 'This field is required' : null;
+      }
+
+      export function validateEmail(value: string): string | null {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email';
+      }
+  commit_message: Update files
+fragments:
+- id: input
+  selector:
+    path: src/Input.tsx
+    anchor: forwardRef<HTMLInputElement, InputProps>
+- id: input_1
+  selector:
+    path: src/Input.tsx
+    anchor: InputProps
+- id: no_global_0
+  selector:
+    anchor: TextAreaProps
+- id: no_global_1
+  selector:
+    anchor: textarea
+- id: no_global_2
+  selector:
+    anchor: validateRequired
+- id: no_global_3
+  selector:
+    anchor: validateEmail
+oracle:
+  required:
+  - input
+  - input_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

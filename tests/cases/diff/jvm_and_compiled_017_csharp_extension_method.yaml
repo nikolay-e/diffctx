@@ -1,0 +1,259 @@
+name: jvm_and_compiled_017_csharp_extension_method
+repo:
+  initial_files:
+    Helpers/StringExtensions.cs: |
+      namespace MyApp.Helpers
+      {
+          public static class StringExtensions
+          {
+              public static bool IsValidEmail(this string s)
+              {
+                  return !string.IsNullOrEmpty(s) && s.Contains("@") && s.Contains(".");
+              }
+
+              public static string Truncate(this string s, int maxLength)
+              {
+                  if (string.IsNullOrEmpty(s) || s.Length <= maxLength)
+                      return s;
+                  return s.Substring(0, maxLength) + "...";
+              }
+
+              public static string ToSlug(this string s)
+              {
+                  return s.ToLower().Replace(" ", "-").Replace("_", "-");
+              }
+          }
+      }
+    Services/Validator.cs: |
+      namespace MyApp.Services
+      {
+          class Validator { }
+      }
+    Services/EmailService.cs: |
+      using MyApp.Helpers;
+
+      namespace MyApp.Services
+      {
+          public class EmailService
+          {
+              private readonly List<string> _validRecipients = new();
+
+              public void AddRecipient(string email)
+              {
+                  if (!email.IsValidEmail())
+                      throw new ArgumentException("Invalid email address");
+                  _validRecipients.Add(email);
+              }
+
+              public void SendBulk(string subject, string body)
+              {
+                  foreach (var recipient in _validRecipients)
+                  {
+                      Console.WriteLine($"Sending '{subject.Truncate(50)}' to {recipient}");
+                  }
+              }
+
+              public int RecipientCount => _validRecipients.Count;
+          }
+      }
+    Helpers/NumberExtensions.cs: |
+      namespace MyApp.Helpers
+      {
+          public static class NumberExtensions
+          {
+              public static string ToOrdinal(this int number)
+              {
+                  var suffix = (number % 100) switch
+                  {
+                      11 or 12 or 13 => "th",
+                      _ => (number % 10) switch
+                      {
+                          1 => "st",
+                          2 => "nd",
+                          3 => "rd",
+                          _ => "th"
+                      }
+                  };
+                  return $"{number}{suffix}";
+              }
+
+              public static bool IsEven(this int number) => number % 2 == 0;
+
+              public static int Clamp(this int value, int min, int max)
+              {
+                  return Math.Max(min, Math.Min(max, value));
+              }
+          }
+      }
+    Tests/StringExtensionsTests.cs: |
+      using MyApp.Helpers;
+      using Xunit;
+
+      namespace MyApp.Tests
+      {
+          public class StringExtensionsTests
+          {
+              [Theory]
+              [InlineData("test@example.com", true)]
+              [InlineData("invalid", false)]
+              [InlineData("", false)]
+              public void IsValidEmail_ReturnsExpected(string input, bool expected)
+              {
+                  Assert.Equal(expected, input.IsValidEmail());
+              }
+
+              [Fact]
+              public void Truncate_ShortString_ReturnsUnchanged()
+              {
+                  Assert.Equal("hello", "hello".Truncate(10));
+              }
+
+              [Fact]
+              public void Truncate_LongString_AddsDots()
+              {
+                  Assert.Equal("hel...", "hello world".Truncate(6));
+              }
+          }
+      }
+    Helpers/DateExtensions.cs: |
+      namespace MyApp.Helpers
+      {
+          public static class DateExtensions
+          {
+              public static string ToFriendly(this DateTime date)
+              {
+                  var diff = DateTime.Now - date;
+                  if (diff.TotalMinutes < 1) return "just now";
+                  if (diff.TotalHours < 1) return $"{(int)diff.TotalMinutes}m ago";
+                  if (diff.TotalDays < 1) return $"{(int)diff.TotalHours}h ago";
+                  return date.ToString("MMM dd, yyyy");
+              }
+
+              public static bool IsWeekend(this DateTime date)
+              {
+                  return date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+              }
+          }
+      }
+  changed_files:
+    Services/Validator.cs: |
+      using MyApp.Helpers;
+
+      namespace MyApp.Services
+      {
+          class Validator
+          {
+              public bool ValidateEmail(string email)
+              {
+                  return email.IsValidEmail();
+              }
+
+              public string FormatMessage(string message)
+              {
+                  return message.Truncate(100);
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: validator
+  selector:
+    path: Services/Validator.cs
+    anchor: email.IsValidEmail()
+- id: validator_1
+  selector:
+    path: Services/Validator.cs
+    anchor: message.Truncate(100)
+- id: stringextensions
+  selector:
+    path: Helpers/StringExtensions.cs
+    anchor: public static bool IsValidEmail(this string s)
+- id: stringextensions_1
+  selector:
+    path: Helpers/StringExtensions.cs
+    anchor: public static string Truncate(this string s, int maxLength)
+- id: stringextensions_2
+  selector:
+    path: Helpers/StringExtensions.cs
+    anchor: s.Contains("@")
+- id: no_emailservice
+  selector:
+    path: Services/EmailService.cs
+- id: no_numberextensions
+  selector:
+    path: Helpers/NumberExtensions.cs
+- id: no_stringextensionstests
+  selector:
+    path: Tests/StringExtensionsTests.cs
+- id: no_dateextensions
+  selector:
+    path: Helpers/DateExtensions.cs
+- id: no_global_0
+  selector:
+    anchor: EmailService
+- id: no_global_1
+  selector:
+    anchor: AddRecipient
+- id: no_global_2
+  selector:
+    anchor: SendBulk
+- id: no_global_3
+  selector:
+    anchor: RecipientCount
+- id: no_global_4
+  selector:
+    anchor: NumberExtensions
+- id: no_global_5
+  selector:
+    anchor: ToOrdinal
+- id: no_global_6
+  selector:
+    anchor: IsEven
+- id: no_global_7
+  selector:
+    anchor: Clamp
+- id: no_global_8
+  selector:
+    anchor: StringExtensionsTests
+- id: no_global_9
+  selector:
+    anchor: InlineData
+- id: no_global_10
+  selector:
+    anchor: '[Theory]'
+- id: no_global_11
+  selector:
+    anchor: DateExtensions
+- id: no_global_12
+  selector:
+    anchor: ToFriendly
+- id: no_global_13
+  selector:
+    anchor: IsWeekend
+oracle:
+  required:
+  - validator
+  - validator_1
+  - stringextensions
+  - stringextensions_1
+  - stringextensions_2
+  allowed: []
+  forbidden:
+  - no_emailservice
+  - no_numberextensions
+  - no_stringextensionstests
+  - no_dateextensions
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

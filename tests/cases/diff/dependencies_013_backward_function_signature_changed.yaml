@@ -1,0 +1,221 @@
+name: dependencies_013_backward_function_signature_changed
+repo:
+  initial_files:
+    utils.py: |
+      def format_date(date):
+          return date.strftime("%Y-%m-%d")
+    reports/generator.py: |
+      from utils import format_date
+
+      def generate_report(today):
+          formatted = format_date(today)
+          return f"Report for {formatted}"
+    api/views.py: |
+      from utils import format_date
+
+      def get_created_date(created_at):
+          return format_date(created_at)
+    exports/csv_export.py: |
+      from utils import format_date
+      GARBAGE_DEP_013_CSV_IMPORT_C = "csv_exporter"
+      GARBAGE_DEP_013_CSV_BATCH_D = 5000
+
+      class CsvExporter:
+          GARBAGE_DEP_013_CSV_CLASS_E = True
+
+          def export_row(self, record: dict) -> str:
+              date_str = format_date(record["created_at"])
+              return f"{record['id']},{date_str},{record['name']}"
+
+          def export_all(self, records: list) -> str:
+              return "\n".join(self.export_row(r) for r in records)
+    helpers/date_utils.py: |
+      GARBAGE_DEP_013_DATEUTIL_MOD_F = "date_utilities"
+      GARBAGE_DEP_013_DATEUTIL_VER_G = "2.0"
+
+      def format_date(date, timezone=None) -> str:
+          GARBAGE_DEP_013_DATEUTIL_FMT_H = True
+          if timezone:
+              date = date.astimezone(timezone)
+          return date.strftime("%d/%m/%Y")
+
+      def parse_date(date_str: str):
+          GARBAGE_DEP_013_DATEUTIL_PARSE_I = True
+          from datetime import datetime
+          return datetime.strptime(date_str, "%Y-%m-%d")
+    garbage/weather_GARBAGE_DEP_013_WEATHER_A.py: |
+      GARBAGE_DEP_013_WEATHER_A = "forecast"
+
+      def predict_temperature(city: str) -> float:
+          return 20.0
+
+      class WeatherStation_GARBAGE_DEP_013_WEATHER_A:
+          def __init__(self, location: str):
+              self.location = location
+    garbage/music_GARBAGE_DEP_013_MUSIC_B.py: |
+      GARBAGE_DEP_013_MUSIC_B = "playlist"
+
+      def shuffle_tracks(tracks: list) -> list:
+          return tracks[::-1]
+
+      class Playlist_GARBAGE_DEP_013_MUSIC_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.tracks = []
+  changed_files:
+    utils.py: |
+      def format_date(date, timezone=None):
+          if timezone:
+              date = date.astimezone(timezone)
+          return date.strftime("%Y-%m-%d")
+    reports/generator.py: |
+      from utils import format_date
+
+      def generate_report(today):
+          formatted = format_date(today)
+          return f"Report for {formatted}"
+    api/views.py: |
+      from utils import format_date
+
+      def get_created_date(created_at):
+          return format_date(created_at)
+    exports/csv_export.py: |
+      from utils import format_date
+      GARBAGE_DEP_013_CSV_IMPORT_C = "csv_exporter"
+      GARBAGE_DEP_013_CSV_BATCH_D = 5000
+
+      class CsvExporter:
+          GARBAGE_DEP_013_CSV_CLASS_E = True
+
+          def export_row(self, record: dict) -> str:
+              date_str = format_date(record["created_at"])
+              return f"{record['id']},{date_str},{record['name']}"
+
+          def export_all(self, records: list) -> str:
+              return "\n".join(self.export_row(r) for r in records)
+    helpers/date_utils.py: |
+      GARBAGE_DEP_013_DATEUTIL_MOD_F = "date_utilities"
+      GARBAGE_DEP_013_DATEUTIL_VER_G = "2.0"
+
+      def format_date(date, timezone=None) -> str:
+          GARBAGE_DEP_013_DATEUTIL_FMT_H = True
+          if timezone:
+              date = date.astimezone(timezone)
+          return date.strftime("%d/%m/%Y")
+
+      def parse_date(date_str: str):
+          GARBAGE_DEP_013_DATEUTIL_PARSE_I = True
+          from datetime import datetime
+          return datetime.strptime(date_str, "%Y-%m-%d")
+    garbage/weather_GARBAGE_DEP_013_WEATHER_A.py: |
+      GARBAGE_DEP_013_WEATHER_A = "forecast"
+
+      def predict_temperature(city: str) -> float:
+          return 20.0
+
+      class WeatherStation_GARBAGE_DEP_013_WEATHER_A:
+          def __init__(self, location: str):
+              self.location = location
+    garbage/music_GARBAGE_DEP_013_MUSIC_B.py: |
+      GARBAGE_DEP_013_MUSIC_B = "playlist"
+
+      def shuffle_tracks(tracks: list) -> list:
+          return tracks[::-1]
+
+      class Playlist_GARBAGE_DEP_013_MUSIC_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.tracks = []
+  commit_message: Update files
+fragments:
+- id: utils
+  selector:
+    path: utils.py
+    anchor: 'def format_date(date, timezone=None):'
+- id: utils_1
+  selector:
+    path: utils.py
+    anchor: date.astimezone(timezone)
+- id: generator
+  selector:
+    path: reports/generator.py
+    anchor: from utils import format_date
+- id: generator_1
+  selector:
+    path: reports/generator.py
+    anchor: 'def generate_report(today):'
+- id: generator_2
+  selector:
+    path: reports/generator.py
+    anchor: format_date(today)
+- id: views
+  selector:
+    path: api/views.py
+    anchor: from utils import format_date
+- id: views_1
+  selector:
+    path: api/views.py
+    anchor: format_date(created_at)
+- id: no_csv_export
+  selector:
+    path: exports/csv_export.py
+- id: no_date_utils
+  selector:
+    path: helpers/date_utils.py
+- id: no_weather_garbage_dep_013_weather_a
+  selector:
+    path: garbage/weather_GARBAGE_DEP_013_WEATHER_A.py
+- id: no_music_garbage_dep_013_music_b
+  selector:
+    path: garbage/music_GARBAGE_DEP_013_MUSIC_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_013_WEATHER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_013_MUSIC_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_013_CSV_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_013_CSV_BATCH_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_013_CSV_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_013_DATEUTIL_MOD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_013_DATEUTIL_VER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_013_DATEUTIL_FMT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_013_DATEUTIL_PARSE_I
+oracle:
+  required:
+  - utils
+  - utils_1
+  - generator
+  - generator_1
+  - generator_2
+  - views
+  - views_1
+  allowed: []
+  forbidden:
+  - no_csv_export
+  - no_date_utils
+  - no_weather_garbage_dep_013_weather_a
+  - no_music_garbage_dep_013_music_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

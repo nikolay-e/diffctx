@@ -1,0 +1,173 @@
+name: jvm_and_compiled_070_swift_result_type
+repo:
+  initial_files:
+    APIError.swift: |
+      enum APIError: Error {
+          case networkError
+          case invalidResponse
+          case decodingError
+      }
+    DataLoader.swift: |
+      struct DataLoader {}
+    NetworkMonitor.swift: |
+      import Foundation
+
+      class NetworkMonitor {
+          enum ConnectionType {
+              case wifi, cellular, none
+          }
+
+          private(set) var isConnected = true
+          private(set) var connectionType: ConnectionType = .wifi
+
+          func startMonitoring() {
+              isConnected = true
+              connectionType = .wifi
+          }
+
+          func stopMonitoring() {
+              isConnected = false
+              connectionType = .none
+          }
+      }
+    RetryPolicy.swift: |
+      import Foundation
+
+      struct RetryPolicy {
+          let maxAttempts: Int
+          let baseDelay: TimeInterval
+          let backoffMultiplier: Double
+
+          init(maxAttempts: Int = 3, baseDelay: TimeInterval = 1.0, backoffMultiplier: Double = 2.0) {
+              self.maxAttempts = maxAttempts
+              self.baseDelay = baseDelay
+              self.backoffMultiplier = backoffMultiplier
+          }
+
+          func delay(forAttempt attempt: Int) -> TimeInterval {
+              return baseDelay * pow(backoffMultiplier, Double(attempt))
+          }
+
+          func shouldRetry(attempt: Int) -> Bool {
+              return attempt < maxAttempts
+          }
+      }
+  changed_files:
+    APIError.swift: |
+      enum APIError: Error {
+          case networkError
+          case invalidResponse
+          case decodingError
+      }
+    DataLoader.swift: |
+      import Foundation
+
+      struct DataLoader {
+          func load(from url: URL) -> Result<Data, APIError> {
+              guard let data = "test".data(using: .utf8) else {
+                  return .failure(.invalidResponse)
+              }
+              return .success(data)
+          }
+
+          func process(url: URL) {
+              let result = load(from: url)
+              switch result {
+              case .success(let data):
+                  print("Loaded \(data.count) bytes")
+              case .failure(let error):
+                  print("Error: \(error)")
+              }
+          }
+      }
+    NetworkMonitor.swift: |
+      import Foundation
+
+      class NetworkMonitor {
+          enum ConnectionType {
+              case wifi, cellular, none
+          }
+
+          private(set) var isConnected = true
+          private(set) var connectionType: ConnectionType = .wifi
+
+          func startMonitoring() {
+              isConnected = true
+              connectionType = .wifi
+          }
+
+          func stopMonitoring() {
+              isConnected = false
+              connectionType = .none
+          }
+      }
+    RetryPolicy.swift: |
+      import Foundation
+
+      struct RetryPolicy {
+          let maxAttempts: Int
+          let baseDelay: TimeInterval
+          let backoffMultiplier: Double
+
+          init(maxAttempts: Int = 3, baseDelay: TimeInterval = 1.0, backoffMultiplier: Double = 2.0) {
+              self.maxAttempts = maxAttempts
+              self.baseDelay = baseDelay
+              self.backoffMultiplier = backoffMultiplier
+          }
+
+          func delay(forAttempt attempt: Int) -> TimeInterval {
+              return baseDelay * pow(backoffMultiplier, Double(attempt))
+          }
+
+          func shouldRetry(attempt: Int) -> Bool {
+              return attempt < maxAttempts
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: dataloader
+  selector:
+    path: DataLoader.swift
+    anchor: 'func load(from url: URL) -> Result<Data, APIError>'
+- id: dataloader_1
+  selector:
+    path: DataLoader.swift
+    anchor: .failure(.invalidResponse)
+- id: no_networkmonitor
+  selector:
+    path: NetworkMonitor.swift
+- id: no_retrypolicy
+  selector:
+    path: RetryPolicy.swift
+- id: no_global_0
+  selector:
+    anchor: NetworkMonitor
+- id: no_global_1
+  selector:
+    anchor: ConnectionType
+- id: no_global_2
+  selector:
+    anchor: startMonitoring
+- id: no_global_3
+  selector:
+    anchor: RetryPolicy
+- id: no_global_4
+  selector:
+    anchor: backoffMultiplier
+- id: no_global_5
+  selector:
+    anchor: shouldRetry
+oracle:
+  required:
+  - dataloader
+  - dataloader_1
+  allowed: []
+  forbidden:
+  - no_networkmonitor
+  - no_retrypolicy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

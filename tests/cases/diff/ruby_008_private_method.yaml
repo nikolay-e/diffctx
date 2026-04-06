@@ -1,0 +1,202 @@
+name: ruby_008_private_method
+repo:
+  initial_files:
+    lib/service.rb: |
+      class Service
+        def process(data)
+          validated = validate(data)
+          normalized = normalize(validated)
+          transform(normalized)
+        end
+
+        private
+
+        def validate(data)
+          raise ArgumentError, "Data cannot be nil" if data.nil?
+          raise ArgumentError, "Data cannot be empty" if data.empty?
+          data
+        end
+
+        def normalize(data)
+          data.to_s.strip.downcase
+        end
+
+        def transform(data)
+          data.upcase
+        end
+      end
+    app.rb: |
+      puts 'Hello'
+    lib/data_pipeline.rb: |
+      class DataPipeline
+        def initialize
+          @steps = []
+        end
+
+        def add_step(name, &block)
+          @steps << { name: name, transform: block }
+        end
+
+        def execute(input)
+          @steps.reduce(input) do |data, step|
+            step[:transform].call(data)
+          end
+        end
+
+        def step_count
+          @steps.size
+        end
+      end
+    lib/string_utils.rb: |
+      module StringUtils
+        def self.titleize(str)
+          str.split(/[\s_-]/).map(&:capitalize).join(' ')
+        end
+
+        def self.truncate(str, length: 50, omission: '...')
+          return str if str.length <= length
+          str[0, length - omission.length] + omission
+        end
+
+        def self.parameterize(str)
+          str.downcase.gsub(/[^a-z0-9]+/, '-').gsub(/(^-|-$)/, '')
+        end
+
+        def self.camelize(str)
+          str.split('_').map(&:capitalize).join
+        end
+      end
+  changed_files:
+    lib/service.rb: |
+      class Service
+        def process(data)
+          validated = validate(data)
+          normalized = normalize(validated)
+          transform(normalized)
+        end
+
+        private
+
+        def validate(data)
+          raise ArgumentError, "Data cannot be nil" if data.nil?
+          raise ArgumentError, "Data cannot be empty" if data.empty?
+          data
+        end
+
+        def normalize(data)
+          data.to_s.strip.downcase
+        end
+
+        def transform(data)
+          data.upcase
+        end
+      end
+    app.rb: |
+      require_relative 'lib/service'
+
+      service = Service.new
+      result = service.process("  Hello World  ")
+      puts result
+
+      begin
+        service.process(nil)
+      rescue ArgumentError => e
+        puts "Error: #{e.message}"
+      end
+    lib/data_pipeline.rb: |
+      class DataPipeline
+        def initialize
+          @steps = []
+        end
+
+        def add_step(name, &block)
+          @steps << { name: name, transform: block }
+        end
+
+        def execute(input)
+          @steps.reduce(input) do |data, step|
+            step[:transform].call(data)
+          end
+        end
+
+        def step_count
+          @steps.size
+        end
+      end
+    lib/string_utils.rb: |
+      module StringUtils
+        def self.titleize(str)
+          str.split(/[\s_-]/).map(&:capitalize).join(' ')
+        end
+
+        def self.truncate(str, length: 50, omission: '...')
+          return str if str.length <= length
+          str[0, length - omission.length] + omission
+        end
+
+        def self.parameterize(str)
+          str.downcase.gsub(/[^a-z0-9]+/, '-').gsub(/(^-|-$)/, '')
+        end
+
+        def self.camelize(str)
+          str.split('_').map(&:capitalize).join
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.rb
+    anchor: service = Service.new
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: service.process("  Hello World  ")
+- id: service
+  selector:
+    path: lib/service.rb
+    anchor: def validate(data)
+- id: service_1
+  selector:
+    path: lib/service.rb
+    anchor: def normalize(data)
+- id: no_data_pipeline
+  selector:
+    path: lib/data_pipeline.rb
+- id: no_string_utils
+  selector:
+    path: lib/string_utils.rb
+- id: no_global_0
+  selector:
+    anchor: DataPipeline
+- id: no_global_1
+  selector:
+    anchor: add_step
+- id: no_global_2
+  selector:
+    anchor: step_count
+- id: no_global_3
+  selector:
+    anchor: StringUtils
+- id: no_global_4
+  selector:
+    anchor: titleize
+- id: no_global_5
+  selector:
+    anchor: parameterize
+oracle:
+  required:
+  - app
+  - app_1
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_data_pipeline
+  - no_string_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,460 @@
+name: ppr_004_circular_dependencies
+repo:
+  initial_files:
+    cycles/primary_cycle.py: |
+      def cycle_alpha():
+          return cycle_beta()
+
+      def cycle_beta():
+          return cycle_gamma()
+
+      def cycle_gamma():
+          return cycle_alpha()
+
+      def cycle_entry_point():
+          return cycle_alpha()
+
+      def cycle_helper_in_chain():
+          return cycle_beta()
+    cycles/secondary_cycle.py: |
+      def cycle_delta():
+          return cycle_epsilon()
+
+      def cycle_epsilon():
+          return cycle_delta()
+
+      def cycle_zeta():
+          return cycle_epsilon()
+
+      def secondary_entry():
+          return cycle_delta()
+    cycles/tertiary_cycle.py: |
+      def tertiary_cycle_one():
+          return tertiary_cycle_two()
+
+      def tertiary_cycle_two():
+          return tertiary_cycle_three()
+
+      def tertiary_cycle_three():
+          return tertiary_cycle_one()
+
+      def tertiary_entry():
+          return tertiary_cycle_one()
+    isolated_cycles/separate_cycle.py: |
+      def separate_cycle_a():
+          return separate_cycle_b()
+
+      def separate_cycle_b():
+          return separate_cycle_c()
+
+      def separate_cycle_c():
+          return separate_cycle_a()
+
+      def separate_cycle_entry():
+          return separate_cycle_a()
+    isolated_cycles/another_cycle.py: |
+      def another_cycle_x():
+          return another_cycle_y()
+
+      def another_cycle_y():
+          return another_cycle_x()
+
+      def another_cycle_orchestrator():
+          return another_cycle_x()
+    cycles/garbage_cycle_collision.py: |
+      GARBAGE_PPR_004_CYCLE_COLLISION_A = "cycle_collision"
+      GARBAGE_PPR_004_CYCLE_COLLISION_B = False
+
+      def cycle_alpha():
+          return "completely_different_cycle_alpha"
+
+      def cycle_beta():
+          return "completely_different_cycle_beta"
+
+      def cycle_collision_orchestrator():
+          return cycle_alpha() + cycle_beta()
+    cycles/garbage_cycle_sibling.py: |
+      GARBAGE_PPR_004_CYCLE_SIBLING_C = "cycle_sibling"
+      GARBAGE_PPR_004_CYCLE_SIBLING_D = 88
+
+      def sibling_cycle_x():
+          return sibling_cycle_y()
+
+      def sibling_cycle_y():
+          return sibling_cycle_x()
+
+      def sibling_cycle_entry():
+          return sibling_cycle_x()
+    cycles/garbage_cycle_consumer.py: |
+      GARBAGE_PPR_004_CYCLE_IMPORT_E = "cycle_import_consumer"
+      GARBAGE_PPR_004_CYCLE_IMPORT_F = True
+
+      def consume_cycle_output():
+          return "consumed_cycle_result"
+
+      def format_cycle_result(data):
+          return f"cycle_result={data}"
+    garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py: |
+      GARBAGE_CYCLE_MARKER_PPR004 = "cycle_garbage"
+
+      def garbage_cycle_ppr004_one():
+          return garbage_cycle_ppr004_two()
+
+      def garbage_cycle_ppr004_two():
+          return garbage_cycle_ppr004_one()
+
+      def garbage_cycle_entry_ppr004():
+          return garbage_cycle_ppr004_one()
+    garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py: |
+      FAKE_CYCLE_FLAG_PPR004 = True
+
+      def fake_cycle_alpha_ppr004():
+          return fake_cycle_beta_ppr004()
+
+      def fake_cycle_beta_ppr004():
+          return fake_cycle_gamma_ppr004()
+
+      def fake_cycle_gamma_ppr004():
+          return fake_cycle_alpha_ppr004()
+
+      class FakeCycleClassPPR004:
+          def cycle_method_a(self):
+              return self.cycle_method_b()
+
+          def cycle_method_b(self):
+              return self.cycle_method_a()
+    garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py: |
+      DECOY_CYCLE_CONST_PPR004 = 123
+
+      def decoy_cycle_main_ppr004():
+          return decoy_cycle_helper_ppr004()
+
+      def decoy_cycle_helper_ppr004():
+          return decoy_cycle_main_ppr004()
+
+      def decoy_cycle_wrapper_ppr004():
+          return decoy_cycle_main_ppr004() + DECOY_CYCLE_CONST_PPR004
+  changed_files:
+    cycles/primary_cycle.py: |
+      def cycle_alpha():
+          result = cycle_beta()
+          return result + "_modified_cycle"
+
+      def cycle_beta():
+          return cycle_gamma()
+
+      def cycle_gamma():
+          return cycle_alpha()
+
+      def cycle_entry_point():
+          return cycle_alpha()
+
+      def cycle_helper_in_chain():
+          return cycle_beta()
+    cycles/secondary_cycle.py: |
+      def cycle_delta():
+          return cycle_epsilon()
+
+      def cycle_epsilon():
+          return cycle_delta()
+
+      def cycle_zeta():
+          return cycle_epsilon()
+
+      def secondary_entry():
+          return cycle_delta()
+    cycles/tertiary_cycle.py: |
+      def tertiary_cycle_one():
+          return tertiary_cycle_two()
+
+      def tertiary_cycle_two():
+          return tertiary_cycle_three()
+
+      def tertiary_cycle_three():
+          return tertiary_cycle_one()
+
+      def tertiary_entry():
+          return tertiary_cycle_one()
+    isolated_cycles/separate_cycle.py: |
+      def separate_cycle_a():
+          return separate_cycle_b()
+
+      def separate_cycle_b():
+          return separate_cycle_c()
+
+      def separate_cycle_c():
+          return separate_cycle_a()
+
+      def separate_cycle_entry():
+          return separate_cycle_a()
+    isolated_cycles/another_cycle.py: |
+      def another_cycle_x():
+          return another_cycle_y()
+
+      def another_cycle_y():
+          return another_cycle_x()
+
+      def another_cycle_orchestrator():
+          return another_cycle_x()
+    cycles/garbage_cycle_collision.py: |
+      GARBAGE_PPR_004_CYCLE_COLLISION_A = "cycle_collision"
+      GARBAGE_PPR_004_CYCLE_COLLISION_B = False
+
+      def cycle_alpha():
+          return "completely_different_cycle_alpha"
+
+      def cycle_beta():
+          return "completely_different_cycle_beta"
+
+      def cycle_collision_orchestrator():
+          return cycle_alpha() + cycle_beta()
+    cycles/garbage_cycle_sibling.py: |
+      GARBAGE_PPR_004_CYCLE_SIBLING_C = "cycle_sibling"
+      GARBAGE_PPR_004_CYCLE_SIBLING_D = 88
+
+      def sibling_cycle_x():
+          return sibling_cycle_y()
+
+      def sibling_cycle_y():
+          return sibling_cycle_x()
+
+      def sibling_cycle_entry():
+          return sibling_cycle_x()
+    cycles/garbage_cycle_consumer.py: |
+      GARBAGE_PPR_004_CYCLE_IMPORT_E = "cycle_import_consumer"
+      GARBAGE_PPR_004_CYCLE_IMPORT_F = True
+
+      def consume_cycle_output():
+          return "consumed_cycle_result"
+
+      def format_cycle_result(data):
+          return f"cycle_result={data}"
+    garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py: |
+      GARBAGE_CYCLE_MARKER_PPR004 = "cycle_garbage"
+
+      def garbage_cycle_ppr004_one():
+          return garbage_cycle_ppr004_two()
+
+      def garbage_cycle_ppr004_two():
+          return garbage_cycle_ppr004_one()
+
+      def garbage_cycle_entry_ppr004():
+          return garbage_cycle_ppr004_one()
+    garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py: |
+      FAKE_CYCLE_FLAG_PPR004 = True
+
+      def fake_cycle_alpha_ppr004():
+          return fake_cycle_beta_ppr004()
+
+      def fake_cycle_beta_ppr004():
+          return fake_cycle_gamma_ppr004()
+
+      def fake_cycle_gamma_ppr004():
+          return fake_cycle_alpha_ppr004()
+
+      class FakeCycleClassPPR004:
+          def cycle_method_a(self):
+              return self.cycle_method_b()
+
+          def cycle_method_b(self):
+              return self.cycle_method_a()
+    garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py: |
+      DECOY_CYCLE_CONST_PPR004 = 123
+
+      def decoy_cycle_main_ppr004():
+          return decoy_cycle_helper_ppr004()
+
+      def decoy_cycle_helper_ppr004():
+          return decoy_cycle_main_ppr004()
+
+      def decoy_cycle_wrapper_ppr004():
+          return decoy_cycle_main_ppr004() + DECOY_CYCLE_CONST_PPR004
+  commit_message: Update files
+fragments:
+- id: primary_cycle
+  selector:
+    path: cycles/primary_cycle.py
+    anchor: 'def cycle_alpha():'
+- id: primary_cycle_1
+  selector:
+    path: cycles/primary_cycle.py
+    anchor: result = cycle_beta()
+- id: primary_cycle_2
+  selector:
+    path: cycles/primary_cycle.py
+    anchor: return result + "_modified_cycle"
+- id: no_garbage_ppr_b1c2d3_cycle_noise
+  selector:
+    path: garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py
+- id: no_garbage_ppr_e4f5g6_fake_cycle
+  selector:
+    path: garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py
+- id: no_garbage_ppr_h7i8j9_decoy_cycle
+  selector:
+    path: garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py
+- id: no_garbage_cycle_collision
+  selector:
+    path: cycles/garbage_cycle_collision.py
+- id: no_garbage_cycle_sibling
+  selector:
+    path: cycles/garbage_cycle_sibling.py
+- id: no_garbage_cycle_consumer
+  selector:
+    path: cycles/garbage_cycle_consumer.py
+- id: no_separate_cycle
+  selector:
+    path: isolated_cycles/separate_cycle.py
+- id: no_another_cycle
+  selector:
+    path: isolated_cycles/another_cycle.py
+- id: no_global_0
+  selector:
+    anchor: separate_cycle_a
+- id: no_global_1
+  selector:
+    anchor: separate_cycle_b
+- id: no_global_2
+  selector:
+    anchor: separate_cycle_c
+- id: no_global_3
+  selector:
+    anchor: separate_cycle_entry
+- id: no_global_4
+  selector:
+    anchor: another_cycle_x
+- id: no_global_5
+  selector:
+    anchor: another_cycle_y
+- id: no_global_6
+  selector:
+    anchor: another_cycle_orchestrator
+- id: no_global_7
+  selector:
+    anchor: cycle_delta
+- id: no_global_8
+  selector:
+    anchor: cycle_epsilon
+- id: no_global_9
+  selector:
+    anchor: cycle_zeta
+- id: no_global_10
+  selector:
+    anchor: secondary_entry
+- id: no_global_11
+  selector:
+    anchor: tertiary_cycle_one
+- id: no_global_12
+  selector:
+    anchor: tertiary_cycle_two
+- id: no_global_13
+  selector:
+    anchor: tertiary_cycle_three
+- id: no_global_14
+  selector:
+    anchor: tertiary_entry
+- id: no_global_15
+  selector:
+    anchor: GARBAGE_CYCLE_MARKER_PPR004
+- id: no_global_16
+  selector:
+    anchor: garbage_cycle_ppr004_one
+- id: no_global_17
+  selector:
+    anchor: garbage_cycle_ppr004_two
+- id: no_global_18
+  selector:
+    anchor: garbage_cycle_entry_ppr004
+- id: no_global_19
+  selector:
+    anchor: FAKE_CYCLE_FLAG_PPR004
+- id: no_global_20
+  selector:
+    anchor: fake_cycle_alpha_ppr004
+- id: no_global_21
+  selector:
+    anchor: fake_cycle_beta_ppr004
+- id: no_global_22
+  selector:
+    anchor: fake_cycle_gamma_ppr004
+- id: no_global_23
+  selector:
+    anchor: FakeCycleClassPPR004
+- id: no_global_24
+  selector:
+    anchor: DECOY_CYCLE_CONST_PPR004
+- id: no_global_25
+  selector:
+    anchor: decoy_cycle_main_ppr004
+- id: no_global_26
+  selector:
+    anchor: decoy_cycle_helper_ppr004
+- id: no_global_27
+  selector:
+    anchor: decoy_cycle_wrapper_ppr004
+- id: no_global_28
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_COLLISION_A
+- id: no_global_29
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_COLLISION_B
+- id: no_global_30
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_SIBLING_C
+- id: no_global_31
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_SIBLING_D
+- id: no_global_32
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_IMPORT_E
+- id: no_global_33
+  selector:
+    anchor: GARBAGE_PPR_004_CYCLE_IMPORT_F
+oracle:
+  required:
+  - primary_cycle
+  - primary_cycle_1
+  - primary_cycle_2
+  allowed: []
+  forbidden:
+  - no_garbage_ppr_b1c2d3_cycle_noise
+  - no_garbage_ppr_e4f5g6_fake_cycle
+  - no_garbage_ppr_h7i8j9_decoy_cycle
+  - no_garbage_cycle_collision
+  - no_garbage_cycle_sibling
+  - no_garbage_cycle_consumer
+  - no_separate_cycle
+  - no_another_cycle
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21
+  - no_global_22
+  - no_global_23
+  - no_global_24
+  - no_global_25
+  - no_global_26
+  - no_global_27
+  - no_global_28
+  - no_global_29
+  - no_global_30
+  - no_global_31
+  - no_global_32
+  - no_global_33

@@ -1,0 +1,109 @@
+name: terraform_050_lifecycle_prevent_destroy
+repo:
+  initial_files:
+    database.tf: |
+      resource "aws_db_instance" "main" {
+        identifier           = "production-db"
+        engine               = "postgres"
+        engine_version       = "15.4"
+        instance_class       = "db.r5.large"
+        allocated_storage    = 100
+        storage_encrypted    = true
+        deletion_protection  = true
+      }
+    backups.tf: |
+      resource "aws_db_instance" "main" {
+        backup_retention_period = 7
+        backup_window           = "03:00-04:00"
+        maintenance_window      = "mon:04:00-mon:05:00"
+        copy_tags_to_snapshot   = true
+        skip_final_snapshot     = false
+        final_snapshot_identifier = "production-db-final"
+      }
+    main.tf: |
+      resource "aws_instance" "app" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "app-server"
+          DB   = aws_db_instance.main.endpoint
+        }
+      }
+    storage/s3.tf: |
+      resource "aws_s3_bucket" "logs" {
+        bucket = "app-logs-archive"
+
+        lifecycle {
+          prevent_destroy = true
+        }
+      }
+    iam/roles.tf: |
+      resource "aws_iam_role" "lambda" {
+        name               = "lambda-execution-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+  changed_files:
+    database.tf: |
+      resource "aws_db_instance" "main" {
+        identifier           = "production-db"
+        engine               = "postgres"
+        engine_version       = "15.4"
+        instance_class       = "db.r5.large"
+        allocated_storage    = 100
+        storage_encrypted    = true
+        deletion_protection  = true
+
+        lifecycle {
+          prevent_destroy = true
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: database
+  selector:
+    path: database.tf
+    anchor: prevent_destroy = true
+- id: database_1
+  selector:
+    path: database.tf
+    anchor: resource "aws_db_instance" "main" {
+- id: database_2
+  selector:
+    path: database.tf
+    anchor: engine         = "postgres"
+- id: main
+  selector:
+    path: main.tf
+    anchor: aws_db_instance.main.endpoint
+- id: no_s3
+  selector:
+    path: storage/s3.tf
+- id: no_roles
+  selector:
+    path: iam/roles.tf
+- id: no_global_0
+  selector:
+    anchor: app-logs-archive
+- id: no_global_1
+  selector:
+    anchor: lambda-execution-role
+oracle:
+  required:
+  - database
+  - database_1
+  - database_2
+  - main
+  allowed: []
+  forbidden:
+  - no_s3
+  - no_roles
+  - no_global_0
+  - no_global_1

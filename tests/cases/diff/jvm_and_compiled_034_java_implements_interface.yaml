@@ -1,0 +1,408 @@
+name: jvm_and_compiled_034_java_implements_interface
+repo:
+  initial_files:
+    src/main/java/com/example/PaymentProcessor.java: |
+      package com.example;
+
+      public interface PaymentProcessor {
+          boolean process(Payment payment);
+          void refund(String transactionId);
+      }
+    src/main/java/com/example/StripeProcessor.java: |
+      package com.example;
+
+      public class StripeProcessor implements PaymentProcessor {
+          private final String apiKey;
+
+          public StripeProcessor(String apiKey) {
+              this.apiKey = apiKey;
+          }
+
+          @Override
+          public boolean process(Payment payment) {
+              System.out.println("Processing via Stripe: " + payment.getAmount());
+              return true;
+          }
+
+          @Override
+          public void refund(String transactionId) {
+              System.out.println("Refunding via Stripe: " + transactionId);
+          }
+      }
+    src/main/java/com/example/PaymentStatus.java: |
+      package com.example;
+
+      public enum PaymentStatus {
+          PENDING,
+          COMPLETED,
+          FAILED,
+          REFUNDED;
+
+          public boolean isTerminal() {
+              return this == COMPLETED || this == FAILED || this == REFUNDED;
+          }
+      }
+    src/main/java/com/example/shipping/ShippingProcessor.java: |
+      package com.example.shipping;
+
+      public class ShippingProcessor {
+          public boolean process(ShippingOrder order) {
+              System.out.println("Processing shipment: " + order.getTrackingId());
+              return true;
+          }
+
+          public void refund(String trackingId) {
+              System.out.println("Cancelling shipment: " + trackingId);
+          }
+
+          public String getStatus(String trackingId) {
+              return "IN_TRANSIT";
+          }
+      }
+    src/main/java/com/example/PaymentService.java: |
+      package com.example;
+
+      public class PaymentService {
+          private final PaymentProcessor processor;
+
+          public PaymentService(PaymentProcessor processor) {
+              this.processor = processor;
+          }
+
+          public boolean makePayment(Payment payment) {
+              return processor.process(payment);
+          }
+
+          public void issueRefund(String transactionId) {
+              processor.refund(transactionId);
+          }
+      }
+    src/main/java/com/example/gateway/PaymentGateway.java: |
+      package com.example.gateway;
+
+      import java.net.http.HttpClient;
+      import java.net.http.HttpRequest;
+      import java.net.http.HttpResponse;
+      import java.net.URI;
+
+      public class PaymentGateway {
+          private final HttpClient client = HttpClient.newHttpClient();
+          private final String baseUrl;
+
+          public PaymentGateway(String baseUrl) {
+              this.baseUrl = baseUrl;
+          }
+
+          public String charge(String token, double amount) throws Exception {
+              HttpRequest request = HttpRequest.newBuilder()
+                  .uri(URI.create(baseUrl + "/charge"))
+                  .POST(HttpRequest.BodyPublishers.ofString(
+                      "{\"token\":\"" + token + "\",\"amount\":" + amount + "}"))
+                  .build();
+              HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+              return response.body();
+          }
+      }
+    src/main/java/com/example/TransactionLog.java: |
+      package com.example;
+
+      import java.time.LocalDateTime;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TransactionLog {
+          private final List<LogEntry> entries = new ArrayList<>();
+
+          public void log(String transactionId, PaymentStatus status) {
+              entries.add(new LogEntry(transactionId, status, LocalDateTime.now()));
+          }
+
+          public List<LogEntry> getEntries() {
+              return List.copyOf(entries);
+          }
+
+          record LogEntry(String transactionId, PaymentStatus status, LocalDateTime timestamp) {}
+      }
+    src/main/java/com/example/RefundPolicy.java: |
+      package com.example;
+
+      import java.time.Duration;
+      import java.time.LocalDateTime;
+
+      public class RefundPolicy {
+          private static final Duration REFUND_WINDOW = Duration.ofDays(30);
+
+          public boolean isRefundable(LocalDateTime purchaseDate) {
+              return Duration.between(purchaseDate, LocalDateTime.now())
+                  .compareTo(REFUND_WINDOW) <= 0;
+          }
+
+          public double calculateRefundAmount(double originalAmount, int daysSincePurchase) {
+              if (daysSincePurchase <= 7) return originalAmount;
+              if (daysSincePurchase <= 14) return originalAmount * 0.9;
+              return originalAmount * 0.5;
+          }
+      }
+  changed_files:
+    src/main/java/com/example/PaymentProcessor.java: |
+      package com.example;
+
+      public interface PaymentProcessor {
+          boolean process(Payment payment);
+          void refund(String transactionId);
+          PaymentStatus getStatus(String transactionId);
+      }
+    src/main/java/com/example/StripeProcessor.java: |
+      package com.example;
+
+      public class StripeProcessor implements PaymentProcessor {
+          private final String apiKey;
+
+          public StripeProcessor(String apiKey) {
+              this.apiKey = apiKey;
+          }
+
+          @Override
+          public boolean process(Payment payment) {
+              System.out.println("Processing via Stripe: " + payment.getAmount());
+              return true;
+          }
+
+          @Override
+          public void refund(String transactionId) {
+              System.out.println("Refunding via Stripe: " + transactionId);
+          }
+      }
+    src/main/java/com/example/PaymentStatus.java: |
+      package com.example;
+
+      public enum PaymentStatus {
+          PENDING,
+          COMPLETED,
+          FAILED,
+          REFUNDED;
+
+          public boolean isTerminal() {
+              return this == COMPLETED || this == FAILED || this == REFUNDED;
+          }
+      }
+    src/main/java/com/example/shipping/ShippingProcessor.java: |
+      package com.example.shipping;
+
+      public class ShippingProcessor {
+          public boolean process(ShippingOrder order) {
+              System.out.println("Processing shipment: " + order.getTrackingId());
+              return true;
+          }
+
+          public void refund(String trackingId) {
+              System.out.println("Cancelling shipment: " + trackingId);
+          }
+
+          public String getStatus(String trackingId) {
+              return "IN_TRANSIT";
+          }
+      }
+    src/main/java/com/example/PaymentService.java: |
+      package com.example;
+
+      public class PaymentService {
+          private final PaymentProcessor processor;
+
+          public PaymentService(PaymentProcessor processor) {
+              this.processor = processor;
+          }
+
+          public boolean makePayment(Payment payment) {
+              return processor.process(payment);
+          }
+
+          public void issueRefund(String transactionId) {
+              processor.refund(transactionId);
+          }
+      }
+    src/main/java/com/example/gateway/PaymentGateway.java: |
+      package com.example.gateway;
+
+      import java.net.http.HttpClient;
+      import java.net.http.HttpRequest;
+      import java.net.http.HttpResponse;
+      import java.net.URI;
+
+      public class PaymentGateway {
+          private final HttpClient client = HttpClient.newHttpClient();
+          private final String baseUrl;
+
+          public PaymentGateway(String baseUrl) {
+              this.baseUrl = baseUrl;
+          }
+
+          public String charge(String token, double amount) throws Exception {
+              HttpRequest request = HttpRequest.newBuilder()
+                  .uri(URI.create(baseUrl + "/charge"))
+                  .POST(HttpRequest.BodyPublishers.ofString(
+                      "{\"token\":\"" + token + "\",\"amount\":" + amount + "}"))
+                  .build();
+              HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+              return response.body();
+          }
+      }
+    src/main/java/com/example/TransactionLog.java: |
+      package com.example;
+
+      import java.time.LocalDateTime;
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class TransactionLog {
+          private final List<LogEntry> entries = new ArrayList<>();
+
+          public void log(String transactionId, PaymentStatus status) {
+              entries.add(new LogEntry(transactionId, status, LocalDateTime.now()));
+          }
+
+          public List<LogEntry> getEntries() {
+              return List.copyOf(entries);
+          }
+
+          record LogEntry(String transactionId, PaymentStatus status, LocalDateTime timestamp) {}
+      }
+    src/main/java/com/example/RefundPolicy.java: |
+      package com.example;
+
+      import java.time.Duration;
+      import java.time.LocalDateTime;
+
+      public class RefundPolicy {
+          private static final Duration REFUND_WINDOW = Duration.ofDays(30);
+
+          public boolean isRefundable(LocalDateTime purchaseDate) {
+              return Duration.between(purchaseDate, LocalDateTime.now())
+                  .compareTo(REFUND_WINDOW) <= 0;
+          }
+
+          public double calculateRefundAmount(double originalAmount, int daysSincePurchase) {
+              if (daysSincePurchase <= 7) return originalAmount;
+              if (daysSincePurchase <= 14) return originalAmount * 0.9;
+              return originalAmount * 0.5;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: paymentprocessor
+  selector:
+    path: src/main/java/com/example/PaymentProcessor.java
+    anchor: PaymentStatus getStatus(String transactionId)
+- id: paymentprocessor_1
+  selector:
+    path: src/main/java/com/example/PaymentProcessor.java
+    anchor: boolean process(Payment payment)
+- id: paymentprocessor_2
+  selector:
+    path: src/main/java/com/example/PaymentProcessor.java
+    anchor: void refund(String transactionId)
+- id: stripeprocessor
+  selector:
+    path: src/main/java/com/example/StripeProcessor.java
+    anchor: implements PaymentProcessor
+- id: stripeprocessor_1
+  selector:
+    path: src/main/java/com/example/StripeProcessor.java
+    anchor: public boolean process(Payment payment)
+- id: no_shippingprocessor
+  selector:
+    path: src/main/java/com/example/shipping/ShippingProcessor.java
+- id: no_paymentservice
+  selector:
+    path: src/main/java/com/example/PaymentService.java
+- id: no_paymentgateway
+  selector:
+    path: src/main/java/com/example/gateway/PaymentGateway.java
+- id: no_transactionlog
+  selector:
+    path: src/main/java/com/example/TransactionLog.java
+- id: no_refundpolicy
+  selector:
+    path: src/main/java/com/example/RefundPolicy.java
+- id: no_global_0
+  selector:
+    anchor: ShippingProcessor
+- id: no_global_1
+  selector:
+    anchor: ShippingOrder
+- id: no_global_2
+  selector:
+    anchor: IN_TRANSIT
+- id: no_global_3
+  selector:
+    anchor: getTrackingId
+- id: no_global_4
+  selector:
+    anchor: PaymentService
+- id: no_global_5
+  selector:
+    anchor: makePayment
+- id: no_global_6
+  selector:
+    anchor: issueRefund
+- id: no_global_7
+  selector:
+    anchor: PaymentGateway
+- id: no_global_8
+  selector:
+    anchor: HttpClient
+- id: no_global_9
+  selector:
+    anchor: charge
+- id: no_global_10
+  selector:
+    anchor: TransactionLog
+- id: no_global_11
+  selector:
+    anchor: LogEntry
+- id: no_global_12
+  selector:
+    anchor: getEntries
+- id: no_global_13
+  selector:
+    anchor: RefundPolicy
+- id: no_global_14
+  selector:
+    anchor: isRefundable
+- id: no_global_15
+  selector:
+    anchor: calculateRefundAmount
+- id: no_global_16
+  selector:
+    anchor: REFUND_WINDOW
+oracle:
+  required:
+  - paymentprocessor
+  - paymentprocessor_1
+  - paymentprocessor_2
+  - stripeprocessor
+  - stripeprocessor_1
+  allowed: []
+  forbidden:
+  - no_shippingprocessor
+  - no_paymentservice
+  - no_paymentgateway
+  - no_transactionlog
+  - no_refundpolicy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

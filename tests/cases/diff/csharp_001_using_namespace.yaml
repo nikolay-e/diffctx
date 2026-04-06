@@ -1,0 +1,400 @@
+name: csharp_001_using_namespace
+repo:
+  initial_files:
+    Utilities/StringHelper.cs: |
+      using System;
+      using System.Linq;
+
+      namespace MyApp.Utilities;
+
+      public static class StringHelper
+      {
+          public static string Capitalize(string input)
+          {
+              if (string.IsNullOrEmpty(input)) return input;
+              return char.ToUpper(input[0]) + input.Substring(1);
+          }
+
+          public static string Reverse(string input)
+          {
+              char[] chars = input.ToCharArray();
+              Array.Reverse(chars);
+              return new string(chars);
+          }
+
+          public static string ToCamelCase(string input)
+          {
+              var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+              return string.Join("", words.Select((w, i) =>
+                  i == 0 ? w.ToLower() : Capitalize(w)));
+          }
+      }
+    Program.cs: |
+      using System;
+
+      class Program
+      {
+          static void Main()
+          {
+              Console.WriteLine("Starting application");
+          }
+      }
+    Formatting/StringHelper.cs: |
+      using System;
+
+      namespace MyApp.Formatting;
+
+      // GARBAGE_CS_001_FMT_HELPER_C
+      public static class StringHelper
+      {
+          // GARBAGE_CS_001_FMT_CAP_D
+          public static string Capitalize(string input)
+          {
+              return input.ToUpper();
+          }
+
+          public static string ToCamelCase(string input)
+          {
+              // GARBAGE_CS_001_FMT_CAMEL_E
+              return input.Replace(" ", "");
+          }
+
+          public static string ToSnakeCase(string input)
+          {
+              // GARBAGE_CS_001_FMT_SNAKE_F
+              return input.Replace(" ", "_").ToLower();
+          }
+      }
+    Services/NameFormatter.cs: |
+      using System;
+      using MyApp.Utilities;
+
+      namespace MyApp.Services;
+
+      // GARBAGE_CS_001_NAME_FMT_G
+      public class NameFormatter
+      {
+          public string FormatDisplayName(string first, string last)
+          {
+              // GARBAGE_CS_001_NAME_DISPLAY_H
+              var capitalized = StringHelper.Capitalize(first);
+              var camel = StringHelper.ToCamelCase($"{first} {last}");
+              return $"{capitalized} ({camel})";
+          }
+
+          public string FormatUsername(string name)
+          {
+              // GARBAGE_CS_001_NAME_USER_I
+              return StringHelper.ToCamelCase(name);
+          }
+      }
+    Tests/ProgramTests.cs: |
+      using System;
+      using MyApp.Utilities;
+      using Xunit;
+
+      namespace MyApp.Tests;
+
+      // GARBAGE_CS_001_TEST_PROG_J
+      public class ProgramTests
+      {
+          [Fact]
+          public void Main_ProducesExpectedOutput()
+          {
+              // GARBAGE_CS_001_TEST_ASSERT_K
+              var result = StringHelper.Capitalize("hello");
+              Assert.Equal("Hello", result);
+          }
+
+          [Fact]
+          public void CamelCase_ProducesExpectedOutput()
+          {
+              // GARBAGE_CS_001_TEST_CAMEL_L
+              var camel = StringHelper.ToCamelCase("hello world example");
+              Assert.Equal("helloWorldExample", camel);
+          }
+      }
+    Unrelated/CacheWarmer.cs: |
+      using System;
+
+      namespace MyApp.Unrelated;
+
+      public class CacheWarmer
+      {
+          private const string GARBAGE_CS_001_CACHE_WARMER_A = "cache_warmup_marker";
+
+          public void WarmUp()
+          {
+              Console.WriteLine(GARBAGE_CS_001_CACHE_WARMER_A);
+          }
+      }
+    Unrelated/HealthCheck.cs: |
+      using System;
+
+      namespace MyApp.Unrelated;
+
+      public class HealthCheck
+      {
+          private const string GARBAGE_CS_001_HEALTH_CHECK_B = "health_check_marker";
+
+          public bool IsHealthy()
+          {
+              Console.WriteLine(GARBAGE_CS_001_HEALTH_CHECK_B);
+              return true;
+          }
+      }
+  changed_files:
+    Utilities/StringHelper.cs: |
+      using System;
+      using System.Linq;
+
+      namespace MyApp.Utilities;
+
+      public static class StringHelper
+      {
+          public static string Capitalize(string input)
+          {
+              if (string.IsNullOrEmpty(input)) return input;
+              return char.ToUpper(input[0]) + input.Substring(1);
+          }
+
+          public static string Reverse(string input)
+          {
+              char[] chars = input.ToCharArray();
+              Array.Reverse(chars);
+              return new string(chars);
+          }
+
+          public static string ToCamelCase(string input)
+          {
+              var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+              return string.Join("", words.Select((w, i) =>
+                  i == 0 ? w.ToLower() : Capitalize(w)));
+          }
+      }
+    Program.cs: |
+      using System;
+      using MyApp.Utilities;
+
+      class Program
+      {
+          static void Main()
+          {
+              var result = StringHelper.Capitalize("hello");
+              var camel = StringHelper.ToCamelCase("hello world example");
+              Console.WriteLine($"{result} - {camel}");
+          }
+      }
+    Formatting/StringHelper.cs: |
+      using System;
+
+      namespace MyApp.Formatting;
+
+      // GARBAGE_CS_001_FMT_HELPER_C
+      public static class StringHelper
+      {
+          // GARBAGE_CS_001_FMT_CAP_D
+          public static string Capitalize(string input)
+          {
+              return input.ToUpper();
+          }
+
+          public static string ToCamelCase(string input)
+          {
+              // GARBAGE_CS_001_FMT_CAMEL_E
+              return input.Replace(" ", "");
+          }
+
+          public static string ToSnakeCase(string input)
+          {
+              // GARBAGE_CS_001_FMT_SNAKE_F
+              return input.Replace(" ", "_").ToLower();
+          }
+      }
+    Services/NameFormatter.cs: |
+      using System;
+      using MyApp.Utilities;
+
+      namespace MyApp.Services;
+
+      // GARBAGE_CS_001_NAME_FMT_G
+      public class NameFormatter
+      {
+          public string FormatDisplayName(string first, string last)
+          {
+              // GARBAGE_CS_001_NAME_DISPLAY_H
+              var capitalized = StringHelper.Capitalize(first);
+              var camel = StringHelper.ToCamelCase($"{first} {last}");
+              return $"{capitalized} ({camel})";
+          }
+
+          public string FormatUsername(string name)
+          {
+              // GARBAGE_CS_001_NAME_USER_I
+              return StringHelper.ToCamelCase(name);
+          }
+      }
+    Tests/ProgramTests.cs: |
+      using System;
+      using MyApp.Utilities;
+      using Xunit;
+
+      namespace MyApp.Tests;
+
+      // GARBAGE_CS_001_TEST_PROG_J
+      public class ProgramTests
+      {
+          [Fact]
+          public void Main_ProducesExpectedOutput()
+          {
+              // GARBAGE_CS_001_TEST_ASSERT_K
+              var result = StringHelper.Capitalize("hello");
+              Assert.Equal("Hello", result);
+          }
+
+          [Fact]
+          public void CamelCase_ProducesExpectedOutput()
+          {
+              // GARBAGE_CS_001_TEST_CAMEL_L
+              var camel = StringHelper.ToCamelCase("hello world example");
+              Assert.Equal("helloWorldExample", camel);
+          }
+      }
+    Unrelated/CacheWarmer.cs: |
+      using System;
+
+      namespace MyApp.Unrelated;
+
+      public class CacheWarmer
+      {
+          private const string GARBAGE_CS_001_CACHE_WARMER_A = "cache_warmup_marker";
+
+          public void WarmUp()
+          {
+              Console.WriteLine(GARBAGE_CS_001_CACHE_WARMER_A);
+          }
+      }
+    Unrelated/HealthCheck.cs: |
+      using System;
+
+      namespace MyApp.Unrelated;
+
+      public class HealthCheck
+      {
+          private const string GARBAGE_CS_001_HEALTH_CHECK_B = "health_check_marker";
+
+          public bool IsHealthy()
+          {
+              Console.WriteLine(GARBAGE_CS_001_HEALTH_CHECK_B);
+              return true;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: program
+  selector:
+    path: Program.cs
+    anchor: using MyApp.Utilities;
+- id: program_1
+  selector:
+    path: Program.cs
+    anchor: var result = StringHelper.Capitalize("hello");
+- id: program_2
+  selector:
+    path: Program.cs
+    anchor: var camel = StringHelper.ToCamelCase("hello world example");
+- id: program_3
+  selector:
+    path: Program.cs
+    anchor: Console.WriteLine($"{result} - {camel}")
+- id: stringhelper
+  selector:
+    path: Utilities/StringHelper.cs
+    anchor: public static string Capitalize(string input)
+- id: stringhelper_1
+  selector:
+    path: Utilities/StringHelper.cs
+    anchor: return char.ToUpper(input[0]) + input.Substring(1);
+- id: stringhelper_2
+  selector:
+    path: Utilities/StringHelper.cs
+    anchor: public static string ToCamelCase(string input)
+- id: no_stringhelper
+  selector:
+    path: Formatting/StringHelper.cs
+- id: no_nameformatter
+  selector:
+    path: Services/NameFormatter.cs
+- id: no_programtests
+  selector:
+    path: Tests/ProgramTests.cs
+- id: no_cachewarmer
+  selector:
+    path: Unrelated/CacheWarmer.cs
+- id: no_healthcheck
+  selector:
+    path: Unrelated/HealthCheck.cs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_001_CACHE_WARMER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_001_HEALTH_CHECK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CS_001_FMT_HELPER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CS_001_FMT_CAP_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CS_001_FMT_CAMEL_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CS_001_FMT_SNAKE_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CS_001_NAME_FMT_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CS_001_NAME_DISPLAY_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CS_001_NAME_USER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CS_001_TEST_PROG_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_CS_001_TEST_ASSERT_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_CS_001_TEST_CAMEL_L
+oracle:
+  required:
+  - program
+  - program_1
+  - program_2
+  - program_3
+  - stringhelper
+  - stringhelper_1
+  - stringhelper_2
+  allowed: []
+  forbidden:
+  - no_stringhelper
+  - no_nameformatter
+  - no_programtests
+  - no_cachewarmer
+  - no_healthcheck
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

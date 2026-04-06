@@ -1,0 +1,138 @@
+name: cicd_and_docs_014_gha_permissions
+repo:
+  initial_files:
+    .github/workflows/release.yml: |
+      name: Release
+      on:
+        push:
+          tags: ['v*']
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm run build
+            - run: echo "release"
+    package.json: |
+      {
+        "name": "release-automation",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "release": "./scripts/release.sh"
+        }
+      }
+    scripts/release.sh: |
+      #!/bin/bash
+      set -e
+      echo "Creating release..."
+      npm pack
+    garbage_rbac.ts: |
+      const GARBAGE_CICD_DOCS_014_RBAC_MARKER_A = "admin";
+      const GARBAGE_CICD_DOCS_014_SCOPE_MARKER_B = "repo:write";
+
+      class GarbageRBACService {
+        static GARBAGE_CICD_DOCS_014_INHERIT_MARKER_C = true;
+        checkPermission(): boolean { return false; }
+      }
+    garbage_access.ts: |
+      const GARBAGE_CICD_DOCS_014_ACCESS_MARKER_D = "token";
+      const GARBAGE_CICD_DOCS_014_EXPIRY_MARKER_E = 3600;
+
+      class GarbageAccessControl {
+        static GARBAGE_CICD_DOCS_014_AUDIT_MARKER_F = true;
+        grant(): void {}
+      }
+  changed_files:
+    .github/workflows/release.yml: |
+      name: Release
+      on:
+        push:
+          tags: ['v*']
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          permissions:
+            contents: write
+            packages: write
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm run build
+            - name: Create Release
+              uses: softprops/action-gh-release@v1
+    package.json: |
+      {
+        "name": "release-automation",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "tsc",
+          "release": "./scripts/release.sh"
+        }
+      }
+    scripts/release.sh: |
+      #!/bin/bash
+      set -e
+      echo "Creating release..."
+      npm pack
+    garbage_rbac.ts: |
+      const GARBAGE_CICD_DOCS_014_RBAC_MARKER_A = "admin";
+      const GARBAGE_CICD_DOCS_014_SCOPE_MARKER_B = "repo:write";
+
+      class GarbageRBACService {
+        static GARBAGE_CICD_DOCS_014_INHERIT_MARKER_C = true;
+        checkPermission(): boolean { return false; }
+      }
+    garbage_access.ts: |
+      const GARBAGE_CICD_DOCS_014_ACCESS_MARKER_D = "token";
+      const GARBAGE_CICD_DOCS_014_EXPIRY_MARKER_E = 3600;
+
+      class GarbageAccessControl {
+        static GARBAGE_CICD_DOCS_014_AUDIT_MARKER_F = true;
+        grant(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: release_file
+  selector:
+    path: .github/workflows/release.yml
+- id: req_global_0
+  selector:
+    anchor: 'contents: write'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_ACCESS_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_AUDIT_MARKER_F
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_EXPIRY_MARKER_E
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_INHERIT_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_RBAC_MARKER_A
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_014_SCOPE_MARKER_B
+- id: no_global_6
+  selector:
+    anchor: garbage_access.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_rbac.ts
+oracle:
+  required:
+  - release_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

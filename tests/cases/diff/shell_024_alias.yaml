@@ -1,0 +1,278 @@
+name: shell_024_alias
+repo:
+  initial_files:
+    lib/aliases.sh: |
+      #!/bin/bash
+
+      alias ll='ls -la'
+      alias la='ls -A'
+      alias grep='grep --color=auto'
+      alias df='df -h'
+
+      alias gs='git status'
+      alias gc='git commit'
+      alias gp='git push'
+      alias gl='git log --oneline -10'
+    interactive.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+      source ./lib/aliases.sh
+
+      echo "Aliases loaded successfully"
+    completions.sh: |
+      #!/bin/bash
+
+      _complete_deploy() {
+          local cur="${COMP_WORDS[COMP_CWORD]}"
+          COMPREPLY=( $(compgen -W "staging production canary" -- "$cur") )
+      }
+      complete -F _complete_deploy deploy
+
+      _complete_service() {
+          local cur="${COMP_WORDS[COMP_CWORD]}"
+          COMPREPLY=( $(compgen -W "start stop restart status" -- "$cur") )
+      }
+      complete -F _complete_service svc
+    keybindings.sh: |
+      #!/bin/bash
+
+      bind '"\e[A": history-search-backward'
+      bind '"\e[B": history-search-forward'
+      bind '"\C-r": reverse-search-history'
+
+      setup_vi_mode() {
+          set -o vi
+          bind -m vi-insert '"\C-l": clear-screen'
+      }
+    scripts/git_workflow.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+      source ./lib/aliases.sh
+
+      echo "=== Daily Git Workflow ==="
+      gs
+      echo "---"
+      gl
+
+      read -p "Commit message: " msg
+      gc -m "$msg"
+      gp
+
+      echo "=== Updated Status ==="
+      gs
+    scripts/shell_setup.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+
+      echo "Loading shell environment..."
+      source ./lib/aliases.sh
+      source ./completions.sh
+      source ./keybindings.sh
+
+      echo "Shell setup complete"
+      echo "Aliases: ll, la, gs, gc, gp, gl"
+      echo "Completions: deploy, svc"
+      echo "Keybindings: vi-mode ready"
+    lib/git_aliases.sh: |
+      #!/bin/bash
+
+      alias gd='git diff'
+      alias gds='git diff --staged'
+      alias gb='git branch'
+      alias gco='git checkout'
+      alias gst='git stash'
+      alias gsp='git stash pop'
+      alias glog='git log --graph --oneline --all'
+  changed_files:
+    lib/aliases.sh: |
+      #!/bin/bash
+
+      alias ll='ls -la'
+      alias la='ls -A'
+      alias grep='grep --color=auto'
+      alias df='df -h'
+
+      alias gs='git status'
+      alias gc='git commit'
+      alias gp='git push'
+      alias gl='git log --oneline -10'
+    interactive.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+      source ./lib/aliases.sh
+
+      echo "=== Directory listing ==="
+      ll /tmp
+
+      echo "=== Git status ==="
+      gs
+
+      echo "=== Disk usage ==="
+      df
+    completions.sh: |
+      #!/bin/bash
+
+      _complete_deploy() {
+          local cur="${COMP_WORDS[COMP_CWORD]}"
+          COMPREPLY=( $(compgen -W "staging production canary" -- "$cur") )
+      }
+      complete -F _complete_deploy deploy
+
+      _complete_service() {
+          local cur="${COMP_WORDS[COMP_CWORD]}"
+          COMPREPLY=( $(compgen -W "start stop restart status" -- "$cur") )
+      }
+      complete -F _complete_service svc
+    keybindings.sh: |
+      #!/bin/bash
+
+      bind '"\e[A": history-search-backward'
+      bind '"\e[B": history-search-forward'
+      bind '"\C-r": reverse-search-history'
+
+      setup_vi_mode() {
+          set -o vi
+          bind -m vi-insert '"\C-l": clear-screen'
+      }
+    scripts/git_workflow.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+      source ./lib/aliases.sh
+
+      echo "=== Daily Git Workflow ==="
+      gs
+      echo "---"
+      gl
+
+      read -p "Commit message: " msg
+      gc -m "$msg"
+      gp
+
+      echo "=== Updated Status ==="
+      gs
+    scripts/shell_setup.sh: |
+      #!/bin/bash
+      shopt -s expand_aliases
+
+      echo "Loading shell environment..."
+      source ./lib/aliases.sh
+      source ./completions.sh
+      source ./keybindings.sh
+
+      echo "Shell setup complete"
+      echo "Aliases: ll, la, gs, gc, gp, gl"
+      echo "Completions: deploy, svc"
+      echo "Keybindings: vi-mode ready"
+    lib/git_aliases.sh: |
+      #!/bin/bash
+
+      alias gd='git diff'
+      alias gds='git diff --staged'
+      alias gb='git branch'
+      alias gco='git checkout'
+      alias gst='git stash'
+      alias gsp='git stash pop'
+      alias glog='git log --graph --oneline --all'
+  commit_message: Update files
+fragments:
+- id: aliases
+  selector:
+    path: lib/aliases.sh
+    anchor: alias ll='ls -la'
+- id: aliases_1
+  selector:
+    path: lib/aliases.sh
+    anchor: alias gs='git status'
+- id: aliases_2
+  selector:
+    path: lib/aliases.sh
+    anchor: alias df='df -h'
+- id: interactive
+  selector:
+    path: interactive.sh
+    anchor: source ./lib/aliases.sh
+- id: interactive_1
+  selector:
+    path: interactive.sh
+    anchor: ll /tmp
+- id: no_completions
+  selector:
+    path: completions.sh
+- id: no_keybindings
+  selector:
+    path: keybindings.sh
+- id: no_git_workflow
+  selector:
+    path: scripts/git_workflow.sh
+- id: no_shell_setup
+  selector:
+    path: scripts/shell_setup.sh
+- id: no_git_aliases
+  selector:
+    path: lib/git_aliases.sh
+- id: no_global_0
+  selector:
+    anchor: _complete_deploy
+- id: no_global_1
+  selector:
+    anchor: _complete_service
+- id: no_global_2
+  selector:
+    anchor: compgen -W
+- id: no_global_3
+  selector:
+    anchor: history-search-backward
+- id: no_global_4
+  selector:
+    anchor: setup_vi_mode
+- id: no_global_5
+  selector:
+    anchor: Daily Git Workflow
+- id: no_global_6
+  selector:
+    anchor: 'Commit message:'
+- id: no_global_7
+  selector:
+    anchor: Updated Status
+- id: no_global_8
+  selector:
+    anchor: Loading shell environment
+- id: no_global_9
+  selector:
+    anchor: Shell setup complete
+- id: no_global_10
+  selector:
+    anchor: alias gd=
+- id: no_global_11
+  selector:
+    anchor: alias gco=
+- id: no_global_12
+  selector:
+    anchor: alias glog=
+oracle:
+  required:
+  - aliases
+  - aliases_1
+  - aliases_2
+  - interactive
+  - interactive_1
+  allowed: []
+  forbidden:
+  - no_completions
+  - no_keybindings
+  - no_git_workflow
+  - no_shell_setup
+  - no_git_aliases
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

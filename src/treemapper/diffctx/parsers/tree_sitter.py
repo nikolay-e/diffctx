@@ -208,11 +208,14 @@ class TreeSitterStrategy:
 
         sym_name = self._extract_symbol_name(node)
 
-        parent = node.parent
-        if parent is not None and parent.type in ("export_statement", "decorated_definition"):
-            parent_start = parent.start_point[0] + 1
-            if parent_start < start:
-                start = parent_start
+        ancestor = node.parent
+        if ancestor is not None and ancestor.type not in ("export_statement", "decorated_definition"):
+            if ancestor.parent is not None and ancestor.parent.type in ("export_statement", "decorated_definition"):
+                ancestor = ancestor.parent
+        if ancestor is not None and ancestor.type in ("export_statement", "decorated_definition"):
+            ancestor_start = ancestor.start_point[0] + 1
+            if ancestor_start < start:
+                start = ancestor_start
 
         if kind in _CONTAINER_KINDS and self._try_container_split(
             node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth, start, end, kind, sym_name

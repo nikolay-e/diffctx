@@ -1,0 +1,217 @@
+name: bazel_001_build_deps
+repo:
+  initial_files:
+    app/BUILD: |
+      py_library(
+          name = "app",
+          srcs = ["main.py"],
+          deps = [
+              "//libs/database:client",
+          ],
+          visibility = ["//visibility:public"],
+      )
+    app/main.py: |
+      from libs.database.client import DatabaseClient
+
+      class Application:
+          def __init__(self):
+              self.db = DatabaseClient()
+
+          def run(self):
+              self.db.connect()
+              records = self.db.query("SELECT * FROM users")
+              return records
+    libs/database/BUILD: |
+      py_library(
+          name = "client",
+          srcs = ["client.py"],
+          visibility = ["//visibility:public"],
+      )
+    libs/database/client.py: |
+      class DatabaseClient:
+          def connect(self):
+              pass
+
+          def query(self, sql):
+              return []
+    libs/utils/BUILD: |
+      py_library(
+          name = "utils",
+          srcs = ["utils.py"],
+          visibility = ["//visibility:public"],
+      )
+    libs/utils/utils.py: |
+      def parse_config(path):
+          with open(path) as f:
+              return dict(line.strip().split("=") for line in f if "=" in line)
+
+      def validate_input(data, schema):
+          for key in schema:
+              if key not in data:
+                  raise ValueError(f"Missing required key: {key}")
+          return True
+    libs/logging/BUILD: |
+      py_library(
+          name = "logging",
+          srcs = ["logger.py"],
+          deps = [],
+          GARBAGE_BAZEL_001_A = "noise_logging_build",
+          visibility = ["//visibility:public"],
+      )
+    libs/logging/logger.py: |
+      GARBAGE_BAZEL_001_B = "noise_logging_module"
+
+      class Logger:
+          def info(self, msg):
+              print(f"INFO: {msg}")
+
+          def error(self, msg):
+              print(f"ERROR: {msg}")
+    other/BUILD: |
+      py_binary(
+          name = "cli",
+          srcs = ["cli.py"],
+          deps = ["//libs/logging:logging"],
+          GARBAGE_BAZEL_001_C = "noise_other_build",
+      )
+    other/cli.py: |
+      GARBAGE_BAZEL_001_D = "noise_other_cli"
+      from libs.logging.logger import Logger
+      logger = Logger()
+      logger.info("Starting CLI")
+  changed_files:
+    app/BUILD: |
+      py_library(
+          name = "app",
+          srcs = ["main.py"],
+          deps = [
+              "//libs/database:client",
+              "//libs/utils:utils",
+          ],
+          visibility = ["//visibility:public"],
+      )
+    app/main.py: |
+      from libs.database.client import DatabaseClient
+      from libs.utils.utils import parse_config, validate_input
+
+      class Application:
+          def __init__(self, config_path="app.conf"):
+              self.db = DatabaseClient()
+              self.config = parse_config(config_path)
+
+          def run(self):
+              validate_input(self.config, ["host", "port"])
+              self.db.connect()
+              records = self.db.query("SELECT * FROM users")
+              return records
+    libs/database/BUILD: |
+      py_library(
+          name = "client",
+          srcs = ["client.py"],
+          visibility = ["//visibility:public"],
+      )
+    libs/database/client.py: |
+      class DatabaseClient:
+          def connect(self):
+              pass
+
+          def query(self, sql):
+              return []
+    libs/utils/BUILD: |
+      py_library(
+          name = "utils",
+          srcs = ["utils.py"],
+          visibility = ["//visibility:public"],
+      )
+    libs/utils/utils.py: |
+      def parse_config(path):
+          with open(path) as f:
+              return dict(line.strip().split("=") for line in f if "=" in line)
+
+      def validate_input(data, schema):
+          for key in schema:
+              if key not in data:
+                  raise ValueError(f"Missing required key: {key}")
+          return True
+    libs/logging/BUILD: |
+      py_library(
+          name = "logging",
+          srcs = ["logger.py"],
+          deps = [],
+          GARBAGE_BAZEL_001_A = "noise_logging_build",
+          visibility = ["//visibility:public"],
+      )
+    libs/logging/logger.py: |
+      GARBAGE_BAZEL_001_B = "noise_logging_module"
+
+      class Logger:
+          def info(self, msg):
+              print(f"INFO: {msg}")
+
+          def error(self, msg):
+              print(f"ERROR: {msg}")
+    other/BUILD: |
+      py_binary(
+          name = "cli",
+          srcs = ["cli.py"],
+          deps = ["//libs/logging:logging"],
+          GARBAGE_BAZEL_001_C = "noise_other_build",
+      )
+    other/cli.py: |
+      GARBAGE_BAZEL_001_D = "noise_other_cli"
+      from libs.logging.logger import Logger
+      logger = Logger()
+      logger.info("Starting CLI")
+  commit_message: Update files
+fragments:
+- id: build
+  selector:
+    path: app/BUILD
+    anchor: //libs/utils:utils
+- id: utils
+  selector:
+    path: libs/utils/utils.py
+    anchor: parse_config
+- id: utils_1
+  selector:
+    path: libs/utils/utils.py
+    anchor: validate_input
+- id: no_build
+  selector:
+    path: libs/logging/BUILD
+- id: no_logger
+  selector:
+    path: libs/logging/logger.py
+- id: no_build_1
+  selector:
+    path: other/BUILD
+- id: no_cli
+  selector:
+    path: other/cli.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAZEL_001_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAZEL_001_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAZEL_001_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAZEL_001_D
+oracle:
+  required:
+  - build
+  - utils
+  - utils_1
+  allowed: []
+  forbidden:
+  - no_build
+  - no_logger
+  - no_build_1
+  - no_cli
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

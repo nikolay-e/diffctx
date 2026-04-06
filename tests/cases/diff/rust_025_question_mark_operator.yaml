@@ -1,0 +1,336 @@
+name: rust_025_question_mark_operator
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod errors;
+      pub mod parser;
+      pub mod http_client;
+      pub mod file_watcher;
+      pub mod error_handler;
+      pub mod network;
+      pub mod validator;
+    src/errors.rs: |
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub enum AppError {
+          IoError(std::io::Error),
+          ParseError(String),
+      }
+
+      impl fmt::Display for AppError {
+          fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+              match self {
+                  AppError::IoError(e) => write!(f, "IO error: {}", e),
+                  AppError::ParseError(s) => write!(f, "Parse error: {}", s),
+              }
+          }
+      }
+
+      impl std::error::Error for AppError {}
+
+      impl From<std::io::Error> for AppError {
+          fn from(e: std::io::Error) -> Self {
+              AppError::IoError(e)
+          }
+      }
+    src/parser.rs: |
+      use crate::errors::AppError;
+      use std::fs;
+
+      pub fn parse_file(path: &str) -> Result<String, AppError> {
+          let content = fs::read_to_string(path)?;
+          if content.is_empty() {
+              return Err(AppError::ParseError("File is empty".to_string()));
+          }
+          Ok(content.trim().to_string())
+      }
+
+      pub fn parse_config(path: &str) -> Result<Vec<String>, AppError> {
+          let content = parse_file(path)?;
+          let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+          Ok(lines)
+      }
+    src/http_client.rs: |
+      use std::collections::HashMap;
+
+      #[derive(Debug)]
+      pub enum HttpError {
+          ConnectionRefused(String),
+          Timeout,
+          StatusCode(u16),
+          NetworkError(String),
+      }
+
+      pub struct HttpClient {
+          base_url: String,
+          headers: HashMap<String, String>,
+      }
+
+      impl HttpClient {
+          pub fn new(base_url: &str) -> Self {
+              Self {
+                  base_url: base_url.to_string(),
+                  headers: HashMap::new(),
+              }
+          }
+
+          pub fn get(&self, path: &str) -> Result<String, HttpError> {
+              Err(HttpError::ConnectionRefused(format!("{}{}", self.base_url, path)))
+          }
+
+          pub fn post(&self, path: &str, body: &str) -> Result<String, HttpError> {
+              Err(HttpError::Timeout)
+          }
+      }
+    src/file_watcher.rs: |
+      use std::path::PathBuf;
+      use std::time::Duration;
+
+      pub struct FileWatcher {
+          paths: Vec<PathBuf>,
+          poll_interval: Duration,
+      }
+
+      impl FileWatcher {
+          pub fn new(poll_interval: Duration) -> Self {
+              Self {
+                  paths: Vec::new(),
+                  poll_interval,
+              }
+          }
+
+          pub fn watch(&mut self, path: &str) {
+              self.paths.push(PathBuf::from(path));
+          }
+
+          pub fn check_changes(&self) -> Vec<PathBuf> {
+              self.paths.clone()
+          }
+      }
+    src/error_handler.rs: |
+      use crate::errors::AppError;
+
+      pub fn handle_error(error: &AppError) -> String {
+          match error {
+              AppError::IoError(e) => format!("IO failure: {}", e),
+              AppError::ParseError(msg) => format!("Parse failure: {}", msg),
+          }
+      }
+
+      pub fn is_recoverable(error: &AppError) -> bool {
+          matches!(error, AppError::ParseError(_))
+      }
+
+      pub fn log_error(error: &AppError) {
+          eprintln!("[ERROR] {}", error);
+      }
+    src/network.rs: |
+      use crate::errors::AppError;
+
+      pub fn fetch_url(url: &str) -> Result<String, AppError> {
+          if url.is_empty() {
+              return Err(AppError::NetworkError("Empty URL".to_string()));
+          }
+          Ok(format!("Content from {}", url))
+      }
+
+      pub fn ping(host: &str) -> Result<bool, AppError> {
+          if host.is_empty() {
+              return Err(AppError::NetworkError("Empty host".to_string()));
+          }
+          Ok(true)
+      }
+    src/validator.rs: |
+      pub enum ValidationResult {
+          Valid,
+          Invalid(String),
+          Warning(String),
+      }
+
+      pub fn validate_path(path: &str) -> ValidationResult {
+          if path.is_empty() {
+              ValidationResult::Invalid("Path cannot be empty".to_string())
+          } else if path.contains("..") {
+              ValidationResult::Warning("Path contains parent traversal".to_string())
+          } else {
+              ValidationResult::Valid
+          }
+      }
+
+      pub fn validate_input(input: &str, max_len: usize) -> ValidationResult {
+          if input.len() > max_len {
+              ValidationResult::Invalid(format!("Input exceeds {} chars", max_len))
+          } else {
+              ValidationResult::Valid
+          }
+      }
+  changed_files:
+    src/errors.rs: |
+      use std::fmt;
+
+      #[derive(Debug)]
+      pub enum AppError {
+          IoError(std::io::Error),
+          ParseError(String),
+          NetworkError(String),
+          ValidationError { field: String, message: String },
+      }
+
+      impl fmt::Display for AppError {
+          fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+              match self {
+                  AppError::IoError(e) => write!(f, "IO error: {}", e),
+                  AppError::ParseError(s) => write!(f, "Parse error: {}", s),
+                  AppError::NetworkError(s) => write!(f, "Network error: {}", s),
+                  AppError::ValidationError { field, message } => {
+                      write!(f, "Validation error in {}: {}", field, message)
+                  }
+              }
+          }
+      }
+
+      impl std::error::Error for AppError {}
+
+      impl From<std::io::Error> for AppError {
+          fn from(e: std::io::Error) -> Self {
+              AppError::IoError(e)
+          }
+      }
+    src/parser.rs: |
+      use crate::errors::AppError;
+      use std::fs;
+
+      pub fn parse_file(path: &str) -> Result<String, AppError> {
+          let content = fs::read_to_string(path)?;
+          if content.is_empty() {
+              return Err(AppError::ParseError("File is empty".to_string()));
+          }
+          Ok(content.trim().to_string())
+      }
+
+      pub fn parse_config(path: &str) -> Result<Vec<String>, AppError> {
+          let content = parse_file(path)?;
+          let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+          Ok(lines)
+      }
+
+      pub fn validate_and_parse(path: &str) -> Result<Vec<String>, AppError> {
+          let lines = parse_config(path)?;
+          for (i, line) in lines.iter().enumerate() {
+              if line.contains('\0') {
+                  return Err(AppError::ValidationError {
+                      field: format!("line_{}", i),
+                      message: "Contains null byte".to_string(),
+                  });
+              }
+          }
+          Ok(lines)
+      }
+  commit_message: Update files
+fragments:
+- id: errors
+  selector:
+    path: src/errors.rs
+    anchor: NetworkError(String)
+- id: errors_1
+  selector:
+    path: src/errors.rs
+    anchor: 'ValidationError { field: String, message: String }'
+- id: errors_2
+  selector:
+    path: src/errors.rs
+    anchor: 'AppError::NetworkError(s) => write!(f, "Network error: {}", s)'
+- id: parser
+  selector:
+    path: src/parser.rs
+    anchor: AppError::ValidationError
+- id: parser_1
+  selector:
+    path: src/parser.rs
+    anchor: parse_config(path)?
+- id: no_http_client
+  selector:
+    path: src/http_client.rs
+- id: no_file_watcher
+  selector:
+    path: src/file_watcher.rs
+- id: no_error_handler
+  selector:
+    path: src/error_handler.rs
+- id: no_network
+  selector:
+    path: src/network.rs
+- id: no_validator
+  selector:
+    path: src/validator.rs
+- id: no_global_0
+  selector:
+    anchor: enum HttpError
+- id: no_global_1
+  selector:
+    anchor: ConnectionRefused
+- id: no_global_2
+  selector:
+    anchor: HttpClient
+- id: no_global_3
+  selector:
+    anchor: FileWatcher
+- id: no_global_4
+  selector:
+    anchor: poll_interval
+- id: no_global_5
+  selector:
+    anchor: handle_error
+- id: no_global_6
+  selector:
+    anchor: is_recoverable
+- id: no_global_7
+  selector:
+    anchor: log_error
+- id: no_global_8
+  selector:
+    anchor: fn fetch_url
+- id: no_global_9
+  selector:
+    anchor: fn ping
+- id: no_global_10
+  selector:
+    anchor: Empty URL
+- id: no_global_11
+  selector:
+    anchor: enum ValidationResult
+- id: no_global_12
+  selector:
+    anchor: validate_path
+- id: no_global_13
+  selector:
+    anchor: validate_input
+oracle:
+  required:
+  - errors
+  - errors_1
+  - errors_2
+  - parser
+  - parser_1
+  allowed: []
+  forbidden:
+  - no_http_client
+  - no_file_watcher
+  - no_error_handler
+  - no_network
+  - no_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

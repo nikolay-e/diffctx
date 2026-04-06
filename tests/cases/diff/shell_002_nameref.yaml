@@ -1,0 +1,195 @@
+name: shell_002_nameref
+repo:
+  initial_files:
+    indirect.py: |
+      from ref_utils import ref_push
+
+      def swap_values(container, key_a, key_b):
+          tmp = container[key_a]
+          container[key_a] = container[key_b]
+          container[key_b] = tmp
+
+      data = {"x": "hello", "y": "world"}
+      swap_values(data, "x", "y")
+      print(f"x={data['x']} y={data['y']}")
+    ref_utils.py: |
+      def ref_push(target_list, *items):
+          for item in items:
+              target_list.append(item)
+
+      def ref_pop(target_list):
+          if target_list:
+              return target_list.pop()
+          return None
+
+      def ref_contains(target_list, needle):
+          return needle in target_list
+
+      def ref_clear(target_list):
+          target_list.clear()
+    logger_utils.py: |
+      LOG_LEVEL = "info"
+
+      def log_info(message):
+          if LOG_LEVEL in ("debug", "info"):
+              print(f"[INFO] {message}")
+
+      def log_warn(message):
+          print(f"[WARN] {message}")
+
+      def log_error(message):
+          print(f"[ERROR] {message}")
+
+      def set_log_level(level):
+          global LOG_LEVEL
+          LOG_LEVEL = level
+    cleanup_handler.py: |
+      import atexit
+
+      _cleanup_tasks = []
+
+      def register_cleanup(func):
+          _cleanup_tasks.append(func)
+
+      def run_cleanup():
+          for task in _cleanup_tasks:
+              try:
+                  task()
+              except Exception:
+                  pass
+
+      atexit.register(run_cleanup)
+  changed_files:
+    indirect.py: |
+      from ref_utils import ref_push, ref_pop, ref_contains
+
+      def swap_values(container, key_a, key_b):
+          tmp = container[key_a]
+          container[key_a] = container[key_b]
+          container[key_b] = tmp
+
+      def modify_list(target_list):
+          ref_push(target_list, "new_element")
+
+      def append_to_ref(container, key, suffix):
+          container[key] = f"{container[key]}_{suffix}"
+
+      data = {"x": "hello", "y": "world"}
+      swap_values(data, "x", "y")
+      print(f"x={data['x']} y={data['y']}")
+
+      my_list = ["first", "second"]
+      modify_list(my_list)
+      print(f"List: {my_list}")
+
+      name_data = {"name": "project"}
+      append_to_ref(name_data, "name", "v2")
+      print(f"Name: {name_data['name']}")
+    ref_utils.py: |
+      def ref_push(target_list, *items):
+          for item in items:
+              target_list.append(item)
+
+      def ref_pop(target_list):
+          if target_list:
+              return target_list.pop()
+          return None
+
+      def ref_contains(target_list, needle):
+          return needle in target_list
+
+      def ref_clear(target_list):
+          target_list.clear()
+    logger_utils.py: |
+      LOG_LEVEL = "info"
+
+      def log_info(message):
+          if LOG_LEVEL in ("debug", "info"):
+              print(f"[INFO] {message}")
+
+      def log_warn(message):
+          print(f"[WARN] {message}")
+
+      def log_error(message):
+          print(f"[ERROR] {message}")
+
+      def set_log_level(level):
+          global LOG_LEVEL
+          LOG_LEVEL = level
+    cleanup_handler.py: |
+      import atexit
+
+      _cleanup_tasks = []
+
+      def register_cleanup(func):
+          _cleanup_tasks.append(func)
+
+      def run_cleanup():
+          for task in _cleanup_tasks:
+              try:
+                  task()
+              except Exception:
+                  pass
+
+      atexit.register(run_cleanup)
+  commit_message: Update files
+fragments:
+- id: indirect
+  selector:
+    path: indirect.py
+    anchor: modify_list
+- id: indirect_1
+  selector:
+    path: indirect.py
+    anchor: append_to_ref
+- id: ref_utils
+  selector:
+    path: ref_utils.py
+    anchor: def ref_push
+- id: no_logger_utils
+  selector:
+    path: logger_utils.py
+- id: no_cleanup_handler
+  selector:
+    path: cleanup_handler.py
+- id: no_global_0
+  selector:
+    anchor: LOG_LEVEL
+- id: no_global_1
+  selector:
+    anchor: log_info
+- id: no_global_2
+  selector:
+    anchor: log_warn
+- id: no_global_3
+  selector:
+    anchor: log_error
+- id: no_global_4
+  selector:
+    anchor: set_log_level
+- id: no_global_5
+  selector:
+    anchor: register_cleanup
+- id: no_global_6
+  selector:
+    anchor: run_cleanup
+- id: no_global_7
+  selector:
+    anchor: _cleanup_tasks
+oracle:
+  required:
+  - indirect
+  - indirect_1
+  - ref_utils
+  allowed: []
+  forbidden:
+  - no_logger_utils
+  - no_cleanup_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

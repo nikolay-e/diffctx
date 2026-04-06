@@ -1,0 +1,359 @@
+name: selection_004_new_function_at_end_of_file
+repo:
+  initial_files:
+    calculator.py: |
+      def add(a, b):
+          add_marker = "addition_operation"
+          return a + b
+
+      def sub(a, b):
+          sub_marker = "subtraction_operation"
+          return a - b
+
+      def mul(a, b):
+          mul_marker = "multiplication_operation"
+          return a * b
+    math_utils.py: |
+      def square(x):
+          return x * x
+
+      def cube(x):
+          return x * x * x
+
+      def power(base, exp):
+          return base ** exp
+    garbage_sel_004_validators.py: |
+      def GARBAGE_SEL_004_validate_input_alpha(value):
+          return "GARBAGE_SEL_004_valid_alpha"
+
+      def GARBAGE_SEL_004_validate_input_beta(value):
+          return "GARBAGE_SEL_004_valid_beta"
+
+      def GARBAGE_SEL_004_validate_input_gamma(value):
+          return "GARBAGE_SEL_004_valid_gamma"
+
+      class GARBAGE_SEL_004_ValidatorClass:
+          def validate(self, data):
+              return "GARBAGE_SEL_004_validator_class_result"
+
+          def sanitize(self, data):
+              return "GARBAGE_SEL_004_sanitize_result"
+    garbage_sel_004_formatters.py: |
+      def GARBAGE_SEL_004_format_output_one(data):
+          return f"GARBAGE_SEL_004_formatted_one_{data}"
+
+      def GARBAGE_SEL_004_format_output_two(data):
+          return f"GARBAGE_SEL_004_formatted_two_{data}"
+
+      GARBAGE_SEL_004_FORMAT_CONFIG = {
+          "pattern": "GARBAGE_SEL_004_pattern_value",
+          "delimiter": "GARBAGE_SEL_004_delimiter_value",
+      }
+    garbage_sel_004_handlers.py: |
+      class GARBAGE_SEL_004_RequestHandler:
+          def handle_get(self):
+              return "GARBAGE_SEL_004_get_response"
+
+          def handle_post(self):
+              return "GARBAGE_SEL_004_post_response"
+
+      class GARBAGE_SEL_004_ResponseHandler:
+          def format_success(self):
+              return "GARBAGE_SEL_004_success_format"
+
+          def format_error(self):
+              return "GARBAGE_SEL_004_error_format"
+    tricky_math_ops.py: |
+      GARBAGE_SEL_004_MATH_OPS_MODULE_A = "math_ops_extra"
+      GARBAGE_SEL_004_MATH_OPS_VER_B = 2
+
+      def div(a, b):
+          if b == 0:
+              raise ValueError("division by zero")
+          div_marker = "division_operation_extra"
+          return a / b
+
+      def mod(a, b):
+          return a % b
+
+      def add(a, b):
+          return a + b
+    tricky_calculator_ext.py: |
+      GARBAGE_SEL_004_CALC_EXT_C = "calculator_extension"
+      GARBAGE_SEL_004_CALC_EXT_FLAG_D = True
+
+      def add(a, b):
+          add_marker = "addition_operation"
+          return a + b
+
+      def sub(a, b):
+          sub_marker = "subtraction_operation"
+          return a - b
+
+      def div(a, b):
+          div_marker = "division_operation_added"
+          return a / b if b != 0 else 0
+  changed_files:
+    calculator.py: |
+      def add(a, b):
+          add_marker = "addition_operation"
+          return a + b
+
+      def sub(a, b):
+          sub_marker = "subtraction_operation"
+          return a - b
+
+      def mul(a, b):
+          mul_marker = "multiplication_operation"
+          return a * b
+
+      def div(a, b):
+          if b == 0:
+              raise ValueError("division by zero")
+          div_marker = "division_operation_added"
+          return a / b
+    math_utils.py: |
+      def square(x):
+          return x * x
+
+      def cube(x):
+          return x * x * x
+
+      def power(base, exp):
+          return base ** exp
+    garbage_sel_004_validators.py: |
+      def GARBAGE_SEL_004_validate_input_alpha(value):
+          return "GARBAGE_SEL_004_valid_alpha"
+
+      def GARBAGE_SEL_004_validate_input_beta(value):
+          return "GARBAGE_SEL_004_valid_beta"
+
+      def GARBAGE_SEL_004_validate_input_gamma(value):
+          return "GARBAGE_SEL_004_valid_gamma"
+
+      class GARBAGE_SEL_004_ValidatorClass:
+          def validate(self, data):
+              return "GARBAGE_SEL_004_validator_class_result"
+
+          def sanitize(self, data):
+              return "GARBAGE_SEL_004_sanitize_result"
+    garbage_sel_004_formatters.py: |
+      def GARBAGE_SEL_004_format_output_one(data):
+          return f"GARBAGE_SEL_004_formatted_one_{data}"
+
+      def GARBAGE_SEL_004_format_output_two(data):
+          return f"GARBAGE_SEL_004_formatted_two_{data}"
+
+      GARBAGE_SEL_004_FORMAT_CONFIG = {
+          "pattern": "GARBAGE_SEL_004_pattern_value",
+          "delimiter": "GARBAGE_SEL_004_delimiter_value",
+      }
+    garbage_sel_004_handlers.py: |
+      class GARBAGE_SEL_004_RequestHandler:
+          def handle_get(self):
+              return "GARBAGE_SEL_004_get_response"
+
+          def handle_post(self):
+              return "GARBAGE_SEL_004_post_response"
+
+      class GARBAGE_SEL_004_ResponseHandler:
+          def format_success(self):
+              return "GARBAGE_SEL_004_success_format"
+
+          def format_error(self):
+              return "GARBAGE_SEL_004_error_format"
+    tricky_math_ops.py: |
+      GARBAGE_SEL_004_MATH_OPS_MODULE_A = "math_ops_extra"
+      GARBAGE_SEL_004_MATH_OPS_VER_B = 2
+
+      def div(a, b):
+          if b == 0:
+              raise ValueError("division by zero")
+          div_marker = "division_operation_extra"
+          return a / b
+
+      def mod(a, b):
+          return a % b
+
+      def add(a, b):
+          return a + b
+    tricky_calculator_ext.py: |
+      GARBAGE_SEL_004_CALC_EXT_C = "calculator_extension"
+      GARBAGE_SEL_004_CALC_EXT_FLAG_D = True
+
+      def add(a, b):
+          add_marker = "addition_operation"
+          return a + b
+
+      def sub(a, b):
+          sub_marker = "subtraction_operation"
+          return a - b
+
+      def div(a, b):
+          div_marker = "division_operation_added"
+          return a / b if b != 0 else 0
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: calculator.py
+    anchor: 'def div(a, b):'
+- id: calculator_1
+  selector:
+    path: calculator.py
+    anchor: raise ValueError("division by zero")
+- id: calculator_2
+  selector:
+    path: calculator.py
+    anchor: div_marker = "division_operation_added"
+- id: req_pattern_0
+  selector:
+    anchor: def div
+- id: req_pattern_1
+  selector:
+    anchor: division by zero
+- id: req_pattern_2
+  selector:
+    anchor: division_operation_added
+- id: no_garbage_sel_004_validators
+  selector:
+    path: garbage_sel_004_validators.py
+- id: no_garbage_sel_004_formatters
+  selector:
+    path: garbage_sel_004_formatters.py
+- id: no_garbage_sel_004_handlers
+  selector:
+    path: garbage_sel_004_handlers.py
+- id: no_tricky_math_ops
+  selector:
+    path: tricky_math_ops.py
+- id: no_tricky_calculator_ext
+  selector:
+    path: tricky_calculator_ext.py
+- id: no_global_0
+  selector:
+    anchor: def mul
+- id: no_global_1
+  selector:
+    anchor: mul_marker
+- id: no_global_2
+  selector:
+    anchor: multiplication_operation
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_SEL_004_validate_input_alpha
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_SEL_004_validate_input_beta
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_SEL_004_valid_alpha
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_SEL_004_valid_beta
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_SEL_004_ValidatorClass
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_SEL_004_validator_class_result
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_SEL_004_sanitize_result
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_SEL_004_format_output_one
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_SEL_004_format_output_two
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_SEL_004_formatted_one
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_SEL_004_FORMAT_CONFIG
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_SEL_004_pattern_value
+- id: no_global_15
+  selector:
+    anchor: GARBAGE_SEL_004_RequestHandler
+- id: no_global_16
+  selector:
+    anchor: GARBAGE_SEL_004_ResponseHandler
+- id: no_global_17
+  selector:
+    anchor: GARBAGE_SEL_004_get_response
+- id: no_global_18
+  selector:
+    anchor: GARBAGE_SEL_004_post_response
+- id: no_global_19
+  selector:
+    anchor: GARBAGE_SEL_004_success_format
+- id: no_global_20
+  selector:
+    anchor: GARBAGE_SEL_004_error_format
+- id: no_global_21
+  selector:
+    anchor: garbage_sel_004_validators.py
+- id: no_global_22
+  selector:
+    anchor: garbage_sel_004_formatters.py
+- id: no_global_23
+  selector:
+    anchor: garbage_sel_004_handlers.py
+- id: no_global_24
+  selector:
+    anchor: GARBAGE_SEL_004_MATH_OPS_MODULE_A
+- id: no_global_25
+  selector:
+    anchor: GARBAGE_SEL_004_MATH_OPS_VER_B
+- id: no_global_26
+  selector:
+    anchor: GARBAGE_SEL_004_CALC_EXT_C
+- id: no_global_27
+  selector:
+    anchor: GARBAGE_SEL_004_CALC_EXT_FLAG_D
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  - calculator_2
+  - req_pattern_0
+  - req_pattern_1
+  - req_pattern_2
+  allowed: []
+  forbidden:
+  - no_garbage_sel_004_validators
+  - no_garbage_sel_004_formatters
+  - no_garbage_sel_004_handlers
+  - no_tricky_math_ops
+  - no_tricky_calculator_ext
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20
+  - no_global_21
+  - no_global_22
+  - no_global_23
+  - no_global_24
+  - no_global_25
+  - no_global_26
+  - no_global_27

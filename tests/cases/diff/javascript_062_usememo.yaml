@@ -1,0 +1,104 @@
+name: javascript_062_usememo
+repo:
+  initial_files:
+    src/compute.ts: |
+      export function expensiveComputation(items: number[]): number {
+          return items.reduce((sum, n) => sum + n * n, 0);
+      }
+    src/Stats.tsx: |
+      export function Stats() {
+          return <div>Placeholder</div>;
+      }
+    src/statistics.ts: |
+      export function mean(values: number[]): number {
+          return values.reduce((a, b) => a + b, 0) / values.length;
+      }
+
+      export function median(values: number[]): number {
+          const sorted = [...values].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+    src/StatsChart.tsx: |
+      interface StatsChartProps {
+          data: number[];
+          width: number;
+          height: number;
+      }
+
+      export function StatsChart({ data, width, height }: StatsChartProps) {
+          return <canvas width={width} height={height} />;
+      }
+  changed_files:
+    src/compute.ts: |
+      export function expensiveComputation(items: number[]): number {
+          return items.reduce((sum, n) => sum + n * n, 0);
+      }
+    src/Stats.tsx: |
+      import { useMemo } from 'react';
+      import { expensiveComputation } from './compute';
+
+      export function Stats({ items }: { items: number[] }) {
+          const result = useMemo(() => expensiveComputation(items), [items]);
+          return <div>Result: {result}</div>;
+      }
+    src/statistics.ts: |
+      export function mean(values: number[]): number {
+          return values.reduce((a, b) => a + b, 0) / values.length;
+      }
+
+      export function median(values: number[]): number {
+          const sorted = [...values].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+    src/StatsChart.tsx: |
+      interface StatsChartProps {
+          data: number[];
+          width: number;
+          height: number;
+      }
+
+      export function StatsChart({ data, width, height }: StatsChartProps) {
+          return <canvas width={width} height={height} />;
+      }
+  commit_message: Update files
+fragments:
+- id: compute
+  selector:
+    path: src/compute.ts
+    anchor: expensiveComputation
+- id: compute_1
+  selector:
+    path: src/compute.ts
+    anchor: items.reduce
+- id: no_statistics
+  selector:
+    path: src/statistics.ts
+- id: no_statschart
+  selector:
+    path: src/StatsChart.tsx
+- id: no_global_0
+  selector:
+    anchor: mean
+- id: no_global_1
+  selector:
+    anchor: median
+- id: no_global_2
+  selector:
+    anchor: StatsChartProps
+- id: no_global_3
+  selector:
+    anchor: canvas
+oracle:
+  required:
+  - compute
+  - compute_1
+  allowed: []
+  forbidden:
+  - no_statistics
+  - no_statschart
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

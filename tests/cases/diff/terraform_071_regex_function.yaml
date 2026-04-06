@@ -1,0 +1,326 @@
+name: terraform_071_regex_function
+repo:
+  initial_files:
+    main.tf: |
+      variable "bucket_name" {
+        type = string
+        validation {
+          condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))
+          error_message = "Bucket name must be valid S3 bucket name."
+        }
+      }
+
+      variable "environment" {
+        type    = string
+        default = "production"
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = var.bucket_name
+        tags = {
+          Name        = var.bucket_name
+          Environment = var.environment
+          ManagedBy   = "terraform"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data" {
+        bucket = aws_s3_bucket.data.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+    policy.tf: |
+      resource "aws_s3_bucket_policy" "data" {
+        bucket = aws_s3_bucket.data.id
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Sid       = "DenyUnencryptedTransport"
+            Effect    = "Deny"
+            Principal = "*"
+            Action    = "s3:*"
+            Resource = [
+              aws_s3_bucket.data.arn,
+              "${aws_s3_bucket.data.arn}/*"
+            ]
+            Condition = {
+              Bool = { "aws:SecureTransport" = "false" }
+            }
+          }]
+        })
+      }
+    logs/bucket.tf: |
+      variable "log_bucket_name" {
+        type = string
+        validation {
+          condition     = can(regex("^logs-[a-z0-9-]+$", var.log_bucket_name))
+          error_message = "Log bucket name must start with logs-."
+        }
+      }
+
+      resource "aws_s3_bucket" "logs" {
+        bucket = var.log_bucket_name
+        tags = {
+          Name      = var.log_bucket_name
+          Purpose   = "access-logs"
+          ManagedBy = "terraform"
+        }
+      }
+
+      resource "aws_s3_bucket_lifecycle_configuration" "logs" {
+        bucket = aws_s3_bucket.logs.id
+        rule {
+          id     = "expire-old-logs"
+          status = "Enabled"
+          expiration {
+            days = 90
+          }
+        }
+      }
+    iam/roles.tf: |
+      resource "aws_iam_role" "data_reader" {
+        name = "s3-data-reader"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy" "data_reader_access" {
+        name = "s3-data-reader-access"
+        role = aws_iam_role.data_reader.id
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect   = "Allow"
+            Action   = ["s3:GetObject", "s3:ListBucket"]
+            Resource = [
+              aws_s3_bucket.data.arn,
+              "${aws_s3_bucket.data.arn}/*"
+            ]
+          }]
+        })
+      }
+    cloudfront/distribution.tf: |
+      resource "aws_cloudfront_distribution" "cdn" {
+        origin {
+          domain_name = aws_s3_bucket.data.bucket_regional_domain_name
+          origin_id   = "s3-data"
+          s3_origin_config {
+            origin_access_identity = aws_cloudfront_origin_access_identity.oai.cloudfront_access_identity_path
+          }
+        }
+
+        enabled             = true
+        default_root_object = "index.html"
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "s3-data"
+          viewer_protocol_policy = "redirect-to-https"
+          forwarded_values {
+            query_string = false
+            cookies { forward = "none" }
+          }
+        }
+
+        restrictions {
+          geo_restriction { restriction_type = "none" }
+        }
+
+        viewer_certificate {
+          cloudfront_default_certificate = true
+        }
+      }
+    monitoring/alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
+        alarm_name          = "${var.bucket_name}-4xx-errors"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "4xxErrors"
+        namespace           = "AWS/S3"
+        period              = 300
+        statistic           = "Sum"
+        threshold           = 100
+        alarm_description   = "S3 4xx errors above threshold"
+        dimensions = {
+          BucketName = var.bucket_name
+        }
+      }
+    codebuild/project.tf: |
+      resource "aws_codebuild_project" "app" {
+        name         = "app-build"
+        service_role = aws_iam_role.build.arn
+        artifacts {
+          type = "NO_ARTIFACTS"
+        }
+        environment {
+          compute_type = "BUILD_GENERAL1_SMALL"
+          image        = "aws/codebuild/standard:7.0"
+          type         = "LINUX_CONTAINER"
+        }
+        source {
+          type     = "GITHUB"
+          location = "https://github.com/org/repo.git"
+        }
+      }
+  changed_files:
+    main.tf: |
+      variable "bucket_name" {
+        type = string
+        validation {
+          condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))
+          error_message = "Bucket name must be valid S3 bucket name."
+        }
+      }
+
+      variable "environment" {
+        type    = string
+        default = "production"
+      }
+
+      variable "allowed_origins" {
+        type        = list(string)
+        default     = []
+        description = "Origins permitted for CORS requests. Must use HTTPS."
+        validation {
+          condition     = alltrue([for origin in var.allowed_origins : can(regex("^https://", origin))])
+          error_message = "All origins must use HTTPS."
+        }
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = var.bucket_name
+        tags = {
+          Name        = var.bucket_name
+          Environment = var.environment
+          ManagedBy   = "terraform"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data" {
+        bucket = aws_s3_bucket.data.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_s3_bucket_cors_configuration" "data" {
+        bucket = aws_s3_bucket.data.id
+        cors_rule {
+          allowed_headers = ["*"]
+          allowed_methods = ["GET", "PUT"]
+          allowed_origins = var.allowed_origins
+          max_age_seconds = 3600
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: variable "allowed_origins" {
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: resource "aws_s3_bucket_cors_configuration" "data"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: allowed_methods = ["GET", "PUT"]
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: can(regex("^https://", origin))
+- id: policy
+  selector:
+    path: policy.tf
+    anchor: resource "aws_s3_bucket_policy" "data" {
+- id: policy_1
+  selector:
+    path: policy.tf
+    anchor: DenyUnencryptedTransport
+- id: no_bucket
+  selector:
+    path: logs/bucket.tf
+- id: no_roles
+  selector:
+    path: iam/roles.tf
+- id: no_distribution
+  selector:
+    path: cloudfront/distribution.tf
+- id: no_alarms
+  selector:
+    path: monitoring/alarms.tf
+- id: no_project
+  selector:
+    path: codebuild/project.tf
+- id: no_global_0
+  selector:
+    anchor: log_bucket_name
+- id: no_global_1
+  selector:
+    anchor: must start with logs-
+- id: no_global_2
+  selector:
+    anchor: expire-old-logs
+- id: no_global_3
+  selector:
+    anchor: s3-data-reader
+- id: no_global_4
+  selector:
+    anchor: sts:AssumeRole
+- id: no_global_5
+  selector:
+    anchor: lambda.amazonaws.com
+- id: no_global_6
+  selector:
+    anchor: bucket_regional_domain_name
+- id: no_global_7
+  selector:
+    anchor: cloudfront_default_certificate
+- id: no_global_8
+  selector:
+    anchor: origin_access_identity
+- id: no_global_9
+  selector:
+    anchor: 4xxErrors
+- id: no_global_10
+  selector:
+    anchor: alarm_description
+- id: no_global_11
+  selector:
+    anchor: aws_codebuild_project
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - policy
+  - policy_1
+  allowed: []
+  forbidden:
+  - no_bucket
+  - no_roles
+  - no_distribution
+  - no_alarms
+  - no_project
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

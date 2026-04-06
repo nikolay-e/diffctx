@@ -1,0 +1,336 @@
+name: scala_026_application_conf
+repo:
+  initial_files:
+    src/main/resources/application.conf: |
+      app {
+        name = "myapp"
+        port = 8080
+
+        database {
+          url = "jdbc:postgresql://localhost/db"
+          pool-size = 10
+          timeout = 30s
+          driver = "org.postgresql.Driver"
+        }
+
+        kafka {
+          bootstrap-servers = "localhost:9092"
+          topic = "events"
+          group-id = "myapp-consumer"
+          auto-offset-reset = "earliest"
+        }
+
+        metrics {
+          enabled = true
+          port = 9090
+          path = "/metrics"
+        }
+      }
+    src/main/scala/Config.scala: |
+      package myapp
+
+      import com.typesafe.config.ConfigFactory
+
+      object Config {
+        private val config = ConfigFactory.load()
+        val appName: String = config.getString("app.name")
+        val port: Int = config.getInt("app.port")
+      }
+    src/main/scala/DatabaseService.scala: |
+      package myapp
+
+      import java.sql.{Connection, DriverManager}
+
+      class DatabaseService {
+        private val pool = new Array[Connection](Config.dbPoolSize)
+
+        def connect(): Connection = {
+          Class.forName("org.postgresql.Driver")
+          DriverManager.getConnection(Config.dbUrl)
+        }
+
+        def getPoolSize: Int = Config.dbPoolSize
+
+        def healthCheck(): Boolean = {
+          try {
+            val conn = connect()
+            val valid = conn.isValid(5)
+            conn.close()
+            valid
+          } catch {
+            case _: Exception => false
+          }
+        }
+      }
+    src/main/scala/KafkaProducer.scala: |
+      package myapp
+
+      import java.util.Properties
+
+      class KafkaProducer {
+        private val props = new Properties()
+        props.put("bootstrap.servers", Config.kafkaServers)
+        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+        props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+
+        def send(key: String, value: String): Unit = {
+          println(s"Sending to ${Config.kafkaTopic}: $key -> $value")
+        }
+
+        def topic: String = Config.kafkaTopic
+
+        def close(): Unit = {
+          println("Closing Kafka producer")
+        }
+      }
+    src/main/scala/ConfigValidator.scala: |
+      package myapp
+
+      import com.typesafe.config.ConfigFactory
+
+      object ConfigValidator {
+        private val config = ConfigFactory.load()
+
+        private val requiredPaths = Seq(
+          "app.name",
+          "app.port",
+          "app.database.url",
+          "app.database.pool-size",
+          "app.kafka.bootstrap-servers",
+          "app.kafka.topic"
+        )
+
+        def validate(): Seq[String] = {
+          requiredPaths.filterNot(config.hasPath).map { path =>
+            s"Missing required config: $path"
+          }
+        }
+
+        def validateOrThrow(): Unit = {
+          val missing = validate()
+          if (missing.nonEmpty) {
+            throw new RuntimeException(s"Config validation failed: ${missing.mkString(", ")}")
+          }
+        }
+      }
+    src/test/scala/ConfigSpec.scala: |
+      package myapp
+
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      class ConfigSpec extends AnyFlatSpec with Matchers {
+        "Config" should "load app name" in {
+          Config.appName shouldBe "myapp"
+        }
+
+        it should "load port" in {
+          Config.port shouldBe 8080
+        }
+
+        it should "load database url" in {
+          Config.dbUrl should include("postgresql")
+        }
+
+        it should "load database pool size" in {
+          Config.dbPoolSize shouldBe 10
+        }
+
+        it should "load kafka servers" in {
+          Config.kafkaServers shouldBe "localhost:9092"
+        }
+
+        it should "load kafka topic" in {
+          Config.kafkaTopic shouldBe "events"
+        }
+      }
+    src/main/scala/Main.scala: |
+      package myapp
+
+      object Main extends App {
+        ConfigValidator.validateOrThrow()
+        println(s"Starting ${Config.appName} on port ${Config.port}")
+        val db = new DatabaseService()
+        val kafka = new KafkaProducer()
+        println(s"Database: ${Config.dbUrl} (pool=${Config.dbPoolSize})")
+        println(s"Kafka: ${Config.kafkaServers}/${Config.kafkaTopic}")
+      }
+    src/test/resources/test.conf: |
+      include "application"
+
+      app {
+        name = "myapp-test"
+        port = 9090
+        database {
+          url = "jdbc:h2:mem:test"
+          pool-size = 2
+        }
+        kafka {
+          bootstrap-servers = "localhost:9093"
+          topic = "test-events"
+        }
+      }
+  changed_files:
+    src/main/scala/Config.scala: |
+      package myapp
+
+      import com.typesafe.config.ConfigFactory
+
+      object Config {
+        private val config = ConfigFactory.load()
+        val appName: String = config.getString("app.name")
+        val port: Int = config.getInt("app.port")
+        val dbUrl: String = config.getString("app.database.url")
+        val dbPoolSize: Int = config.getInt("app.database.pool-size")
+        val kafkaServers: String = config.getString("app.kafka.bootstrap-servers")
+        val kafkaTopic: String = config.getString("app.kafka.topic")
+      }
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/main/scala/Config.scala
+    anchor: config.getString("app.database.url")
+- id: config_1
+  selector:
+    path: src/main/scala/Config.scala
+    anchor: config.getInt("app.database.pool-size")
+- id: config_2
+  selector:
+    path: src/main/scala/Config.scala
+    anchor: config.getString("app.kafka.bootstrap-servers")
+- id: application
+  selector:
+    path: src/main/resources/application.conf
+    anchor: url = "jdbc:postgresql://localhost/db"
+- id: application_1
+  selector:
+    path: src/main/resources/application.conf
+    anchor: pool-size = 10
+- id: application_2
+  selector:
+    path: src/main/resources/application.conf
+    anchor: bootstrap-servers = "localhost:9092"
+- id: application_3
+  selector:
+    path: src/main/resources/application.conf
+    anchor: topic = "events"
+- id: no_databaseservice
+  selector:
+    path: src/main/scala/DatabaseService.scala
+- id: no_kafkaproducer
+  selector:
+    path: src/main/scala/KafkaProducer.scala
+- id: no_configvalidator
+  selector:
+    path: src/main/scala/ConfigValidator.scala
+- id: no_configspec
+  selector:
+    path: src/test/scala/ConfigSpec.scala
+- id: no_main
+  selector:
+    path: src/main/scala/Main.scala
+- id: no_test
+  selector:
+    path: src/test/resources/test.conf
+- id: no_global_0
+  selector:
+    anchor: DatabaseService
+- id: no_global_1
+  selector:
+    anchor: getPoolSize
+- id: no_global_2
+  selector:
+    anchor: healthCheck
+- id: no_global_3
+  selector:
+    anchor: DriverManager.getConnection
+- id: no_global_4
+  selector:
+    anchor: KafkaProducer
+- id: no_global_5
+  selector:
+    anchor: bootstrap.servers
+- id: no_global_6
+  selector:
+    anchor: StringSerializer
+- id: no_global_7
+  selector:
+    anchor: ConfigValidator
+- id: no_global_8
+  selector:
+    anchor: requiredPaths
+- id: no_global_9
+  selector:
+    anchor: validateOrThrow
+- id: no_global_10
+  selector:
+    anchor: Missing required config
+- id: no_global_11
+  selector:
+    anchor: ConfigSpec
+- id: no_global_12
+  selector:
+    anchor: should include
+- id: no_global_13
+  selector:
+    anchor: shouldBe 10
+- id: no_global_14
+  selector:
+    anchor: shouldBe "events"
+- id: no_global_15
+  selector:
+    anchor: Starting ${Config.appName}
+- id: no_global_16
+  selector:
+    anchor: 'Database: ${Config.dbUrl}'
+- id: no_global_17
+  selector:
+    anchor: 'Kafka: ${Config.kafkaServers}'
+- id: no_global_18
+  selector:
+    anchor: myapp-test
+- id: no_global_19
+  selector:
+    anchor: jdbc:h2:mem:test
+- id: no_global_20
+  selector:
+    anchor: test-events
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - application
+  - application_1
+  - application_2
+  - application_3
+  allowed: []
+  forbidden:
+  - no_databaseservice
+  - no_kafkaproducer
+  - no_configvalidator
+  - no_configspec
+  - no_main
+  - no_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19
+  - no_global_20

@@ -1,0 +1,299 @@
+name: jvm_and_compiled_046_kotlin_sealed_class
+repo:
+  initial_files:
+    src/main/kotlin/com/example/Result.kt: |
+      package com.example
+
+      sealed class Result<out T> {
+          data class Success<T>(val data: T) : Result<T>()
+          data class Error(val message: String) : Result<Nothing>()
+      }
+    src/main/kotlin/com/example/Handler.kt: |
+      package com.example
+
+      fun handleResult(result: Result<String>) {
+          when (result) {
+              is Result.Success -> println(result.data)
+              is Result.Error -> println(result.message)
+          }
+      }
+
+      fun processResult(result: Result<Int>): String {
+          return when (result) {
+              is Result.Success -> "Value: ${result.data}"
+              is Result.Error -> "Error: ${result.message}"
+          }
+      }
+    src/main/kotlin/com/example/NetworkState.kt: |
+      package com.example
+
+      sealed class NetworkState {
+          data object Idle : NetworkState()
+          data object Connecting : NetworkState()
+          data class Connected(val latency: Long) : NetworkState()
+          data class Disconnected(val reason: String) : NetworkState()
+      }
+
+      fun describeState(state: NetworkState): String = when (state) {
+          is NetworkState.Idle -> "Idle"
+          is NetworkState.Connecting -> "Connecting..."
+          is NetworkState.Connected -> "Connected (${state.latency}ms)"
+          is NetworkState.Disconnected -> "Disconnected: ${state.reason}"
+      }
+    src/main/kotlin/com/example/ResultMapper.kt: |
+      package com.example
+
+      data class ApiResponseDto(val data: Any?, val error: String?, val status: String)
+
+      fun <T> mapToResponse(result: Result<T>): ApiResponseDto = when (result) {
+          is Result.Success -> ApiResponseDto(result.data, null, "success")
+          is Result.Error -> ApiResponseDto(null, result.message, "error")
+      }
+    src/main/kotlin/com/example/ResultExtensions.kt: |
+      package com.example
+
+      fun <T, R> Result<T>.map(transform: (T) -> R): Result<R> = when (this) {
+          is Result.Success -> Result.Success(transform(data))
+          is Result.Error -> Result.Error(message)
+      }
+
+      fun <T, R> Result<T>.flatMap(transform: (T) -> Result<R>): Result<R> = when (this) {
+          is Result.Success -> transform(data)
+          is Result.Error -> Result.Error(message)
+      }
+
+      fun <T> Result<T>.getOrElse(default: T): T = when (this) {
+          is Result.Success -> data
+          is Result.Error -> default
+      }
+    src/main/kotlin/com/example/ErrorHandler.kt: |
+      package com.example
+
+      object ErrorHandler {
+          fun handle(error: Result.Error) {
+              println("Error occurred: ${error.message}")
+          }
+
+          fun toUserMessage(error: Result.Error): String {
+              return when {
+                  error.message.contains("timeout") -> "Request timed out"
+                  error.message.contains("auth") -> "Authentication failed"
+                  else -> "An error occurred"
+              }
+          }
+      }
+    src/main/kotlin/com/example/ApiResponse.kt: |
+      package com.example
+
+      sealed class ApiResponse<out T> {
+          data class Ok<T>(val body: T, val statusCode: Int = 200) : ApiResponse<T>()
+          data class ClientError(val statusCode: Int, val message: String) : ApiResponse<Nothing>()
+          data class ServerError(val statusCode: Int, val message: String) : ApiResponse<Nothing>()
+      }
+  changed_files:
+    src/main/kotlin/com/example/Result.kt: |
+      package com.example
+
+      sealed class Result<out T> {
+          data class Success<T>(val data: T) : Result<T>()
+          data class Error(val message: String, val cause: Throwable? = null) : Result<Nothing>()
+          data object Loading : Result<Nothing>()
+          data object Empty : Result<Nothing>()
+      }
+    src/main/kotlin/com/example/Handler.kt: |
+      package com.example
+
+      fun handleResult(result: Result<String>) {
+          when (result) {
+              is Result.Success -> println(result.data)
+              is Result.Error -> println(result.message)
+          }
+      }
+
+      fun processResult(result: Result<Int>): String {
+          return when (result) {
+              is Result.Success -> "Value: ${result.data}"
+              is Result.Error -> "Error: ${result.message}"
+          }
+      }
+    src/main/kotlin/com/example/NetworkState.kt: |
+      package com.example
+
+      sealed class NetworkState {
+          data object Idle : NetworkState()
+          data object Connecting : NetworkState()
+          data class Connected(val latency: Long) : NetworkState()
+          data class Disconnected(val reason: String) : NetworkState()
+      }
+
+      fun describeState(state: NetworkState): String = when (state) {
+          is NetworkState.Idle -> "Idle"
+          is NetworkState.Connecting -> "Connecting..."
+          is NetworkState.Connected -> "Connected (${state.latency}ms)"
+          is NetworkState.Disconnected -> "Disconnected: ${state.reason}"
+      }
+    src/main/kotlin/com/example/ResultMapper.kt: |
+      package com.example
+
+      data class ApiResponseDto(val data: Any?, val error: String?, val status: String)
+
+      fun <T> mapToResponse(result: Result<T>): ApiResponseDto = when (result) {
+          is Result.Success -> ApiResponseDto(result.data, null, "success")
+          is Result.Error -> ApiResponseDto(null, result.message, "error")
+      }
+    src/main/kotlin/com/example/ResultExtensions.kt: |
+      package com.example
+
+      fun <T, R> Result<T>.map(transform: (T) -> R): Result<R> = when (this) {
+          is Result.Success -> Result.Success(transform(data))
+          is Result.Error -> Result.Error(message)
+      }
+
+      fun <T, R> Result<T>.flatMap(transform: (T) -> Result<R>): Result<R> = when (this) {
+          is Result.Success -> transform(data)
+          is Result.Error -> Result.Error(message)
+      }
+
+      fun <T> Result<T>.getOrElse(default: T): T = when (this) {
+          is Result.Success -> data
+          is Result.Error -> default
+      }
+    src/main/kotlin/com/example/ErrorHandler.kt: |
+      package com.example
+
+      object ErrorHandler {
+          fun handle(error: Result.Error) {
+              println("Error occurred: ${error.message}")
+          }
+
+          fun toUserMessage(error: Result.Error): String {
+              return when {
+                  error.message.contains("timeout") -> "Request timed out"
+                  error.message.contains("auth") -> "Authentication failed"
+                  else -> "An error occurred"
+              }
+          }
+      }
+    src/main/kotlin/com/example/ApiResponse.kt: |
+      package com.example
+
+      sealed class ApiResponse<out T> {
+          data class Ok<T>(val body: T, val statusCode: Int = 200) : ApiResponse<T>()
+          data class ClientError(val statusCode: Int, val message: String) : ApiResponse<Nothing>()
+          data class ServerError(val statusCode: Int, val message: String) : ApiResponse<Nothing>()
+      }
+  commit_message: Update files
+fragments:
+- id: result
+  selector:
+    path: src/main/kotlin/com/example/Result.kt
+    anchor: 'data class Error(val message: String, val cause: Throwable? = null) : Result<Nothing>()'
+- id: result_1
+  selector:
+    path: src/main/kotlin/com/example/Result.kt
+    anchor: 'data object Loading : Result<Nothing>()'
+- id: result_2
+  selector:
+    path: src/main/kotlin/com/example/Result.kt
+    anchor: 'data object Empty : Result<Nothing>()'
+- id: handler
+  selector:
+    path: src/main/kotlin/com/example/Handler.kt
+    anchor: is Result.Success -> println(result.data)
+- id: handler_1
+  selector:
+    path: src/main/kotlin/com/example/Handler.kt
+    anchor: is Result.Error -> println(result.message)
+- id: no_networkstate
+  selector:
+    path: src/main/kotlin/com/example/NetworkState.kt
+- id: no_resultmapper
+  selector:
+    path: src/main/kotlin/com/example/ResultMapper.kt
+- id: no_resultextensions
+  selector:
+    path: src/main/kotlin/com/example/ResultExtensions.kt
+- id: no_errorhandler
+  selector:
+    path: src/main/kotlin/com/example/ErrorHandler.kt
+- id: no_apiresponse
+  selector:
+    path: src/main/kotlin/com/example/ApiResponse.kt
+- id: no_global_0
+  selector:
+    anchor: NetworkState
+- id: no_global_1
+  selector:
+    anchor: Connecting
+- id: no_global_2
+  selector:
+    anchor: Disconnected
+- id: no_global_3
+  selector:
+    anchor: describeState
+- id: no_global_4
+  selector:
+    anchor: ResultMapper
+- id: no_global_5
+  selector:
+    anchor: ApiResponseDto
+- id: no_global_6
+  selector:
+    anchor: mapToResponse
+- id: no_global_7
+  selector:
+    anchor: ResultExtensions
+- id: no_global_8
+  selector:
+    anchor: flatMap
+- id: no_global_9
+  selector:
+    anchor: getOrElse
+- id: no_global_10
+  selector:
+    anchor: ErrorHandler
+- id: no_global_11
+  selector:
+    anchor: toUserMessage
+- id: no_global_12
+  selector:
+    anchor: Request timed out
+- id: no_global_13
+  selector:
+    anchor: ApiResponse
+- id: no_global_14
+  selector:
+    anchor: ClientError
+- id: no_global_15
+  selector:
+    anchor: ServerError
+oracle:
+  required:
+  - result
+  - result_1
+  - result_2
+  - handler
+  - handler_1
+  allowed: []
+  forbidden:
+  - no_networkstate
+  - no_resultmapper
+  - no_resultextensions
+  - no_errorhandler
+  - no_apiresponse
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

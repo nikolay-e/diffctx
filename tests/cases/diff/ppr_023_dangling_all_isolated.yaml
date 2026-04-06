@@ -1,0 +1,190 @@
+name: ppr_023_dangling_all_isolated
+repo:
+  initial_files:
+    pricing.py: |
+      DISCOUNT_FACTOR = 0.85
+
+      def calculate_price(base_rate, quantity):
+          return base_rate * quantity
+
+      class PriceCalculator:
+          def __init__(self, rate):
+              self.rate = rate
+
+          def total(self, qty):
+              return calculate_price(self.rate, qty)
+    alt_pricing.py: |
+      DISCOUNT_FACTOR = 0.90
+
+      def calculate_price(amount, discount=0.1):
+          return amount * (1 - discount)
+
+      class AltPricingEngine:
+          def apply(self, amount):
+              return calculate_price(amount)
+    inventory.py: |
+      REORDER_QUANTITY = 50
+      RATE_LIMIT = 100
+
+      def check_stock(quantity):
+          return quantity > REORDER_QUANTITY
+
+      class InventoryManager:
+          def reorder(self, quantity):
+              return check_stock(quantity)
+    reporting.py: |
+      REPORT_VERSION = "2.1"
+      MAX_ROWS = 1000
+
+      def generate_summary(data):
+          return len(data)
+
+      class ReportBuilder:
+          def build(self, rows):
+              return generate_summary(rows)
+    shipping.py: |
+      SHIPPING_RATE = 5.99
+
+      def calculate_shipping(weight, zone):
+          return weight * SHIPPING_RATE
+
+      class ShippingCalculator:
+          def estimate(self, w, z):
+              return calculate_shipping(w, z)
+    template_engine.py: |
+      TEMPLATE_FORMAT = "jinja2"
+      FILE_EXTENSION = ".html"
+
+      class TemplateRenderer:
+          def render(self, template):
+              pass
+  changed_files:
+    pricing.py: |
+      DISCOUNT_FACTOR = 0.85
+
+      def calculate_price(base_rate, quantity):
+          return base_rate * quantity * DISCOUNT_FACTOR
+
+      class PriceCalculator:
+          def __init__(self, rate):
+              self.rate = rate
+
+          def total(self, qty):
+              return calculate_price(self.rate, qty)
+    alt_pricing.py: |
+      DISCOUNT_FACTOR = 0.90
+
+      def calculate_price(amount, discount=0.1):
+          return amount * (1 - discount)
+
+      class AltPricingEngine:
+          def apply(self, amount):
+              return calculate_price(amount)
+    inventory.py: |
+      REORDER_QUANTITY = 50
+      RATE_LIMIT = 100
+
+      def check_stock(quantity):
+          return quantity > REORDER_QUANTITY
+
+      class InventoryManager:
+          def reorder(self, quantity):
+              return check_stock(quantity)
+    reporting.py: |
+      REPORT_VERSION = "2.1"
+      MAX_ROWS = 1000
+
+      def generate_summary(data):
+          return len(data)
+
+      class ReportBuilder:
+          def build(self, rows):
+              return generate_summary(rows)
+    shipping.py: |
+      SHIPPING_RATE = 5.99
+
+      def calculate_shipping(weight, zone):
+          return weight * SHIPPING_RATE
+
+      class ShippingCalculator:
+          def estimate(self, w, z):
+              return calculate_shipping(w, z)
+    template_engine.py: |
+      TEMPLATE_FORMAT = "jinja2"
+      FILE_EXTENSION = ".html"
+
+      class TemplateRenderer:
+          def render(self, template):
+              pass
+  commit_message: Update files
+fragments:
+- id: pricing
+  selector:
+    path: pricing.py
+    anchor: 'def calculate_price(base_rate, quantity):'
+- id: pricing_1
+  selector:
+    path: pricing.py
+    anchor: return base_rate * quantity * DISCOUNT_FACTOR
+- id: no_inventory
+  selector:
+    path: inventory.py
+- id: no_reporting
+  selector:
+    path: reporting.py
+- id: no_shipping
+  selector:
+    path: shipping.py
+- id: no_template_engine
+  selector:
+    path: template_engine.py
+- id: no_global_0
+  selector:
+    anchor: InventoryManager
+- id: no_global_1
+  selector:
+    anchor: REORDER_QUANTITY
+- id: no_global_2
+  selector:
+    anchor: RATE_LIMIT
+- id: no_global_3
+  selector:
+    anchor: ReportBuilder
+- id: no_global_4
+  selector:
+    anchor: REPORT_VERSION
+- id: no_global_5
+  selector:
+    anchor: MAX_ROWS
+- id: no_global_6
+  selector:
+    anchor: ShippingCalculator
+- id: no_global_7
+  selector:
+    anchor: SHIPPING_RATE
+- id: no_global_8
+  selector:
+    anchor: TemplateRenderer
+- id: no_global_9
+  selector:
+    anchor: TEMPLATE_FORMAT
+oracle:
+  required:
+  - pricing
+  - pricing_1
+  allowed: []
+  forbidden:
+  - no_inventory
+  - no_reporting
+  - no_shipping
+  - no_template_engine
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

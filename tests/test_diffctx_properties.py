@@ -53,24 +53,39 @@ class TestBudgetMonotonicity:
     @given(
         budget_small=st.integers(min_value=50, max_value=500),
         budget_multiplier=st.integers(min_value=2, max_value=20),
+        num_functions=st.integers(min_value=2, max_value=5),
     )
     @settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_more_budget_yields_superset_of_paths(
-        self, tmp_path_factory: pytest.TempPathFactory, budget_small: int, budget_multiplier: int
+        self,
+        tmp_path_factory: pytest.TempPathFactory,
+        budget_small: int,
+        budget_multiplier: int,
+        num_functions: int,
     ) -> None:
         budget_large = budget_small * budget_multiplier
         tmp_path = tmp_path_factory.mktemp("monotonicity")
         g = Pygit2Repo(tmp_path / "repo")
 
-        g.add_file("main.py", "def main():\n    return 'initial'\n")
-        g.add_file("helper.py", "def helper():\n    return 'help'\n")
-        g.add_file(
-            "utils.py",
-            "def util_a():\n    return 1\n\ndef util_b():\n    return 2\n",
-        )
+        for i in range(num_functions):
+            if i == 0:
+                body = f"    return func_{i + 1}(x)\n" if num_functions > 1 else "    return x\n"
+            elif i == num_functions - 1:
+                body = "    return x\n"
+            else:
+                body = f"    return func_{i + 1}(x)\n"
+            content = f"def func_{i}(x):\n{body}"
+            g.add_file(f"module_{i}.py", content)
         g.commit("init")
 
-        g.add_file("main.py", "def main():\n    return 'modified'\n")
+        g.add_file(
+            "module_0.py",
+            (
+                "def func_0(x):\n    return func_1(x) if x else None\n"
+                if num_functions > 1
+                else "def func_0(x):\n    return x + 1\n"
+            ),
+        )
         g.commit("change")
 
         ctx_small = build_diff_context(
@@ -131,17 +146,33 @@ class TestBudgetEnforcement:
 class TestSelectionIdempotency:
     @given(
         budget=st.integers(min_value=100, max_value=3000),
+        app_func_name=st.text(
+            alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyz_0123456789"),
+            min_size=5,
+            max_size=20,
+        ),
+        lib_func_name=st.text(
+            alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyz_0123456789"),
+            min_size=5,
+            max_size=20,
+        ),
     )
     @settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_identical_input_produces_identical_output(self, tmp_path_factory: pytest.TempPathFactory, budget: int) -> None:
+    def test_identical_input_produces_identical_output(
+        self,
+        tmp_path_factory: pytest.TempPathFactory,
+        budget: int,
+        app_func_name: str,
+        lib_func_name: str,
+    ) -> None:
         tmp_path = tmp_path_factory.mktemp("idempotent")
         g = Pygit2Repo(tmp_path / "repo")
 
-        g.add_file("app.py", "def run():\n    return 'v1'\n")
-        g.add_file("lib.py", "def support():\n    return 'ok'\n")
+        g.add_file("app.py", f"def {app_func_name}():\n    return 'v1'\n")
+        g.add_file("lib.py", f"def {lib_func_name}():\n    return 'ok'\n")
         g.commit("init")
 
-        g.add_file("app.py", "def run():\n    return 'v2'\n")
+        g.add_file("app.py", f"def {app_func_name}():\n    return 'v2'\n")
         g.commit("change")
 
         ctx1 = build_diff_context(

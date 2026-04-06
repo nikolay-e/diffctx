@@ -1,0 +1,146 @@
+name: cicd_and_docs_020_gha_timeout
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm ci
+            - run: npm run build
+    package.json: |
+      {
+        "name": "long-build-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "webpack --mode production",
+          "test": "jest --testTimeout=60000"
+        }
+      }
+    src/build/config.ts: |
+      export interface BuildConfig {
+        timeout: number;
+        retries: number;
+        parallel: boolean;
+      }
+
+      export const defaultConfig: BuildConfig = {
+        timeout: 30 * 60 * 1000,
+        retries: 3,
+        parallel: true
+      };
+    garbage_watchdog.ts: |
+      const GARBAGE_CICD_DOCS_020_WATCHDOG_MARKER_A = "process";
+      const GARBAGE_CICD_DOCS_020_SIGNAL_MARKER_B = "SIGTERM";
+
+      class GarbageWatchdogService {
+        static GARBAGE_CICD_DOCS_020_GRACE_MARKER_C = 30000;
+        monitor(): void {}
+      }
+    garbage_deadline.ts: |
+      const GARBAGE_CICD_DOCS_020_DEADLINE_MARKER_D = "absolute";
+      const GARBAGE_CICD_DOCS_020_EXTEND_MARKER_E = false;
+
+      class GarbageDeadlineManager {
+        static GARBAGE_CICD_DOCS_020_WARN_MARKER_F = 60000;
+        check(): boolean { return false; }
+      }
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          timeout-minutes: 30
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm ci
+            - run: npm run build
+              timeout-minutes: 15
+    package.json: |
+      {
+        "name": "long-build-app",
+        "version": "1.0.0",
+        "scripts": {
+          "build": "webpack --mode production",
+          "test": "jest --testTimeout=60000"
+        }
+      }
+    src/build/config.ts: |
+      export interface BuildConfig {
+        timeout: number;
+        retries: number;
+        parallel: boolean;
+      }
+
+      export const defaultConfig: BuildConfig = {
+        timeout: 30 * 60 * 1000,
+        retries: 3,
+        parallel: true
+      };
+    garbage_watchdog.ts: |
+      const GARBAGE_CICD_DOCS_020_WATCHDOG_MARKER_A = "process";
+      const GARBAGE_CICD_DOCS_020_SIGNAL_MARKER_B = "SIGTERM";
+
+      class GarbageWatchdogService {
+        static GARBAGE_CICD_DOCS_020_GRACE_MARKER_C = 30000;
+        monitor(): void {}
+      }
+    garbage_deadline.ts: |
+      const GARBAGE_CICD_DOCS_020_DEADLINE_MARKER_D = "absolute";
+      const GARBAGE_CICD_DOCS_020_EXTEND_MARKER_E = false;
+
+      class GarbageDeadlineManager {
+        static GARBAGE_CICD_DOCS_020_WARN_MARKER_F = 60000;
+        check(): boolean { return false; }
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'timeout-minutes: 30'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_DEADLINE_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_EXTEND_MARKER_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_GRACE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_SIGNAL_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_WARN_MARKER_F
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_020_WATCHDOG_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: garbage_deadline.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_watchdog.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

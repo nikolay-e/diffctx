@@ -1,0 +1,263 @@
+name: jvm_and_compiled_012_csharp_async_await
+repo:
+  initial_files:
+    Models/User.cs: |
+      namespace MyApp.Models
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+          }
+      }
+    Api/UserApi.cs: |
+      namespace MyApp.Api
+      {
+          class UserApi { }
+      }
+    Api/ProductApi.cs: |
+      using System.Net.Http;
+      using System.Text.Json;
+      using MyApp.Models;
+
+      namespace MyApp.Api
+      {
+          class ProductApi
+          {
+              private readonly HttpClient _client;
+
+              public ProductApi(HttpClient client)
+              {
+                  _client = client;
+              }
+
+              public async Task<Product> GetProductAsync(int id)
+              {
+                  var response = await _client.GetAsync($"/api/products/{id}");
+                  response.EnsureSuccessStatusCode();
+                  var json = await response.Content.ReadAsStringAsync();
+                  return JsonSerializer.Deserialize<Product>(json);
+              }
+
+              public async Task<IEnumerable<Product>> GetAllProductsAsync()
+              {
+                  var response = await _client.GetAsync("/api/products");
+                  var json = await response.Content.ReadAsStringAsync();
+                  return JsonSerializer.Deserialize<IEnumerable<Product>>(json);
+              }
+          }
+      }
+    Services/HttpClientFactory.cs: |
+      using System.Net.Http;
+
+      namespace MyApp.Services
+      {
+          public class HttpClientFactory
+          {
+              private readonly string _baseUrl;
+              private readonly TimeSpan _timeout;
+
+              public HttpClientFactory(string baseUrl, TimeSpan? timeout = null)
+              {
+                  _baseUrl = baseUrl;
+                  _timeout = timeout ?? TimeSpan.FromSeconds(30);
+              }
+
+              public HttpClient Create()
+              {
+                  var client = new HttpClient
+                  {
+                      BaseAddress = new Uri(_baseUrl),
+                      Timeout = _timeout
+                  };
+                  client.DefaultRequestHeaders.Add("Accept", "application/json");
+                  return client;
+              }
+          }
+      }
+    Models/ApiError.cs: |
+      namespace MyApp.Models
+      {
+          public class ApiError
+          {
+              public int StatusCode { get; set; }
+              public string Message { get; set; }
+              public string Detail { get; set; }
+
+              public override string ToString()
+              {
+                  return $"HTTP {StatusCode}: {Message} - {Detail}";
+              }
+          }
+      }
+    Tests/UserApiTests.cs: |
+      using MyApp.Api;
+      using MyApp.Models;
+      using Xunit;
+
+      namespace MyApp.Tests
+      {
+          public class UserApiTests
+          {
+              [Fact]
+              public async Task GetUserAsync_ReturnsUser()
+              {
+                  var handler = new MockHttpMessageHandler("{\"Id\":1,\"Name\":\"Alice\"}");
+                  var client = new HttpClient(handler) { BaseAddress = new Uri("http://test") };
+                  var api = new UserApi(client);
+
+                  var user = await api.GetUserAsync(1);
+                  Assert.Equal("Alice", user.Name);
+                  Assert.Equal(1, user.Id);
+              }
+
+              [Fact]
+              public async Task GetAllUsersAsync_ReturnsList()
+              {
+                  var handler = new MockHttpMessageHandler("[{\"Id\":1,\"Name\":\"Bob\"}]");
+                  var client = new HttpClient(handler) { BaseAddress = new Uri("http://test") };
+                  var api = new UserApi(client);
+
+                  var users = await api.GetAllUsersAsync();
+                  Assert.Single(users);
+              }
+          }
+      }
+  changed_files:
+    Api/UserApi.cs: |
+      using System.Net.Http;
+      using System.Text.Json;
+      using MyApp.Models;
+
+      namespace MyApp.Api
+      {
+          class UserApi
+          {
+              private readonly HttpClient _client;
+
+              public UserApi(HttpClient client)
+              {
+                  _client = client;
+              }
+
+              public async Task<User> GetUserAsync(int id)
+              {
+                  var response = await _client.GetAsync($"/api/users/{id}");
+                  response.EnsureSuccessStatusCode();
+
+                  var json = await response.Content.ReadAsStringAsync();
+                  return JsonSerializer.Deserialize<User>(json);
+              }
+
+              public async Task<IEnumerable<User>> GetAllUsersAsync()
+              {
+                  var response = await _client.GetAsync("/api/users");
+                  var json = await response.Content.ReadAsStringAsync();
+                  return JsonSerializer.Deserialize<IEnumerable<User>>(json);
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userapi
+  selector:
+    path: Api/UserApi.cs
+    anchor: JsonSerializer.Deserialize<User>(json)
+- id: userapi_1
+  selector:
+    path: Api/UserApi.cs
+    anchor: JsonSerializer.Deserialize<IEnumerable<User>>(json)
+- id: userapi_2
+  selector:
+    path: Api/UserApi.cs
+    anchor: EnsureSuccessStatusCode()
+- id: userapi_3
+  selector:
+    path: Api/UserApi.cs
+    anchor: async Task<User> GetUserAsync(int id)
+- id: user
+  selector:
+    path: Models/User.cs
+    anchor: public int Id { get; set; }
+- id: user_1
+  selector:
+    path: Models/User.cs
+    anchor: public string Name { get; set; }
+- id: no_productapi
+  selector:
+    path: Api/ProductApi.cs
+- id: no_httpclientfactory
+  selector:
+    path: Services/HttpClientFactory.cs
+- id: no_apierror
+  selector:
+    path: Models/ApiError.cs
+- id: no_userapitests
+  selector:
+    path: Tests/UserApiTests.cs
+- id: no_global_0
+  selector:
+    anchor: ProductApi
+- id: no_global_1
+  selector:
+    anchor: GetProductAsync
+- id: no_global_2
+  selector:
+    anchor: GetAllProductsAsync
+- id: no_global_3
+  selector:
+    anchor: Deserialize<Product>
+- id: no_global_4
+  selector:
+    anchor: HttpClientFactory
+- id: no_global_5
+  selector:
+    anchor: BaseAddress = new Uri
+- id: no_global_6
+  selector:
+    anchor: DefaultRequestHeaders
+- id: no_global_7
+  selector:
+    anchor: ApiError
+- id: no_global_8
+  selector:
+    anchor: StatusCode
+- id: no_global_9
+  selector:
+    anchor: HTTP {StatusCode}
+- id: no_global_10
+  selector:
+    anchor: UserApiTests
+- id: no_global_11
+  selector:
+    anchor: MockHttpMessageHandler
+- id: no_global_12
+  selector:
+    anchor: Assert.Single
+oracle:
+  required:
+  - userapi
+  - userapi_1
+  - userapi_2
+  - userapi_3
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_productapi
+  - no_httpclientfactory
+  - no_apierror
+  - no_userapitests
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

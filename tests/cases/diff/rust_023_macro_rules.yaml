@@ -1,0 +1,209 @@
+name: rust_023_macro_rules
+repo:
+  initial_files:
+    src/macros.rs: |
+      #[macro_export]
+      macro_rules! vec_of_strings {
+          ($($x:expr),*) => {
+              vec![$($x.to_string()),*]
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_info {
+          ($($arg:tt)*) => {
+              println!("[INFO] {}", format!($($arg)*));
+          };
+      }
+    src/main.rs: |
+      mod macros;
+
+      fn main() {
+          let v = vec_of_strings!["hello", "world", "rust"];
+          for item in &v {
+              log_info!("Item: {}", item);
+          }
+          println!("Total items: {}", v.len());
+      }
+    src/logging_macros.rs: |
+      #[macro_export]
+      macro_rules! log_debug {
+          ($($arg:tt)*) => {
+              if cfg!(debug_assertions) {
+                  eprintln!("[DEBUG] {}", format!($($arg)*));
+              }
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_error {
+          ($($arg:tt)*) => {
+              eprintln!("[ERROR] {}", format!($($arg)*));
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_warn {
+          ($($arg:tt)*) => {
+              eprintln!("[WARN] {}", format!($($arg)*));
+          };
+      }
+    src/assert_helpers.rs: |
+      #[macro_export]
+      macro_rules! assert_approx_eq {
+          ($left:expr, $right:expr, $epsilon:expr) => {
+              let diff = ($left - $right).abs();
+              assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
+          };
+      }
+
+      #[macro_export]
+      macro_rules! assert_contains {
+          ($haystack:expr, $needle:expr) => {
+              assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
+          };
+      }
+  changed_files:
+    src/macros.rs: |
+      #[macro_export]
+      macro_rules! vec_of_strings {
+          ($($x:expr),*) => {
+              vec![$($x.to_string()),*]
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_info {
+          ($($arg:tt)*) => {
+              println!("[INFO] {}", format!($($arg)*));
+          };
+      }
+
+      #[macro_export]
+      macro_rules! hashmap {
+          ($($key:expr => $value:expr),* $(,)?) => {{
+              let mut map = std::collections::HashMap::new();
+              $(map.insert($key, $value);)*
+              map
+          }};
+      }
+
+      #[macro_export]
+      macro_rules! ensure {
+          ($cond:expr, $msg:expr) => {
+              if !$cond {
+                  return Err($msg.to_string());
+              }
+          };
+      }
+    src/main.rs: |
+      mod macros;
+
+      fn main() {
+          let v = vec_of_strings!["hello", "world", "rust"];
+          for item in &v {
+              log_info!("Item: {}", item);
+          }
+
+          let config = hashmap! {
+              "host" => "localhost",
+              "port" => "8080",
+          };
+          for (k, v) in &config {
+              log_info!("Config: {} = {}", k, v);
+          }
+
+          println!("Total items: {}", v.len());
+      }
+    src/logging_macros.rs: |
+      #[macro_export]
+      macro_rules! log_debug {
+          ($($arg:tt)*) => {
+              if cfg!(debug_assertions) {
+                  eprintln!("[DEBUG] {}", format!($($arg)*));
+              }
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_error {
+          ($($arg:tt)*) => {
+              eprintln!("[ERROR] {}", format!($($arg)*));
+          };
+      }
+
+      #[macro_export]
+      macro_rules! log_warn {
+          ($($arg:tt)*) => {
+              eprintln!("[WARN] {}", format!($($arg)*));
+          };
+      }
+    src/assert_helpers.rs: |
+      #[macro_export]
+      macro_rules! assert_approx_eq {
+          ($left:expr, $right:expr, $epsilon:expr) => {
+              let diff = ($left - $right).abs();
+              assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
+          };
+      }
+
+      #[macro_export]
+      macro_rules! assert_contains {
+          ($haystack:expr, $needle:expr) => {
+              assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: macros_file
+  selector:
+    path: src/macros.rs
+- id: main_file
+  selector:
+    path: src/main.rs
+- id: req_global_0
+  selector:
+    anchor: macro_rules! hashmap {
+- id: req_global_1
+  selector:
+    anchor: let config = hashmap! {
+- id: no_logging_macros
+  selector:
+    path: src/logging_macros.rs
+- id: no_assert_helpers
+  selector:
+    path: src/assert_helpers.rs
+- id: no_global_0
+  selector:
+    anchor: log_debug
+- id: no_global_1
+  selector:
+    anchor: log_error
+- id: no_global_2
+  selector:
+    anchor: assert_approx_eq
+- id: no_global_3
+  selector:
+    anchor: assert_contains
+- id: no_global_4
+  selector:
+    anchor: logging_macros.rs
+- id: no_global_5
+  selector:
+    anchor: assert_helpers.rs
+oracle:
+  required:
+  - macros_file
+  - main_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_logging_macros
+  - no_assert_helpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

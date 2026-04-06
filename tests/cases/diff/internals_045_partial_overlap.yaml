@@ -1,0 +1,32 @@
+name: internals_045_partial_overlap
+repo:
+  initial_files:
+    file.py: |
+      pass
+  changed_files:
+    file.py: |
+      def func_first():
+          shared_call()
+          unique_first()
+
+      def func_second():
+          shared_call()
+          unique_second()
+  commit_message: Update files
+fragments:
+- id: file_file
+  selector:
+    path: file.py
+- id: req_global_0
+  selector:
+    anchor: 'def func_first():'
+- id: req_global_1
+  selector:
+    anchor: 'def func_second():'
+oracle:
+  required:
+  - file_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

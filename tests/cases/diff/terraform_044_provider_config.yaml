@@ -1,0 +1,218 @@
+name: terraform_044_provider_config
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data-bucket"
+      }
+
+      resource "aws_s3_bucket" "logs" {
+        bucket = "app-logs-bucket"
+
+        tags = {
+          Purpose = "logging"
+        }
+      }
+    eu_region/providers.tf: |
+      provider "aws" {
+        alias  = "eu_west"
+        region = "eu-west-1"
+
+        default_tags {
+          tags = {
+            Environment = "production"
+            ManagedBy   = "terraform"
+            Region      = "eu"
+          }
+        }
+
+        assume_role {
+          role_arn = "arn:aws:iam::987654321:role/EURole"
+        }
+      }
+    staging/providers.tf: |
+      provider "aws" {
+        alias  = "staging"
+        region = "us-east-1"
+
+        default_tags {
+          tags = {
+            Environment = "staging"
+            ManagedBy   = "terraform"
+          }
+        }
+
+        assume_role {
+          role_arn = "arn:aws:iam::111222333:role/StagingRole"
+        }
+      }
+    scripts/provider_check.sh: |
+      #!/bin/bash
+      echo "Checking provider versions..."
+      terraform providers
+      terraform providers lock -platform=linux_amd64
+    iam/cross_account.tf: |
+      resource "aws_iam_role" "terraform" {
+        name = "TerraformRole"
+
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect    = "Allow"
+            Principal = { AWS = "arn:aws:iam::123456789:root" }
+            Action    = "sts:AssumeRole"
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy_attachment" "terraform_admin" {
+        role       = aws_iam_role.terraform.name
+        policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+      }
+    outputs.tf: |
+      output "instance_id" {
+        value = aws_instance.web.id
+      }
+
+      output "data_bucket_arn" {
+        value = aws_s3_bucket.data.arn
+      }
+
+      output "logs_bucket_arn" {
+        value = aws_s3_bucket.logs.arn
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+
+      resource "aws_s3_bucket" "data" {
+        bucket = "app-data-bucket"
+      }
+
+      resource "aws_s3_bucket" "logs" {
+        bucket = "app-logs-bucket"
+
+        tags = {
+          Purpose = "logging"
+        }
+      }
+    providers.tf: |
+      provider "aws" {
+        region = "us-east-1"
+
+        default_tags {
+          tags = {
+            Environment = "production"
+            ManagedBy   = "terraform"
+          }
+        }
+
+        assume_role {
+          role_arn = "arn:aws:iam::123456789:role/TerraformRole"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: resource "aws_instance" "web" {
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: resource "aws_s3_bucket" "data" {
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: resource "aws_s3_bucket" "logs" {
+- id: no_providers
+  selector:
+    path: eu_region/providers.tf
+- id: no_providers_1
+  selector:
+    path: staging/providers.tf
+- id: no_provider_check
+  selector:
+    path: scripts/provider_check.sh
+- id: no_cross_account
+  selector:
+    path: iam/cross_account.tf
+- id: no_outputs
+  selector:
+    path: outputs.tf
+- id: no_global_0
+  selector:
+    anchor: eu_west
+- id: no_global_1
+  selector:
+    anchor: '987654321'
+- id: no_global_2
+  selector:
+    anchor: Region      = "eu"
+- id: no_global_3
+  selector:
+    anchor: alias  = "staging"
+- id: no_global_4
+  selector:
+    anchor: '111222333'
+- id: no_global_5
+  selector:
+    anchor: StagingRole
+- id: no_global_6
+  selector:
+    anchor: terraform providers
+- id: no_global_7
+  selector:
+    anchor: providers lock
+- id: no_global_8
+  selector:
+    anchor: assume_role_policy
+- id: no_global_9
+  selector:
+    anchor: AdministratorAccess
+- id: no_global_10
+  selector:
+    anchor: output "instance_id"
+- id: no_global_11
+  selector:
+    anchor: output "data_bucket_arn"
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  allowed: []
+  forbidden:
+  - no_providers
+  - no_providers_1
+  - no_provider_check
+  - no_cross_account
+  - no_outputs
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

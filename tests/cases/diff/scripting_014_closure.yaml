@@ -1,0 +1,246 @@
+name: scripting_014_closure
+repo:
+  initial_files:
+    src/Multiplier.php: |
+      <?php
+      class Multiplier {
+          public function __construct(private int $factor) {}
+
+          public function getFactor(): int {
+              return $this->factor;
+          }
+
+          public function multiply(int $value): int {
+              return $value * $this->factor;
+          }
+      }
+    src/app.php: |
+      <?php
+      echo "Hello";
+    src/Adder.php: |
+      <?php
+      class Adder {
+          private int $offset;
+
+          public function __construct(int $offset) {
+              $this->offset = $offset;
+          }
+
+          public function add(int $value): int {
+              return $value + $this->offset;
+          }
+
+          public function getOffset(): int {
+              return $this->offset;
+          }
+      }
+    src/ArrayHelper.php: |
+      <?php
+      class ArrayHelper {
+          public static function flatten(array $nested): array {
+              $result = [];
+              array_walk_recursive($nested, function($item) use (&$result) {
+                  $result[] = $item;
+              });
+              return $result;
+          }
+
+          public static function unique(array $items): array {
+              return array_values(array_unique($items));
+          }
+
+          public static function chunk(array $items, int $size): array {
+              return array_chunk($items, $size);
+          }
+      }
+    src/Calculator.php: |
+      <?php
+      require_once 'Multiplier.php';
+      require_once 'Adder.php';
+
+      class Calculator {
+          private Multiplier $multiplier;
+          private Adder $adder;
+
+          public function __construct(int $factor, int $offset) {
+              $this->multiplier = new Multiplier($factor);
+              $this->adder = new Adder($offset);
+          }
+
+          public function compute(int $value): int {
+              $scaled = $value * $this->multiplier->getFactor();
+              return $this->adder->add($scaled);
+          }
+
+          public function batchCompute(array $values): array {
+              return array_map([$this, 'compute'], $values);
+          }
+      }
+    src/Divider.php: |
+      <?php
+      class Divider {
+          public function __construct(private int $divisor) {
+              if ($divisor === 0) {
+                  throw new \InvalidArgumentException('Divisor cannot be zero');
+              }
+          }
+
+          public function divide(int $value): float {
+              return $value / $this->divisor;
+          }
+
+          public function getDivisor(): int {
+              return $this->divisor;
+          }
+      }
+    src/lib/FunctionComposer.php: |
+      <?php
+      class FunctionComposer {
+          private array $functions = [];
+
+          public function add(callable $fn): self {
+              $this->functions[] = $fn;
+              return $this;
+          }
+
+          public function compose(): callable {
+              $fns = $this->functions;
+              return function ($value) use ($fns) {
+                  return array_reduce($fns, fn($carry, $fn) => $fn($carry), $value);
+              };
+          }
+
+          public function apply($value) {
+              return ($this->compose())($value);
+          }
+      }
+  changed_files:
+    src/Multiplier.php: |
+      <?php
+      class Multiplier {
+          public function __construct(private int $factor) {}
+
+          public function getFactor(): int {
+              return $this->factor;
+          }
+
+          public function multiply(int $value): int {
+              return $value * $this->factor;
+          }
+      }
+    src/app.php: |
+      <?php
+      require_once 'Multiplier.php';
+
+      $multiplier = new Multiplier(10);
+      $factor = $multiplier->getFactor();
+
+      $callback = function(int $x) use ($factor): int {
+          return $x * $factor;
+      };
+
+      $numbers = [1, 2, 3, 4, 5];
+      $result = array_map($callback, $numbers);
+      print_r($result);
+  commit_message: Update files
+fragments:
+- id: multiplier
+  selector:
+    path: src/Multiplier.php
+    anchor: private int $factor
+- id: multiplier_1
+  selector:
+    path: src/Multiplier.php
+    anchor: 'public function getFactor(): int'
+- id: app
+  selector:
+    path: src/app.php
+    anchor: $multiplier->getFactor()
+- id: app_1
+  selector:
+    path: src/app.php
+    anchor: use ($factor)
+- id: no_adder
+  selector:
+    path: src/Adder.php
+- id: no_arrayhelper
+  selector:
+    path: src/ArrayHelper.php
+- id: no_calculator
+  selector:
+    path: src/Calculator.php
+- id: no_divider
+  selector:
+    path: src/Divider.php
+- id: no_functioncomposer
+  selector:
+    path: src/lib/FunctionComposer.php
+- id: no_global_0
+  selector:
+    anchor: getOffset
+- id: no_global_1
+  selector:
+    anchor: $this->offset
+- id: no_global_2
+  selector:
+    anchor: flatten
+- id: no_global_3
+  selector:
+    anchor: array_walk_recursive
+- id: no_global_4
+  selector:
+    anchor: chunk
+- id: no_global_5
+  selector:
+    anchor: Calculator
+- id: no_global_6
+  selector:
+    anchor: batchCompute
+- id: no_global_7
+  selector:
+    anchor: compute
+- id: no_global_8
+  selector:
+    anchor: Divider
+- id: no_global_9
+  selector:
+    anchor: getDivisor
+- id: no_global_10
+  selector:
+    anchor: Divisor cannot be zero
+- id: no_global_11
+  selector:
+    anchor: FunctionComposer
+- id: no_global_12
+  selector:
+    anchor: compose
+- id: no_global_13
+  selector:
+    anchor: array_reduce
+oracle:
+  required:
+  - multiplier
+  - multiplier_1
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_adder
+  - no_arrayhelper
+  - no_calculator
+  - no_divider
+  - no_functioncomposer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

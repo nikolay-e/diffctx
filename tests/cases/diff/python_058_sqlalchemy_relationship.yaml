@@ -1,0 +1,266 @@
+name: python_058_sqlalchemy_relationship
+repo:
+  initial_files:
+    models/order.py: |
+      from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Enum
+      from sqlalchemy.orm import relationship
+      from database import Base
+      from datetime import datetime
+      import enum
+
+      class OrderStatus(enum.Enum):
+          PENDING = "pending"
+          CONFIRMED = "confirmed"
+          SHIPPED = "shipped"
+          DELIVERED = "delivered"
+
+      class Order(Base):
+          __tablename__ = "orders"
+
+          id = Column(Integer, primary_key=True)
+          user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+          status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+          created_at = Column(DateTime, default=datetime.utcnow)
+          shipping_address = Column(String(500))
+          user = relationship("User", back_populates="orders")
+          items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+          def item_count(self) -> int:
+              return len(self.items)
+    models/item.py: |
+      from sqlalchemy import Column, Integer, ForeignKey, Float, String
+      from sqlalchemy.orm import relationship
+      from database import Base
+
+      class OrderItem(Base):
+          __tablename__ = "order_items"
+
+          id = Column(Integer, primary_key=True)
+          order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+          product_name = Column(String(200), nullable=False)
+          quantity = Column(Integer, default=1)
+          unit_price = Column(Float, nullable=False)
+          order = relationship("Order", back_populates="items")
+
+          @property
+          def subtotal(self) -> float:
+              return self.quantity * self.unit_price
+    services/order.py: |
+      from typing import Optional
+
+      def calculate_total(order_id: int) -> float:
+          return 0.0
+
+      def get_order_summary(order_id: int) -> Optional[dict]:
+          return None
+
+      def update_order_status(order_id: int, status: str) -> bool:
+          return False
+    services/shipping_calculator.py: |
+      from typing import Optional
+
+      class ShippingCalculator:
+          def __init__(self, origin_zip: str = "10001"):
+              self.origin_zip = origin_zip
+              self._rate_table: dict[str, float] = {}
+
+          def calculate_rate(self, dest_zip: str, weight_kg: float) -> float:
+              base_rate = weight_kg * 2.5
+              return round(base_rate, 2)
+
+          def estimate_delivery_days(self, dest_zip: str) -> int:
+              return 5
+
+          def get_tracking_url(self, tracking_number: str) -> str:
+              return f"https://track.example.com/{tracking_number}"
+
+          def validate_address(self, zip_code: str) -> bool:
+              return len(zip_code) == 5 and zip_code.isdigit()
+    services/inventory_manager.py: |
+      from typing import Optional
+
+      class InventoryManager:
+          def __init__(self):
+              self._stock: dict[str, int] = {}
+
+          def check_availability(self, sku: str) -> int:
+              return self._stock.get(sku, 0)
+
+          def reserve_stock(self, sku: str, quantity: int) -> bool:
+              available = self._stock.get(sku, 0)
+              if available >= quantity:
+                  self._stock[sku] = available - quantity
+                  return True
+              return False
+
+          def restock(self, sku: str, quantity: int) -> None:
+              self._stock[sku] = self._stock.get(sku, 0) + quantity
+
+          def get_low_stock_items(self, threshold: int = 10) -> list[str]:
+              return [sku for sku, qty in self._stock.items() if qty < threshold]
+  changed_files:
+    models/order.py: |
+      from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Enum
+      from sqlalchemy.orm import relationship
+      from database import Base
+      from datetime import datetime
+      import enum
+
+      class OrderStatus(enum.Enum):
+          PENDING = "pending"
+          CONFIRMED = "confirmed"
+          SHIPPED = "shipped"
+          DELIVERED = "delivered"
+
+      class Order(Base):
+          __tablename__ = "orders"
+
+          id = Column(Integer, primary_key=True)
+          user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+          status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+          created_at = Column(DateTime, default=datetime.utcnow)
+          shipping_address = Column(String(500))
+          user = relationship("User", back_populates="orders")
+          items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+          def item_count(self) -> int:
+              return len(self.items)
+    models/item.py: |
+      from sqlalchemy import Column, Integer, ForeignKey, Float, String
+      from sqlalchemy.orm import relationship
+      from database import Base
+
+      class OrderItem(Base):
+          __tablename__ = "order_items"
+
+          id = Column(Integer, primary_key=True)
+          order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+          product_name = Column(String(200), nullable=False)
+          quantity = Column(Integer, default=1)
+          unit_price = Column(Float, nullable=False)
+          order = relationship("Order", back_populates="items")
+
+          @property
+          def subtotal(self) -> float:
+              return self.quantity * self.unit_price
+    services/order.py: |
+      from typing import Optional
+      from models.order import Order, OrderStatus
+      from models.item import OrderItem
+
+      def calculate_total(order: Order) -> float:
+          return sum(item.subtotal for item in order.items)
+
+      def get_order_summary(order: Order) -> dict:
+          return {
+              "order_id": order.id,
+              "status": order.status.value,
+              "items": order.item_count(),
+              "total": calculate_total(order),
+              "shipping_address": order.shipping_address,
+          }
+
+      def update_order_status(order: Order, status: OrderStatus) -> None:
+          order.status = status
+    services/shipping_calculator.py: |
+      from typing import Optional
+
+      class ShippingCalculator:
+          def __init__(self, origin_zip: str = "10001"):
+              self.origin_zip = origin_zip
+              self._rate_table: dict[str, float] = {}
+
+          def calculate_rate(self, dest_zip: str, weight_kg: float) -> float:
+              base_rate = weight_kg * 2.5
+              return round(base_rate, 2)
+
+          def estimate_delivery_days(self, dest_zip: str) -> int:
+              return 5
+
+          def get_tracking_url(self, tracking_number: str) -> str:
+              return f"https://track.example.com/{tracking_number}"
+
+          def validate_address(self, zip_code: str) -> bool:
+              return len(zip_code) == 5 and zip_code.isdigit()
+    services/inventory_manager.py: |
+      from typing import Optional
+
+      class InventoryManager:
+          def __init__(self):
+              self._stock: dict[str, int] = {}
+
+          def check_availability(self, sku: str) -> int:
+              return self._stock.get(sku, 0)
+
+          def reserve_stock(self, sku: str, quantity: int) -> bool:
+              available = self._stock.get(sku, 0)
+              if available >= quantity:
+                  self._stock[sku] = available - quantity
+                  return True
+              return False
+
+          def restock(self, sku: str, quantity: int) -> None:
+              self._stock[sku] = self._stock.get(sku, 0) + quantity
+
+          def get_low_stock_items(self, threshold: int = 10) -> list[str]:
+              return [sku for sku, qty in self._stock.items() if qty < threshold]
+  commit_message: Update files
+fragments:
+- id: order
+  selector:
+    path: models/order.py
+    anchor: class Order(Base)
+- id: item
+  selector:
+    path: models/item.py
+    anchor: class OrderItem(Base)
+- id: order_file
+  selector:
+    path: services/order.py
+- id: req_global_0
+  selector:
+    anchor: from models.order import Order, OrderStatus
+- id: req_global_1
+  selector:
+    anchor: 'def calculate_total(order: Order) -> float:'
+- id: no_shipping_calculator
+  selector:
+    path: services/shipping_calculator.py
+- id: no_inventory_manager
+  selector:
+    path: services/inventory_manager.py
+- id: no_global_0
+  selector:
+    anchor: ShippingCalculator
+- id: no_global_1
+  selector:
+    anchor: calculate_rate
+- id: no_global_2
+  selector:
+    anchor: estimate_delivery_days
+- id: no_global_3
+  selector:
+    anchor: InventoryManager
+- id: no_global_4
+  selector:
+    anchor: reserve_stock
+- id: no_global_5
+  selector:
+    anchor: get_low_stock_items
+oracle:
+  required:
+  - order
+  - item
+  - order_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_shipping_calculator
+  - no_inventory_manager
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

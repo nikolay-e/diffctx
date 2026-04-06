@@ -1,0 +1,114 @@
+name: swift_007_async_await
+repo:
+  initial_files:
+    Sources/Models/User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+      }
+    Sources/Network/UserAPI.swift: |
+      import Foundation
+
+      class UserAPI {
+          func placeholder() {}
+      }
+    Sources/Models/Product.swift: |
+      struct Product: Codable {
+          let sku: String
+          let title: String
+          let price: Double
+      }
+    Sources/Network/ImageDownloader.swift: |
+      import Foundation
+
+      class ImageDownloader {
+          func downloadImage(from url: URL) async throws -> Data {
+              let (data, response) = try await URLSession.shared.data(from: url)
+              guard let httpResponse = response as? HTTPURLResponse,
+                    httpResponse.statusCode == 200 else {
+                  throw URLError(.badServerResponse)
+              }
+              return data
+          }
+      }
+  changed_files:
+    Sources/Models/User.swift: |
+      struct User: Codable {
+          let id: String
+          let name: String
+      }
+    Sources/Network/UserAPI.swift: |
+      import Foundation
+
+      class UserAPI {
+          func fetchUsers() async throws -> [User] {
+              let url = URL(string: "https://api.example.com/users")!
+              let (data, _) = try await URLSession.shared.data(from: url)
+              return try JSONDecoder().decode([User].self, from: data)
+          }
+
+          func getUser(id: String) async throws -> User {
+              let users = try await fetchUsers()
+              guard let user = users.first(where: { $0.id == id }) else {
+                  throw NSError(domain: "UserAPI", code: 404)
+              }
+              return user
+          }
+      }
+    Sources/Models/Product.swift: |
+      struct Product: Codable {
+          let sku: String
+          let title: String
+          let price: Double
+      }
+    Sources/Network/ImageDownloader.swift: |
+      import Foundation
+
+      class ImageDownloader {
+          func downloadImage(from url: URL) async throws -> Data {
+              let (data, response) = try await URLSession.shared.data(from: url)
+              guard let httpResponse = response as? HTTPURLResponse,
+                    httpResponse.statusCode == 200 else {
+                  throw URLError(.badServerResponse)
+              }
+              return data
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userapi_file
+  selector:
+    path: Sources/Network/UserAPI.swift
+- id: req_global_0
+  selector:
+    anchor: 'try JSONDecoder().decode([User].self, from: data)'
+- id: no_product
+  selector:
+    path: Sources/Models/Product.swift
+- id: no_imagedownloader
+  selector:
+    path: Sources/Network/ImageDownloader.swift
+- id: no_global_0
+  selector:
+    anchor: Product
+- id: no_global_1
+  selector:
+    anchor: sku
+- id: no_global_2
+  selector:
+    anchor: ImageDownloader
+- id: no_global_3
+  selector:
+    anchor: downloadImage
+oracle:
+  required:
+  - userapi_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_product
+  - no_imagedownloader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

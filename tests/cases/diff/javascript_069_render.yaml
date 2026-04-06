@@ -1,0 +1,102 @@
+name: javascript_069_render
+repo:
+  initial_files:
+    src/Greeting.tsx: |
+      interface GreetingProps {
+          name: string;
+      }
+
+      export function Greeting({ name }: GreetingProps) {
+          return <h1>Hello, {name}!</h1>;
+      }
+    src/Greeting.test.tsx: |
+      console.log('placeholder');
+    src/Farewell.tsx: |
+      interface FarewellProps {
+          name: string;
+      }
+
+      export function Farewell({ name }: FarewellProps) {
+          return <h1>Goodbye, {name}!</h1>;
+      }
+    src/test-utils.tsx: |
+      import { render, RenderOptions } from '@testing-library/react';
+      import { ReactElement } from 'react';
+
+      function AllProviders({ children }: { children: React.ReactNode }) {
+          return <>{children}</>;
+      }
+
+      export function customRender(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+          return render(ui, { wrapper: AllProviders, ...options });
+      }
+  changed_files:
+    src/Greeting.tsx: |
+      interface GreetingProps {
+          name: string;
+      }
+
+      export function Greeting({ name }: GreetingProps) {
+          return <h1>Hello, {name}!</h1>;
+      }
+    src/Greeting.test.tsx: |
+      import { render, screen } from '@testing-library/react';
+      import { Greeting } from './Greeting';
+
+      describe('Greeting', () => {
+          it('should display name', () => {
+              render(<Greeting name="World" />);
+              expect(screen.getByText('Hello, World!')).toBeInTheDocument();
+          });
+      });
+    src/Farewell.tsx: |
+      interface FarewellProps {
+          name: string;
+      }
+
+      export function Farewell({ name }: FarewellProps) {
+          return <h1>Goodbye, {name}!</h1>;
+      }
+    src/test-utils.tsx: |
+      import { render, RenderOptions } from '@testing-library/react';
+      import { ReactElement } from 'react';
+
+      function AllProviders({ children }: { children: React.ReactNode }) {
+          return <>{children}</>;
+      }
+
+      export function customRender(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+          return render(ui, { wrapper: AllProviders, ...options });
+      }
+  commit_message: Update files
+fragments:
+- id: greeting
+  selector:
+    path: src/Greeting.tsx
+    anchor: function Greeting
+- id: greeting_1
+  selector:
+    path: src/Greeting.tsx
+    anchor: Hello, {name}!
+- id: no_global_0
+  selector:
+    anchor: FarewellProps
+- id: no_global_1
+  selector:
+    anchor: Goodbye
+- id: no_global_2
+  selector:
+    anchor: customRender
+- id: no_global_3
+  selector:
+    anchor: AllProviders
+oracle:
+  required:
+  - greeting
+  - greeting_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

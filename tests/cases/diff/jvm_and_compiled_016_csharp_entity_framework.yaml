@@ -1,0 +1,268 @@
+name: jvm_and_compiled_016_csharp_entity_framework
+repo:
+  initial_files:
+    Models/User.cs: |
+      namespace MyApp.Models
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+      }
+    Data/AppDbContext.cs: |
+      namespace MyApp.Data
+      {
+          class AppDbContext { }
+      }
+    Repositories/UserRepository.cs: |
+      using Microsoft.EntityFrameworkCore;
+      using MyApp.Data;
+      using MyApp.Models;
+
+      namespace MyApp.Repositories
+      {
+          public class UserRepository
+          {
+              private readonly AppDbContext _context;
+
+              public UserRepository(AppDbContext context)
+              {
+                  _context = context;
+              }
+
+              public async Task<User> GetByIdAsync(int id)
+              {
+                  return await _context.Users.FindAsync(id);
+              }
+
+              public async Task<User> GetByEmailAsync(string email)
+              {
+                  return await _context.Users
+                      .FirstOrDefaultAsync(u => u.Email == email);
+              }
+
+              public async Task AddAsync(User user)
+              {
+                  _context.Users.Add(user);
+                  await _context.SaveChangesAsync();
+              }
+          }
+      }
+    Data/AppDbContextFactory.cs: |
+      using Microsoft.EntityFrameworkCore;
+      using Microsoft.EntityFrameworkCore.Design;
+
+      namespace MyApp.Data
+      {
+          public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
+          {
+              public AppDbContext CreateDbContext(string[] args)
+              {
+                  var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+                  optionsBuilder.UseSqlServer(
+                      "Server=localhost;Database=MyApp;Trusted_Connection=True;");
+                  return new AppDbContext(optionsBuilder.Options);
+              }
+          }
+      }
+    Models/Product.cs: |
+      namespace MyApp.Models
+      {
+          public class Product
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public decimal Price { get; set; }
+              public string Category { get; set; }
+              public DateTime CreatedAt { get; set; }
+          }
+      }
+    Data/ProductConfiguration.cs: |
+      using Microsoft.EntityFrameworkCore;
+      using Microsoft.EntityFrameworkCore.Metadata.Builders;
+      using MyApp.Models;
+
+      namespace MyApp.Data
+      {
+          public class ProductConfiguration : IEntityTypeConfiguration<Product>
+          {
+              public void Configure(EntityTypeBuilder<Product> builder)
+              {
+                  builder.HasKey(p => p.Id);
+                  builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
+                  builder.Property(p => p.Price).HasPrecision(18, 2);
+                  builder.HasIndex(p => p.Category);
+              }
+          }
+      }
+    Migrations/InitialCreate.cs: |
+      using Microsoft.EntityFrameworkCore.Migrations;
+
+      namespace MyApp.Migrations
+      {
+          public partial class InitialCreate : Migration
+          {
+              protected override void Up(MigrationBuilder migrationBuilder)
+              {
+                  migrationBuilder.CreateTable(
+                      name: "Users",
+                      columns: table => new
+                      {
+                          Id = table.Column<int>(nullable: false)
+                              .Annotation("SqlServer:Identity", "1, 1"),
+                          Name = table.Column<string>(nullable: true),
+                          Email = table.Column<string>(nullable: false),
+                      });
+              }
+
+              protected override void Down(MigrationBuilder migrationBuilder)
+              {
+                  migrationBuilder.DropTable(name: "Users");
+              }
+          }
+      }
+  changed_files:
+    Data/AppDbContext.cs: |
+      using Microsoft.EntityFrameworkCore;
+      using MyApp.Models;
+
+      namespace MyApp.Data
+      {
+          public class AppDbContext : DbContext
+          {
+              public DbSet<User> Users { get; set; }
+
+              public AppDbContext(DbContextOptions<AppDbContext> options)
+                  : base(options) { }
+
+              protected override void OnModelCreating(ModelBuilder modelBuilder)
+              {
+                  modelBuilder.Entity<User>(entity =>
+                  {
+                      entity.HasKey(e => e.Id);
+                      entity.Property(e => e.Email).IsRequired();
+                      entity.HasIndex(e => e.Email).IsUnique();
+                  });
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: appdbcontext
+  selector:
+    path: Data/AppDbContext.cs
+    anchor: 'public class AppDbContext : DbContext'
+- id: appdbcontext_1
+  selector:
+    path: Data/AppDbContext.cs
+    anchor: DbSet<User> Users
+- id: appdbcontext_2
+  selector:
+    path: Data/AppDbContext.cs
+    anchor: entity.HasKey(e => e.Id)
+- id: appdbcontext_3
+  selector:
+    path: Data/AppDbContext.cs
+    anchor: entity.Property(e => e.Email).IsRequired()
+- id: appdbcontext_4
+  selector:
+    path: Data/AppDbContext.cs
+    anchor: entity.HasIndex(e => e.Email).IsUnique()
+- id: user
+  selector:
+    path: Models/User.cs
+    anchor: public int Id { get; set; }
+- id: user_1
+  selector:
+    path: Models/User.cs
+    anchor: public string Email { get; set; }
+- id: no_userrepository
+  selector:
+    path: Repositories/UserRepository.cs
+- id: no_appdbcontextfactory
+  selector:
+    path: Data/AppDbContextFactory.cs
+- id: no_product
+  selector:
+    path: Models/Product.cs
+- id: no_productconfiguration
+  selector:
+    path: Data/ProductConfiguration.cs
+- id: no_initialcreate
+  selector:
+    path: Migrations/InitialCreate.cs
+- id: no_global_0
+  selector:
+    anchor: UserRepository
+- id: no_global_1
+  selector:
+    anchor: _context.Users.FindAsync
+- id: no_global_2
+  selector:
+    anchor: GetByEmailAsync
+- id: no_global_3
+  selector:
+    anchor: AppDbContextFactory
+- id: no_global_4
+  selector:
+    anchor: IDesignTimeDbContextFactory
+- id: no_global_5
+  selector:
+    anchor: UseSqlServer
+- id: no_global_6
+  selector:
+    anchor: class Product
+- id: no_global_7
+  selector:
+    anchor: decimal Price
+- id: no_global_8
+  selector:
+    anchor: ProductConfiguration
+- id: no_global_9
+  selector:
+    anchor: IEntityTypeConfiguration
+- id: no_global_10
+  selector:
+    anchor: HasPrecision(18, 2)
+- id: no_global_11
+  selector:
+    anchor: InitialCreate
+- id: no_global_12
+  selector:
+    anchor: MigrationBuilder
+- id: no_global_13
+  selector:
+    anchor: CreateTable
+oracle:
+  required:
+  - appdbcontext
+  - appdbcontext_1
+  - appdbcontext_2
+  - appdbcontext_3
+  - appdbcontext_4
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_userrepository
+  - no_appdbcontextfactory
+  - no_product
+  - no_productconfiguration
+  - no_initialcreate
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

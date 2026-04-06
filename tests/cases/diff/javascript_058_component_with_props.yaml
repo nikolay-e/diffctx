@@ -1,0 +1,122 @@
+name: javascript_058_component_with_props
+repo:
+  initial_files:
+    Card.tsx: |
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    App.tsx: |
+      console.log('initial');
+    Header.tsx: |
+      interface HeaderProps {
+          title: string;
+          subtitle?: string;
+      }
+
+      export function Header({ title, subtitle }: HeaderProps) {
+          return (
+              <header>
+                  <h1>{title}</h1>
+                  {subtitle && <p>{subtitle}</p>}
+              </header>
+          );
+      }
+    Card.styles.ts: |
+      export const cardStyles = {
+          container: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' },
+          title: { fontSize: '18px', fontWeight: 'bold' as const, marginBottom: '8px' },
+      };
+  changed_files:
+    Card.tsx: |
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    App.tsx: |
+      import { Card } from './Card';
+
+      export function App() {
+          return (
+              <Card title="Welcome">
+                  <p>Hello World</p>
+              </Card>
+          );
+      }
+    Header.tsx: |
+      interface HeaderProps {
+          title: string;
+          subtitle?: string;
+      }
+
+      export function Header({ title, subtitle }: HeaderProps) {
+          return (
+              <header>
+                  <h1>{title}</h1>
+                  {subtitle && <p>{subtitle}</p>}
+              </header>
+          );
+      }
+    Card.styles.ts: |
+      export const cardStyles = {
+          container: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' },
+          title: { fontSize: '18px', fontWeight: 'bold' as const, marginBottom: '8px' },
+      };
+  commit_message: Update files
+fragments:
+- id: card
+  selector:
+    path: Card.tsx
+    anchor: interface CardProps {
+- id: card_1
+  selector:
+    path: Card.tsx
+    anchor: 'title: string'
+- id: no_header
+  selector:
+    path: Header.tsx
+- id: no_card_styles
+  selector:
+    path: Card.styles.ts
+- id: no_global_0
+  selector:
+    anchor: HeaderProps
+- id: no_global_1
+  selector:
+    anchor: subtitle
+- id: no_global_2
+  selector:
+    anchor: cardStyles
+- id: no_global_3
+  selector:
+    anchor: borderRadius
+oracle:
+  required:
+  - card
+  - card_1
+  allowed: []
+  forbidden:
+  - no_header
+  - no_card_styles
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -1,0 +1,227 @@
+name: javascript_extended_041_keyof_type
+repo:
+  initial_files:
+    src/config.ts: |
+      export interface AppConfig {
+          apiUrl: string;
+          timeout: number;
+          debug: boolean;
+          maxRetries: number;
+          logLevel: string;
+      }
+
+      export const defaultConfig: AppConfig = {
+          apiUrl: 'http://localhost:3000',
+          timeout: 5000,
+          debug: false,
+          maxRetries: 3,
+          logLevel: 'info',
+      };
+    src/getter.ts: |
+      console.log('initial');
+    src/services/configLoader.ts: |
+      import { AppConfig } from '../config';
+
+      export function loadConfigFromEnv(): Partial<AppConfig> {
+          return {
+              apiUrl: process.env.API_URL,
+              timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT, 10) : undefined,
+              debug: process.env.DEBUG === 'true',
+              logLevel: process.env.LOG_LEVEL,
+          };
+      }
+
+      export function mergeConfigs(base: AppConfig, overrides: Partial<AppConfig>): AppConfig {
+          return { ...base, ...Object.fromEntries(Object.entries(overrides).filter(([_, v]) => v !== undefined)) } as AppConfig;
+      }
+    src/services/configWatcher.ts: |
+      import { AppConfig } from '../config';
+      import { EventEmitter } from 'events';
+
+      export class ConfigWatcher extends EventEmitter {
+          private interval: ReturnType<typeof setInterval> | null = null;
+
+          start(path: string, pollMs: number = 5000): void {
+              this.interval = setInterval(() => {
+                  this.emit('change', path);
+              }, pollMs);
+          }
+
+          stop(): void {
+              if (this.interval) clearInterval(this.interval);
+          }
+      }
+
+      export function watchConfig(path: string): ConfigWatcher {
+          const watcher = new ConfigWatcher();
+          watcher.start(path);
+          return watcher;
+      }
+    src/middleware/configMiddleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+      import { AppConfig, defaultConfig } from '../config';
+
+      export function configMiddleware(config: AppConfig = defaultConfig) {
+          return (req: Request, res: Response, next: NextFunction) => {
+              (req as any).appConfig = config;
+              next();
+          };
+      }
+
+      export function getConfigFromRequest(req: Request): AppConfig {
+          return (req as any).appConfig ?? defaultConfig;
+      }
+  changed_files:
+    src/config.ts: |
+      export interface AppConfig {
+          apiUrl: string;
+          timeout: number;
+          debug: boolean;
+          maxRetries: number;
+          logLevel: string;
+      }
+
+      export const defaultConfig: AppConfig = {
+          apiUrl: 'http://localhost:3000',
+          timeout: 5000,
+          debug: false,
+          maxRetries: 3,
+          logLevel: 'info',
+      };
+    src/getter.ts: |
+      import { AppConfig, defaultConfig } from './config';
+
+      type ConfigKey = keyof AppConfig;
+
+      function getConfigValue<K extends ConfigKey>(config: AppConfig, key: K): AppConfig[K] {
+          return config[key];
+      }
+
+      function getDefaultValue<K extends ConfigKey>(key: K): AppConfig[K] {
+          return defaultConfig[key];
+      }
+
+      function getAllKeys(): ConfigKey[] {
+          return Object.keys(defaultConfig) as ConfigKey[];
+      }
+
+      export { ConfigKey, getConfigValue, getDefaultValue, getAllKeys };
+    src/services/configLoader.ts: |
+      import { AppConfig } from '../config';
+
+      export function loadConfigFromEnv(): Partial<AppConfig> {
+          return {
+              apiUrl: process.env.API_URL,
+              timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT, 10) : undefined,
+              debug: process.env.DEBUG === 'true',
+              logLevel: process.env.LOG_LEVEL,
+          };
+      }
+
+      export function mergeConfigs(base: AppConfig, overrides: Partial<AppConfig>): AppConfig {
+          return { ...base, ...Object.fromEntries(Object.entries(overrides).filter(([_, v]) => v !== undefined)) } as AppConfig;
+      }
+    src/services/configWatcher.ts: |
+      import { AppConfig } from '../config';
+      import { EventEmitter } from 'events';
+
+      export class ConfigWatcher extends EventEmitter {
+          private interval: ReturnType<typeof setInterval> | null = null;
+
+          start(path: string, pollMs: number = 5000): void {
+              this.interval = setInterval(() => {
+                  this.emit('change', path);
+              }, pollMs);
+          }
+
+          stop(): void {
+              if (this.interval) clearInterval(this.interval);
+          }
+      }
+
+      export function watchConfig(path: string): ConfigWatcher {
+          const watcher = new ConfigWatcher();
+          watcher.start(path);
+          return watcher;
+      }
+    src/middleware/configMiddleware.ts: |
+      import { Request, Response, NextFunction } from 'express';
+      import { AppConfig, defaultConfig } from '../config';
+
+      export function configMiddleware(config: AppConfig = defaultConfig) {
+          return (req: Request, res: Response, next: NextFunction) => {
+              (req as any).appConfig = config;
+              next();
+          };
+      }
+
+      export function getConfigFromRequest(req: Request): AppConfig {
+          return (req as any).appConfig ?? defaultConfig;
+      }
+  commit_message: Update files
+fragments:
+- id: getter
+  selector:
+    path: src/getter.ts
+    anchor: import { AppConfig, defaultConfig } from './config'
+- id: getter_1
+  selector:
+    path: src/getter.ts
+    anchor: type ConfigKey = keyof AppConfig
+- id: config
+  selector:
+    path: src/config.ts
+    anchor: interface AppConfig
+- id: config_1
+  selector:
+    path: src/config.ts
+    anchor: 'apiUrl: string'
+- id: config_2
+  selector:
+    path: src/config.ts
+    anchor: 'defaultConfig: AppConfig'
+- id: no_configloader
+  selector:
+    path: src/services/configLoader.ts
+- id: no_configwatcher
+  selector:
+    path: src/services/configWatcher.ts
+- id: no_configmiddleware
+  selector:
+    path: src/middleware/configMiddleware.ts
+- id: no_global_0
+  selector:
+    anchor: loadConfigFromEnv
+- id: no_global_1
+  selector:
+    anchor: mergeConfigs
+- id: no_global_2
+  selector:
+    anchor: ConfigWatcher
+- id: no_global_3
+  selector:
+    anchor: watchConfig
+- id: no_global_4
+  selector:
+    anchor: configMiddleware
+- id: no_global_5
+  selector:
+    anchor: getConfigFromRequest
+oracle:
+  required:
+  - getter
+  - getter_1
+  - config
+  - config_1
+  - config_2
+  allowed: []
+  forbidden:
+  - no_configloader
+  - no_configwatcher
+  - no_configmiddleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

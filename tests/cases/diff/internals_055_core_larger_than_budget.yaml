@@ -1,0 +1,48 @@
+name: internals_055_core_larger_than_budget
+repo:
+  initial_files:
+    core1.py: |
+      pass
+    core2.py: |
+      pass
+    core3.py: |
+      pass
+  changed_files:
+    core1.py: |
+      def core_function_1():
+          concept_1_helper()
+          return "result_1"
+    core2.py: |
+      def core_function_2():
+          concept_2_helper()
+          return "result_2"
+    core3.py: |
+      def core_function_3():
+          concept_3_helper()
+          return "result_3"
+  commit_message: Update files
+fragments:
+- id: core1_file
+  selector:
+    path: core1.py
+- id: core2_file
+  selector:
+    path: core2.py
+- id: core3_file
+  selector:
+    path: core3.py
+- id: req_global_0
+  selector:
+    anchor: 'def core_function_1():'
+- id: req_global_1
+  selector:
+    anchor: 'def core_function_2():'
+oracle:
+  required:
+  - core1_file
+  - core2_file
+  - core3_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

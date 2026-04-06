@@ -1,0 +1,104 @@
+name: output_003_required_fields_fragment
+repo:
+  initial_files:
+    module.py: |
+      def my_function():
+          return 42
+    utils/payment_processor.py: |
+      GATEWAY_TIMEOUT = 30
+      MAX_RETRY_ATTEMPTS = 3
+
+      class PaymentProcessor:
+          def __init__(self, api_key: str):
+              self.api_key = api_key
+
+          def charge(self, amount: float, currency: str = "USD") -> dict:
+              return {"status": "success", "amount": amount, "currency": currency}
+
+          def refund(self, transaction_id: str) -> bool:
+              return True
+    utils/invoice_generator.py: |
+      INVOICE_PREFIX = "INV"
+      INVOICE_SEQUENCE_START = 10000
+
+      class InvoiceGenerator:
+          def __init__(self):
+              self._sequence = INVOICE_SEQUENCE_START
+
+          def generate(self, order_id: str, line_items: list) -> dict:
+              self._sequence += 1
+              return {"invoice_id": f"{INVOICE_PREFIX}-{self._sequence}", "order_id": order_id}
+
+          def get_next_number(self) -> int:
+              return self._sequence + 1
+  changed_files:
+    module.py: |
+      def my_function():
+          return 100
+    utils/payment_processor.py: |
+      GATEWAY_TIMEOUT = 30
+      MAX_RETRY_ATTEMPTS = 3
+
+      class PaymentProcessor:
+          def __init__(self, api_key: str):
+              self.api_key = api_key
+
+          def charge(self, amount: float, currency: str = "USD") -> dict:
+              return {"status": "success", "amount": amount, "currency": currency}
+
+          def refund(self, transaction_id: str) -> bool:
+              return True
+    utils/invoice_generator.py: |
+      INVOICE_PREFIX = "INV"
+      INVOICE_SEQUENCE_START = 10000
+
+      class InvoiceGenerator:
+          def __init__(self):
+              self._sequence = INVOICE_SEQUENCE_START
+
+          def generate(self, order_id: str, line_items: list) -> dict:
+              self._sequence += 1
+              return {"invoice_id": f"{INVOICE_PREFIX}-{self._sequence}", "order_id": order_id}
+
+          def get_next_number(self) -> int:
+              return self._sequence + 1
+  commit_message: Update files
+fragments:
+- id: module_file
+  selector:
+    path: module.py
+- id: req_global_0
+  selector:
+    anchor: |-
+      def my_function():
+          return 100
+- id: no_payment_processor
+  selector:
+    path: utils/payment_processor.py
+- id: no_invoice_generator
+  selector:
+    path: utils/invoice_generator.py
+- id: no_global_0
+  selector:
+    anchor: PaymentProcessor
+- id: no_global_1
+  selector:
+    anchor: GATEWAY_TIMEOUT
+- id: no_global_2
+  selector:
+    anchor: InvoiceGenerator
+- id: no_global_3
+  selector:
+    anchor: INVOICE_PREFIX
+oracle:
+  required:
+  - module_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_payment_processor
+  - no_invoice_generator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

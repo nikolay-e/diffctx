@@ -1,0 +1,85 @@
+name: internals_068_max_fragments_bound
+repo:
+  initial_files:
+    utils/math.py: |
+      def add(a: float, b: float) -> float:
+          return a + b
+
+      def subtract(a: float, b: float) -> float:
+          return a - b
+
+      def multiply(a: float, b: float) -> float:
+          return a * b
+    garbage_int068_analytics.py: |
+      GARBAGE_INT068_ANALYTICS_MARKER_A = "analytics_garbage_a"
+      def track_event():
+          return "GARBAGE_INT068_ANALYTICS_MARKER_B"
+      class Reporter:
+          GARBAGE_INT068_ANALYTICS_MARKER_C = "analytics_garbage_c"
+    garbage_int068_export.py: |
+      GARBAGE_INT068_EXPORT_MARKER_A = "export_garbage_a"
+      def export_data():
+          return "GARBAGE_INT068_EXPORT_MARKER_B"
+  changed_files:
+    utils/math.py: |
+      def add(a: float, b: float) -> float:
+          return a + b
+
+      def subtract(a: float, b: float) -> float:
+          return a - b
+
+      def multiply(a: float, b: float) -> float:
+          return a * b
+
+      def divide(a: float, b: float) -> float:
+          if b == 0:
+              raise ValueError("division by zero")
+          return a / b
+    garbage_int068_analytics.py: |
+      GARBAGE_INT068_ANALYTICS_MARKER_A = "analytics_garbage_a"
+      def track_event():
+          return "GARBAGE_INT068_ANALYTICS_MARKER_B"
+      class Reporter:
+          GARBAGE_INT068_ANALYTICS_MARKER_C = "analytics_garbage_c"
+    garbage_int068_export.py: |
+      GARBAGE_INT068_EXPORT_MARKER_A = "export_garbage_a"
+      def export_data():
+          return "GARBAGE_INT068_EXPORT_MARKER_B"
+  commit_message: Update files
+fragments:
+- id: math_file
+  selector:
+    path: utils/math.py
+- id: req_global_0
+  selector:
+    anchor: 'def divide(a: float, b: float) -> float:'
+- id: req_global_1
+  selector:
+    anchor: raise ValueError("division by zero")
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT068_ANALYTICS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT068_ANALYTICS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT068_ANALYTICS_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT068_EXPORT_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_INT068_EXPORT_MARKER_B
+oracle:
+  required:
+  - math_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

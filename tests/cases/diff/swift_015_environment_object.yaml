@@ -1,0 +1,391 @@
+name: swift_015_environment_object
+repo:
+  initial_files:
+    Core/SessionManager.swift: |
+      import Combine
+
+      class SessionManager: ObservableObject {
+          @Published private(set) var currentUsername: String?
+          @Published private(set) var isAuthenticated: Bool = false
+
+          func login(username: String, token: String) {
+              currentUsername = username
+              isAuthenticated = true
+          }
+
+          func logout() {
+              currentUsername = nil
+              isAuthenticated = false
+          }
+      }
+    Features/Dashboard/DashboardView.swift: |
+      import SwiftUI
+
+      struct DashboardView: View {
+          var body: some View { Text("TODO") }
+      }
+    Core/ThemeManager.swift: |
+      import SwiftUI
+      import Combine
+
+      class ThemeManager: ObservableObject {
+          @Published var accentColor: Color = .blue
+          @Published var useDarkMode: Bool = false
+          @Published var cornerRadius: CGFloat = 8
+
+          func applyPreset(_ preset: String) {
+              switch preset {
+              case "minimal":
+                  accentColor = .gray
+                  cornerRadius = 4
+              case "vibrant":
+                  accentColor = .purple
+                  cornerRadius = 12
+              default:
+                  break
+              }
+          }
+      }
+    Features/Onboarding/OnboardingView.swift: |
+      import SwiftUI
+
+      struct OnboardingView: View {
+          @State private var currentPage = 0
+
+          let pages = [
+              "Welcome to the app",
+              "Set up your profile",
+              "Start exploring"
+          ]
+
+          var body: some View {
+              TabView(selection: $currentPage) {
+                  ForEach(pages.indices, id: \.self) { index in
+                      Text(pages[index])
+                          .font(.title)
+                          .tag(index)
+                  }
+              }
+              .tabViewStyle(.page)
+          }
+      }
+    Features/Dashboard/DashboardHeaderView.swift: |
+      import SwiftUI
+
+      struct DashboardHeaderView: View {
+          @EnvironmentObject var session: SessionManager
+
+          var body: some View {
+              HStack {
+                  Image(systemName: "person.circle")
+                      .font(.title)
+                  if session.isAuthenticated {
+                      Text(session.currentUsername ?? "User")
+                          .font(.headline)
+                  }
+                  Spacer()
+              }
+              .padding(.horizontal)
+          }
+      }
+    Core/AuthService.swift: |
+      import Foundation
+
+      class AuthService {
+          private let session: SessionManager
+
+          init(session: SessionManager) {
+              self.session = session
+          }
+
+          func authenticate(username: String, password: String) async throws {
+              let token = try await fetchToken(username: username, password: password)
+              session.login(username: username, token: token)
+          }
+
+          private func fetchToken(username: String, password: String) async throws -> String {
+              return "mock-token-\(username)"
+          }
+      }
+    Features/Settings/AccountView.swift: |
+      import SwiftUI
+
+      struct AccountView: View {
+          @EnvironmentObject var session: SessionManager
+
+          var body: some View {
+              Form {
+                  if session.isAuthenticated {
+                      Section("Account") {
+                          Text("Logged in as \(session.currentUsername ?? "")")
+                          Button("Sign Out", role: .destructive) {
+                              session.logout()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  changed_files:
+    Core/SessionManager.swift: |
+      import Combine
+
+      class SessionManager: ObservableObject {
+          @Published private(set) var currentUsername: String?
+          @Published private(set) var isAuthenticated: Bool = false
+
+          func login(username: String, token: String) {
+              currentUsername = username
+              isAuthenticated = true
+          }
+
+          func logout() {
+              currentUsername = nil
+              isAuthenticated = false
+          }
+      }
+    Features/Dashboard/DashboardView.swift: |
+      import SwiftUI
+
+      struct DashboardView: View {
+          @EnvironmentObject var session: SessionManager
+
+          var body: some View {
+              VStack(spacing: 16) {
+                  if session.isAuthenticated {
+                      Text("Welcome, \(session.currentUsername ?? "User")")
+                          .font(.title2)
+                      Button("Log Out", role: .destructive) {
+                          session.logout()
+                      }
+                  } else {
+                      Text("Please sign in to continue")
+                          .foregroundColor(.secondary)
+                  }
+              }
+              .padding()
+          }
+      }
+    Core/ThemeManager.swift: |
+      import SwiftUI
+      import Combine
+
+      class ThemeManager: ObservableObject {
+          @Published var accentColor: Color = .blue
+          @Published var useDarkMode: Bool = false
+          @Published var cornerRadius: CGFloat = 8
+
+          func applyPreset(_ preset: String) {
+              switch preset {
+              case "minimal":
+                  accentColor = .gray
+                  cornerRadius = 4
+              case "vibrant":
+                  accentColor = .purple
+                  cornerRadius = 12
+              default:
+                  break
+              }
+          }
+      }
+    Features/Onboarding/OnboardingView.swift: |
+      import SwiftUI
+
+      struct OnboardingView: View {
+          @State private var currentPage = 0
+
+          let pages = [
+              "Welcome to the app",
+              "Set up your profile",
+              "Start exploring"
+          ]
+
+          var body: some View {
+              TabView(selection: $currentPage) {
+                  ForEach(pages.indices, id: \.self) { index in
+                      Text(pages[index])
+                          .font(.title)
+                          .tag(index)
+                  }
+              }
+              .tabViewStyle(.page)
+          }
+      }
+    Features/Dashboard/DashboardHeaderView.swift: |
+      import SwiftUI
+
+      struct DashboardHeaderView: View {
+          @EnvironmentObject var session: SessionManager
+
+          var body: some View {
+              HStack {
+                  Image(systemName: "person.circle")
+                      .font(.title)
+                  if session.isAuthenticated {
+                      Text(session.currentUsername ?? "User")
+                          .font(.headline)
+                  }
+                  Spacer()
+              }
+              .padding(.horizontal)
+          }
+      }
+    Core/AuthService.swift: |
+      import Foundation
+
+      class AuthService {
+          private let session: SessionManager
+
+          init(session: SessionManager) {
+              self.session = session
+          }
+
+          func authenticate(username: String, password: String) async throws {
+              let token = try await fetchToken(username: username, password: password)
+              session.login(username: username, token: token)
+          }
+
+          private func fetchToken(username: String, password: String) async throws -> String {
+              return "mock-token-\(username)"
+          }
+      }
+    Features/Settings/AccountView.swift: |
+      import SwiftUI
+
+      struct AccountView: View {
+          @EnvironmentObject var session: SessionManager
+
+          var body: some View {
+              Form {
+                  if session.isAuthenticated {
+                      Section("Account") {
+                          Text("Logged in as \(session.currentUsername ?? "")")
+                          Button("Sign Out", role: .destructive) {
+                              session.logout()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: dashboardview
+  selector:
+    path: Features/Dashboard/DashboardView.swift
+    anchor: '@EnvironmentObject var session: SessionManager'
+- id: dashboardview_1
+  selector:
+    path: Features/Dashboard/DashboardView.swift
+    anchor: session.isAuthenticated
+- id: dashboardview_2
+  selector:
+    path: Features/Dashboard/DashboardView.swift
+    anchor: session.logout()
+- id: sessionmanager
+  selector:
+    path: Core/SessionManager.swift
+    anchor: 'class SessionManager: ObservableObject'
+- id: sessionmanager_1
+  selector:
+    path: Core/SessionManager.swift
+    anchor: 'var currentUsername: String?'
+- id: sessionmanager_2
+  selector:
+    path: Core/SessionManager.swift
+    anchor: 'var isAuthenticated: Bool'
+- id: sessionmanager_3
+  selector:
+    path: Core/SessionManager.swift
+    anchor: func logout()
+- id: no_thememanager
+  selector:
+    path: Core/ThemeManager.swift
+- id: no_onboardingview
+  selector:
+    path: Features/Onboarding/OnboardingView.swift
+- id: no_dashboardheaderview
+  selector:
+    path: Features/Dashboard/DashboardHeaderView.swift
+- id: no_authservice
+  selector:
+    path: Core/AuthService.swift
+- id: no_accountview
+  selector:
+    path: Features/Settings/AccountView.swift
+- id: no_global_0
+  selector:
+    anchor: ThemeManager
+- id: no_global_1
+  selector:
+    anchor: accentColor
+- id: no_global_2
+  selector:
+    anchor: applyPreset
+- id: no_global_3
+  selector:
+    anchor: OnboardingView
+- id: no_global_4
+  selector:
+    anchor: currentPage
+- id: no_global_5
+  selector:
+    anchor: Start exploring
+- id: no_global_6
+  selector:
+    anchor: DashboardHeaderView
+- id: no_global_7
+  selector:
+    anchor: person.circle
+- id: no_global_8
+  selector:
+    anchor: .padding(.horizontal)
+- id: no_global_9
+  selector:
+    anchor: AuthService
+- id: no_global_10
+  selector:
+    anchor: authenticate
+- id: no_global_11
+  selector:
+    anchor: fetchToken
+- id: no_global_12
+  selector:
+    anchor: AccountView
+- id: no_global_13
+  selector:
+    anchor: Sign Out
+- id: no_global_14
+  selector:
+    anchor: Logged in as
+oracle:
+  required:
+  - dashboardview
+  - dashboardview_1
+  - dashboardview_2
+  - sessionmanager
+  - sessionmanager_1
+  - sessionmanager_2
+  - sessionmanager_3
+  allowed: []
+  forbidden:
+  - no_thememanager
+  - no_onboardingview
+  - no_dashboardheaderview
+  - no_authservice
+  - no_accountview
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

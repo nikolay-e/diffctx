@@ -1,0 +1,270 @@
+name: rust_033_clone_trait
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod entity;
+      pub mod cache;
+      pub mod snapshot;
+    src/entity.rs: |
+      #[derive(Debug)]
+      pub struct Entity {
+          id: u64,
+          name: String,
+          tags: Vec<String>,
+      }
+
+      impl Entity {
+          pub fn new(id: u64, name: String) -> Self {
+              Self {
+                  id,
+                  name,
+                  tags: Vec::new(),
+              }
+          }
+
+          pub fn add_tag(&mut self, tag: String) {
+              self.tags.push(tag);
+          }
+
+          pub fn id(&self) -> u64 {
+              self.id
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn tags(&self) -> &[String] {
+              &self.tags
+          }
+      }
+    src/cache.rs: |
+      use std::collections::HashMap;
+
+      pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
+          map: HashMap<K, V>,
+          max_size: usize,
+      }
+
+      impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  map: HashMap::new(),
+                  max_size,
+              }
+          }
+
+          pub fn get(&self, key: &K) -> Option<V> {
+              self.map.get(key).cloned()
+          }
+
+          pub fn insert(&mut self, key: K, value: V) {
+              if self.map.len() >= self.max_size {
+                  if let Some(first_key) = self.map.keys().next().cloned() {
+                      self.map.remove(&first_key);
+                  }
+              }
+              self.map.insert(key, value);
+          }
+
+          pub fn size(&self) -> usize {
+              self.map.len()
+          }
+      }
+    src/snapshot.rs: |
+      #[derive(Clone)]
+      pub struct AppState {
+          pub version: u32,
+          pub entries: Vec<String>,
+      }
+
+      pub struct SnapshotManager {
+          history: Vec<AppState>,
+      }
+
+      impl SnapshotManager {
+          pub fn new() -> Self {
+              Self { history: Vec::new() }
+          }
+
+          pub fn take_snapshot(&mut self, state: &AppState) {
+              self.history.push(state.clone());
+          }
+
+          pub fn restore_latest(&self) -> Option<AppState> {
+              self.history.last().cloned()
+          }
+
+          pub fn snapshot_count(&self) -> usize {
+              self.history.len()
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod entity;
+      pub mod service;
+      pub mod cache;
+      pub mod snapshot;
+    src/entity.rs: |
+      #[derive(Debug, Clone)]
+      pub struct Entity {
+          id: u64,
+          name: String,
+          tags: Vec<String>,
+      }
+
+      impl Entity {
+          pub fn new(id: u64, name: String) -> Self {
+              Self {
+                  id,
+                  name,
+                  tags: Vec::new(),
+              }
+          }
+
+          pub fn add_tag(&mut self, tag: String) {
+              self.tags.push(tag);
+          }
+
+          pub fn id(&self) -> u64 {
+              self.id
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn tags(&self) -> &[String] {
+              &self.tags
+          }
+
+          pub fn duplicate(&self) -> Self {
+              self.clone()
+          }
+      }
+    src/service.rs: |
+      use crate::entity::Entity;
+
+      pub fn clone_entities(entities: &[Entity]) -> Vec<Entity> {
+          entities.iter().cloned().collect()
+      }
+
+      pub fn process_with_backup(entity: &Entity) -> Entity {
+          let backup = entity.clone();
+          println!("Processing entity {}: {}", entity.id(), entity.name());
+          backup
+      }
+    src/cache.rs: |
+      use std::collections::HashMap;
+
+      pub struct LruCache<K: std::hash::Hash + Eq + Clone, V: Clone> {
+          map: HashMap<K, V>,
+          max_size: usize,
+      }
+
+      impl<K: std::hash::Hash + Eq + Clone, V: Clone> LruCache<K, V> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  map: HashMap::new(),
+                  max_size,
+              }
+          }
+
+          pub fn get(&self, key: &K) -> Option<V> {
+              self.map.get(key).cloned()
+          }
+
+          pub fn insert(&mut self, key: K, value: V) {
+              if self.map.len() >= self.max_size {
+                  if let Some(first_key) = self.map.keys().next().cloned() {
+                      self.map.remove(&first_key);
+                  }
+              }
+              self.map.insert(key, value);
+          }
+
+          pub fn size(&self) -> usize {
+              self.map.len()
+          }
+      }
+    src/snapshot.rs: |
+      #[derive(Clone)]
+      pub struct AppState {
+          pub version: u32,
+          pub entries: Vec<String>,
+      }
+
+      pub struct SnapshotManager {
+          history: Vec<AppState>,
+      }
+
+      impl SnapshotManager {
+          pub fn new() -> Self {
+              Self { history: Vec::new() }
+          }
+
+          pub fn take_snapshot(&mut self, state: &AppState) {
+              self.history.push(state.clone());
+          }
+
+          pub fn restore_latest(&self) -> Option<AppState> {
+              self.history.last().cloned()
+          }
+
+          pub fn snapshot_count(&self) -> usize {
+              self.history.len()
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: entity
+  selector:
+    path: src/entity.rs
+    anchor: pub fn duplicate(&self) -> Self {
+- id: lib
+  selector:
+    path: src/lib.rs
+    anchor: pub mod service;
+- id: service
+  selector:
+    path: src/service.rs
+    anchor: use crate::entity::Entity;
+- id: no_cache
+  selector:
+    path: src/cache.rs
+- id: no_snapshot
+  selector:
+    path: src/snapshot.rs
+- id: no_global_0
+  selector:
+    anchor: LruCache
+- id: no_global_1
+  selector:
+    anchor: max_size
+- id: no_global_2
+  selector:
+    anchor: SnapshotManager
+- id: no_global_3
+  selector:
+    anchor: AppState
+- id: no_global_4
+  selector:
+    anchor: take_snapshot
+- id: no_global_5
+  selector:
+    anchor: restore_latest
+oracle:
+  required:
+  - entity
+  - lib
+  - service
+  allowed: []
+  forbidden:
+  - no_cache
+  - no_snapshot
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

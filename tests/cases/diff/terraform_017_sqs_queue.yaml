@@ -1,0 +1,235 @@
+name: terraform_017_sqs_queue
+repo:
+  initial_files:
+    messaging.tf: |
+      # Messaging resources
+    iam.tf: |
+      resource "aws_iam_role_policy" "lambda_sqs" {
+        name = "lambda-sqs-access"
+        role = aws_iam_role.lambda_exec.id
+
+        policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "sqs:ReceiveMessage",
+              "sqs:DeleteMessage",
+              "sqs:GetQueueAttributes"
+            ]
+            Resource = aws_sqs_queue.tasks.arn
+          }]
+        })
+      }
+    lambda.tf: |
+      resource "aws_lambda_event_source_mapping" "tasks" {
+        event_source_arn = aws_sqs_queue.tasks.arn
+        function_name    = aws_lambda_function.processor.arn
+        batch_size       = 10
+
+        function_response_types = ["ReportBatchItemFailures"]
+      }
+
+      resource "aws_lambda_function" "processor" {
+        function_name = "task-processor"
+        runtime       = "python3.11"
+        handler       = "processor.handler"
+        role          = aws_iam_role.lambda_exec.arn
+        filename      = "processor.zip"
+
+        environment {
+          variables = {
+            QUEUE_URL = aws_sqs_queue.tasks.url
+          }
+        }
+      }
+    audit_queue.tf: |
+      resource "aws_sqs_queue" "audit" {
+        name                       = "audit-events-queue"
+        delay_seconds              = 10
+        message_retention_seconds  = 1209600
+        visibility_timeout_seconds = 60
+
+        redrive_policy = jsonencode({
+          deadLetterTargetArn = aws_sqs_queue.audit_dlq.arn
+          maxReceiveCount     = 5
+        })
+      }
+
+      resource "aws_sqs_queue" "audit_dlq" {
+        name                      = "audit-events-queue-dlq"
+        message_retention_seconds = 1209600
+      }
+    notifications_queue.tf: |
+      resource "aws_sqs_queue" "notifications" {
+        name                       = "email-notifications-queue"
+        delay_seconds              = 5
+        message_retention_seconds  = 86400
+        visibility_timeout_seconds = 120
+      }
+
+      resource "aws_sqs_queue" "notifications_dlq" {
+        name = "email-notifications-queue-dlq"
+      }
+    worker.py: |
+      import boto3
+      import json
+
+      sqs = boto3.client('sqs')
+
+      def process_task(message):
+          body = json.loads(message['Body'])
+          task_type = body.get('type')
+          if task_type == 'data_sync':
+              sync_data(body['payload'])
+          elif task_type == 'report_generation':
+              generate_report(body['payload'])
+
+      def poll_queue(queue_url):
+          while True:
+              response = sqs.receive_message(
+                  QueueUrl=queue_url,
+                  MaxNumberOfMessages=10,
+                  WaitTimeSeconds=20,
+              )
+              for message in response.get('Messages', []):
+                  process_task(message)
+                  sqs.delete_message(
+                      QueueUrl=queue_url,
+                      ReceiptHandle=message['ReceiptHandle'],
+                  )
+    monitoring/queue_alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "tasks_queue_depth" {
+        alarm_name          = "tasks-queue-depth-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "ApproximateNumberOfMessagesVisible"
+        namespace           = "AWS/SQS"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 1000
+
+        dimensions = {
+          QueueName = "tasks-queue"
+        }
+      }
+
+      resource "aws_cloudwatch_metric_alarm" "tasks_dlq_messages" {
+        alarm_name          = "tasks-dlq-has-messages"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 1
+        metric_name         = "ApproximateNumberOfMessagesVisible"
+        namespace           = "AWS/SQS"
+        period              = 60
+        statistic           = "Sum"
+        threshold           = 0
+
+        dimensions = {
+          QueueName = "tasks-queue-dlq"
+        }
+      }
+  changed_files:
+    messaging.tf: |
+      resource "aws_sqs_queue" "tasks" {
+        name                       = "tasks-queue"
+        delay_seconds              = 0
+        max_message_size           = 262144
+        message_retention_seconds  = 345600
+        visibility_timeout_seconds = 30
+
+        redrive_policy = jsonencode({
+          deadLetterTargetArn = aws_sqs_queue.tasks_dlq.arn
+          maxReceiveCount     = 3
+        })
+      }
+
+      resource "aws_sqs_queue" "tasks_dlq" {
+        name = "tasks-queue-dlq"
+      }
+  commit_message: Update files
+fragments:
+- id: iam
+  selector:
+    path: iam.tf
+    anchor: resource "aws_iam_role_policy" "lambda_sqs" {
+- id: iam_1
+  selector:
+    path: iam.tf
+    anchor: aws_sqs_queue.tasks.arn
+- id: lambda
+  selector:
+    path: lambda.tf
+    anchor: aws_lambda_event_source_mapping
+- id: lambda_1
+  selector:
+    path: lambda.tf
+    anchor: event_source_arn = aws_sqs_queue.tasks.arn
+- id: lambda_2
+  selector:
+    path: lambda.tf
+    anchor: ReportBatchItemFailures
+- id: no_audit_queue
+  selector:
+    path: audit_queue.tf
+- id: no_notifications_queue
+  selector:
+    path: notifications_queue.tf
+- id: no_worker
+  selector:
+    path: worker.py
+- id: no_queue_alarms
+  selector:
+    path: monitoring/queue_alarms.tf
+- id: no_global_0
+  selector:
+    anchor: audit-events-queue
+- id: no_global_1
+  selector:
+    anchor: message_retention_seconds  = 1209600
+- id: no_global_2
+  selector:
+    anchor: audit_dlq
+- id: no_global_3
+  selector:
+    anchor: email-notifications-queue
+- id: no_global_4
+  selector:
+    anchor: visibility_timeout_seconds = 120
+- id: no_global_5
+  selector:
+    anchor: sqs.receive_message
+- id: no_global_6
+  selector:
+    anchor: process_task
+- id: no_global_7
+  selector:
+    anchor: poll_queue
+- id: no_global_8
+  selector:
+    anchor: tasks-queue-depth-high
+- id: no_global_9
+  selector:
+    anchor: ApproximateNumberOfMessagesVisible
+oracle:
+  required:
+  - iam
+  - iam_1
+  - lambda
+  - lambda_1
+  - lambda_2
+  allowed: []
+  forbidden:
+  - no_audit_queue
+  - no_notifications_queue
+  - no_worker
+  - no_queue_alarms
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

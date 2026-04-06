@@ -1,0 +1,398 @@
+name: cicd_and_docs_043_sphinx_func_reference
+repo:
+  initial_files:
+    src/orders/processor.py: |
+      from .models import Order, OrderItem
+      from ..inventory import check_stock
+
+      def process_order(order: Order) -> bool:
+          """Process a customer order and update inventory."""
+          for item in order.items:
+              if not check_stock(item.product_id, item.quantity):
+                  return False
+          return True
+
+      def cancel_order(order_id: int) -> bool:
+          """Cancel an existing order and restore inventory."""
+          return True
+    src/orders/models.py: |
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class OrderItem:
+          product_id: str
+          quantity: int
+          unit_price: float
+
+      @dataclass
+      class Order:
+          customer_id: str
+          items: list[OrderItem] = field(default_factory=list)
+
+          @property
+          def total(self) -> float:
+              return sum(i.unit_price * i.quantity for i in self.items)
+
+      @dataclass
+      class OrderReceipt:
+          order_id: str
+          charged_amount: float
+          inventory_reserved: bool
+          tracking_number: str | None = None
+    src/orders/validators.py: |
+      import re
+
+      def validate_shipping_address(
+          street: str, city: str, postal_code: str, country: str
+      ) -> bool:
+          """Validate a shipping address for completeness and format."""
+          if not all([street, city, postal_code, country]):
+              return False
+          return len(postal_code) >= 3
+
+      def validate_phone_number(phone: str, country_code: str) -> bool:
+          """Validate phone number format for the given country."""
+          patterns = {
+              "US": r"^\+1\d{10}$",
+              "DE": r"^\+49\d{10,11}$",
+              "UK": r"^\+44\d{10}$",
+          }
+          pattern = patterns.get(country_code, r"^\+\d{7,15}$")
+          return bool(re.match(pattern, phone))
+    src/api/routes.py: |
+      from ..orders.processor import process_order
+      from ..orders.models import Order, OrderItem
+
+      def handle_checkout(request_data: dict) -> dict:
+          """API endpoint handler for checkout."""
+          order = Order(
+              customer_id=request_data["customer_id"],
+              items=[
+                  OrderItem(
+                      product_id=item["id"],
+                      quantity=item["qty"],
+                      unit_price=item["price"],
+                  )
+                  for item in request_data["items"]
+              ],
+          )
+          success = process_order(order)
+          if success:
+              return {"status": "confirmed", "total": order.total}
+          return {"status": "failed", "reason": "insufficient_stock"}
+    src/inventory/__init__.py: |
+      from .service import check_stock, InventoryError
+
+      __all__ = ["check_stock", "InventoryError"]
+    src/inventory/service.py: |
+      class InventoryError(Exception):
+          """Raised when inventory operation fails irrecoverably.
+
+          Attributes:
+              product_id: The product that caused the failure
+              requested: Quantity that was requested
+              available: Quantity actually available
+          """
+          def __init__(self, product_id: str, requested: int, available: int):
+              self.product_id = product_id
+              self.requested = requested
+              self.available = available
+              super().__init__(
+                  f"Cannot fulfill {requested} of {product_id}: "
+                  f"only {available} available"
+              )
+
+      def check_stock(product_id: str, quantity: int) -> bool:
+          """Check if sufficient stock exists for the given product."""
+          return True
+
+      def reserve_stock(product_id: str, quantity: int) -> str:
+          """Reserve inventory and return reservation ID."""
+          return f"RSV-{product_id}-{quantity}"
+    src/notifications/email.py: |
+      from string import Template
+
+      ORDER_CONFIRMATION_TEMPLATE = Template("""
+      Dear $customer_name,
+
+      Your order $order_id has been confirmed.
+      Total charged: $$${amount}
+
+      Tracking: $tracking_url
+      """)
+
+      def send_order_confirmation(
+          customer_email: str,
+          customer_name: str,
+          order_id: str,
+          amount: float,
+          tracking_url: str,
+      ) -> bool:
+          """Send order confirmation email."""
+          body = ORDER_CONFIRMATION_TEMPLATE.substitute(
+              customer_name=customer_name,
+              order_id=order_id,
+              amount=f"{amount:.2f}",
+              tracking_url=tracking_url,
+          )
+          return True
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def sample_database_url():
+          return "sqlite:///:memory:"
+
+      @pytest.fixture
+      def mock_smtp_server():
+          """Fixture for mocking SMTP connections in email tests."""
+          return None
+  changed_files:
+    src/orders/processor.py: |
+      from .models import Order, OrderItem, OrderReceipt
+      from ..inventory import check_stock, InventoryError
+
+      def process_order(order: Order) -> OrderReceipt:
+          """Process a customer order, reserve inventory, and return receipt.
+
+          Raises:
+              InventoryError: If any item cannot be fulfilled from current stock.
+          """
+          for item in order.items:
+              if not check_stock(item.product_id, item.quantity):
+                  raise InventoryError(
+                      product_id=item.product_id,
+                      requested=item.quantity,
+                      available=0,
+                  )
+          return OrderReceipt(
+              order_id=f"ORD-{order.customer_id}",
+              charged_amount=order.total,
+              inventory_reserved=True,
+          )
+
+      def cancel_order(order_id: int) -> bool:
+          """Cancel an existing order and restore inventory."""
+          return True
+    src/orders/models.py: |
+      from dataclasses import dataclass, field
+
+      @dataclass
+      class OrderItem:
+          product_id: str
+          quantity: int
+          unit_price: float
+
+      @dataclass
+      class Order:
+          customer_id: str
+          items: list[OrderItem] = field(default_factory=list)
+
+          @property
+          def total(self) -> float:
+              return sum(i.unit_price * i.quantity for i in self.items)
+
+      @dataclass
+      class OrderReceipt:
+          order_id: str
+          charged_amount: float
+          inventory_reserved: bool
+          tracking_number: str | None = None
+    src/orders/validators.py: |
+      import re
+
+      def validate_shipping_address(
+          street: str, city: str, postal_code: str, country: str
+      ) -> bool:
+          """Validate a shipping address for completeness and format."""
+          if not all([street, city, postal_code, country]):
+              return False
+          return len(postal_code) >= 3
+
+      def validate_phone_number(phone: str, country_code: str) -> bool:
+          """Validate phone number format for the given country."""
+          patterns = {
+              "US": r"^\+1\d{10}$",
+              "DE": r"^\+49\d{10,11}$",
+              "UK": r"^\+44\d{10}$",
+          }
+          pattern = patterns.get(country_code, r"^\+\d{7,15}$")
+          return bool(re.match(pattern, phone))
+    src/api/routes.py: |
+      from ..orders.processor import process_order
+      from ..orders.models import Order, OrderItem
+
+      def handle_checkout(request_data: dict) -> dict:
+          """API endpoint handler for checkout."""
+          order = Order(
+              customer_id=request_data["customer_id"],
+              items=[
+                  OrderItem(
+                      product_id=item["id"],
+                      quantity=item["qty"],
+                      unit_price=item["price"],
+                  )
+                  for item in request_data["items"]
+              ],
+          )
+          success = process_order(order)
+          if success:
+              return {"status": "confirmed", "total": order.total}
+          return {"status": "failed", "reason": "insufficient_stock"}
+    src/inventory/__init__.py: |
+      from .service import check_stock, InventoryError
+
+      __all__ = ["check_stock", "InventoryError"]
+    src/inventory/service.py: |
+      class InventoryError(Exception):
+          """Raised when inventory operation fails irrecoverably.
+
+          Attributes:
+              product_id: The product that caused the failure
+              requested: Quantity that was requested
+              available: Quantity actually available
+          """
+          def __init__(self, product_id: str, requested: int, available: int):
+              self.product_id = product_id
+              self.requested = requested
+              self.available = available
+              super().__init__(
+                  f"Cannot fulfill {requested} of {product_id}: "
+                  f"only {available} available"
+              )
+
+      def check_stock(product_id: str, quantity: int) -> bool:
+          """Check if sufficient stock exists for the given product."""
+          return True
+
+      def reserve_stock(product_id: str, quantity: int) -> str:
+          """Reserve inventory and return reservation ID."""
+          return f"RSV-{product_id}-{quantity}"
+    src/notifications/email.py: |
+      from string import Template
+
+      ORDER_CONFIRMATION_TEMPLATE = Template("""
+      Dear $customer_name,
+
+      Your order $order_id has been confirmed.
+      Total charged: $$${amount}
+
+      Tracking: $tracking_url
+      """)
+
+      def send_order_confirmation(
+          customer_email: str,
+          customer_name: str,
+          order_id: str,
+          amount: float,
+          tracking_url: str,
+      ) -> bool:
+          """Send order confirmation email."""
+          body = ORDER_CONFIRMATION_TEMPLATE.substitute(
+              customer_name=customer_name,
+              order_id=order_id,
+              amount=f"{amount:.2f}",
+              tracking_url=tracking_url,
+          )
+          return True
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def sample_database_url():
+          return "sqlite:///:memory:"
+
+      @pytest.fixture
+      def mock_smtp_server():
+          """Fixture for mocking SMTP connections in email tests."""
+          return None
+  commit_message: Update files
+fragments:
+- id: processor
+  selector:
+    path: src/orders/processor.py
+    anchor: def process_order
+- id: processor_1
+  selector:
+    path: src/orders/processor.py
+    anchor: OrderReceipt
+- id: processor_2
+  selector:
+    path: src/orders/processor.py
+    anchor: InventoryError
+- id: models
+  selector:
+    path: src/orders/models.py
+    anchor: class OrderReceipt
+- id: models_1
+  selector:
+    path: src/orders/models.py
+    anchor: charged_amount
+- id: models_2
+  selector:
+    path: src/orders/models.py
+    anchor: inventory_reserved
+- id: routes
+  selector:
+    path: src/api/routes.py
+    anchor: success = process_order(order)
+- id: routes_1
+  selector:
+    path: src/api/routes.py
+    anchor: if success
+- id: no_validators
+  selector:
+    path: src/orders/validators.py
+- id: no_email
+  selector:
+    path: src/notifications/email.py
+- id: no_conftest
+  selector:
+    path: tests/conftest.py
+- id: no_global_0
+  selector:
+    anchor: validate_shipping_address
+- id: no_global_1
+  selector:
+    anchor: validate_phone_number
+- id: no_global_2
+  selector:
+    anchor: postal_code
+- id: no_global_3
+  selector:
+    anchor: ORDER_CONFIRMATION_TEMPLATE
+- id: no_global_4
+  selector:
+    anchor: send_order_confirmation
+- id: no_global_5
+  selector:
+    anchor: tracking_url
+- id: no_global_6
+  selector:
+    anchor: sample_database_url
+- id: no_global_7
+  selector:
+    anchor: mock_smtp_server
+oracle:
+  required:
+  - processor
+  - processor_1
+  - processor_2
+  - models
+  - models_1
+  - models_2
+  - routes
+  - routes_1
+  allowed: []
+  forbidden:
+  - no_validators
+  - no_email
+  - no_conftest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

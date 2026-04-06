@@ -1,0 +1,424 @@
+name: jvm_and_compiled_067_swift_observed_object
+repo:
+  initial_files:
+    UserViewModel.swift: |
+      import Combine
+
+      class UserViewModel: ObservableObject {
+          @Published var name = ""
+          @Published var email = ""
+          @Published var isValid = false
+
+          func validate() {
+              isValid = !name.isEmpty && email.contains("@")
+          }
+
+          func reset() {
+              name = ""
+              email = ""
+              isValid = false
+          }
+      }
+    UserFormView.swift: |
+      import SwiftUI
+      struct UserFormView: View {
+          var body: some View { Text("") }
+      }
+    views/ProfileFormView.swift: |
+      import SwiftUI
+
+      class ProfileViewModel: ObservableObject {
+          @Published var displayName = ""
+          @Published var bio = ""
+          @Published var isValid = false
+
+          func validate() {
+              isValid = !displayName.isEmpty && bio.count <= 500
+          }
+      }
+
+      struct ProfileFormView: View {
+          @ObservedObject var viewModel: ProfileViewModel
+
+          var body: some View {
+              Form {
+                  TextField("Display Name", text: $viewModel.displayName)
+                  TextEditor(text: $viewModel.bio)
+                  Button("Save Profile") {
+                      viewModel.validate()
+                  }
+                  .disabled(!viewModel.isValid)
+              }
+              .onChange(of: viewModel.displayName) { _ in viewModel.validate() }
+              .onChange(of: viewModel.bio) { _ in viewModel.validate() }
+          }
+      }
+    store/SettingsStore.swift: |
+      import Combine
+
+      class SettingsStore: ObservableObject {
+          @Published var isDarkMode = false
+          @Published var fontSize: Double = 14.0
+          @Published var notificationsEnabled = true
+
+          func resetToDefaults() {
+              isDarkMode = false
+              fontSize = 14.0
+              notificationsEnabled = true
+          }
+
+          func saveToDisk() {
+              UserDefaults.standard.set(isDarkMode, forKey: "darkMode")
+              UserDefaults.standard.set(fontSize, forKey: "fontSize")
+          }
+      }
+    notifications/NotificationScheduler.swift: |
+      import Foundation
+      import Combine
+
+      class NotificationScheduler: ObservableObject {
+          @Published var pendingCount = 0
+          private var cancellables = Set<AnyCancellable>()
+
+          func scheduleReminder(title: String, delay: TimeInterval) {
+              let content = UNMutableNotificationContent()
+              content.title = title
+              pendingCount += 1
+          }
+
+          func cancelAll() {
+              pendingCount = 0
+          }
+      }
+    validation/FormValidator.swift: |
+      import Foundation
+
+      struct FormValidator {
+          static func isValidEmail(_ email: String) -> Bool {
+              let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+              return email.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          static func isNotEmpty(_ value: String) -> Bool {
+              return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          }
+
+          static func isValidLength(_ value: String, min: Int, max: Int) -> Bool {
+              return value.count >= min && value.count <= max
+          }
+      }
+    views/UserListView.swift: |
+      import SwiftUI
+
+      class UserListViewModel: ObservableObject {
+          @Published var users: [String] = []
+          @Published var isLoading = false
+
+          func loadUsers() {
+              isLoading = true
+              DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                  self.users = ["Alice", "Bob", "Charlie"]
+                  self.isLoading = false
+              }
+          }
+
+          func deleteUser(at index: Int) {
+              users.remove(at: index)
+          }
+      }
+
+      struct UserListView: View {
+          @ObservedObject var viewModel: UserListViewModel
+
+          var body: some View {
+              List(viewModel.users, id: \.self) { user in
+                  Text(user)
+              }
+          }
+      }
+  changed_files:
+    UserViewModel.swift: |
+      import Combine
+
+      class UserViewModel: ObservableObject {
+          @Published var name = ""
+          @Published var email = ""
+          @Published var isValid = false
+
+          func validate() {
+              isValid = !name.isEmpty && email.contains("@")
+          }
+
+          func reset() {
+              name = ""
+              email = ""
+              isValid = false
+          }
+      }
+    UserFormView.swift: |
+      import SwiftUI
+
+      struct UserFormView: View {
+          @ObservedObject var viewModel: UserViewModel
+
+          var body: some View {
+              Form {
+                  TextField("Name", text: $viewModel.name)
+                  TextField("Email", text: $viewModel.email)
+                  Button("Submit") {
+                      viewModel.validate()
+                  }
+                  .disabled(!viewModel.isValid)
+              }
+              .onChange(of: viewModel.name) { _ in viewModel.validate() }
+              .onChange(of: viewModel.email) { _ in viewModel.validate() }
+          }
+      }
+    views/ProfileFormView.swift: |
+      import SwiftUI
+
+      class ProfileViewModel: ObservableObject {
+          @Published var displayName = ""
+          @Published var bio = ""
+          @Published var isValid = false
+
+          func validate() {
+              isValid = !displayName.isEmpty && bio.count <= 500
+          }
+      }
+
+      struct ProfileFormView: View {
+          @ObservedObject var viewModel: ProfileViewModel
+
+          var body: some View {
+              Form {
+                  TextField("Display Name", text: $viewModel.displayName)
+                  TextEditor(text: $viewModel.bio)
+                  Button("Save Profile") {
+                      viewModel.validate()
+                  }
+                  .disabled(!viewModel.isValid)
+              }
+              .onChange(of: viewModel.displayName) { _ in viewModel.validate() }
+              .onChange(of: viewModel.bio) { _ in viewModel.validate() }
+          }
+      }
+    store/SettingsStore.swift: |
+      import Combine
+
+      class SettingsStore: ObservableObject {
+          @Published var isDarkMode = false
+          @Published var fontSize: Double = 14.0
+          @Published var notificationsEnabled = true
+
+          func resetToDefaults() {
+              isDarkMode = false
+              fontSize = 14.0
+              notificationsEnabled = true
+          }
+
+          func saveToDisk() {
+              UserDefaults.standard.set(isDarkMode, forKey: "darkMode")
+              UserDefaults.standard.set(fontSize, forKey: "fontSize")
+          }
+      }
+    notifications/NotificationScheduler.swift: |
+      import Foundation
+      import Combine
+
+      class NotificationScheduler: ObservableObject {
+          @Published var pendingCount = 0
+          private var cancellables = Set<AnyCancellable>()
+
+          func scheduleReminder(title: String, delay: TimeInterval) {
+              let content = UNMutableNotificationContent()
+              content.title = title
+              pendingCount += 1
+          }
+
+          func cancelAll() {
+              pendingCount = 0
+          }
+      }
+    validation/FormValidator.swift: |
+      import Foundation
+
+      struct FormValidator {
+          static func isValidEmail(_ email: String) -> Bool {
+              let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+              return email.range(of: pattern, options: .regularExpression) != nil
+          }
+
+          static func isNotEmpty(_ value: String) -> Bool {
+              return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          }
+
+          static func isValidLength(_ value: String, min: Int, max: Int) -> Bool {
+              return value.count >= min && value.count <= max
+          }
+      }
+    views/UserListView.swift: |
+      import SwiftUI
+
+      class UserListViewModel: ObservableObject {
+          @Published var users: [String] = []
+          @Published var isLoading = false
+
+          func loadUsers() {
+              isLoading = true
+              DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                  self.users = ["Alice", "Bob", "Charlie"]
+                  self.isLoading = false
+              }
+          }
+
+          func deleteUser(at index: Int) {
+              users.remove(at: index)
+          }
+      }
+
+      struct UserListView: View {
+          @ObservedObject var viewModel: UserListViewModel
+
+          var body: some View {
+              List(viewModel.users, id: \.self) { user in
+                  Text(user)
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userformview
+  selector:
+    path: UserFormView.swift
+    anchor: '@ObservedObject var viewModel: UserViewModel'
+- id: userformview_1
+  selector:
+    path: UserFormView.swift
+    anchor: $viewModel.name
+- id: userformview_2
+  selector:
+    path: UserFormView.swift
+    anchor: $viewModel.email
+- id: userformview_3
+  selector:
+    path: UserFormView.swift
+    anchor: viewModel.validate()
+- id: userformview_4
+  selector:
+    path: UserFormView.swift
+    anchor: .disabled(!viewModel.isValid)
+- id: userformview_5
+  selector:
+    path: UserFormView.swift
+    anchor: '.onChange(of: viewModel.name)'
+- id: userviewmodel
+  selector:
+    path: UserViewModel.swift
+    anchor: '@Published var name'
+- id: userviewmodel_1
+  selector:
+    path: UserViewModel.swift
+    anchor: '@Published var email'
+- id: userviewmodel_2
+  selector:
+    path: UserViewModel.swift
+    anchor: '@Published var isValid = false'
+- id: userviewmodel_3
+  selector:
+    path: UserViewModel.swift
+    anchor: isValid = !name.isEmpty && email.contains("@")
+- id: no_profileformview
+  selector:
+    path: views/ProfileFormView.swift
+- id: no_settingsstore
+  selector:
+    path: store/SettingsStore.swift
+- id: no_notificationscheduler
+  selector:
+    path: notifications/NotificationScheduler.swift
+- id: no_formvalidator
+  selector:
+    path: validation/FormValidator.swift
+- id: no_userlistview
+  selector:
+    path: views/UserListView.swift
+- id: no_global_0
+  selector:
+    anchor: ProfileFormView
+- id: no_global_1
+  selector:
+    anchor: ProfileViewModel
+- id: no_global_2
+  selector:
+    anchor: displayName
+- id: no_global_3
+  selector:
+    anchor: Save Profile
+- id: no_global_4
+  selector:
+    anchor: SettingsStore
+- id: no_global_5
+  selector:
+    anchor: resetToDefaults
+- id: no_global_6
+  selector:
+    anchor: saveToDisk
+- id: no_global_7
+  selector:
+    anchor: NotificationScheduler
+- id: no_global_8
+  selector:
+    anchor: scheduleReminder
+- id: no_global_9
+  selector:
+    anchor: pendingCount
+- id: no_global_10
+  selector:
+    anchor: FormValidator
+- id: no_global_11
+  selector:
+    anchor: isValidLength
+- id: no_global_12
+  selector:
+    anchor: UserListView
+- id: no_global_13
+  selector:
+    anchor: UserListViewModel
+- id: no_global_14
+  selector:
+    anchor: deleteUser
+oracle:
+  required:
+  - userformview
+  - userformview_1
+  - userformview_2
+  - userformview_3
+  - userformview_4
+  - userformview_5
+  - userviewmodel
+  - userviewmodel_1
+  - userviewmodel_2
+  - userviewmodel_3
+  allowed: []
+  forbidden:
+  - no_profileformview
+  - no_settingsstore
+  - no_notificationscheduler
+  - no_formvalidator
+  - no_userlistview
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

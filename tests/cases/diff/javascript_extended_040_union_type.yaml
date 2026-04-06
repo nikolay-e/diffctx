@@ -1,0 +1,223 @@
+name: javascript_extended_040_union_type
+repo:
+  initial_files:
+    src/result.ts: |
+      export type Success<T> = { success: true; data: T };
+
+      export type Failure = { success: false; error: string; code?: number };
+
+      export type Result<T> = Success<T> | Failure;
+
+      export function isSuccess<T>(result: Result<T>): result is Success<T> {
+          return result.success === true;
+      }
+
+      export function isFailure<T>(result: Result<T>): result is Failure {
+          return result.success === false;
+      }
+    src/handler.ts: |
+      console.log('initial');
+    src/services/resultLogger.ts: |
+      import { Result, isSuccess } from '../result';
+
+      export function logResult<T>(result: Result<T>, context: string): void {
+          if (isSuccess(result)) {
+              console.log(`[${context}] Success:`, result.data);
+          } else {
+              console.error(`[${context}] Failure: ${result.error} (code: ${result.code ?? 'none'})`);
+          }
+      }
+
+      export function logBatchResults<T>(results: Result<T>[], context: string): void {
+          const successes = results.filter(isSuccess).length;
+          console.log(`[${context}] ${successes}/${results.length} succeeded`);
+      }
+    src/services/resultAggregator.ts: |
+      import { Result, Success, Failure } from '../result';
+
+      export function aggregateResults<T>(results: Result<T>[]): Result<T[]> {
+          const failures = results.filter((r): r is Failure => !r.success);
+          if (failures.length > 0) {
+              return { success: false, error: failures.map(f => f.error).join('; ') };
+          }
+          const data = (results as Success<T>[]).map(r => r.data);
+          return { success: true, data };
+      }
+
+      export function partitionResults<T>(results: Result<T>[]): { successes: T[]; errors: string[] } {
+          const successes: T[] = [];
+          const errors: string[] = [];
+          for (const r of results) {
+              if (r.success) successes.push(r.data);
+              else errors.push(r.error);
+          }
+          return { successes, errors };
+      }
+    src/utils/errorFormatter.ts: |
+      export function formatError(error: Error): string {
+          return `[${error.name}] ${error.message}`;
+      }
+
+      export function formatErrorWithStack(error: Error): string {
+          return `${formatError(error)}\n${error.stack ?? 'No stack trace'}`;
+      }
+
+      export function createErrorCode(prefix: string, code: number): string {
+          return `${prefix}-${code.toString().padStart(4, '0')}`;
+      }
+  changed_files:
+    src/result.ts: |
+      export type Success<T> = { success: true; data: T };
+
+      export type Failure = { success: false; error: string; code?: number };
+
+      export type Result<T> = Success<T> | Failure;
+
+      export function isSuccess<T>(result: Result<T>): result is Success<T> {
+          return result.success === true;
+      }
+
+      export function isFailure<T>(result: Result<T>): result is Failure {
+          return result.success === false;
+      }
+    src/handler.ts: |
+      import { Result, Success, Failure, isSuccess } from './result';
+
+      function handleResult<T>(result: Result<T>): T {
+          if (isSuccess(result)) {
+              return result.data;
+          }
+          throw new Error(`[${result.code ?? 'UNKNOWN'}] ${result.error}`);
+      }
+
+      function wrapAsync<T>(promise: Promise<T>): Promise<Result<T>> {
+          return promise
+              .then((data): Success<T> => ({ success: true, data }))
+              .catch((err): Failure => ({ success: false, error: err.message }));
+      }
+
+      export { handleResult, wrapAsync };
+    src/services/resultLogger.ts: |
+      import { Result, isSuccess } from '../result';
+
+      export function logResult<T>(result: Result<T>, context: string): void {
+          if (isSuccess(result)) {
+              console.log(`[${context}] Success:`, result.data);
+          } else {
+              console.error(`[${context}] Failure: ${result.error} (code: ${result.code ?? 'none'})`);
+          }
+      }
+
+      export function logBatchResults<T>(results: Result<T>[], context: string): void {
+          const successes = results.filter(isSuccess).length;
+          console.log(`[${context}] ${successes}/${results.length} succeeded`);
+      }
+    src/services/resultAggregator.ts: |
+      import { Result, Success, Failure } from '../result';
+
+      export function aggregateResults<T>(results: Result<T>[]): Result<T[]> {
+          const failures = results.filter((r): r is Failure => !r.success);
+          if (failures.length > 0) {
+              return { success: false, error: failures.map(f => f.error).join('; ') };
+          }
+          const data = (results as Success<T>[]).map(r => r.data);
+          return { success: true, data };
+      }
+
+      export function partitionResults<T>(results: Result<T>[]): { successes: T[]; errors: string[] } {
+          const successes: T[] = [];
+          const errors: string[] = [];
+          for (const r of results) {
+              if (r.success) successes.push(r.data);
+              else errors.push(r.error);
+          }
+          return { successes, errors };
+      }
+    src/utils/errorFormatter.ts: |
+      export function formatError(error: Error): string {
+          return `[${error.name}] ${error.message}`;
+      }
+
+      export function formatErrorWithStack(error: Error): string {
+          return `${formatError(error)}\n${error.stack ?? 'No stack trace'}`;
+      }
+
+      export function createErrorCode(prefix: string, code: number): string {
+          return `${prefix}-${code.toString().padStart(4, '0')}`;
+      }
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: src/handler.ts
+    anchor: import { Result, Success, Failure, isSuccess } from './result'
+- id: handler_1
+  selector:
+    path: src/handler.ts
+    anchor: 'function handleResult<T>(result: Result<T>): T'
+- id: result
+  selector:
+    path: src/result.ts
+    anchor: 'type Success<T> = { success: true; data: T }'
+- id: result_1
+  selector:
+    path: src/result.ts
+    anchor: 'type Failure = { success: false; error: string; code?: number }'
+- id: result_2
+  selector:
+    path: src/result.ts
+    anchor: type Result<T> = Success<T> | Failure
+- id: result_3
+  selector:
+    path: src/result.ts
+    anchor: function isSuccess
+- id: no_resultlogger
+  selector:
+    path: src/services/resultLogger.ts
+- id: no_resultaggregator
+  selector:
+    path: src/services/resultAggregator.ts
+- id: no_errorformatter
+  selector:
+    path: src/utils/errorFormatter.ts
+- id: no_global_0
+  selector:
+    anchor: logResult
+- id: no_global_1
+  selector:
+    anchor: logBatchResults
+- id: no_global_2
+  selector:
+    anchor: aggregateResults
+- id: no_global_3
+  selector:
+    anchor: partitionResults
+- id: no_global_4
+  selector:
+    anchor: formatError
+- id: no_global_5
+  selector:
+    anchor: formatErrorWithStack
+- id: no_global_6
+  selector:
+    anchor: createErrorCode
+oracle:
+  required:
+  - handler
+  - handler_1
+  - result
+  - result_1
+  - result_2
+  - result_3
+  allowed: []
+  forbidden:
+  - no_resultlogger
+  - no_resultaggregator
+  - no_errorformatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

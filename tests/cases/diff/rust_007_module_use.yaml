@@ -1,0 +1,243 @@
+name: rust_007_module_use
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod utils;
+      pub mod encoder;
+      pub mod sanitizer;
+
+      pub use utils::helper;
+    src/utils.rs: |
+      use std::fmt::Display;
+
+      pub fn helper() -> String {
+          "helper".to_string()
+      }
+
+      pub fn format_value<T: Display>(value: T) -> String {
+          format!("Value: {}", value)
+      }
+
+      pub struct StringUtils;
+
+      impl StringUtils {
+          pub fn capitalize(s: &str) -> String {
+              let mut chars = s.chars();
+              match chars.next() {
+                  None => String::new(),
+                  Some(first) => first.to_uppercase().chain(chars).collect(),
+              }
+          }
+
+          pub fn reverse(s: &str) -> String {
+              s.chars().rev().collect()
+          }
+      }
+    src/encoder.rs: |
+      pub fn to_base64(data: &[u8]) -> String {
+          use std::io::Write;
+          let mut buf = Vec::new();
+          for chunk in data.chunks(3) {
+              let n = chunk.len();
+              let _ = write!(buf, "{}", n);
+          }
+          String::from_utf8_lossy(&buf).to_string()
+      }
+
+      pub fn to_hex(data: &[u8]) -> String {
+          data.iter().map(|b| format!("{:02x}", b)).collect()
+      }
+
+      pub fn from_hex(hex: &str) -> Vec<u8> {
+          hex.as_bytes()
+              .chunks(2)
+              .filter_map(|pair| {
+                  let s = std::str::from_utf8(pair).ok()?;
+                  u8::from_str_radix(s, 16).ok()
+              })
+              .collect()
+      }
+    src/sanitizer.rs: |
+      pub fn strip_html(input: &str) -> String {
+          let mut result = String::new();
+          let mut inside_tag = false;
+          for ch in input.chars() {
+              match ch {
+                  '<' => inside_tag = true,
+                  '>' => inside_tag = false,
+                  _ if !inside_tag => result.push(ch),
+                  _ => {}
+              }
+          }
+          result
+      }
+
+      pub fn escape_sql(input: &str) -> String {
+          input.replace('\'', "''").replace('\\', "\\\\")
+      }
+
+      pub struct Sanitizer {
+          allowed_tags: Vec<String>,
+      }
+
+      impl Sanitizer {
+          pub fn new(allowed: &[&str]) -> Self {
+              Self {
+                  allowed_tags: allowed.iter().map(|s| s.to_string()).collect(),
+              }
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod utils;
+      pub mod encoder;
+      pub mod sanitizer;
+
+      pub use utils::helper;
+      pub use utils::processor;
+      pub use utils::transformer;
+    src/utils.rs: |
+      use std::fmt::Display;
+
+      pub fn helper() -> String {
+          "helper".to_string()
+      }
+
+      pub fn format_value<T: Display>(value: T) -> String {
+          format!("Value: {}", value)
+      }
+
+      pub fn processor(data: &str) -> String {
+          data.to_uppercase()
+      }
+
+      pub fn transformer(data: &str) -> String {
+          data.chars()
+              .filter(|c| c.is_alphanumeric())
+              .collect::<String>()
+              .to_lowercase()
+      }
+
+      pub struct StringUtils;
+
+      impl StringUtils {
+          pub fn capitalize(s: &str) -> String {
+              let mut chars = s.chars();
+              match chars.next() {
+                  None => String::new(),
+                  Some(first) => first.to_uppercase().chain(chars).collect(),
+              }
+          }
+
+          pub fn reverse(s: &str) -> String {
+              s.chars().rev().collect()
+          }
+
+          pub fn word_count(s: &str) -> usize {
+              s.split_whitespace().count()
+          }
+      }
+    src/encoder.rs: |
+      pub fn to_base64(data: &[u8]) -> String {
+          use std::io::Write;
+          let mut buf = Vec::new();
+          for chunk in data.chunks(3) {
+              let n = chunk.len();
+              let _ = write!(buf, "{}", n);
+          }
+          String::from_utf8_lossy(&buf).to_string()
+      }
+
+      pub fn to_hex(data: &[u8]) -> String {
+          data.iter().map(|b| format!("{:02x}", b)).collect()
+      }
+
+      pub fn from_hex(hex: &str) -> Vec<u8> {
+          hex.as_bytes()
+              .chunks(2)
+              .filter_map(|pair| {
+                  let s = std::str::from_utf8(pair).ok()?;
+                  u8::from_str_radix(s, 16).ok()
+              })
+              .collect()
+      }
+    src/sanitizer.rs: |
+      pub fn strip_html(input: &str) -> String {
+          let mut result = String::new();
+          let mut inside_tag = false;
+          for ch in input.chars() {
+              match ch {
+                  '<' => inside_tag = true,
+                  '>' => inside_tag = false,
+                  _ if !inside_tag => result.push(ch),
+                  _ => {}
+              }
+          }
+          result
+      }
+
+      pub fn escape_sql(input: &str) -> String {
+          input.replace('\'', "''").replace('\\', "\\\\")
+      }
+
+      pub struct Sanitizer {
+          allowed_tags: Vec<String>,
+      }
+
+      impl Sanitizer {
+          pub fn new(allowed: &[&str]) -> Self {
+              Self {
+                  allowed_tags: allowed.iter().map(|s| s.to_string()).collect(),
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: lib_file
+  selector:
+    path: src/lib.rs
+- id: utils_file
+  selector:
+    path: src/utils.rs
+- id: req_global_0
+  selector:
+    anchor: pub use utils::processor;
+- id: req_global_1
+  selector:
+    anchor: 'pub fn processor(data: &str) -> String {'
+- id: no_encoder
+  selector:
+    path: src/encoder.rs
+- id: no_sanitizer
+  selector:
+    path: src/sanitizer.rs
+- id: no_global_0
+  selector:
+    anchor: to_base64
+- id: no_global_1
+  selector:
+    anchor: strip_html
+- id: no_global_2
+  selector:
+    anchor: escape_sql
+- id: no_global_3
+  selector:
+    anchor: encoder.rs
+- id: no_global_4
+  selector:
+    anchor: sanitizer.rs
+oracle:
+  required:
+  - lib_file
+  - utils_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_encoder
+  - no_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

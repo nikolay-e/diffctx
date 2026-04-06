@@ -1,0 +1,326 @@
+name: ocaml_001_open_module
+repo:
+  initial_files:
+    lib/utils.ml: |
+      type date = {
+        year : int;
+        month : int;
+        day : int;
+      }
+
+      let parse_date s =
+        try
+          Scanf.sscanf s "%d-%d-%d" (fun y m d ->
+            Some { year = y; month = m; day = d })
+        with _ -> None
+
+      let format_date d =
+        Printf.sprintf "%04d-%02d-%02d" d.year d.month d.day
+
+      let date_to_epoch d =
+        let open Unix in
+        let tm = {
+          tm_sec = 0; tm_min = 0; tm_hour = 0;
+          tm_mday = d.day; tm_mon = d.month - 1; tm_year = d.year - 1900;
+          tm_wday = 0; tm_yday = 0; tm_isdst = false;
+        } in
+        fst (mktime tm)
+
+      let string_trim s =
+        String.trim s
+
+      let string_split_on_char c s =
+        String.split_on_char c s
+    lib/processor.ml: |
+      open MyLib.Utils
+
+      type record = {
+        id : int;
+        name : string;
+        created : string;
+      }
+
+      let process_record r =
+        let trimmed_name = string_trim r.name in
+        Printf.sprintf "Record %d: %s" r.id trimmed_name
+    lib/logger.ml: |
+      type log_level = Debug | Info | Warn | Error
+
+      let _GARBAGE_OCAML_001_A = "logger_marker"
+      let _GARBAGE_OCAML_001_B = "level_marker"
+
+      let log level msg =
+        let prefix = match level with
+          | Debug -> "DEBUG"
+          | Info -> "INFO"
+          | Warn -> "WARN"
+          | Error -> "ERROR"
+        in
+        Printf.printf "[%s] %s\n" prefix msg
+
+      let log_info msg = log Info msg
+      let log_error msg = log Error msg
+      let log_debug msg = log Debug msg
+    lib/config.ml: |
+      type config = {
+        host : string;
+        port : int;
+        debug : bool;
+      }
+
+      let _GARBAGE_OCAML_001_C = "config_marker"
+      let _GARBAGE_OCAML_001_D = "env_marker"
+
+      let default_config = {
+        host = "localhost";
+        port = 8080;
+        debug = false;
+      }
+
+      let load_config filename =
+        ignore filename;
+        default_config
+
+      let get_port config = config.port
+      let is_debug config = config.debug
+    lib/validator.ml: |
+      open MyLib.Utils
+
+      let _GARBAGE_OCAML_001_E = "validator_marker"
+      let _GARBAGE_OCAML_001_F = "rule_marker"
+
+      let validate_date_field s =
+        match parse_date s with
+        | Some d -> d.year >= 1900 && d.year <= 2100
+        | None -> false
+
+      let validate_name s =
+        let trimmed = string_trim s in
+        String.length trimmed > 0 && String.length trimmed <= 100
+  changed_files:
+    lib/utils.ml: |
+      type date = {
+        year : int;
+        month : int;
+        day : int;
+      }
+
+      let parse_date s =
+        try
+          Scanf.sscanf s "%d-%d-%d" (fun y m d ->
+            Some { year = y; month = m; day = d })
+        with _ -> None
+
+      let format_date d =
+        Printf.sprintf "%04d-%02d-%02d" d.year d.month d.day
+
+      let date_to_epoch d =
+        let open Unix in
+        let tm = {
+          tm_sec = 0; tm_min = 0; tm_hour = 0;
+          tm_mday = d.day; tm_mon = d.month - 1; tm_year = d.year - 1900;
+          tm_wday = 0; tm_yday = 0; tm_isdst = false;
+        } in
+        fst (mktime tm)
+
+      let string_trim s =
+        String.trim s
+
+      let string_split_on_char c s =
+        String.split_on_char c s
+    lib/processor.ml: |
+      open MyLib.Utils
+
+      type record = {
+        id : int;
+        name : string;
+        created : string;
+      }
+
+      let process_record r =
+        let trimmed_name = string_trim r.name in
+        Printf.sprintf "Record %d: %s" r.id trimmed_name
+
+      let process_with_date r =
+        match parse_date r.created with
+        | Some d ->
+          let age_str = Printf.sprintf "created %04d-%02d-%02d" d.year d.month d.day in
+          Printf.sprintf "Record %d: %s (%s)" r.id r.name age_str
+        | None ->
+          Printf.sprintf "Record %d: %s (unknown date)" r.id r.name
+
+      let process_records_by_year records target_year =
+        records
+        |> List.filter_map (fun r ->
+          match parse_date r.created with
+          | Some d when d.year = target_year -> Some (process_record r)
+          | _ -> None)
+    lib/logger.ml: |
+      type log_level = Debug | Info | Warn | Error
+
+      let _GARBAGE_OCAML_001_A = "logger_marker"
+      let _GARBAGE_OCAML_001_B = "level_marker"
+
+      let log level msg =
+        let prefix = match level with
+          | Debug -> "DEBUG"
+          | Info -> "INFO"
+          | Warn -> "WARN"
+          | Error -> "ERROR"
+        in
+        Printf.printf "[%s] %s\n" prefix msg
+
+      let log_info msg = log Info msg
+      let log_error msg = log Error msg
+      let log_debug msg = log Debug msg
+    lib/config.ml: |
+      type config = {
+        host : string;
+        port : int;
+        debug : bool;
+      }
+
+      let _GARBAGE_OCAML_001_C = "config_marker"
+      let _GARBAGE_OCAML_001_D = "env_marker"
+
+      let default_config = {
+        host = "localhost";
+        port = 8080;
+        debug = false;
+      }
+
+      let load_config filename =
+        ignore filename;
+        default_config
+
+      let get_port config = config.port
+      let is_debug config = config.debug
+    lib/validator.ml: |
+      open MyLib.Utils
+
+      let _GARBAGE_OCAML_001_E = "validator_marker"
+      let _GARBAGE_OCAML_001_F = "rule_marker"
+
+      let validate_date_field s =
+        match parse_date s with
+        | Some d -> d.year >= 1900 && d.year <= 2100
+        | None -> false
+
+      let validate_name s =
+        let trimmed = string_trim s in
+        String.length trimmed > 0 && String.length trimmed <= 100
+  commit_message: Update files
+fragments:
+- id: processor
+  selector:
+    path: lib/processor.ml
+    anchor: let process_with_date r
+- id: processor_1
+  selector:
+    path: lib/processor.ml
+    anchor: parse_date r.created
+- id: processor_2
+  selector:
+    path: lib/processor.ml
+    anchor: d.year
+- id: processor_3
+  selector:
+    path: lib/processor.ml
+    anchor: d.month
+- id: utils
+  selector:
+    path: lib/utils.ml
+    anchor: let parse_date s
+- id: utils_1
+  selector:
+    path: lib/utils.ml
+    anchor: type date =
+- id: utils_2
+  selector:
+    path: lib/utils.ml
+    anchor: 'year : int'
+- id: utils_3
+  selector:
+    path: lib/utils.ml
+    anchor: 'month : int'
+- id: utils_4
+  selector:
+    path: lib/utils.ml
+    anchor: 'day : int'
+- id: no_logger
+  selector:
+    path: lib/logger.ml
+- id: no_config
+  selector:
+    path: lib/config.ml
+- id: no_validator
+  selector:
+    path: lib/validator.ml
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_OCAML_001_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_OCAML_001_B
+- id: no_global_2
+  selector:
+    anchor: log_level
+- id: no_global_3
+  selector:
+    anchor: log_info
+- id: no_global_4
+  selector:
+    anchor: log_error
+- id: no_global_5
+  selector:
+    anchor: _GARBAGE_OCAML_001_C
+- id: no_global_6
+  selector:
+    anchor: _GARBAGE_OCAML_001_D
+- id: no_global_7
+  selector:
+    anchor: default_config
+- id: no_global_8
+  selector:
+    anchor: load_config
+- id: no_global_9
+  selector:
+    anchor: _GARBAGE_OCAML_001_E
+- id: no_global_10
+  selector:
+    anchor: _GARBAGE_OCAML_001_F
+- id: no_global_11
+  selector:
+    anchor: validate_date_field
+- id: no_global_12
+  selector:
+    anchor: validate_name
+oracle:
+  required:
+  - processor
+  - processor_1
+  - processor_2
+  - processor_3
+  - utils
+  - utils_1
+  - utils_2
+  - utils_3
+  - utils_4
+  allowed: []
+  forbidden:
+  - no_logger
+  - no_config
+  - no_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

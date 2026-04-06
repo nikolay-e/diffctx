@@ -1,0 +1,133 @@
+name: scala_012_pattern_matching
+repo:
+  initial_files:
+    User.scala: |
+      case class User(name: String, age: Int, email: Option[String])
+    UserValidator.scala: |
+      class UserValidator {}
+    EmailParser.scala: |
+      class EmailParser {
+        def parse(email: String): Option[(String, String)] = email.split("@") match {
+          case Array(local, domain) if local.nonEmpty && domain.contains(".") =>
+            Some((local, domain))
+          case _ => None
+        }
+
+        def extractDomain(email: String): Option[String] = parse(email).map(_._2)
+
+        def isValidFormat(email: String): Boolean = parse(email).isDefined
+      }
+    AgePolicy.scala: |
+      class AgePolicy(minAge: Int, maxAge: Int) {
+        def isAllowed(age: Int): Boolean = age >= minAge && age <= maxAge
+
+        def category(age: Int): String = age match {
+          case a if a < 13 => "child"
+          case a if a < 18 => "teenager"
+          case a if a < 65 => "adult"
+          case _           => "senior"
+        }
+
+        def requiresConsent(age: Int): Boolean = age < minAge
+      }
+  changed_files:
+    User.scala: |
+      case class User(name: String, age: Int, email: Option[String])
+    UserValidator.scala: |
+      class UserValidator {
+        def validate(user: User): String = user match {
+          case User(name, _, _) if name.isEmpty =>
+            "Name cannot be empty"
+          case User(_, age, _) if age < 0 =>
+            "Age cannot be negative"
+          case User(name, age, Some(email)) if email.contains("@") =>
+            s"Valid user: $name, $age, $email"
+          case User(name, age, None) =>
+            s"Valid user without email: $name, $age"
+          case _ =>
+            "Invalid user"
+        }
+
+        def extractEmail(user: User): String = user match {
+          case User(_, _, Some(email)) => email
+          case User(name, _, None) => s"$name@default.com"
+        }
+      }
+    EmailParser.scala: |
+      class EmailParser {
+        def parse(email: String): Option[(String, String)] = email.split("@") match {
+          case Array(local, domain) if local.nonEmpty && domain.contains(".") =>
+            Some((local, domain))
+          case _ => None
+        }
+
+        def extractDomain(email: String): Option[String] = parse(email).map(_._2)
+
+        def isValidFormat(email: String): Boolean = parse(email).isDefined
+      }
+    AgePolicy.scala: |
+      class AgePolicy(minAge: Int, maxAge: Int) {
+        def isAllowed(age: Int): Boolean = age >= minAge && age <= maxAge
+
+        def category(age: Int): String = age match {
+          case a if a < 13 => "child"
+          case a if a < 18 => "teenager"
+          case a if a < 65 => "adult"
+          case _           => "senior"
+        }
+
+        def requiresConsent(age: Int): Boolean = age < minAge
+      }
+  commit_message: Update files
+fragments:
+- id: uservalidator
+  selector:
+    path: UserValidator.scala
+    anchor: 'def validate(user: User): String = user match {'
+- id: uservalidator_1
+  selector:
+    path: UserValidator.scala
+    anchor: 'def extractEmail(user: User): String = user match {'
+- id: user
+  selector:
+    path: User.scala
+    anchor: 'case class User(name: String, age: Int, email: Option[String])'
+- id: no_emailparser
+  selector:
+    path: EmailParser.scala
+- id: no_agepolicy
+  selector:
+    path: AgePolicy.scala
+- id: no_global_0
+  selector:
+    anchor: EmailParser
+- id: no_global_1
+  selector:
+    anchor: extractDomain
+- id: no_global_2
+  selector:
+    anchor: isValidFormat
+- id: no_global_3
+  selector:
+    anchor: AgePolicy
+- id: no_global_4
+  selector:
+    anchor: category
+- id: no_global_5
+  selector:
+    anchor: requiresConsent
+oracle:
+  required:
+  - uservalidator
+  - uservalidator_1
+  - user
+  allowed: []
+  forbidden:
+  - no_emailparser
+  - no_agepolicy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

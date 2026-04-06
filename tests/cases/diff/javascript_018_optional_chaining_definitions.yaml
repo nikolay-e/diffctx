@@ -1,0 +1,180 @@
+name: javascript_018_optional_chaining_definitions
+repo:
+  initial_files:
+    api.ts: |
+      export interface Response {
+          data?: {
+              user?: {
+                  name?: string;
+              };
+          };
+      }
+
+      export function fetchResponse(): Response {
+          return { data: { user: { name: 'Test' } } };
+      }
+    main.ts: |
+      console.log('initial');
+    response-validator.ts: |
+      import { Response } from './api';
+
+      export function isValidResponse(response: Response): boolean {
+          return response.data !== undefined
+              && response.data.user !== undefined
+              && response.data.user.name !== undefined;
+      }
+
+      export function assertResponse(response: Response): asserts response is Required<Response> {
+          if (!isValidResponse(response)) {
+              throw new Error('Invalid response: missing required fields');
+          }
+      }
+
+      export function getNameOrThrow(response: Response): string {
+          if (!response.data?.user?.name) {
+              throw new Error('Name not found in response');
+          }
+          return response.data.user.name;
+      }
+    api.test.ts: |
+      import { fetchResponse, Response } from './api';
+
+      describe('fetchResponse', () => {
+          it('should return response with user name', () => {
+              const response = fetchResponse();
+              expect(response.data?.user?.name).toBe('Test');
+          });
+
+          it('should have correct structure', () => {
+              const response = fetchResponse();
+              expect(response).toHaveProperty('data');
+              expect(response.data).toHaveProperty('user');
+          });
+      });
+  changed_files:
+    api.ts: |
+      export interface Response {
+          data?: {
+              user?: {
+                  name?: string;
+              };
+          };
+      }
+
+      export function fetchResponse(): Response {
+          return { data: { user: { name: 'Test' } } };
+      }
+    main.ts: |
+      import { fetchResponse } from './api';
+
+      function getName() {
+          const response = fetchResponse();
+          return response?.data?.user?.name ?? 'Unknown';
+      }
+
+      console.log(getName());
+    response-validator.ts: |
+      import { Response } from './api';
+
+      export function isValidResponse(response: Response): boolean {
+          return response.data !== undefined
+              && response.data.user !== undefined
+              && response.data.user.name !== undefined;
+      }
+
+      export function assertResponse(response: Response): asserts response is Required<Response> {
+          if (!isValidResponse(response)) {
+              throw new Error('Invalid response: missing required fields');
+          }
+      }
+
+      export function getNameOrThrow(response: Response): string {
+          if (!response.data?.user?.name) {
+              throw new Error('Name not found in response');
+          }
+          return response.data.user.name;
+      }
+    api.test.ts: |
+      import { fetchResponse, Response } from './api';
+
+      describe('fetchResponse', () => {
+          it('should return response with user name', () => {
+              const response = fetchResponse();
+              expect(response.data?.user?.name).toBe('Test');
+          });
+
+          it('should have correct structure', () => {
+              const response = fetchResponse();
+              expect(response).toHaveProperty('data');
+              expect(response.data).toHaveProperty('user');
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { fetchResponse } from './api'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: response?.data?.user?.name
+- id: api
+  selector:
+    path: api.ts
+    anchor: interface Response
+- id: api_1
+  selector:
+    path: api.ts
+    anchor: 'data?:'
+- id: api_2
+  selector:
+    path: api.ts
+    anchor: 'user?:'
+- id: api_3
+  selector:
+    path: api.ts
+    anchor: 'name?: string'
+- id: api_4
+  selector:
+    path: api.ts
+    anchor: 'fetchResponse(): Response'
+- id: no_response_validator
+  selector:
+    path: response-validator.ts
+- id: no_api_test
+  selector:
+    path: api.test.ts
+- id: no_global_0
+  selector:
+    anchor: isValidResponse
+- id: no_global_1
+  selector:
+    anchor: assertResponse
+- id: no_global_2
+  selector:
+    anchor: getNameOrThrow
+- id: no_global_3
+  selector:
+    anchor: describe('fetchResponse'
+- id: no_global_4
+  selector:
+    anchor: toHaveProperty
+oracle:
+  required:
+  - main
+  - main_1
+  - api
+  - api_1
+  - api_2
+  - api_3
+  - api_4
+  allowed: []
+  forbidden:
+  - no_response_validator
+  - no_api_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

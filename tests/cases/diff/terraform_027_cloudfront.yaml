@@ -1,0 +1,279 @@
+name: terraform_027_cloudfront
+repo:
+  initial_files:
+    cdn.tf: |
+      # CDN resources
+    api_cdn.tf: |
+      resource "aws_cloudfront_distribution" "api" {
+        enabled         = true
+        is_ipv6_enabled = true
+
+        origin {
+          domain_name = aws_lb.api.dns_name
+          origin_id   = "ALB-API"
+
+          custom_origin_config {
+            http_port              = 80
+            https_port             = 443
+            origin_protocol_policy = "https-only"
+            origin_ssl_protocols   = ["TLSv1.2"]
+          }
+        }
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "ALB-API"
+
+          forwarded_values {
+            query_string = true
+            cookies {
+              forward = "all"
+            }
+          }
+
+          viewer_protocol_policy = "https-only"
+        }
+
+        restrictions {
+          geo_restriction {
+            restriction_type = "none"
+          }
+        }
+
+        viewer_certificate {
+          acm_certificate_arn = aws_acm_certificate.api.arn
+          ssl_support_method  = "sni-only"
+        }
+      }
+    s3.tf: |
+      resource "aws_s3_bucket" "website" {
+        bucket = "${var.environment}-static-website"
+      }
+
+      resource "aws_s3_bucket_policy" "website" {
+        bucket = aws_s3_bucket.website.id
+        policy = data.aws_iam_policy_document.s3_website.json
+      }
+
+      data "aws_iam_policy_document" "s3_website" {
+        statement {
+          actions   = ["s3:GetObject"]
+          resources = ["${aws_s3_bucket.website.arn}/*"]
+          principals {
+            type        = "AWS"
+            identifiers = [aws_cloudfront_origin_access_identity.main.iam_arn]
+          }
+        }
+      }
+    acm.tf: |
+      resource "aws_acm_certificate" "main" {
+        domain_name       = "www.example.com"
+        validation_method = "DNS"
+
+        subject_alternative_names = [
+          "example.com",
+          "*.example.com",
+        ]
+
+        lifecycle {
+          create_before_destroy = true
+        }
+      }
+
+      resource "aws_acm_certificate_validation" "main" {
+        certificate_arn = aws_acm_certificate.main.arn
+      }
+    waf/cloudfront_rules.tf: |
+      resource "aws_wafv2_web_acl" "cloudfront" {
+        name  = "cloudfront-waf"
+        scope = "CLOUDFRONT"
+
+        default_action {
+          allow {}
+        }
+
+        rule {
+          name     = "rate-limit"
+          priority = 1
+
+          action {
+            block {}
+          }
+
+          statement {
+            rate_based_statement {
+              limit              = 2000
+              aggregate_key_type = "IP"
+            }
+          }
+
+          visibility_config {
+            sampled_requests_enabled = true
+            cloudwatch_metrics_enabled = true
+            metric_name = "rate-limit-rule"
+          }
+        }
+
+        visibility_config {
+          sampled_requests_enabled = true
+          cloudwatch_metrics_enabled = true
+          metric_name = "cloudfront-waf"
+        }
+      }
+    dns/records.tf: |
+      resource "aws_route53_record" "website" {
+        zone_id = aws_route53_zone.main.zone_id
+        name    = "www.example.com"
+        type    = "A"
+
+        alias {
+          name                   = aws_cloudfront_distribution.main.domain_name
+          zone_id                = aws_cloudfront_distribution.main.hosted_zone_id
+          evaluate_target_health = false
+        }
+      }
+    monitoring/cdn_alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "cdn_4xx" {
+        alarm_name          = "cdn-high-4xx-rate"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "4xxErrorRate"
+        namespace           = "AWS/CloudFront"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 5
+      }
+  changed_files:
+    cdn.tf: |
+      resource "aws_cloudfront_distribution" "main" {
+        enabled             = true
+        is_ipv6_enabled     = true
+        default_root_object = "index.html"
+
+        origin {
+          domain_name = aws_s3_bucket.website.bucket_regional_domain_name
+          origin_id   = "S3-Website"
+
+          s3_origin_config {
+            origin_access_identity = aws_cloudfront_origin_access_identity.main.cloudfront_access_identity_path
+          }
+        }
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "S3-Website"
+
+          forwarded_values {
+            query_string = false
+            cookies {
+              forward = "none"
+            }
+          }
+
+          viewer_protocol_policy = "redirect-to-https"
+        }
+
+        restrictions {
+          geo_restriction {
+            restriction_type = "none"
+          }
+        }
+
+        viewer_certificate {
+          acm_certificate_arn = aws_acm_certificate.main.arn
+          ssl_support_method  = "sni-only"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: s3
+  selector:
+    path: s3.tf
+    anchor: resource "aws_s3_bucket" "website" {
+- id: s3_1
+  selector:
+    path: s3.tf
+    anchor: aws_s3_bucket_policy
+- id: s3_2
+  selector:
+    path: s3.tf
+    anchor: aws_cloudfront_origin_access_identity.main.iam_arn
+- id: acm
+  selector:
+    path: acm.tf
+    anchor: resource "aws_acm_certificate" "main" {
+- id: acm_1
+  selector:
+    path: acm.tf
+    anchor: domain_name       = "www.example.com"
+- id: no_api_cdn
+  selector:
+    path: api_cdn.tf
+- id: no_cloudfront_rules
+  selector:
+    path: waf/cloudfront_rules.tf
+- id: no_records
+  selector:
+    path: dns/records.tf
+- id: no_cdn_alarms
+  selector:
+    path: monitoring/cdn_alarms.tf
+- id: no_global_0
+  selector:
+    anchor: ALB-API
+- id: no_global_1
+  selector:
+    anchor: origin_protocol_policy = "https-only"
+- id: no_global_2
+  selector:
+    anchor: forward = "all"
+- id: no_global_3
+  selector:
+    anchor: aws_acm_certificate.api.arn
+- id: no_global_4
+  selector:
+    anchor: cloudfront-waf
+- id: no_global_5
+  selector:
+    anchor: rate-limit
+- id: no_global_6
+  selector:
+    anchor: rate_based_statement
+- id: no_global_7
+  selector:
+    anchor: aws_route53_record
+- id: no_global_8
+  selector:
+    anchor: www.example.com
+- id: no_global_9
+  selector:
+    anchor: cdn-high-4xx-rate
+- id: no_global_10
+  selector:
+    anchor: 4xxErrorRate
+oracle:
+  required:
+  - s3
+  - s3_1
+  - s3_2
+  - acm
+  - acm_1
+  allowed: []
+  forbidden:
+  - no_api_cdn
+  - no_cloudfront_rules
+  - no_records
+  - no_cdn_alarms
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

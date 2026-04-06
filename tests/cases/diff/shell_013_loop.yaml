@@ -1,0 +1,227 @@
+name: shell_013_loop
+repo:
+  initial_files:
+    batch.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      for file in *.log; do
+          process_file "$file"
+      done
+    utils.sh: |
+      #!/bin/bash
+      MAX_RETRIES=5
+      CHECKSUM_CMD="sha256sum"
+
+      process_file() {
+          local file=$1
+          if [[ ! -f "$file" ]]; then
+              echo "SKIP: $file not found"
+              return 1
+          fi
+          local sum=$($CHECKSUM_CMD "$file" | cut -d' ' -f1)
+          echo "OK: $file ($sum)"
+          return 0
+      }
+    scripts/archive.sh: |
+      #!/bin/bash
+      ARCHIVE_DIR="/data/archive"
+      for f in /data/processed/*.log; do
+          mv "$f" "$ARCHIVE_DIR/"
+      done
+      echo "Archived $(ls "$ARCHIVE_DIR" | wc -l) files"
+    scripts/report.sh: |
+      #!/bin/bash
+      echo "file,status,checksum" > report.csv
+      grep "^OK:" /var/log/batch.log | while read -r line; do
+          echo "$line" >> report.csv
+      done
+    scripts/parallel_batch.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      for file in *.log; do
+          process_file "$file" &
+      done
+      wait
+      echo "All parallel jobs complete"
+    scripts/dry_run.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      DRY_RUN=1
+      for file in *.log; do
+          if [[ $DRY_RUN -eq 1 ]]; then
+              echo "DRY: would process $file"
+          else
+              process_file "$file"
+          fi
+      done
+    lib/checksum.sh: |
+      #!/bin/bash
+      compute_checksum() {
+          local file=$1
+          local algo=${2:-sha256}
+          case $algo in
+              sha256) sha256sum "$file" | cut -d' ' -f1 ;;
+              md5)    md5sum "$file" | cut -d' ' -f1 ;;
+              *)      echo "Unknown algorithm: $algo" >&2; return 1 ;;
+          esac
+      }
+  changed_files:
+    batch.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      for file in *.log; do
+          process_file "$file"
+      done
+
+      while read -r line; do
+          process_file "$line"
+      done < input.txt
+
+      counter=0
+      until [[ $counter -ge $MAX_RETRIES ]]; do
+          echo "Retry attempt: $counter"
+          process_file "pending.dat" && break
+          ((counter++))
+      done
+    utils.sh: |
+      #!/bin/bash
+      MAX_RETRIES=5
+      CHECKSUM_CMD="sha256sum"
+
+      process_file() {
+          local file=$1
+          if [[ ! -f "$file" ]]; then
+              echo "SKIP: $file not found"
+              return 1
+          fi
+          local sum=$($CHECKSUM_CMD "$file" | cut -d' ' -f1)
+          echo "OK: $file ($sum)"
+          return 0
+      }
+    scripts/archive.sh: |
+      #!/bin/bash
+      ARCHIVE_DIR="/data/archive"
+      for f in /data/processed/*.log; do
+          mv "$f" "$ARCHIVE_DIR/"
+      done
+      echo "Archived $(ls "$ARCHIVE_DIR" | wc -l) files"
+    scripts/report.sh: |
+      #!/bin/bash
+      echo "file,status,checksum" > report.csv
+      grep "^OK:" /var/log/batch.log | while read -r line; do
+          echo "$line" >> report.csv
+      done
+    scripts/parallel_batch.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      for file in *.log; do
+          process_file "$file" &
+      done
+      wait
+      echo "All parallel jobs complete"
+    scripts/dry_run.sh: |
+      #!/bin/bash
+      source ./utils.sh
+
+      DRY_RUN=1
+      for file in *.log; do
+          if [[ $DRY_RUN -eq 1 ]]; then
+              echo "DRY: would process $file"
+          else
+              process_file "$file"
+          fi
+      done
+    lib/checksum.sh: |
+      #!/bin/bash
+      compute_checksum() {
+          local file=$1
+          local algo=${2:-sha256}
+          case $algo in
+              sha256) sha256sum "$file" | cut -d' ' -f1 ;;
+              md5)    md5sum "$file" | cut -d' ' -f1 ;;
+              *)      echo "Unknown algorithm: $algo" >&2; return 1 ;;
+          esac
+      }
+  commit_message: Update files
+fragments:
+- id: utils
+  selector:
+    path: utils.sh
+    anchor: process_file()
+- id: utils_1
+  selector:
+    path: utils.sh
+    anchor: MAX_RETRIES=5
+- id: batch
+  selector:
+    path: batch.sh
+    anchor: process_file
+- id: batch_1
+  selector:
+    path: batch.sh
+    anchor: $MAX_RETRIES
+- id: no_archive
+  selector:
+    path: scripts/archive.sh
+- id: no_report
+  selector:
+    path: scripts/report.sh
+- id: no_parallel_batch
+  selector:
+    path: scripts/parallel_batch.sh
+- id: no_dry_run
+  selector:
+    path: scripts/dry_run.sh
+- id: no_checksum
+  selector:
+    path: lib/checksum.sh
+- id: no_global_0
+  selector:
+    anchor: ARCHIVE_DIR
+- id: no_global_1
+  selector:
+    anchor: Archived
+- id: no_global_2
+  selector:
+    anchor: report.csv
+- id: no_global_3
+  selector:
+    anchor: All parallel jobs complete
+- id: no_global_4
+  selector:
+    anchor: DRY_RUN
+- id: no_global_5
+  selector:
+    anchor: 'DRY: would process'
+- id: no_global_6
+  selector:
+    anchor: compute_checksum
+- id: no_global_7
+  selector:
+    anchor: Unknown algorithm
+oracle:
+  required:
+  - utils
+  - utils_1
+  - batch
+  - batch_1
+  allowed: []
+  forbidden:
+  - no_archive
+  - no_report
+  - no_parallel_batch
+  - no_dry_run
+  - no_checksum
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

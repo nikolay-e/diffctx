@@ -1,0 +1,285 @@
+name: swift_001_protocol_conformance
+repo:
+  initial_files:
+    Sources/Models/User.swift: |
+      struct User: Codable, Equatable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+
+      class UserService {
+          func listUsers() -> [User] {
+              return []
+          }
+      }
+    Sources/Services/NotificationService.swift: |
+      import Foundation
+
+      class NotificationService {
+          func sendPush(token: String, message: String) {
+              print("Sending push to \(token): \(message)")
+          }
+
+          func scheduleLocal(title: String, delay: TimeInterval) {
+              print("Scheduling '\(title)' in \(delay)s")
+          }
+      }
+    Sources/Models/AppConfig.swift: |
+      struct AppConfig: Codable {
+          let apiBaseUrl: String
+          let timeout: TimeInterval
+          let maxRetries: Int
+      }
+    Sources/Services/UserCacheService.swift: |
+      import Foundation
+
+      class UserCacheService {
+          private var cache: [String: Data] = [:]
+
+          func cacheUser(_ user: User) throws {
+              let data = try JSONEncoder().encode(user)
+              cache[user.id] = data
+          }
+
+          func loadUser(id: String) throws -> User? {
+              guard let data = cache[id] else { return nil }
+              return try JSONDecoder().decode(User.self, from: data)
+          }
+
+          func invalidate(id: String) {
+              cache.removeValue(forKey: id)
+          }
+      }
+    Sources/Models/Product.swift: |
+      struct Product: Codable, Equatable {
+          let id: String
+          let name: String
+          let price: Double
+          let category: String
+      }
+    Tests/UserServiceTests.swift: |
+      import XCTest
+      @testable import MyApp
+
+      final class UserServiceTests: XCTestCase {
+          let service = UserService()
+
+          func testEncodeDecodRoundTrip() throws {
+              let user = User(id: "1", name: "Alice", email: "alice@test.com")
+              let data = try service.encode(user: user)
+              let decoded = try service.decode(data: data)
+              XCTAssertEqual(user, decoded)
+          }
+
+          func testAreEqual() {
+              let a = User(id: "1", name: "Alice", email: "alice@test.com")
+              let b = User(id: "1", name: "Alice", email: "alice@test.com")
+              XCTAssertTrue(service.areEqual(a, b))
+          }
+      }
+  changed_files:
+    Sources/Models/User.swift: |
+      struct User: Codable, Equatable {
+          let id: String
+          let name: String
+          let email: String
+      }
+    Sources/Services/UserService.swift: |
+      import Foundation
+
+      class UserService {
+          func encode(user: User) throws -> Data {
+              let encoder = JSONEncoder()
+              return try encoder.encode(user)
+          }
+
+          func decode(data: Data) throws -> User {
+              let decoder = JSONDecoder()
+              return try decoder.decode(User.self, from: data)
+          }
+
+          func areEqual(_ a: User, _ b: User) -> Bool {
+              return a == b
+          }
+      }
+    Sources/Services/NotificationService.swift: |
+      import Foundation
+
+      class NotificationService {
+          func sendPush(token: String, message: String) {
+              print("Sending push to \(token): \(message)")
+          }
+
+          func scheduleLocal(title: String, delay: TimeInterval) {
+              print("Scheduling '\(title)' in \(delay)s")
+          }
+      }
+    Sources/Models/AppConfig.swift: |
+      struct AppConfig: Codable {
+          let apiBaseUrl: String
+          let timeout: TimeInterval
+          let maxRetries: Int
+      }
+    Sources/Services/UserCacheService.swift: |
+      import Foundation
+
+      class UserCacheService {
+          private var cache: [String: Data] = [:]
+
+          func cacheUser(_ user: User) throws {
+              let data = try JSONEncoder().encode(user)
+              cache[user.id] = data
+          }
+
+          func loadUser(id: String) throws -> User? {
+              guard let data = cache[id] else { return nil }
+              return try JSONDecoder().decode(User.self, from: data)
+          }
+
+          func invalidate(id: String) {
+              cache.removeValue(forKey: id)
+          }
+      }
+    Sources/Models/Product.swift: |
+      struct Product: Codable, Equatable {
+          let id: String
+          let name: String
+          let price: Double
+          let category: String
+      }
+    Tests/UserServiceTests.swift: |
+      import XCTest
+      @testable import MyApp
+
+      final class UserServiceTests: XCTestCase {
+          let service = UserService()
+
+          func testEncodeDecodRoundTrip() throws {
+              let user = User(id: "1", name: "Alice", email: "alice@test.com")
+              let data = try service.encode(user: user)
+              let decoded = try service.decode(data: data)
+              XCTAssertEqual(user, decoded)
+          }
+
+          func testAreEqual() {
+              let a = User(id: "1", name: "Alice", email: "alice@test.com")
+              let b = User(id: "1", name: "Alice", email: "alice@test.com")
+              XCTAssertTrue(service.areEqual(a, b))
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: try encoder.encode(user)
+- id: userservice_1
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: 'try decoder.decode(User.self, from: data)'
+- id: userservice_2
+  selector:
+    path: Sources/Services/UserService.swift
+    anchor: a == b
+- id: user
+  selector:
+    path: Sources/Models/User.swift
+    anchor: 'struct User: Codable, Equatable'
+- id: user_1
+  selector:
+    path: Sources/Models/User.swift
+    anchor: 'let id: String'
+- id: user_2
+  selector:
+    path: Sources/Models/User.swift
+    anchor: 'let name: String'
+- id: user_3
+  selector:
+    path: Sources/Models/User.swift
+    anchor: 'let email: String'
+- id: no_notificationservice
+  selector:
+    path: Sources/Services/NotificationService.swift
+- id: no_appconfig
+  selector:
+    path: Sources/Models/AppConfig.swift
+- id: no_usercacheservice
+  selector:
+    path: Sources/Services/UserCacheService.swift
+- id: no_product
+  selector:
+    path: Sources/Models/Product.swift
+- id: no_userservicetests
+  selector:
+    path: Tests/UserServiceTests.swift
+- id: no_global_0
+  selector:
+    anchor: NotificationService
+- id: no_global_1
+  selector:
+    anchor: sendPush
+- id: no_global_2
+  selector:
+    anchor: scheduleLocal
+- id: no_global_3
+  selector:
+    anchor: AppConfig
+- id: no_global_4
+  selector:
+    anchor: apiBaseUrl
+- id: no_global_5
+  selector:
+    anchor: maxRetries
+- id: no_global_6
+  selector:
+    anchor: UserCacheService
+- id: no_global_7
+  selector:
+    anchor: cacheUser
+- id: no_global_8
+  selector:
+    anchor: invalidate
+- id: no_global_9
+  selector:
+    anchor: struct Product
+- id: no_global_10
+  selector:
+    anchor: 'let price: Double'
+- id: no_global_11
+  selector:
+    anchor: UserServiceTests
+- id: no_global_12
+  selector:
+    anchor: testEncodeDecodRoundTrip
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - user
+  - user_1
+  - user_2
+  - user_3
+  allowed: []
+  forbidden:
+  - no_notificationservice
+  - no_appconfig
+  - no_usercacheservice
+  - no_product
+  - no_userservicetests
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

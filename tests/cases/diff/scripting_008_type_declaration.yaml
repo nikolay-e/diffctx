@@ -1,0 +1,300 @@
+name: scripting_008_type_declaration
+repo:
+  initial_files:
+    src/Services/DataTransformer.php: |
+      <?php
+      namespace App\Services;
+
+      class DataTransformer {
+      }
+    src/Http/ApiResponse.php: |
+      <?php
+      namespace App\Http;
+
+      class ApiResponse {
+          private int $statusCode;
+          private array $payload;
+
+          public function __construct(int $statusCode, array $payload) {
+              $this->statusCode = $statusCode;
+              $this->payload = $payload;
+          }
+
+          public function getStatusCode(): int {
+              return $this->statusCode;
+          }
+
+          public function getPayload(): array {
+              return $this->payload;
+          }
+
+          public function isSuccessful(): bool {
+              return $this->statusCode >= 200 && $this->statusCode < 300;
+          }
+
+          public function toArray(): array {
+              return ['status' => $this->statusCode, 'data' => $this->payload];
+          }
+      }
+    src/Logging/FileLogger.php: |
+      <?php
+      namespace App\Logging;
+
+      class FileLogger {
+          private string $logFilePath;
+
+          public function __construct(string $logFilePath = '/var/log/app.log') {
+              $this->logFilePath = $logFilePath;
+          }
+
+          public function writeInfo(string $message): void {
+              file_put_contents($this->logFilePath, "[INFO] $message\n", FILE_APPEND);
+          }
+
+          public function writeError(string $message): void {
+              file_put_contents($this->logFilePath, "[ERROR] $message\n", FILE_APPEND);
+          }
+
+          public function clear(): void {
+              file_put_contents($this->logFilePath, '');
+          }
+      }
+    src/Queue/JobRunner.php: |
+      <?php
+      namespace App\Queue;
+
+      class JobRunner {
+          private array $pendingJobs = [];
+
+          public function enqueueJob(string $jobClass, array $params = []): void {
+              $this->pendingJobs[] = ['class' => $jobClass, 'params' => $params];
+          }
+
+          public function processNextJob(): bool {
+              if (empty($this->pendingJobs)) {
+                  return false;
+              }
+              $job = array_shift($this->pendingJobs);
+              return true;
+          }
+
+          public function pendingCount(): int {
+              return count($this->pendingJobs);
+          }
+      }
+    src/Services/ReportGenerator.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\ApiResponse;
+
+      class ReportGenerator {
+          public function generateMonthlyReport(array $data): ApiResponse {
+              $summary = array_map(fn($row) => $row['total'], $data);
+              return new ApiResponse(200, ['summary' => $summary, 'count' => count($data)]);
+          }
+
+          public function generateDailyReport(string $date, array $entries): ApiResponse {
+              return new ApiResponse(200, ['date' => $date, 'entries' => $entries]);
+          }
+      }
+    src/Http/ErrorResponse.php: |
+      <?php
+      namespace App\Http;
+
+      class ErrorResponse {
+          private int $statusCode;
+          private string $message;
+          private array $details;
+
+          public function __construct(int $statusCode, string $message, array $details = []) {
+              $this->statusCode = $statusCode;
+              $this->message = $message;
+              $this->details = $details;
+          }
+
+          public function getStatusCode(): int {
+              return $this->statusCode;
+          }
+
+          public function getMessage(): string {
+              return $this->message;
+          }
+
+          public function toArray(): array {
+              return ['error' => $this->message, 'details' => $this->details];
+          }
+      }
+    src/Middleware/ResponseMiddleware.php: |
+      <?php
+      namespace App\Middleware;
+
+      use App\Http\ApiResponse;
+
+      class ResponseMiddleware {
+          public function handle(ApiResponse $response): array {
+              return [
+                  'status' => $response->getStatusCode(),
+                  'headers' => ['Content-Type' => 'application/json'],
+                  'body' => json_encode($response->getPayload()),
+              ];
+          }
+
+          public function addCorsHeaders(array $response): array {
+              $response['headers']['Access-Control-Allow-Origin'] = '*';
+              return $response;
+          }
+      }
+  changed_files:
+    src/Services/DataTransformer.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Http\ApiResponse;
+
+      class DataTransformer {
+          public function transformPayload(array $data): ApiResponse {
+              $result = array_map(fn($x) => $x * 2, $data);
+              return new ApiResponse(200, $result);
+          }
+      }
+    src/Http/ApiResponse.php: |
+      <?php
+      namespace App\Http;
+
+      class ApiResponse {
+          private int $statusCode;
+          private array $payload;
+
+          public function __construct(int $statusCode, array $payload) {
+              $this->statusCode = $statusCode;
+              $this->payload = $payload;
+          }
+
+          public function getStatusCode(): int {
+              return $this->statusCode;
+          }
+
+          public function getPayload(): array {
+              return $this->payload;
+          }
+
+          public function isSuccessful(): bool {
+              return $this->statusCode >= 200 && $this->statusCode < 300;
+          }
+
+          public function toArray(): array {
+              return ['status' => $this->statusCode, 'data' => $this->payload];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: apiresponse
+  selector:
+    path: src/Http/ApiResponse.php
+    anchor: public function __construct(int $statusCode, array $payload)
+- id: apiresponse_1
+  selector:
+    path: src/Http/ApiResponse.php
+    anchor: 'public function getStatusCode(): int'
+- id: apiresponse_2
+  selector:
+    path: src/Http/ApiResponse.php
+    anchor: 'public function getPayload(): array'
+- id: datatransformer
+  selector:
+    path: src/Services/DataTransformer.php
+    anchor: use App\Http\ApiResponse
+- id: datatransformer_1
+  selector:
+    path: src/Services/DataTransformer.php
+    anchor: new ApiResponse(200, $result)
+- id: no_filelogger
+  selector:
+    path: src/Logging/FileLogger.php
+- id: no_jobrunner
+  selector:
+    path: src/Queue/JobRunner.php
+- id: no_reportgenerator
+  selector:
+    path: src/Services/ReportGenerator.php
+- id: no_errorresponse
+  selector:
+    path: src/Http/ErrorResponse.php
+- id: no_responsemiddleware
+  selector:
+    path: src/Middleware/ResponseMiddleware.php
+- id: no_global_0
+  selector:
+    anchor: class FileLogger
+- id: no_global_1
+  selector:
+    anchor: logFilePath
+- id: no_global_2
+  selector:
+    anchor: writeInfo
+- id: no_global_3
+  selector:
+    anchor: class JobRunner
+- id: no_global_4
+  selector:
+    anchor: enqueueJob
+- id: no_global_5
+  selector:
+    anchor: pendingCount
+- id: no_global_6
+  selector:
+    anchor: ReportGenerator
+- id: no_global_7
+  selector:
+    anchor: generateMonthlyReport
+- id: no_global_8
+  selector:
+    anchor: generateDailyReport
+- id: no_global_9
+  selector:
+    anchor: ErrorResponse
+- id: no_global_10
+  selector:
+    anchor: getMessage
+- id: no_global_11
+  selector:
+    anchor: '''error'' =>'
+- id: no_global_12
+  selector:
+    anchor: ResponseMiddleware
+- id: no_global_13
+  selector:
+    anchor: addCorsHeaders
+- id: no_global_14
+  selector:
+    anchor: Access-Control-Allow-Origin
+oracle:
+  required:
+  - apiresponse
+  - apiresponse_1
+  - apiresponse_2
+  - datatransformer
+  - datatransformer_1
+  allowed: []
+  forbidden:
+  - no_filelogger
+  - no_jobrunner
+  - no_reportgenerator
+  - no_errorresponse
+  - no_responsemiddleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

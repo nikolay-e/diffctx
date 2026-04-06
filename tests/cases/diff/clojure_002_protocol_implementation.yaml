@@ -1,0 +1,221 @@
+name: clojure_002_protocol_implementation
+repo:
+  initial_files:
+    src/myapp/protocols.clj: |
+      (ns myapp.protocols)
+
+      (defprotocol Renderable
+        (render [this format])
+        (content-type [this]))
+    src/myapp/html_renderer.clj: |
+      (ns myapp.html-renderer
+        (:require [myapp.protocols :as proto]))
+
+      (defrecord HtmlRenderer [template]
+        proto/Renderable
+        (render [this format]
+          (str "<html><body>" template "</body></html>"))
+        (content-type [this]
+          "text/html"))
+    src/myapp/json_renderer.clj: |
+      (ns myapp.json-renderer
+        (:require [myapp.protocols :as proto]
+                  [clojure.data.json :as json]))
+
+      (defrecord JsonRenderer [data]
+        proto/Renderable
+        (render [this format]
+          (json/write-str data))
+        (content-type [this]
+          "application/json"))
+    src/myapp/xml_renderer.clj: |
+      (ns myapp.xml-renderer
+        (:require [myapp.protocols :as proto]))
+
+      (def GARBAGE_CLJ_002_XML_RENDER_A "xml-renderer")
+      (def GARBAGE_CLJ_002_XML_FORMAT_B "xml")
+
+      (defrecord XmlRenderer [data]
+        proto/Renderable
+        (render [this format]
+          (str "<root>" (pr-str data) "</root>"))
+        (content-type [this]
+          "application/xml"))
+    src/myapp/cacheable.clj: |
+      (ns myapp.cacheable)
+
+      (def GARBAGE_CLJ_002_CACHE_PROTO_C "cacheable")
+      (def GARBAGE_CLJ_002_TTL_MARKER_D 3600)
+
+      (defprotocol Cacheable
+        (cache-key [this])
+        (ttl [this]))
+    src/myapp/dispatcher.clj: |
+      (ns myapp.dispatcher
+        (:require [myapp.protocols :as proto]))
+
+      (def GARBAGE_CLJ_002_DISPATCH_MARKER_E "dispatcher")
+      (def GARBAGE_CLJ_002_ROUTE_MAP_F {})
+
+      (defn dispatch-render [renderer format]
+        (proto/render renderer format))
+    src/myapp/utils.clj: |
+      (ns myapp.utils)
+
+      (def GARBAGE_CLJ_002_UTILS_MARKER_G "utils")
+      (def GARBAGE_CLJ_002_HELPER_FN_H true)
+
+      (defn uuid []
+        (str (java.util.UUID/randomUUID)))
+  changed_files:
+    src/myapp/protocols.clj: |
+      (ns myapp.protocols)
+
+      (defprotocol Renderable
+        (render [this format])
+        (render-partial [this section format])
+        (content-type [this]))
+    src/myapp/html_renderer.clj: |
+      (ns myapp.html-renderer
+        (:require [myapp.protocols :as proto]))
+
+      (defrecord HtmlRenderer [template sections]
+        proto/Renderable
+        (render [this format]
+          (str "<html><body>" template "</body></html>"))
+        (render-partial [this section format]
+          (let [content (get sections section "")]
+            (str "<div class=\"" (name section) "\">" content "</div>")))
+        (content-type [this]
+          "text/html"))
+    src/myapp/json_renderer.clj: |
+      (ns myapp.json-renderer
+        (:require [myapp.protocols :as proto]
+                  [clojure.data.json :as json]))
+
+      (defrecord JsonRenderer [data]
+        proto/Renderable
+        (render [this format]
+          (json/write-str data))
+        (render-partial [this section format]
+          (json/write-str (get data section {})))
+        (content-type [this]
+          "application/json"))
+    src/myapp/xml_renderer.clj: |
+      (ns myapp.xml-renderer
+        (:require [myapp.protocols :as proto]))
+
+      (def GARBAGE_CLJ_002_XML_RENDER_A "xml-renderer")
+      (def GARBAGE_CLJ_002_XML_FORMAT_B "xml")
+
+      (defrecord XmlRenderer [data]
+        proto/Renderable
+        (render [this format]
+          (str "<root>" (pr-str data) "</root>"))
+        (content-type [this]
+          "application/xml"))
+    src/myapp/cacheable.clj: |
+      (ns myapp.cacheable)
+
+      (def GARBAGE_CLJ_002_CACHE_PROTO_C "cacheable")
+      (def GARBAGE_CLJ_002_TTL_MARKER_D 3600)
+
+      (defprotocol Cacheable
+        (cache-key [this])
+        (ttl [this]))
+    src/myapp/dispatcher.clj: |
+      (ns myapp.dispatcher
+        (:require [myapp.protocols :as proto]))
+
+      (def GARBAGE_CLJ_002_DISPATCH_MARKER_E "dispatcher")
+      (def GARBAGE_CLJ_002_ROUTE_MAP_F {})
+
+      (defn dispatch-render [renderer format]
+        (proto/render renderer format))
+    src/myapp/utils.clj: |
+      (ns myapp.utils)
+
+      (def GARBAGE_CLJ_002_UTILS_MARKER_G "utils")
+      (def GARBAGE_CLJ_002_HELPER_FN_H true)
+
+      (defn uuid []
+        (str (java.util.UUID/randomUUID)))
+  commit_message: Update files
+fragments:
+- id: protocols
+  selector:
+    path: src/myapp/protocols.clj
+    anchor: render-partial [this section format]
+- id: html_renderer
+  selector:
+    path: src/myapp/html_renderer.clj
+    anchor: render-partial [this section format]
+- id: html_renderer_1
+  selector:
+    path: src/myapp/html_renderer.clj
+    anchor: get sections section
+- id: json_renderer
+  selector:
+    path: src/myapp/json_renderer.clj
+    anchor: render-partial [this section format]
+- id: json_renderer_1
+  selector:
+    path: src/myapp/json_renderer.clj
+    anchor: get data section
+- id: no_xml_renderer
+  selector:
+    path: src/myapp/xml_renderer.clj
+- id: no_cacheable
+  selector:
+    path: src/myapp/cacheable.clj
+- id: no_dispatcher
+  selector:
+    path: src/myapp/dispatcher.clj
+- id: no_utils
+  selector:
+    path: src/myapp/utils.clj
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CLJ_002_XML_RENDER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CLJ_002_XML_FORMAT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CLJ_002_CACHE_PROTO_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CLJ_002_TTL_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CLJ_002_DISPATCH_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CLJ_002_ROUTE_MAP_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CLJ_002_UTILS_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CLJ_002_HELPER_FN_H
+oracle:
+  required:
+  - protocols
+  - html_renderer
+  - html_renderer_1
+  - json_renderer
+  - json_renderer_1
+  allowed: []
+  forbidden:
+  - no_xml_renderer
+  - no_cacheable
+  - no_dispatcher
+  - no_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

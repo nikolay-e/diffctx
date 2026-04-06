@@ -1,0 +1,420 @@
+name: jvm_and_compiled_021_csharp_nullable_reference
+repo:
+  initial_files:
+    Models/User.cs: |
+      namespace App.Models
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+              public DateTime CreatedAt { get; set; }
+
+              public override string ToString()
+              {
+                  return $"User({Id}, {Name})";
+              }
+          }
+      }
+    Repositories/UserRepository.cs: |
+      namespace App.Repositories
+      {
+          class UserRepository { }
+      }
+    Repositories/ProductRepository.cs: |
+      using System.Collections.Generic;
+
+      namespace App.Repositories
+      {
+          class ProductRepository
+          {
+              private readonly Dictionary<int, Product> _products = new();
+
+              public Product? FindProduct(int id)
+              {
+                  return _products.TryGetValue(id, out var product) ? product : null;
+              }
+
+              public void Save(Product product)
+              {
+                  _products[product.Id] = product;
+              }
+
+              public Product GetOrCreate(int id, string name)
+              {
+                  var product = FindProduct(id);
+                  if (product is null)
+                  {
+                      product = new Product { Id = id, Name = name };
+                      Save(product);
+                  }
+                  return product;
+              }
+          }
+      }
+    Services/UserService.cs: |
+      namespace App.Services
+      {
+          class UserService
+          {
+              private readonly UserRepository _repository;
+
+              public UserService(UserRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public string GetUserDisplayName(int id)
+              {
+                  var user = _repository.FindUser(id);
+                  return user?.Name ?? "Unknown";
+              }
+
+              public User EnsureUser(int id, string defaultName)
+              {
+                  return _repository.GetOrCreate(id, defaultName);
+              }
+          }
+      }
+    Validators/UserValidator.cs: |
+      using System.Collections.Generic;
+
+      namespace App.Validators
+      {
+          class UserValidator
+          {
+              public List<string> Validate(User? user)
+              {
+                  var errors = new List<string>();
+                  if (user is null)
+                  {
+                      errors.Add("User cannot be null");
+                      return errors;
+                  }
+                  if (string.IsNullOrEmpty(user.Name))
+                      errors.Add("Name is required");
+                  return errors;
+              }
+          }
+      }
+    Extensions/NullableExtensions.cs: |
+      namespace App.Extensions
+      {
+          static class NullableExtensions
+          {
+              public static T OrDefault<T>(this T? value, T defaultValue) where T : class
+              {
+                  return value ?? defaultValue;
+              }
+
+              public static T ThrowIfNull<T>(this T? value, string paramName) where T : class
+              {
+                  return value ?? throw new ArgumentNullException(paramName);
+              }
+          }
+      }
+    Mappers/UserMapper.cs: |
+      namespace App.Mappers
+      {
+          class UserMapper
+          {
+              public UserDto ToDto(User user)
+              {
+                  return new UserDto
+                  {
+                      Id = user.Id,
+                      Name = user.Name,
+                      Email = user.Email
+                  };
+              }
+
+              public User FromDto(UserDto dto)
+              {
+                  return new User
+                  {
+                      Id = dto.Id,
+                      Name = dto.Name,
+                      Email = dto.Email
+                  };
+              }
+          }
+      }
+  changed_files:
+    Models/User.cs: |
+      namespace App.Models
+      {
+          public class User
+          {
+              public int Id { get; set; }
+              public string Name { get; set; }
+              public string Email { get; set; }
+              public DateTime CreatedAt { get; set; }
+
+              public override string ToString()
+              {
+                  return $"User({Id}, {Name})";
+              }
+          }
+      }
+    Repositories/UserRepository.cs: |
+      using System.Collections.Generic;
+
+      namespace App.Repositories
+      {
+          class UserRepository
+          {
+              private readonly Dictionary<int, User> _users = new();
+
+              public User? FindUser(int id)
+              {
+                  return _users.TryGetValue(id, out var user) ? user : null;
+              }
+
+              public void Save(User user)
+              {
+                  _users[user.Id] = user;
+              }
+
+              public User GetOrCreate(int id, string name)
+              {
+                  var user = FindUser(id);
+                  if (user is null)
+                  {
+                      user = new User { Id = id, Name = name };
+                      Save(user);
+                  }
+                  return user;
+              }
+          }
+      }
+    Repositories/ProductRepository.cs: |
+      using System.Collections.Generic;
+
+      namespace App.Repositories
+      {
+          class ProductRepository
+          {
+              private readonly Dictionary<int, Product> _products = new();
+
+              public Product? FindProduct(int id)
+              {
+                  return _products.TryGetValue(id, out var product) ? product : null;
+              }
+
+              public void Save(Product product)
+              {
+                  _products[product.Id] = product;
+              }
+
+              public Product GetOrCreate(int id, string name)
+              {
+                  var product = FindProduct(id);
+                  if (product is null)
+                  {
+                      product = new Product { Id = id, Name = name };
+                      Save(product);
+                  }
+                  return product;
+              }
+          }
+      }
+    Services/UserService.cs: |
+      namespace App.Services
+      {
+          class UserService
+          {
+              private readonly UserRepository _repository;
+
+              public UserService(UserRepository repository)
+              {
+                  _repository = repository;
+              }
+
+              public string GetUserDisplayName(int id)
+              {
+                  var user = _repository.FindUser(id);
+                  return user?.Name ?? "Unknown";
+              }
+
+              public User EnsureUser(int id, string defaultName)
+              {
+                  return _repository.GetOrCreate(id, defaultName);
+              }
+          }
+      }
+    Validators/UserValidator.cs: |
+      using System.Collections.Generic;
+
+      namespace App.Validators
+      {
+          class UserValidator
+          {
+              public List<string> Validate(User? user)
+              {
+                  var errors = new List<string>();
+                  if (user is null)
+                  {
+                      errors.Add("User cannot be null");
+                      return errors;
+                  }
+                  if (string.IsNullOrEmpty(user.Name))
+                      errors.Add("Name is required");
+                  return errors;
+              }
+          }
+      }
+    Extensions/NullableExtensions.cs: |
+      namespace App.Extensions
+      {
+          static class NullableExtensions
+          {
+              public static T OrDefault<T>(this T? value, T defaultValue) where T : class
+              {
+                  return value ?? defaultValue;
+              }
+
+              public static T ThrowIfNull<T>(this T? value, string paramName) where T : class
+              {
+                  return value ?? throw new ArgumentNullException(paramName);
+              }
+          }
+      }
+    Mappers/UserMapper.cs: |
+      namespace App.Mappers
+      {
+          class UserMapper
+          {
+              public UserDto ToDto(User user)
+              {
+                  return new UserDto
+                  {
+                      Id = user.Id,
+                      Name = user.Name,
+                      Email = user.Email
+                  };
+              }
+
+              public User FromDto(UserDto dto)
+              {
+                  return new User
+                  {
+                      Id = dto.Id,
+                      Name = dto.Name,
+                      Email = dto.Email
+                  };
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userrepository
+  selector:
+    path: Repositories/UserRepository.cs
+    anchor: public User? FindUser(int id)
+- id: userrepository_1
+  selector:
+    path: Repositories/UserRepository.cs
+    anchor: _users[user.Id] = user
+- id: userrepository_2
+  selector:
+    path: Repositories/UserRepository.cs
+    anchor: new User { Id = id, Name = name }
+- id: userrepository_3
+  selector:
+    path: Repositories/UserRepository.cs
+    anchor: if (user is null)
+- id: user
+  selector:
+    path: Models/User.cs
+    anchor: public int Id { get; set; }
+- id: user_1
+  selector:
+    path: Models/User.cs
+    anchor: public string Name { get; set; }
+- id: no_productrepository
+  selector:
+    path: Repositories/ProductRepository.cs
+- id: no_userservice
+  selector:
+    path: Services/UserService.cs
+- id: no_uservalidator
+  selector:
+    path: Validators/UserValidator.cs
+- id: no_nullableextensions
+  selector:
+    path: Extensions/NullableExtensions.cs
+- id: no_usermapper
+  selector:
+    path: Mappers/UserMapper.cs
+- id: no_global_0
+  selector:
+    anchor: ProductRepository
+- id: no_global_1
+  selector:
+    anchor: FindProduct
+- id: no_global_2
+  selector:
+    anchor: _products
+- id: no_global_3
+  selector:
+    anchor: UserService
+- id: no_global_4
+  selector:
+    anchor: GetUserDisplayName
+- id: no_global_5
+  selector:
+    anchor: EnsureUser
+- id: no_global_6
+  selector:
+    anchor: UserValidator
+- id: no_global_7
+  selector:
+    anchor: User cannot be null
+- id: no_global_8
+  selector:
+    anchor: NullableExtensions
+- id: no_global_9
+  selector:
+    anchor: OrDefault
+- id: no_global_10
+  selector:
+    anchor: ThrowIfNull
+- id: no_global_11
+  selector:
+    anchor: UserMapper
+- id: no_global_12
+  selector:
+    anchor: ToDto
+- id: no_global_13
+  selector:
+    anchor: FromDto
+oracle:
+  required:
+  - userrepository
+  - userrepository_1
+  - userrepository_2
+  - userrepository_3
+  - user
+  - user_1
+  allowed: []
+  forbidden:
+  - no_productrepository
+  - no_userservice
+  - no_uservalidator
+  - no_nullableextensions
+  - no_usermapper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

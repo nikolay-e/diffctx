@@ -1,0 +1,168 @@
+name: infrastructure_validation_004_property_change
+repo:
+  initial_files:
+    user.py: |
+      from typing import Optional
+
+      class User:
+          def __init__(self, first: str, last: str):
+              self.first = first
+              self.last = last
+
+          @property
+          def full_name(self) -> str:
+              return f"{self.first} {self.last}"
+
+          @property
+          def initials(self) -> str:
+              return f"{self.first[0]}{self.last[0]}".upper()
+
+          def greet(self) -> str:
+              return f"Hello, {self.full_name}!"
+    views.py: |
+      from user import User
+
+      def render_user(user: User) -> str:
+          return f"Name: {user.full_name}"
+
+      def render_user_card(user: User) -> str:
+          return f"[{user.initials}] {user.full_name}"
+
+      def render_greeting(user: User) -> str:
+          return user.greet()
+    serializers.py: |
+      from user import User
+
+      def user_to_dict(user: User) -> dict:
+          return {
+              "first": user.first,
+              "last": user.last,
+              "full_name": user.full_name,
+              "initials": user.initials,
+          }
+
+      def user_to_display(user: User) -> str:
+          return f"{user.full_name} ({user.initials})"
+    scripts/create_users.sh: |
+      #!/bin/bash
+      python create_users.py
+    tests/test_user.py: |
+      def test_user_creation():
+          pass
+    docs/user-model.md: |
+      # User Model
+    migrations/002_add_title.sql: |
+      ALTER TABLE users ADD COLUMN title VARCHAR(50);
+  changed_files:
+    user.py: |
+      from typing import Optional
+
+      class User:
+          def __init__(self, first: str, last: str, title: Optional[str] = None):
+              self.first = first
+              self.last = last
+              self.title = title
+
+          @property
+          def full_name(self) -> str:
+              if self.title:
+                  return f"{self.title} {self.first} {self.last}"
+              return f"{self.first} {self.last}"
+
+          @property
+          def initials(self) -> str:
+              return f"{self.first[0]}{self.last[0]}".upper()
+
+          def greet(self) -> str:
+              return f"Hello, {self.full_name}!"
+    views.py: |
+      from user import User
+
+      def render_user(user: User) -> str:
+          return f"Name: {user.full_name}"
+
+      def render_user_card(user: User) -> str:
+          return f"[{user.initials}] {user.full_name}"
+
+      def render_greeting(user: User) -> str:
+          return user.greet()
+    serializers.py: |
+      from user import User
+
+      def user_to_dict(user: User) -> dict:
+          return {
+              "first": user.first,
+              "last": user.last,
+              "full_name": user.full_name,
+              "initials": user.initials,
+          }
+
+      def user_to_display(user: User) -> str:
+          return f"{user.full_name} ({user.initials})"
+    scripts/create_users.sh: |
+      #!/bin/bash
+      python create_users.py
+    tests/test_user.py: |
+      def test_user_creation():
+          pass
+    docs/user-model.md: |
+      # User Model
+    migrations/002_add_title.sql: |
+      ALTER TABLE users ADD COLUMN title VARCHAR(50);
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: user.py
+    anchor: 'def __init__(self, first: str, last: str, title: Optional[str] = None):'
+- id: user_1
+  selector:
+    path: user.py
+    anchor: self.title = title
+- id: user_2
+  selector:
+    path: user.py
+    anchor: 'if self.title:'
+- id: no_create_users
+  selector:
+    path: scripts/create_users.sh
+- id: no_test_user
+  selector:
+    path: tests/test_user.py
+- id: no_user_model
+  selector:
+    path: docs/user-model.md
+- id: no_002_add_title
+  selector:
+    path: migrations/002_add_title.sql
+- id: no_global_0
+  selector:
+    anchor: create_users
+- id: no_global_1
+  selector:
+    anchor: test_user_creation
+- id: no_global_2
+  selector:
+    anchor: '# User Model'
+- id: no_global_3
+  selector:
+    anchor: ALTER TABLE
+- id: no_global_4
+  selector:
+    anchor: VARCHAR
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  allowed: []
+  forbidden:
+  - no_create_users
+  - no_test_user
+  - no_user_model
+  - no_002_add_title
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

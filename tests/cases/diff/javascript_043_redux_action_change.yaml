@@ -1,0 +1,131 @@
+name: javascript_043_redux_action_change
+repo:
+  initial_files:
+    actions.ts: |
+      export const INCREMENT = 'INCREMENT';
+      export const DECREMENT = 'DECREMENT';
+
+      export const increment = () => ({ type: INCREMENT });
+      export const decrement = () => ({ type: DECREMENT });
+    reducer.ts: |
+      import { INCREMENT, DECREMENT } from './actions';
+
+      const initialState = { count: 0 };
+
+      export function counterReducer(state = initialState, action: any) {
+          switch (action.type) {
+              case INCREMENT:
+                  return { count: state.count + 1 };
+              case DECREMENT:
+                  return { count: state.count - 1 };
+              default:
+                  return state;
+          }
+      }
+    store.ts: |
+      import { createStore } from 'redux';
+      import { counterReducer } from './reducer';
+
+      export const store = createStore(counterReducer);
+
+      export type RootState = ReturnType<typeof store.getState>;
+      export type AppDispatch = typeof store.dispatch;
+    selectors.ts: |
+      import { RootState } from './store';
+
+      export const selectCount = (state: RootState) => state.count;
+      export const isPositive = (state: RootState) => state.count > 0;
+      export const isZero = (state: RootState) => state.count === 0;
+  changed_files:
+    actions.ts: |
+      export const INCREMENT = 'INCREMENT';
+      export const DECREMENT = 'DECREMENT';
+      export const RESET = 'RESET';
+      export const SET = 'SET';
+
+      export const increment = () => ({ type: INCREMENT });
+      export const decrement = () => ({ type: DECREMENT });
+      export const reset = () => ({ type: RESET });
+      export const setValue = (value: number) => ({ type: SET, payload: value });
+    reducer.ts: |
+      import { INCREMENT, DECREMENT } from './actions';
+
+      const initialState = { count: 0 };
+
+      export function counterReducer(state = initialState, action: any) {
+          switch (action.type) {
+              case INCREMENT:
+                  return { count: state.count + 1 };
+              case DECREMENT:
+                  return { count: state.count - 1 };
+              default:
+                  return state;
+          }
+      }
+    store.ts: |
+      import { createStore } from 'redux';
+      import { counterReducer } from './reducer';
+
+      export const store = createStore(counterReducer);
+
+      export type RootState = ReturnType<typeof store.getState>;
+      export type AppDispatch = typeof store.dispatch;
+    selectors.ts: |
+      import { RootState } from './store';
+
+      export const selectCount = (state: RootState) => state.count;
+      export const isPositive = (state: RootState) => state.count > 0;
+      export const isZero = (state: RootState) => state.count === 0;
+  commit_message: Update files
+fragments:
+- id: reducer
+  selector:
+    path: reducer.ts
+    anchor: import { INCREMENT, DECREMENT } from './actions'
+- id: reducer_1
+  selector:
+    path: reducer.ts
+    anchor: 'case INCREMENT:'
+- id: reducer_2
+  selector:
+    path: reducer.ts
+    anchor: 'case DECREMENT:'
+- id: no_store
+  selector:
+    path: store.ts
+- id: no_selectors
+  selector:
+    path: selectors.ts
+- id: no_global_0
+  selector:
+    anchor: createStore
+- id: no_global_1
+  selector:
+    anchor: RootState
+- id: no_global_2
+  selector:
+    anchor: AppDispatch
+- id: no_global_3
+  selector:
+    anchor: selectCount
+- id: no_global_4
+  selector:
+    anchor: isPositive
+- id: no_global_5
+  selector:
+    anchor: isZero
+oracle:
+  required:
+  - reducer
+  - reducer_1
+  - reducer_2
+  allowed: []
+  forbidden:
+  - no_store
+  - no_selectors
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

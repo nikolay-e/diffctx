@@ -1,0 +1,283 @@
+name: algorithm_015_output_sorted_by_path
+repo:
+  initial_files:
+    src/z_module/handler.py: |
+      from typing import Any, Dict
+
+      class ZHandler:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+
+          def handle(self, data: Any) -> Any:
+              return data
+
+          def validate(self, data: Any) -> bool:
+              return True
+    src/a_module/processor.py: |
+      from typing import List, Any
+
+      class AProcessor:
+          def __init__(self):
+              self.items: List[Any] = []
+
+          def process(self, item: Any) -> Any:
+              self.items.append(item)
+              return item
+
+          def get_all(self) -> List[Any]:
+              return self.items
+    src/m_module/service.py: |
+      from typing import Optional
+
+      class MService:
+          def __init__(self, name: str):
+              self.name = name
+
+          def execute(self) -> str:
+              return f"Executing {self.name}"
+    src/z_module/backup_handler.py: |
+      from typing import Any, Dict, Optional
+      GARBAGE_ALGO_015_BACKUP_HANDLER_G = "backup_handler"
+      GARBAGE_ALGO_015_BACKUP_VER_H = "1.2"
+
+      class BackupHandler:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.last_error: Optional[str] = None
+
+          def handle(self, data: Any) -> Any:
+              GARBAGE_ALGO_015_BACKUP_HANDLE_I = True
+              return data
+
+          def validate(self, data: Any) -> bool:
+              return data is not None
+    src/a_module/transformer.py: |
+      from typing import List, Any, Callable
+      GARBAGE_ALGO_015_TRANSFORMER_J = "transformer"
+      GARBAGE_ALGO_015_TRANSFORM_VER_K = "2.0"
+
+      class Transformer:
+          def __init__(self, transform: Callable[[Any], Any] = None):
+              self.items: List[Any] = []
+              self.transform = transform or (lambda x: x)
+
+          def process(self, item: Any) -> Any:
+              GARBAGE_ALGO_015_TRANSFORM_PROC_L = True
+              transformed = self.transform(item)
+              self.items.append(transformed)
+              return transformed
+    garbage_extras.py: |
+      GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+      GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+      class ExtraFeatures:
+          GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+          def enable(self) -> None:
+              pass
+    garbage_utils.py: |
+      GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+      GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+      class UtilityFunctions:
+          GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+          def helper(self) -> None:
+              pass
+  changed_files:
+    src/z_module/handler.py: |
+      from typing import Any, Dict, Optional
+
+      class ZHandler:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.last_error: Optional[str] = None
+
+          def handle(self, data: Any) -> Any:
+              try:
+                  return self._process(data)
+              except Exception as e:
+                  self.last_error = str(e)
+                  return None
+
+          def _process(self, data: Any) -> Any:
+              return data
+
+          def validate(self, data: Any) -> bool:
+              return data is not None
+    src/a_module/processor.py: |
+      from typing import List, Any, Callable
+
+      class AProcessor:
+          def __init__(self, transform: Callable[[Any], Any] = None):
+              self.items: List[Any] = []
+              self.transform = transform or (lambda x: x)
+
+          def process(self, item: Any) -> Any:
+              transformed = self.transform(item)
+              self.items.append(transformed)
+              return transformed
+
+          def get_all(self) -> List[Any]:
+              return self.items.copy()
+
+          def clear(self) -> None:
+              self.items.clear()
+    src/m_module/service.py: |
+      from typing import Optional
+
+      class MService:
+          def __init__(self, name: str):
+              self.name = name
+
+          def execute(self) -> str:
+              return f"Executing {self.name}"
+    src/z_module/backup_handler.py: |
+      from typing import Any, Dict, Optional
+      GARBAGE_ALGO_015_BACKUP_HANDLER_G = "backup_handler"
+      GARBAGE_ALGO_015_BACKUP_VER_H = "1.2"
+
+      class BackupHandler:
+          def __init__(self, config: Dict[str, Any]):
+              self.config = config
+              self.last_error: Optional[str] = None
+
+          def handle(self, data: Any) -> Any:
+              GARBAGE_ALGO_015_BACKUP_HANDLE_I = True
+              return data
+
+          def validate(self, data: Any) -> bool:
+              return data is not None
+    src/a_module/transformer.py: |
+      from typing import List, Any, Callable
+      GARBAGE_ALGO_015_TRANSFORMER_J = "transformer"
+      GARBAGE_ALGO_015_TRANSFORM_VER_K = "2.0"
+
+      class Transformer:
+          def __init__(self, transform: Callable[[Any], Any] = None):
+              self.items: List[Any] = []
+              self.transform = transform or (lambda x: x)
+
+          def process(self, item: Any) -> Any:
+              GARBAGE_ALGO_015_TRANSFORM_PROC_L = True
+              transformed = self.transform(item)
+              self.items.append(transformed)
+              return transformed
+    garbage_extras.py: |
+      GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+      GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+      class ExtraFeatures:
+          GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+          def enable(self) -> None:
+              pass
+    garbage_utils.py: |
+      GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+      GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+      class UtilityFunctions:
+          GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+          def helper(self) -> None:
+              pass
+  commit_message: Update files
+fragments:
+- id: processor
+  selector:
+    path: src/a_module/processor.py
+    anchor: from typing import List, Any, Callable
+- id: processor_1
+  selector:
+    path: src/a_module/processor.py
+    anchor: transformed = self.transform(item)
+- id: processor_2
+  selector:
+    path: src/a_module/processor.py
+    anchor: 'self.transform = transform or (lambda x: x)'
+- id: processor_3
+  selector:
+    path: src/a_module/processor.py
+    anchor: return self.items.copy()
+- id: handler
+  selector:
+    path: src/z_module/handler.py
+    anchor: self.last_error = str(e)
+- id: handler_1
+  selector:
+    path: src/z_module/handler.py
+    anchor: return data is not None
+- id: no_garbage_extras
+  selector:
+    path: garbage_extras.py
+- id: no_garbage_utils
+  selector:
+    path: garbage_utils.py
+- id: no_backup_handler
+  selector:
+    path: src/z_module/backup_handler.py
+- id: no_transformer
+  selector:
+    path: src/a_module/transformer.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_015_EXTRA_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_015_BONUS_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_015_FEATURE_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_015_UTIL_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_015_HELPER_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_015_FUNC_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_015_BACKUP_HANDLER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_015_BACKUP_VER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_015_BACKUP_HANDLE_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_015_TRANSFORMER_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_015_TRANSFORM_VER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_015_TRANSFORM_PROC_L
+oracle:
+  required:
+  - processor
+  - processor_1
+  - processor_2
+  - processor_3
+  - handler
+  - handler_1
+  allowed: []
+  forbidden:
+  - no_garbage_extras
+  - no_garbage_utils
+  - no_backup_handler
+  - no_transformer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

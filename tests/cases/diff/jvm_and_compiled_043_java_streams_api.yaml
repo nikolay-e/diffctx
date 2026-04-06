@@ -1,0 +1,211 @@
+name: jvm_and_compiled_043_java_streams_api
+repo:
+  initial_files:
+    src/main/java/com/example/DataProcessor.java: |
+      package com.example;
+
+      import java.util.ArrayList;
+      import java.util.List;
+
+      public class DataProcessor {
+          public List<String> filterActive(List<User> users) {
+              List<String> result = new ArrayList<>();
+              for (User user : users) {
+                  if (user.isActive()) {
+                      result.add(user.getName());
+                  }
+              }
+              return result;
+          }
+      }
+    src/main/java/com/example/UserComparator.java: |
+      package com.example;
+
+      import java.util.Comparator;
+
+      public class UserComparator implements Comparator<User> {
+          @Override
+          public int compare(User u1, User u2) {
+              return u1.getName().compareTo(u2.getName());
+          }
+
+          public static Comparator<User> byAge() {
+              return Comparator.comparingInt(User::getAge);
+          }
+
+          public static Comparator<User> byScore() {
+              return Comparator.comparingDouble(User::getScore);
+          }
+      }
+    src/main/java/com/example/ReportGenerator.java: |
+      package com.example;
+
+      import java.util.List;
+      import java.util.Map;
+
+      public class ReportGenerator {
+          public String generateSummary(List<User> users) {
+              StringBuilder sb = new StringBuilder();
+              sb.append("Total users: ").append(users.size()).append("\n");
+              for (User user : users) {
+                  sb.append("- ").append(user.getName()).append("\n");
+              }
+              return sb.toString();
+          }
+
+          public Map<String, Integer> countByDepartment(List<User> users) {
+              Map<String, Integer> counts = new java.util.HashMap<>();
+              for (User user : users) {
+                  counts.merge(user.getDepartment(), 1, Integer::sum);
+              }
+              return counts;
+          }
+      }
+  changed_files:
+    src/main/java/com/example/DataProcessor.java: |
+      package com.example;
+
+      import java.util.Comparator;
+      import java.util.List;
+      import java.util.Map;
+      import java.util.stream.Collectors;
+
+      public class DataProcessor {
+          public List<String> filterActive(List<User> users) {
+              return users.stream()
+                  .filter(User::isActive)
+                  .map(User::getName)
+                  .sorted()
+                  .toList();
+          }
+
+          public Map<String, List<User>> groupByDepartment(List<User> users) {
+              return users.stream()
+                  .collect(Collectors.groupingBy(User::getDepartment));
+          }
+
+          public double averageAge(List<User> users) {
+              return users.stream()
+                  .mapToInt(User::getAge)
+                  .average()
+                  .orElse(0.0);
+          }
+
+          public List<User> topNByScore(List<User> users, int n) {
+              return users.stream()
+                  .sorted(Comparator.comparingDouble(User::getScore).reversed())
+                  .limit(n)
+                  .toList();
+          }
+      }
+    src/main/java/com/example/User.java: |
+      package com.example;
+
+      public class User {
+          private String name;
+          private boolean active;
+          private String department;
+          private int age;
+          private double score;
+
+          public String getName() { return name; }
+          public boolean isActive() { return active; }
+          public String getDepartment() { return department; }
+          public int getAge() { return age; }
+          public double getScore() { return score; }
+      }
+    src/main/java/com/example/UserComparator.java: |
+      package com.example;
+
+      import java.util.Comparator;
+
+      public class UserComparator implements Comparator<User> {
+          @Override
+          public int compare(User u1, User u2) {
+              return u1.getName().compareTo(u2.getName());
+          }
+
+          public static Comparator<User> byAge() {
+              return Comparator.comparingInt(User::getAge);
+          }
+
+          public static Comparator<User> byScore() {
+              return Comparator.comparingDouble(User::getScore);
+          }
+      }
+    src/main/java/com/example/ReportGenerator.java: |
+      package com.example;
+
+      import java.util.List;
+      import java.util.Map;
+
+      public class ReportGenerator {
+          public String generateSummary(List<User> users) {
+              StringBuilder sb = new StringBuilder();
+              sb.append("Total users: ").append(users.size()).append("\n");
+              for (User user : users) {
+                  sb.append("- ").append(user.getName()).append("\n");
+              }
+              return sb.toString();
+          }
+
+          public Map<String, Integer> countByDepartment(List<User> users) {
+              Map<String, Integer> counts = new java.util.HashMap<>();
+              for (User user : users) {
+                  counts.merge(user.getDepartment(), 1, Integer::sum);
+              }
+              return counts;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: dataprocessor
+  selector:
+    path: src/main/java/com/example/DataProcessor.java
+    anchor: public Map<String, List<User>> groupByDepartment(List<User> users) {
+- id: dataprocessor_1
+  selector:
+    path: src/main/java/com/example/DataProcessor.java
+    anchor: public double averageAge(List<User> users) {
+- id: user_file
+  selector:
+    path: src/main/java/com/example/User.java
+- id: no_usercomparator
+  selector:
+    path: src/main/java/com/example/UserComparator.java
+- id: no_reportgenerator
+  selector:
+    path: src/main/java/com/example/ReportGenerator.java
+- id: no_global_0
+  selector:
+    anchor: UserComparator
+- id: no_global_1
+  selector:
+    anchor: byAge
+- id: no_global_2
+  selector:
+    anchor: byScore
+- id: no_global_3
+  selector:
+    anchor: ReportGenerator
+- id: no_global_4
+  selector:
+    anchor: generateSummary
+- id: no_global_5
+  selector:
+    anchor: countByDepartment
+oracle:
+  required:
+  - dataprocessor
+  - dataprocessor_1
+  - user_file
+  allowed: []
+  forbidden:
+  - no_usercomparator
+  - no_reportgenerator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

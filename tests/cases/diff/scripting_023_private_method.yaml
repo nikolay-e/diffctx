@@ -1,0 +1,265 @@
+name: scripting_023_private_method
+repo:
+  initial_files:
+    payment_processor.rb: |
+      class PaymentProcessor
+        def execute(amount)
+          validated = validate_amount(amount)
+          format_receipt(validated)
+        end
+
+        private
+
+        def validate_amount(amount)
+          raise "Invalid amount" if amount.nil? || amount <= 0
+          amount
+        end
+
+        def format_receipt(amount)
+          "Receipt: $#{'%.2f' % amount}"
+        end
+
+        def log_transaction(amount)
+          puts "[#{Time.now}] Processed: $#{amount}"
+        end
+      end
+    app.rb: |
+      puts 'Application starting'
+    input_sanitizer.rb: |
+      module InputSanitizer
+        STRIP_TAGS = /<[^>]*>/
+        STRIP_WHITESPACE = /\s+/
+
+        def self.clean(input)
+          input.gsub(STRIP_TAGS, '').gsub(STRIP_WHITESPACE, ' ').strip
+        end
+
+        def self.escape_html(text)
+          text.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+        end
+
+        def self.truncate(text, length: 100)
+          text.length > length ? text[0...length] + '...' : text
+        end
+      end
+    currency_converter.rb: |
+      class CurrencyConverter
+        RATES = { usd_to_eur: 0.85, usd_to_gbp: 0.73, eur_to_usd: 1.18, gbp_to_usd: 1.37 }.freeze
+
+        def convert(amount, from_to)
+          rate = RATES.fetch(from_to) { raise "Unknown rate: #{from_to}" }
+          (amount * rate).round(2)
+        end
+
+        def available_conversions
+          RATES.keys
+        end
+
+        def rate_for(from_to)
+          RATES.fetch(from_to, nil)
+        end
+      end
+    refund_processor.rb: |
+      class RefundProcessor
+        def execute(amount)
+          validated = validate_amount(amount)
+          format_receipt(validated)
+        end
+
+        private
+
+        def validate_amount(amount)
+          raise "Invalid refund amount" if amount.nil? || amount <= 0
+          raise "Refund exceeds limit" if amount > 10000
+          amount
+        end
+
+        def format_receipt(amount)
+          "Refund Receipt: -$#{'%.2f' % amount}"
+        end
+
+        def notify_customer(amount)
+          puts "Refund of $#{amount} processed"
+        end
+      end
+    transaction_log.rb: |
+      class TransactionLog
+        def initialize(log_file = 'transactions.log')
+          @log_file = log_file
+          @entries = []
+        end
+
+        def record(processor_class, amount, status)
+          entry = {
+            processor: processor_class.name,
+            amount: amount,
+            status: status,
+            timestamp: Time.now
+          }
+          @entries << entry
+        end
+
+        def recent(count = 10)
+          @entries.last(count)
+        end
+
+        def total_processed
+          @entries.select { |e| e[:status] == :success }.sum { |e| e[:amount] }
+        end
+      end
+    lib/receipt_template.rb: |
+      module ReceiptTemplate
+        def self.html(amount, description: 'Payment')
+          <<~HTML
+            <div class="receipt">
+              <h2>#{description}</h2>
+              <p class="amount">$#{'%.2f' % amount}</p>
+              <p class="date">#{Time.now.strftime('%Y-%m-%d')}</p>
+            </div>
+          HTML
+        end
+
+        def self.text(amount, description: 'Payment')
+          "#{description}: $#{'%.2f' % amount} on #{Time.now.strftime('%Y-%m-%d')}"
+        end
+      end
+  changed_files:
+    payment_processor.rb: |
+      class PaymentProcessor
+        def execute(amount)
+          validated = validate_amount(amount)
+          format_receipt(validated)
+        end
+
+        private
+
+        def validate_amount(amount)
+          raise "Invalid amount" if amount.nil? || amount <= 0
+          amount
+        end
+
+        def format_receipt(amount)
+          "Receipt: $#{'%.2f' % amount}"
+        end
+
+        def log_transaction(amount)
+          puts "[#{Time.now}] Processed: $#{amount}"
+        end
+      end
+    app.rb: |
+      require_relative 'payment_processor'
+
+      processor = PaymentProcessor.new
+      result = processor.execute(150.00)
+      puts result
+  commit_message: Update files
+fragments:
+- id: payment_processor
+  selector:
+    path: payment_processor.rb
+    anchor: def execute(amount)
+- id: payment_processor_1
+  selector:
+    path: payment_processor.rb
+    anchor: validate_amount(amount)
+- id: payment_processor_2
+  selector:
+    path: payment_processor.rb
+    anchor: format_receipt(validated)
+- id: app
+  selector:
+    path: app.rb
+    anchor: PaymentProcessor.new
+- id: app_1
+  selector:
+    path: app.rb
+    anchor: processor.execute
+- id: no_input_sanitizer
+  selector:
+    path: input_sanitizer.rb
+- id: no_currency_converter
+  selector:
+    path: currency_converter.rb
+- id: no_refund_processor
+  selector:
+    path: refund_processor.rb
+- id: no_transaction_log
+  selector:
+    path: transaction_log.rb
+- id: no_receipt_template
+  selector:
+    path: lib/receipt_template.rb
+- id: no_global_0
+  selector:
+    anchor: InputSanitizer
+- id: no_global_1
+  selector:
+    anchor: STRIP_TAGS
+- id: no_global_2
+  selector:
+    anchor: escape_html
+- id: no_global_3
+  selector:
+    anchor: CurrencyConverter
+- id: no_global_4
+  selector:
+    anchor: available_conversions
+- id: no_global_5
+  selector:
+    anchor: rate_for
+- id: no_global_6
+  selector:
+    anchor: RefundProcessor
+- id: no_global_7
+  selector:
+    anchor: Refund Receipt
+- id: no_global_8
+  selector:
+    anchor: Refund exceeds limit
+- id: no_global_9
+  selector:
+    anchor: notify_customer
+- id: no_global_10
+  selector:
+    anchor: TransactionLog
+- id: no_global_11
+  selector:
+    anchor: total_processed
+- id: no_global_12
+  selector:
+    anchor: processor_class
+- id: no_global_13
+  selector:
+    anchor: ReceiptTemplate
+- id: no_global_14
+  selector:
+    anchor: class="receipt"
+oracle:
+  required:
+  - payment_processor
+  - payment_processor_1
+  - payment_processor_2
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_input_sanitizer
+  - no_currency_converter
+  - no_refund_processor
+  - no_transaction_log
+  - no_receipt_template
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

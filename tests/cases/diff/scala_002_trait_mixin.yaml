@@ -1,0 +1,213 @@
+name: scala_002_trait_mixin
+repo:
+  initial_files:
+    src/traits/Logging.scala: |
+      package traits
+
+      trait Logging {
+        protected def logPrefix: String = getClass.getSimpleName
+
+        def log(message: String): Unit =
+          println(s"[$logPrefix][LOG] $message")
+
+        def debug(message: String): Unit =
+          println(s"[$logPrefix][DEBUG] $message")
+
+        def error(message: String, cause: Throwable): Unit =
+          println(s"[$logPrefix][ERROR] $message: ${cause.getMessage}")
+      }
+    src/traits/Metrics.scala: |
+      package traits
+
+      trait Metrics {
+        private var counters: Map[String, Long] = Map.empty
+
+        def recordMetric(name: String, value: Double): Unit = {
+          println(s"Metric: $name = $value")
+        }
+
+        def incrementCounter(name: String): Unit = {
+          counters = counters.updated(name, counters.getOrElse(name, 0L) + 1)
+        }
+
+        def getCounter(name: String): Long = counters.getOrElse(name, 0L)
+      }
+    src/services/OrderService.scala: |
+      package services
+
+      class OrderService {
+        def processOrder(orderId: String): String = {
+          s"Processing order $orderId"
+        }
+      }
+    src/traits/Serializable.scala: |
+      package traits
+
+      trait Serializable {
+        def serialize: String
+        def deserialize(data: String): Unit
+
+        def toJson: String = s"""{"type":"${getClass.getSimpleName}","data":"${serialize}"}"""
+      }
+    src/services/InventoryService.scala: |
+      package services
+
+      class InventoryService {
+        private var stock: Map[String, Int] = Map.empty
+
+        def addStock(productId: String, quantity: Int): Unit = {
+          stock = stock.updated(productId, stock.getOrElse(productId, 0) + quantity)
+        }
+
+        def removeStock(productId: String, quantity: Int): Boolean = {
+          stock.get(productId) match {
+            case Some(current) if current >= quantity =>
+              stock = stock.updated(productId, current - quantity)
+              true
+            case _ => false
+          }
+        }
+
+        def getStock(productId: String): Int = stock.getOrElse(productId, 0)
+      }
+  changed_files:
+    src/traits/Logging.scala: |
+      package traits
+
+      trait Logging {
+        protected def logPrefix: String = getClass.getSimpleName
+
+        def log(message: String): Unit =
+          println(s"[$logPrefix][LOG] $message")
+
+        def debug(message: String): Unit =
+          println(s"[$logPrefix][DEBUG] $message")
+
+        def error(message: String, cause: Throwable): Unit =
+          println(s"[$logPrefix][ERROR] $message: ${cause.getMessage}")
+      }
+    src/traits/Metrics.scala: |
+      package traits
+
+      trait Metrics {
+        private var counters: Map[String, Long] = Map.empty
+
+        def recordMetric(name: String, value: Double): Unit = {
+          println(s"Metric: $name = $value")
+        }
+
+        def incrementCounter(name: String): Unit = {
+          counters = counters.updated(name, counters.getOrElse(name, 0L) + 1)
+        }
+
+        def getCounter(name: String): Long = counters.getOrElse(name, 0L)
+      }
+    src/services/OrderService.scala: |
+      package services
+
+      import traits.{Logging, Metrics}
+
+      class OrderService extends Logging with Metrics {
+        def processOrder(orderId: String): String = {
+          log(s"Processing order $orderId")
+          incrementCounter("orders_processed")
+          recordMetric("process_count", getCounter("orders_processed").toDouble)
+          val result = s"Order $orderId processed"
+          debug(s"Completed: $result")
+          result
+        }
+
+        def cancelOrder(orderId: String): String = {
+          log(s"Cancelling order $orderId")
+          incrementCounter("orders_cancelled")
+          s"Order $orderId cancelled"
+        }
+      }
+    src/traits/Serializable.scala: |
+      package traits
+
+      trait Serializable {
+        def serialize: String
+        def deserialize(data: String): Unit
+
+        def toJson: String = s"""{"type":"${getClass.getSimpleName}","data":"${serialize}"}"""
+      }
+    src/services/InventoryService.scala: |
+      package services
+
+      class InventoryService {
+        private var stock: Map[String, Int] = Map.empty
+
+        def addStock(productId: String, quantity: Int): Unit = {
+          stock = stock.updated(productId, stock.getOrElse(productId, 0) + quantity)
+        }
+
+        def removeStock(productId: String, quantity: Int): Boolean = {
+          stock.get(productId) match {
+            case Some(current) if current >= quantity =>
+              stock = stock.updated(productId, current - quantity)
+              true
+            case _ => false
+          }
+        }
+
+        def getStock(productId: String): Int = stock.getOrElse(productId, 0)
+      }
+  commit_message: Update files
+fragments:
+- id: orderservice
+  selector:
+    path: src/services/OrderService.scala
+    anchor: import traits.{Logging, Metrics}
+- id: orderservice_1
+  selector:
+    path: src/services/OrderService.scala
+    anchor: class OrderService extends Logging with Metrics {
+- id: logging
+  selector:
+    path: src/traits/Logging.scala
+    anchor: trait Logging {
+- id: metrics
+  selector:
+    path: src/traits/Metrics.scala
+    anchor: trait Metrics {
+- id: no_serializable
+  selector:
+    path: src/traits/Serializable.scala
+- id: no_inventoryservice
+  selector:
+    path: src/services/InventoryService.scala
+- id: no_global_0
+  selector:
+    anchor: trait Serializable
+- id: no_global_1
+  selector:
+    anchor: toJson
+- id: no_global_2
+  selector:
+    anchor: deserialize
+- id: no_global_3
+  selector:
+    anchor: InventoryService
+- id: no_global_4
+  selector:
+    anchor: addStock
+- id: no_global_5
+  selector:
+    anchor: removeStock
+oracle:
+  required:
+  - orderservice
+  - orderservice_1
+  - logging
+  - metrics
+  allowed: []
+  forbidden:
+  - no_serializable
+  - no_inventoryservice
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

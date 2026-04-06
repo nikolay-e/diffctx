@@ -1,0 +1,227 @@
+name: bazel_002_workspace_external
+repo:
+  initial_files:
+    WORKSPACE: |
+      workspace(name = "myproject")
+
+      load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+      http_archive(
+          name = "rules_python",
+          sha256 = "a868059c8c6dd6ad45a205cca04084c652cfe1852e6df2d5aca036f6e5438380",
+          strip_prefix = "rules_python-0.14.0",
+          url = "https://github.com/bazelbuild/rules_python/releases/download/0.14.0/rules_python-0.14.0.tar.gz",
+      )
+
+      load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+      python_register_toolchains(
+          name = "python3_11",
+          python_version = "3.11",
+      )
+    services/api/BUILD: |
+      py_binary(
+          name = "server",
+          srcs = ["server.py"],
+          deps = [
+              "//libs/database:client",
+          ],
+      )
+    services/api/server.py: |
+      from libs.database.client import DatabaseClient
+
+      def main():
+          db = DatabaseClient()
+          db.connect()
+
+      if __name__ == "__main__":
+          main()
+    services/proto/BUILD: |
+      py_library(
+          name = "models",
+          srcs = ["models.py"],
+          visibility = ["//visibility:public"],
+      )
+    services/proto/models.py: |
+      class UserModel:
+          def __init__(self, name, email):
+              self.name = name
+              self.email = email
+    tools/BUILD: |
+      py_binary(
+          name = "formatter",
+          srcs = ["formatter.py"],
+          GARBAGE_BAZEL_002_A = "noise_tools_build",
+      )
+    tools/formatter.py: |
+      GARBAGE_BAZEL_002_B = "noise_formatter"
+      def format_code(path):
+          print(f"Formatting {path}")
+    services/worker/BUILD: |
+      py_binary(
+          name = "worker",
+          srcs = ["worker.py"],
+          deps = ["//libs/database:client"],
+          GARBAGE_BAZEL_002_C = "noise_worker_build",
+      )
+    services/worker/worker.py: |
+      GARBAGE_BAZEL_002_D = "noise_worker_module"
+      def process_queue():
+          pass
+  changed_files:
+    WORKSPACE: |
+      workspace(name = "myproject")
+
+      load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+      http_archive(
+          name = "rules_python",
+          sha256 = "a868059c8c6dd6ad45a205cca04084c652cfe1852e6df2d5aca036f6e5438380",
+          strip_prefix = "rules_python-0.14.0",
+          url = "https://github.com/bazelbuild/rules_python/releases/download/0.14.0/rules_python-0.14.0.tar.gz",
+      )
+
+      load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+      python_register_toolchains(
+          name = "python3_11",
+          python_version = "3.11",
+      )
+
+      http_archive(
+          name = "rules_proto",
+          sha256 = "dc3fb206a2cb3441b485eb1e423165b231235a1ea9b031b4433cf7bc1fa460dd",
+          strip_prefix = "rules_proto-5.3.0",
+          url = "https://github.com/bazelbuild/rules_proto/releases/download/5.3.0/rules_proto-5.3.0.tar.gz",
+      )
+
+      load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
+
+      rules_proto_dependencies()
+      rules_proto_toolchains()
+    services/api/BUILD: |
+      py_binary(
+          name = "server",
+          srcs = ["server.py"],
+          deps = [
+              "//libs/database:client",
+          ],
+      )
+    services/api/server.py: |
+      from libs.database.client import DatabaseClient
+
+      def main():
+          db = DatabaseClient()
+          db.connect()
+
+      if __name__ == "__main__":
+          main()
+    services/proto/BUILD: |
+      load("@rules_proto//proto:defs.bzl", "proto_library")
+
+      proto_library(
+          name = "user_proto",
+          srcs = ["user.proto"],
+          visibility = ["//visibility:public"],
+      )
+
+      py_library(
+          name = "models",
+          srcs = ["models.py"],
+          deps = [":user_proto"],
+          visibility = ["//visibility:public"],
+      )
+    services/proto/models.py: |
+      class UserModel:
+          def __init__(self, name, email):
+              self.name = name
+              self.email = email
+    services/proto/user.proto: |
+      syntax = "proto3";
+
+      package myproject;
+
+      message User {
+        string name = 1;
+        string email = 2;
+        int32 id = 3;
+      }
+    tools/BUILD: |
+      py_binary(
+          name = "formatter",
+          srcs = ["formatter.py"],
+          GARBAGE_BAZEL_002_A = "noise_tools_build",
+      )
+    tools/formatter.py: |
+      GARBAGE_BAZEL_002_B = "noise_formatter"
+      def format_code(path):
+          print(f"Formatting {path}")
+    services/worker/BUILD: |
+      py_binary(
+          name = "worker",
+          srcs = ["worker.py"],
+          deps = ["//libs/database:client"],
+          GARBAGE_BAZEL_002_C = "noise_worker_build",
+      )
+    services/worker/worker.py: |
+      GARBAGE_BAZEL_002_D = "noise_worker_module"
+      def process_queue():
+          pass
+  commit_message: Update files
+fragments:
+- id: workspace
+  selector:
+    path: WORKSPACE
+    anchor: rules_proto
+- id: workspace_1
+  selector:
+    path: WORKSPACE
+    anchor: rules_proto_dependencies
+- id: build
+  selector:
+    path: services/proto/BUILD
+    anchor: '@rules_proto//proto:defs.bzl'
+- id: build_1
+  selector:
+    path: services/proto/BUILD
+    anchor: proto_library
+- id: no_build
+  selector:
+    path: tools/BUILD
+- id: no_formatter
+  selector:
+    path: tools/formatter.py
+- id: no_build_1
+  selector:
+    path: services/worker/BUILD
+- id: no_worker
+  selector:
+    path: services/worker/worker.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_BAZEL_002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_BAZEL_002_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_BAZEL_002_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_BAZEL_002_D
+oracle:
+  required:
+  - workspace
+  - workspace_1
+  - build
+  - build_1
+  allowed: []
+  forbidden:
+  - no_build
+  - no_formatter
+  - no_build_1
+  - no_worker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

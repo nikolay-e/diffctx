@@ -1,0 +1,315 @@
+name: dependencies_010_forward_uses_enum
+repo:
+  initial_files:
+    enums/order.py: |
+      from enum import Enum
+
+      class OrderStatus(Enum):
+          PENDING = "pending"
+          PROCESSING = "processing"
+          COMPLETED = "completed"
+          CANCELLED = "cancelled"
+          REFUNDED = "refunded"
+
+      class PaymentMethod(Enum):
+          CREDIT_CARD = "credit_card"
+          DEBIT_CARD = "debit_card"
+          PAYPAL = "paypal"
+          BANK_TRANSFER = "bank_transfer"
+    order.py: |
+      def create_order():
+          pass
+    services/order_processor.py: |
+      from enums.order import OrderStatus, PaymentMethod
+      GARBAGE_DEP_010_PROCESSOR_IMPORT_C = "order_processor"
+      GARBAGE_DEP_010_PROCESSOR_QUEUE_D = 100
+
+      class OrderProcessor:
+          GARBAGE_DEP_010_PROCESSOR_CLASS_E = True
+
+          def process(self, order_data: dict) -> dict:
+              status = OrderStatus.PROCESSING
+              payment = PaymentMethod(order_data.get("payment", "credit_card"))
+              return {"status": status.value, "payment": payment.value}
+
+          def complete(self, order_id: int) -> str:
+              return OrderStatus.COMPLETED.value
+    enums/shipping.py: |
+      from enum import Enum
+      GARBAGE_DEP_010_SHIP_MODULE_F = "shipping_enums"
+      GARBAGE_DEP_010_SHIP_VER_G = "1.0"
+
+      class OrderStatus(Enum):
+          PACKED = "packed"
+          SHIPPED = "shipped"
+          DELIVERED = "delivered"
+          RETURNED = "returned"
+          GARBAGE_DEP_010_SHIP_STATUS_H = "internal"
+
+      class PaymentMethod(Enum):
+          COD = "cash_on_delivery"
+          PREPAID = "prepaid"
+          GARBAGE_DEP_010_SHIP_PAY_I = "internal"
+    enums/user.py: |
+      from enum import Enum
+      GARBAGE_DEP_010_USER_ENUM_J = "user_enums"
+      GARBAGE_DEP_010_USER_VER_K = "2.0"
+
+      class UserRole(Enum):
+          ADMIN = "admin"
+          CUSTOMER = "customer"
+          GUEST = "guest"
+
+      class UserStatus(Enum):
+          ACTIVE = "active"
+          SUSPENDED = "suspended"
+          PENDING = "pending"
+          CANCELLED = "cancelled"
+    garbage/zodiac_GARBAGE_DEP_010_ZODIAC_A.py: |
+      def zodiac_sign_GARBAGE_DEP_010_ZODIAC_A(month: int, day: int) -> str:
+          if (month == 3 and day >= 21) or (month == 4 and day <= 19):
+              return "Aries"
+          return "Unknown"
+
+      def element_for_sign_GARBAGE_DEP_010_ZODIAC_A(sign: str) -> str:
+          elements = {"Aries": "Fire", "Taurus": "Earth", "Gemini": "Air"}
+          return elements.get(sign, "Unknown")
+
+      class HoroscopeChart_GARBAGE_DEP_010_ZODIAC_A:
+          def __init__(self, birth_date: str):
+              self.birth_date = birth_date
+              self.aspects = []
+    garbage/origami_GARBAGE_DEP_010_ORIGAMI_B.py: |
+      def fold_count_GARBAGE_DEP_010_ORIGAMI_B(paper_size: float, target_size: float) -> int:
+          folds = 0
+          current = paper_size
+          while current > target_size:
+              current /= 2
+              folds += 1
+          return folds
+
+      def paper_thickness_GARBAGE_DEP_010_ORIGAMI_B(base_thickness: float, folds: int) -> float:
+          return base_thickness * (2 ** folds)
+
+      class OrigamiModel_GARBAGE_DEP_010_ORIGAMI_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.steps = []
+  changed_files:
+    enums/order.py: |
+      from enum import Enum
+
+      class OrderStatus(Enum):
+          PENDING = "pending"
+          PROCESSING = "processing"
+          COMPLETED = "completed"
+          CANCELLED = "cancelled"
+          REFUNDED = "refunded"
+
+      class PaymentMethod(Enum):
+          CREDIT_CARD = "credit_card"
+          DEBIT_CARD = "debit_card"
+          PAYPAL = "paypal"
+          BANK_TRANSFER = "bank_transfer"
+    order.py: |
+      from enums.order import OrderStatus, PaymentMethod
+
+      class Order:
+          def __init__(self, items: list, payment: PaymentMethod):
+              self.items = items
+              self.payment = payment
+              self.status = OrderStatus.PENDING
+
+          def complete(self) -> None:
+              if self.status == OrderStatus.PROCESSING:
+                  self.status = OrderStatus.COMPLETED
+
+          def cancel(self) -> None:
+              if self.status in (OrderStatus.PENDING, OrderStatus.PROCESSING):
+                  self.status = OrderStatus.CANCELLED
+    services/order_processor.py: |
+      from enums.order import OrderStatus, PaymentMethod
+      GARBAGE_DEP_010_PROCESSOR_IMPORT_C = "order_processor"
+      GARBAGE_DEP_010_PROCESSOR_QUEUE_D = 100
+
+      class OrderProcessor:
+          GARBAGE_DEP_010_PROCESSOR_CLASS_E = True
+
+          def process(self, order_data: dict) -> dict:
+              status = OrderStatus.PROCESSING
+              payment = PaymentMethod(order_data.get("payment", "credit_card"))
+              return {"status": status.value, "payment": payment.value}
+
+          def complete(self, order_id: int) -> str:
+              return OrderStatus.COMPLETED.value
+    enums/shipping.py: |
+      from enum import Enum
+      GARBAGE_DEP_010_SHIP_MODULE_F = "shipping_enums"
+      GARBAGE_DEP_010_SHIP_VER_G = "1.0"
+
+      class OrderStatus(Enum):
+          PACKED = "packed"
+          SHIPPED = "shipped"
+          DELIVERED = "delivered"
+          RETURNED = "returned"
+          GARBAGE_DEP_010_SHIP_STATUS_H = "internal"
+
+      class PaymentMethod(Enum):
+          COD = "cash_on_delivery"
+          PREPAID = "prepaid"
+          GARBAGE_DEP_010_SHIP_PAY_I = "internal"
+    enums/user.py: |
+      from enum import Enum
+      GARBAGE_DEP_010_USER_ENUM_J = "user_enums"
+      GARBAGE_DEP_010_USER_VER_K = "2.0"
+
+      class UserRole(Enum):
+          ADMIN = "admin"
+          CUSTOMER = "customer"
+          GUEST = "guest"
+
+      class UserStatus(Enum):
+          ACTIVE = "active"
+          SUSPENDED = "suspended"
+          PENDING = "pending"
+          CANCELLED = "cancelled"
+    garbage/zodiac_GARBAGE_DEP_010_ZODIAC_A.py: |
+      def zodiac_sign_GARBAGE_DEP_010_ZODIAC_A(month: int, day: int) -> str:
+          if (month == 3 and day >= 21) or (month == 4 and day <= 19):
+              return "Aries"
+          return "Unknown"
+
+      def element_for_sign_GARBAGE_DEP_010_ZODIAC_A(sign: str) -> str:
+          elements = {"Aries": "Fire", "Taurus": "Earth", "Gemini": "Air"}
+          return elements.get(sign, "Unknown")
+
+      class HoroscopeChart_GARBAGE_DEP_010_ZODIAC_A:
+          def __init__(self, birth_date: str):
+              self.birth_date = birth_date
+              self.aspects = []
+    garbage/origami_GARBAGE_DEP_010_ORIGAMI_B.py: |
+      def fold_count_GARBAGE_DEP_010_ORIGAMI_B(paper_size: float, target_size: float) -> int:
+          folds = 0
+          current = paper_size
+          while current > target_size:
+              current /= 2
+              folds += 1
+          return folds
+
+      def paper_thickness_GARBAGE_DEP_010_ORIGAMI_B(base_thickness: float, folds: int) -> float:
+          return base_thickness * (2 ** folds)
+
+      class OrigamiModel_GARBAGE_DEP_010_ORIGAMI_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.steps = []
+  commit_message: Update files
+fragments:
+- id: order
+  selector:
+    path: order.py
+    anchor: from enums.order import OrderStatus, PaymentMethod
+- id: order_1
+  selector:
+    path: order.py
+    anchor: 'class Order:'
+- id: order_2
+  selector:
+    path: order.py
+    anchor: self.status = OrderStatus.PENDING
+- id: order_3
+  selector:
+    path: order.py
+    anchor: OrderStatus.PROCESSING
+- id: order_4
+  selector:
+    path: order.py
+    anchor: OrderStatus.COMPLETED
+- id: order_5
+  selector:
+    path: order.py
+    anchor: OrderStatus.CANCELLED
+- id: order_6
+  selector:
+    path: enums/order.py
+    anchor: 'class OrderStatus(Enum):'
+- id: order_7
+  selector:
+    path: enums/order.py
+    anchor: 'class PaymentMethod(Enum):'
+- id: no_order_processor
+  selector:
+    path: services/order_processor.py
+- id: no_shipping
+  selector:
+    path: enums/shipping.py
+- id: no_user
+  selector:
+    path: enums/user.py
+- id: no_zodiac_garbage_dep_010_zodiac_a
+  selector:
+    path: garbage/zodiac_GARBAGE_DEP_010_ZODIAC_A.py
+- id: no_origami_garbage_dep_010_origami_b
+  selector:
+    path: garbage/origami_GARBAGE_DEP_010_ORIGAMI_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_010_ZODIAC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_010_ORIGAMI_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_010_PROCESSOR_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_010_PROCESSOR_QUEUE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_010_PROCESSOR_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_010_SHIP_MODULE_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_010_SHIP_VER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_010_SHIP_STATUS_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_010_SHIP_PAY_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_DEP_010_USER_ENUM_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_DEP_010_USER_VER_K
+oracle:
+  required:
+  - order
+  - order_1
+  - order_2
+  - order_3
+  - order_4
+  - order_5
+  - order_6
+  - order_7
+  allowed: []
+  forbidden:
+  - no_order_processor
+  - no_shipping
+  - no_user
+  - no_zodiac_garbage_dep_010_zodiac_a
+  - no_origami_garbage_dep_010_origami_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

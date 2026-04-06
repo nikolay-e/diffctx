@@ -1,0 +1,197 @@
+name: cicd_and_docs_076_sql_cte
+repo:
+  initial_files:
+    sql/queries/monthly_sales.sql: |
+      -- Monthly sales report using CTE
+      WITH monthly_totals AS (
+          SELECT
+              DATE_TRUNC('month', created_at) AS month,
+              SUM(total) AS revenue
+          FROM orders
+          GROUP BY DATE_TRUNC('month', created_at)
+      )
+      SELECT * FROM monthly_totals ORDER BY month;
+    src/models/monthly_report.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+      from decimal import Decimal
+
+      @dataclass
+      class MonthlyReport:
+          month: datetime
+          revenue: Decimal
+    src/repositories/report_repository.py: |
+      from typing import List
+      from models.monthly_report import MonthlyReport
+
+      class ReportRepository:
+          def __init__(self, db):
+              self.db = db
+
+          def get_monthly_sales(self) -> List[MonthlyReport]:
+              results = self.db.execute_file('sql/queries/monthly_sales.sql')
+              return [MonthlyReport(**r) for r in results]
+    garbage_cte_optimizer.ts: |
+      const GARBAGE_CICD_DOCS_076_CTE_MARKER_A = "recursive";
+      const GARBAGE_CICD_DOCS_076_MATERIALIZE_MARKER_B = "inline";
+
+      class GarbageCTEOptimizer {
+        static GARBAGE_CICD_DOCS_076_FOLD_MARKER_C = true;
+        optimize(): void {}
+      }
+    garbage_window_analyzer.ts: |
+      const GARBAGE_CICD_DOCS_076_WINDOW_MARKER_D = "partition";
+      const GARBAGE_CICD_DOCS_076_FRAME_MARKER_E = "range";
+
+      class GarbageWindowAnalyzer {
+        static GARBAGE_CICD_DOCS_076_AGGREGATE_MARKER_F = false;
+        analyze(): void {}
+      }
+  changed_files:
+    sql/queries/monthly_sales.sql: |
+      -- Monthly sales report with growth calculation using multiple CTEs
+      -- Excludes cancelled orders and calculates month-over-month growth
+      WITH monthly_totals AS (
+          SELECT
+              DATE_TRUNC('month', created_at) AS month,
+              SUM(total) AS revenue,
+              COUNT(*) AS order_count,
+              COUNT(DISTINCT user_id) AS unique_customers,
+              AVG(total) AS avg_order_value
+          FROM orders
+          WHERE status != 'cancelled'
+          GROUP BY DATE_TRUNC('month', created_at)
+      ),
+      monthly_growth AS (
+          SELECT
+              month,
+              revenue,
+              order_count,
+              unique_customers,
+              avg_order_value,
+              LAG(revenue) OVER (ORDER BY month) AS prev_revenue,
+              LAG(order_count) OVER (ORDER BY month) AS prev_order_count,
+              ROUND(
+                  (revenue - LAG(revenue) OVER (ORDER BY month)) /
+                  NULLIF(LAG(revenue) OVER (ORDER BY month), 0) * 100,
+                  2
+              ) AS revenue_growth_percent,
+              ROUND(
+                  (order_count - LAG(order_count) OVER (ORDER BY month))::NUMERIC /
+                  NULLIF(LAG(order_count) OVER (ORDER BY month), 0) * 100,
+                  2
+              ) AS order_growth_percent
+          FROM monthly_totals
+      ),
+      running_totals AS (
+          SELECT
+              month,
+              revenue,
+              order_count,
+              unique_customers,
+              avg_order_value,
+              revenue_growth_percent,
+              order_growth_percent,
+              SUM(revenue) OVER (ORDER BY month) AS ytd_revenue,
+              SUM(order_count) OVER (ORDER BY month) AS ytd_orders
+          FROM monthly_growth
+      )
+      SELECT * FROM running_totals ORDER BY month DESC;
+    src/models/monthly_report.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+      from decimal import Decimal
+      from typing import Optional
+
+      @dataclass
+      class MonthlyReport:
+          month: datetime
+          revenue: Decimal
+          order_count: int
+          unique_customers: int
+          avg_order_value: Decimal
+          revenue_growth_percent: Optional[Decimal]
+          order_growth_percent: Optional[Decimal]
+          ytd_revenue: Decimal
+          ytd_orders: int
+    src/repositories/report_repository.py: |
+      from typing import List
+      from models.monthly_report import MonthlyReport
+
+      class ReportRepository:
+          def __init__(self, db):
+              self.db = db
+
+          def get_monthly_sales(self) -> List[MonthlyReport]:
+              results = self.db.execute_file('sql/queries/monthly_sales.sql')
+              return [MonthlyReport(**r) for r in results]
+    garbage_cte_optimizer.ts: |
+      const GARBAGE_CICD_DOCS_076_CTE_MARKER_A = "recursive";
+      const GARBAGE_CICD_DOCS_076_MATERIALIZE_MARKER_B = "inline";
+
+      class GarbageCTEOptimizer {
+        static GARBAGE_CICD_DOCS_076_FOLD_MARKER_C = true;
+        optimize(): void {}
+      }
+    garbage_window_analyzer.ts: |
+      const GARBAGE_CICD_DOCS_076_WINDOW_MARKER_D = "partition";
+      const GARBAGE_CICD_DOCS_076_FRAME_MARKER_E = "range";
+
+      class GarbageWindowAnalyzer {
+        static GARBAGE_CICD_DOCS_076_AGGREGATE_MARKER_F = false;
+        analyze(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: monthly_sales_file
+  selector:
+    path: sql/queries/monthly_sales.sql
+- id: monthly_report_file
+  selector:
+    path: src/models/monthly_report.py
+- id: req_global_0
+  selector:
+    anchor: -- Monthly sales report with growth calculation using multiple CTEs
+- id: req_global_1
+  selector:
+    anchor: from typing import Optional
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_AGGREGATE_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_CTE_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_FOLD_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_FRAME_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_MATERIALIZE_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_076_WINDOW_MARKER_D
+- id: no_global_6
+  selector:
+    anchor: garbage_cte_optimizer.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_window_analyzer.ts
+oracle:
+  required:
+  - monthly_sales_file
+  - monthly_report_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

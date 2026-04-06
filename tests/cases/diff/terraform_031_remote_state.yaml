@@ -1,0 +1,82 @@
+name: terraform_031_remote_state
+repo:
+  initial_files:
+    backend.tf: |
+      terraform {
+        backend "local" {}
+      }
+    staging/backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket = "staging-terraform-state"
+          key    = "staging/terraform.tfstate"
+          region = "eu-west-1"
+        }
+      }
+    scripts/migrate_state.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Migrating Terraform state to S3..."
+      terraform init -migrate-state
+      echo "State migration complete"
+  changed_files:
+    backend.tf: |
+      terraform {
+        backend "s3" {
+          bucket         = "my-terraform-state"
+          key            = "prod/terraform.tfstate"
+          region         = "us-east-1"
+          encrypt        = true
+          dynamodb_table = "terraform-locks"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: backend_file
+  selector:
+    path: backend.tf
+- id: req_global_0
+  selector:
+    anchor: backend "s3" {
+- id: req_global_1
+  selector:
+    anchor: bucket         = "my-terraform-state"
+- id: req_global_2
+  selector:
+    anchor: dynamodb_table = "terraform-locks"
+- id: req_global_3
+  selector:
+    anchor: encrypt        = true
+- id: no_backend
+  selector:
+    path: staging/backend.tf
+- id: no_migrate_state
+  selector:
+    path: scripts/migrate_state.sh
+- id: no_global_0
+  selector:
+    anchor: staging-terraform-state
+- id: no_global_1
+  selector:
+    anchor: staging/terraform.tfstate
+- id: no_global_2
+  selector:
+    anchor: eu-west-1
+- id: no_global_3
+  selector:
+    anchor: terraform init -migrate-state
+oracle:
+  required:
+  - backend_file
+  - req_global_0
+  - req_global_1
+  - req_global_2
+  - req_global_3
+  allowed: []
+  forbidden:
+  - no_backend
+  - no_migrate_state
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

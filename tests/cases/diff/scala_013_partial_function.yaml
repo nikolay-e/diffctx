@@ -1,0 +1,135 @@
+name: scala_013_partial_function
+repo:
+  initial_files:
+    Event.scala: |
+      sealed trait Event
+      case class UserCreated(name: String) extends Event
+      case class UserDeleted(id: String) extends Event
+      case class OrderPlaced(orderId: String, amount: Double) extends Event
+    EventHandler.scala: |
+      class EventHandler {}
+    EventLogger.scala: |
+      class EventLogger {
+        def logEvent(event: Event): String = event match {
+          case UserCreated(name) => s"[LOG] User created: $name"
+          case UserDeleted(id) => s"[LOG] User deleted: $id"
+          case OrderPlaced(id, amount) => s"[LOG] Order placed: $id for $amount"
+        }
+
+        def logBatch(events: List[Event]): List[String] =
+          events.map(logEvent)
+      }
+    OrderProcessor.scala: |
+      class OrderProcessor {
+        private var processedOrders: List[String] = List.empty
+
+        def process(event: Event): Option[String] = event match {
+          case OrderPlaced(orderId, amount) =>
+            processedOrders = orderId :: processedOrders
+            Some(s"Processed order $orderId: $amount")
+          case _ => None
+        }
+
+        def processedCount: Int = processedOrders.length
+      }
+  changed_files:
+    Event.scala: |
+      sealed trait Event
+      case class UserCreated(name: String) extends Event
+      case class UserDeleted(id: String) extends Event
+      case class OrderPlaced(orderId: String, amount: Double) extends Event
+    EventHandler.scala: |
+      class EventHandler {
+        val userHandler: PartialFunction[Event, String] = {
+          case UserCreated(name) => s"Created user: $name"
+          case UserDeleted(id) => s"Deleted user: $id"
+        }
+
+        val orderHandler: PartialFunction[Event, String] = {
+          case OrderPlaced(id, amount) => s"Order $id: $$$amount"
+        }
+
+        val combinedHandler: PartialFunction[Event, String] =
+          userHandler orElse orderHandler
+
+        def handle(event: Event): Option[String] = {
+          combinedHandler.lift(event)
+        }
+      }
+    EventLogger.scala: |
+      class EventLogger {
+        def logEvent(event: Event): String = event match {
+          case UserCreated(name) => s"[LOG] User created: $name"
+          case UserDeleted(id) => s"[LOG] User deleted: $id"
+          case OrderPlaced(id, amount) => s"[LOG] Order placed: $id for $amount"
+        }
+
+        def logBatch(events: List[Event]): List[String] =
+          events.map(logEvent)
+      }
+    OrderProcessor.scala: |
+      class OrderProcessor {
+        private var processedOrders: List[String] = List.empty
+
+        def process(event: Event): Option[String] = event match {
+          case OrderPlaced(orderId, amount) =>
+            processedOrders = orderId :: processedOrders
+            Some(s"Processed order $orderId: $amount")
+          case _ => None
+        }
+
+        def processedCount: Int = processedOrders.length
+      }
+  commit_message: Update files
+fragments:
+- id: eventhandler
+  selector:
+    path: EventHandler.scala
+    anchor: 'val userHandler: PartialFunction[Event, String] = {'
+- id: eventhandler_1
+  selector:
+    path: EventHandler.scala
+    anchor: userHandler orElse orderHandler
+- id: event
+  selector:
+    path: Event.scala
+    anchor: sealed trait Event
+- id: no_eventlogger
+  selector:
+    path: EventLogger.scala
+- id: no_orderprocessor
+  selector:
+    path: OrderProcessor.scala
+- id: no_global_0
+  selector:
+    anchor: EventLogger
+- id: no_global_1
+  selector:
+    anchor: logEvent
+- id: no_global_2
+  selector:
+    anchor: logBatch
+- id: no_global_3
+  selector:
+    anchor: OrderProcessor
+- id: no_global_4
+  selector:
+    anchor: processedCount
+- id: no_global_5
+  selector:
+    anchor: processedOrders
+oracle:
+  required:
+  - eventhandler
+  - eventhandler_1
+  - event
+  allowed: []
+  forbidden:
+  - no_eventlogger
+  - no_orderprocessor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

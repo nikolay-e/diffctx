@@ -1,0 +1,177 @@
+name: json_007_jest_config
+repo:
+  initial_files:
+    jest.config.json: |
+      {
+        "testMatch": ["**/*.test.js"],
+        "collectCoverage": false,
+        "testEnvironment": "node",
+        "transform": {
+          "^.+\\.js$": "babel-jest"
+        },
+        "moduleNameMapper": {
+          "^@/(.*)$": "<rootDir>/src/$1"
+        },
+        "setupFilesAfterSetup": ["./tests/setup.js"]
+      }
+    src/math.js: |
+      function add(a, b) {
+          return a + b;
+      }
+
+      function subtract(a, b) {
+          return a - b;
+      }
+
+      function multiply(a, b) {
+          return a * b;
+      }
+
+      function divide(a, b) {
+          if (b === 0) {
+              throw new Error('Division by zero');
+          }
+          return a / b;
+      }
+
+      function average(numbers) {
+          if (numbers.length === 0) return 0;
+          const sum = numbers.reduce((acc, n) => add(acc, n), 0);
+          return divide(sum, numbers.length);
+      }
+
+      module.exports = { add, subtract, multiply, divide, average };
+    tests/math.test.js: |
+      const { add, subtract, multiply, divide, average } = require('../src/math');
+
+      test('adds 1 + 2', () => {
+          expect(add(1, 2)).toBe(3);
+      });
+
+      test('subtracts 5 - 3', () => {
+          expect(subtract(5, 3)).toBe(2);
+      });
+
+      test('multiplies 4 * 3', () => {
+          expect(multiply(4, 3)).toBe(12);
+      });
+
+      test('divides 10 / 2', () => {
+          expect(divide(10, 2)).toBe(5);
+      });
+
+      test('throws on division by zero', () => {
+          expect(() => divide(1, 0)).toThrow('Division by zero');
+      });
+
+      test('calculates average', () => {
+          expect(average([2, 4, 6])).toBe(4);
+      });
+    babel.config.json: |
+      {
+        "presets": ["@babel/preset-env"],
+        "plugins": ["@babel/plugin-transform-runtime"]
+      }
+    package.json: |
+      {
+        "name": "math-lib",
+        "version": "1.0.0",
+        "scripts": {
+          "test": "jest",
+          "test:watch": "jest --watch",
+          "test:coverage": "jest --coverage"
+        },
+        "devDependencies": {
+          "jest": "^29.6.0",
+          "babel-jest": "^29.6.0",
+          "@babel/preset-env": "^7.22.0"
+        }
+      }
+    .github/workflows/test.yml: |
+      name: Tests
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 18
+            - run: npm ci
+            - run: npm test -- --coverage
+  changed_files:
+    jest.config.json: |
+      {
+        "testMatch": ["**/*.test.js", "**/*.spec.js"],
+        "collectCoverage": true,
+        "coverageThreshold": {"global": {"branches": 80, "functions": 80, "lines": 80}},
+        "testEnvironment": "node",
+        "transform": {
+          "^.+\\.js$": "babel-jest"
+        },
+        "moduleNameMapper": {
+          "^@/(.*)$": "<rootDir>/src/$1"
+        },
+        "setupFilesAfterSetup": ["./tests/setup.js"]
+      }
+  commit_message: Update files
+fragments:
+- id: jest_config
+  selector:
+    path: jest.config.json
+    anchor: '"collectCoverage": true'
+- id: jest_config_1
+  selector:
+    path: jest.config.json
+    anchor: '"branches": 80'
+- id: no_babel_config
+  selector:
+    path: babel.config.json
+- id: no_package
+  selector:
+    path: package.json
+- id: no_test
+  selector:
+    path: .github/workflows/test.yml
+- id: no_global_0
+  selector:
+    anchor: '@babel/preset-env'
+- id: no_global_1
+  selector:
+    anchor: plugin-transform-runtime
+- id: no_global_2
+  selector:
+    anchor: babel-jest
+- id: no_global_3
+  selector:
+    anchor: test:watch
+- id: no_global_4
+  selector:
+    anchor: test:coverage
+- id: no_global_5
+  selector:
+    anchor: actions/checkout
+- id: no_global_6
+  selector:
+    anchor: actions/setup-node
+- id: no_global_7
+  selector:
+    anchor: npm test -- --coverage
+oracle:
+  required:
+  - jest_config
+  - jest_config_1
+  allowed: []
+  forbidden:
+  - no_babel_config
+  - no_package
+  - no_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

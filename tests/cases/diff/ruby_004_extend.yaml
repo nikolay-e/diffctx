@@ -1,0 +1,263 @@
+name: ruby_004_extend
+repo:
+  initial_files:
+    lib/class_methods.rb: |
+      module ClassMethods
+        def find(id)
+          all_records = storage
+          all_records.detect { |r| r[:id] == id }
+        end
+
+        def all
+          storage.dup
+        end
+
+        def where(conditions)
+          storage.select do |record|
+            conditions.all? { |k, v| record[k] == v }
+          end
+        end
+
+        def count
+          storage.size
+        end
+
+        private
+
+        def storage
+          @storage ||= []
+        end
+      end
+    lib/model.rb: |
+      class Model
+        def save
+          true
+        end
+      end
+    lib/persistence.rb: |
+      class Persistence
+        def initialize(connection_string)
+          @connection_string = connection_string
+          @connected = false
+        end
+
+        def connect
+          @connected = true
+        end
+
+        def save_record(table, attributes)
+          raise "Not connected" unless @connected
+          { table: table, attributes: attributes, saved: true }
+        end
+
+        def find_record(table, id)
+          raise "Not connected" unless @connected
+          { table: table, id: id }
+        end
+
+        def delete_record(table, id)
+          raise "Not connected" unless @connected
+          true
+        end
+      end
+    lib/query_builder.rb: |
+      class QueryBuilder
+        def initialize(table_name)
+          @table = table_name
+          @conditions = []
+          @order = nil
+          @limit_val = nil
+        end
+
+        def where(condition)
+          @conditions << condition
+          self
+        end
+
+        def order_by(column, direction = :asc)
+          @order = { column: column, direction: direction }
+          self
+        end
+
+        def limit(n)
+          @limit_val = n
+          self
+        end
+
+        def to_sql
+          sql = "SELECT * FROM #{@table}"
+          sql += " WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+          sql += " ORDER BY #{@order[:column]} #{@order[:direction]}" if @order
+          sql += " LIMIT #{@limit_val}" if @limit_val
+          sql
+        end
+      end
+  changed_files:
+    lib/class_methods.rb: |
+      module ClassMethods
+        def find(id)
+          all_records = storage
+          all_records.detect { |r| r[:id] == id }
+        end
+
+        def all
+          storage.dup
+        end
+
+        def where(conditions)
+          storage.select do |record|
+            conditions.all? { |k, v| record[k] == v }
+          end
+        end
+
+        def count
+          storage.size
+        end
+
+        private
+
+        def storage
+          @storage ||= []
+        end
+      end
+    lib/model.rb: |
+      require_relative 'class_methods'
+
+      class Model
+        extend ClassMethods
+
+        attr_reader :id, :name
+
+        def initialize(id:, name: nil)
+          @id = id
+          @name = name
+        end
+
+        def save
+          true
+        end
+
+        def to_h
+          { id: @id, name: @name }
+        end
+      end
+
+      model = Model.find(1)
+      all_models = Model.all
+      filtered = Model.where(name: "test")
+    lib/persistence.rb: |
+      class Persistence
+        def initialize(connection_string)
+          @connection_string = connection_string
+          @connected = false
+        end
+
+        def connect
+          @connected = true
+        end
+
+        def save_record(table, attributes)
+          raise "Not connected" unless @connected
+          { table: table, attributes: attributes, saved: true }
+        end
+
+        def find_record(table, id)
+          raise "Not connected" unless @connected
+          { table: table, id: id }
+        end
+
+        def delete_record(table, id)
+          raise "Not connected" unless @connected
+          true
+        end
+      end
+    lib/query_builder.rb: |
+      class QueryBuilder
+        def initialize(table_name)
+          @table = table_name
+          @conditions = []
+          @order = nil
+          @limit_val = nil
+        end
+
+        def where(condition)
+          @conditions << condition
+          self
+        end
+
+        def order_by(column, direction = :asc)
+          @order = { column: column, direction: direction }
+          self
+        end
+
+        def limit(n)
+          @limit_val = n
+          self
+        end
+
+        def to_sql
+          sql = "SELECT * FROM #{@table}"
+          sql += " WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+          sql += " ORDER BY #{@order[:column]} #{@order[:direction]}" if @order
+          sql += " LIMIT #{@limit_val}" if @limit_val
+          sql
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: model
+  selector:
+    path: lib/model.rb
+    anchor: extend ClassMethods
+- id: model_1
+  selector:
+    path: lib/model.rb
+    anchor: Model.find(1)
+- id: class_methods
+  selector:
+    path: lib/class_methods.rb
+    anchor: def find(id)
+- id: class_methods_1
+  selector:
+    path: lib/class_methods.rb
+    anchor: def where(conditions)
+- id: no_persistence
+  selector:
+    path: lib/persistence.rb
+- id: no_query_builder
+  selector:
+    path: lib/query_builder.rb
+- id: no_global_0
+  selector:
+    anchor: Persistence
+- id: no_global_1
+  selector:
+    anchor: connection_string
+- id: no_global_2
+  selector:
+    anchor: save_record
+- id: no_global_3
+  selector:
+    anchor: QueryBuilder
+- id: no_global_4
+  selector:
+    anchor: to_sql
+- id: no_global_5
+  selector:
+    anchor: order_by
+oracle:
+  required:
+  - model
+  - model_1
+  - class_methods
+  - class_methods_1
+  allowed: []
+  forbidden:
+  - no_persistence
+  - no_query_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

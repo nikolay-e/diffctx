@@ -1,0 +1,530 @@
+name: rust_038_refcell_interior_mutability
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod counter;
+      pub mod metrics;
+      pub mod event_bus;
+      pub mod timer;
+    src/counter.rs: |
+      use std::cell::Cell;
+
+      pub struct Counter {
+          count: u64,
+          name: String,
+      }
+
+      impl Counter {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  count: 0,
+                  name: name.to_string(),
+              }
+          }
+
+          pub fn increment(&mut self) {
+              self.count += 1;
+          }
+
+          pub fn decrement(&mut self) {
+              if self.count > 0 {
+                  self.count -= 1;
+              }
+          }
+
+          pub fn get(&self) -> u64 {
+              self.count
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+      }
+
+      impl Default for Counter {
+          fn default() -> Self {
+              Self::new("default")
+          }
+      }
+
+      pub struct CellCounter {
+          count: Cell<u64>,
+      }
+
+      impl CellCounter {
+          pub fn new() -> Self {
+              Self {
+                  count: Cell::new(0),
+              }
+          }
+
+          pub fn increment(&self) {
+              self.count.set(self.count.get() + 1);
+          }
+
+          pub fn get(&self) -> u64 {
+              self.count.get()
+          }
+      }
+    src/metrics.rs: |
+      use std::sync::atomic::{AtomicU64, Ordering};
+      use std::collections::HashMap;
+
+      pub struct MetricsCollector {
+          counters: HashMap<String, AtomicU64>,
+      }
+
+      impl MetricsCollector {
+          pub fn new() -> Self {
+              Self { counters: HashMap::new() }
+          }
+
+          pub fn increment(&self, name: &str) {
+              if let Some(counter) = self.counters.get(name) {
+                  counter.fetch_add(1, Ordering::Relaxed);
+              }
+          }
+
+          pub fn register(&mut self, name: &str) {
+              self.counters.insert(name.to_string(), AtomicU64::new(0));
+          }
+
+          pub fn get(&self, name: &str) -> u64 {
+              self.counters.get(name).map_or(0, |c| c.load(Ordering::Relaxed))
+          }
+
+          pub fn snapshot(&self) -> HashMap<String, u64> {
+              self.counters.iter().map(|(k, v)| (k.clone(), v.load(Ordering::Relaxed))).collect()
+          }
+      }
+    src/event_bus.rs: |
+      use std::collections::HashMap;
+
+      type Handler = Box<dyn Fn(&str)>;
+
+      pub struct EventBus {
+          handlers: HashMap<String, Vec<Handler>>,
+      }
+
+      impl EventBus {
+          pub fn new() -> Self {
+              Self { handlers: HashMap::new() }
+          }
+
+          pub fn subscribe(&mut self, event: &str, handler: Handler) {
+              self.handlers.entry(event.to_string()).or_default().push(handler);
+          }
+
+          pub fn publish(&self, event: &str, data: &str) {
+              if let Some(handlers) = self.handlers.get(event) {
+                  for handler in handlers {
+                      handler(data);
+                  }
+              }
+          }
+
+          pub fn subscriber_count(&self, event: &str) -> usize {
+              self.handlers.get(event).map_or(0, |h| h.len())
+          }
+      }
+    src/timer.rs: |
+      use std::cell::Cell;
+      use std::time::Instant;
+
+      pub struct Timer {
+          start: Cell<Instant>,
+          label: String,
+      }
+
+      impl Timer {
+          pub fn new(label: &str) -> Self {
+              Self {
+                  start: Cell::new(Instant::now()),
+                  label: label.to_string(),
+              }
+          }
+
+          pub fn restart(&self) {
+              self.start.set(Instant::now());
+          }
+
+          pub fn elapsed_ms(&self) -> u128 {
+              self.start.get().elapsed().as_millis()
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod counter;
+      pub mod metrics;
+      pub mod event_bus;
+      pub mod timer;
+    src/counter.rs: |
+      use std::cell::{Cell, RefCell};
+      use std::rc::Rc;
+
+      pub struct Counter {
+          count: RefCell<u64>,
+          name: String,
+          history: RefCell<Vec<u64>>,
+      }
+
+      impl Counter {
+          pub fn new(name: &str) -> Self {
+              Self {
+                  count: RefCell::new(0),
+                  name: name.to_string(),
+                  history: RefCell::new(Vec::new()),
+              }
+          }
+
+          pub fn increment(&self) {
+              let mut count = self.count.borrow_mut();
+              *count += 1;
+              self.history.borrow_mut().push(*count);
+          }
+
+          pub fn decrement(&self) {
+              let mut count = self.count.borrow_mut();
+              if *count > 0 {
+                  *count -= 1;
+                  self.history.borrow_mut().push(*count);
+              }
+          }
+
+          pub fn get(&self) -> u64 {
+              *self.count.borrow()
+          }
+
+          pub fn name(&self) -> &str {
+              &self.name
+          }
+
+          pub fn reset(&self) {
+              *self.count.borrow_mut() = 0;
+              self.history.borrow_mut().clear();
+          }
+
+          pub fn history(&self) -> Vec<u64> {
+              self.history.borrow().clone()
+          }
+      }
+
+      impl Default for Counter {
+          fn default() -> Self {
+              Self::new("default")
+          }
+      }
+
+      pub struct CellCounter {
+          count: Cell<u64>,
+          max_value: Cell<u64>,
+      }
+
+      impl CellCounter {
+          pub fn new() -> Self {
+              Self {
+                  count: Cell::new(0),
+                  max_value: Cell::new(u64::MAX),
+              }
+          }
+
+          pub fn with_max(max: u64) -> Self {
+              Self {
+                  count: Cell::new(0),
+                  max_value: Cell::new(max),
+              }
+          }
+
+          pub fn increment(&self) {
+              let current = self.count.get();
+              if current < self.max_value.get() {
+                  self.count.set(current + 1);
+              }
+          }
+
+          pub fn get(&self) -> u64 {
+              self.count.get()
+          }
+
+          pub fn set_max(&self, max: u64) {
+              self.max_value.set(max);
+          }
+      }
+
+      impl Default for CellCounter {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+
+      pub struct Tracker {
+          counters: RefCell<Vec<Rc<Counter>>>,
+          total_increments: Cell<u64>,
+      }
+
+      impl Tracker {
+          pub fn new() -> Self {
+              Self {
+                  counters: RefCell::new(Vec::new()),
+                  total_increments: Cell::new(0),
+              }
+          }
+
+          pub fn add_counter(&self, name: &str) -> Rc<Counter> {
+              let counter = Rc::new(Counter::new(name));
+              self.counters.borrow_mut().push(Rc::clone(&counter));
+              counter
+          }
+
+          pub fn get_counter(&self, name: &str) -> Option<Rc<Counter>> {
+              self.counters
+                  .borrow()
+                  .iter()
+                  .find(|c| c.name() == name)
+                  .cloned()
+          }
+
+          pub fn total(&self) -> u64 {
+              self.counters.borrow().iter().map(|c| c.get()).sum()
+          }
+
+          pub fn increment_all(&self) {
+              for counter in self.counters.borrow().iter() {
+                  counter.increment();
+              }
+              self.total_increments
+                  .set(self.total_increments.get() + self.counters.borrow().len() as u64);
+          }
+
+          pub fn counter_count(&self) -> usize {
+              self.counters.borrow().len()
+          }
+
+          pub fn total_increments(&self) -> u64 {
+              self.total_increments.get()
+          }
+      }
+
+      impl Default for Tracker {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+
+      pub trait Observable {
+          fn subscribe(&self, callback: Box<dyn Fn(u64)>);
+          fn notify(&self, value: u64);
+      }
+
+      pub struct ObservableCounter {
+          count: RefCell<u64>,
+          callbacks: RefCell<Vec<Box<dyn Fn(u64)>>>,
+      }
+
+      impl ObservableCounter {
+          pub fn new() -> Self {
+              Self {
+                  count: RefCell::new(0),
+                  callbacks: RefCell::new(Vec::new()),
+              }
+          }
+
+          pub fn increment(&self) {
+              let new_value = {
+                  let mut count = self.count.borrow_mut();
+                  *count += 1;
+                  *count
+              };
+              self.notify(new_value);
+          }
+
+          pub fn get(&self) -> u64 {
+              *self.count.borrow()
+          }
+      }
+
+      impl Default for ObservableCounter {
+          fn default() -> Self {
+              Self::new()
+          }
+      }
+
+      impl Observable for ObservableCounter {
+          fn subscribe(&self, callback: Box<dyn Fn(u64)>) {
+              self.callbacks.borrow_mut().push(callback);
+          }
+
+          fn notify(&self, value: u64) {
+              for callback in self.callbacks.borrow().iter() {
+                  callback(value);
+              }
+          }
+      }
+    src/metrics.rs: |
+      use std::sync::atomic::{AtomicU64, Ordering};
+      use std::collections::HashMap;
+
+      pub struct MetricsCollector {
+          counters: HashMap<String, AtomicU64>,
+      }
+
+      impl MetricsCollector {
+          pub fn new() -> Self {
+              Self { counters: HashMap::new() }
+          }
+
+          pub fn increment(&self, name: &str) {
+              if let Some(counter) = self.counters.get(name) {
+                  counter.fetch_add(1, Ordering::Relaxed);
+              }
+          }
+
+          pub fn register(&mut self, name: &str) {
+              self.counters.insert(name.to_string(), AtomicU64::new(0));
+          }
+
+          pub fn get(&self, name: &str) -> u64 {
+              self.counters.get(name).map_or(0, |c| c.load(Ordering::Relaxed))
+          }
+
+          pub fn snapshot(&self) -> HashMap<String, u64> {
+              self.counters.iter().map(|(k, v)| (k.clone(), v.load(Ordering::Relaxed))).collect()
+          }
+      }
+    src/event_bus.rs: |
+      use std::collections::HashMap;
+
+      type Handler = Box<dyn Fn(&str)>;
+
+      pub struct EventBus {
+          handlers: HashMap<String, Vec<Handler>>,
+      }
+
+      impl EventBus {
+          pub fn new() -> Self {
+              Self { handlers: HashMap::new() }
+          }
+
+          pub fn subscribe(&mut self, event: &str, handler: Handler) {
+              self.handlers.entry(event.to_string()).or_default().push(handler);
+          }
+
+          pub fn publish(&self, event: &str, data: &str) {
+              if let Some(handlers) = self.handlers.get(event) {
+                  for handler in handlers {
+                      handler(data);
+                  }
+              }
+          }
+
+          pub fn subscriber_count(&self, event: &str) -> usize {
+              self.handlers.get(event).map_or(0, |h| h.len())
+          }
+      }
+    src/timer.rs: |
+      use std::cell::Cell;
+      use std::time::Instant;
+
+      pub struct Timer {
+          start: Cell<Instant>,
+          label: String,
+      }
+
+      impl Timer {
+          pub fn new(label: &str) -> Self {
+              Self {
+                  start: Cell::new(Instant::now()),
+                  label: label.to_string(),
+              }
+          }
+
+          pub fn restart(&self) {
+              self.start.set(Instant::now());
+          }
+
+          pub fn elapsed_ms(&self) -> u128 {
+              self.start.get().elapsed().as_millis()
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: counter
+  selector:
+    path: src/counter.rs
+    anchor: use std::cell::{Cell, RefCell};
+- id: counter_1
+  selector:
+    path: src/counter.rs
+    anchor: pub fn decrement(&self) {
+- id: counter_2
+  selector:
+    path: src/counter.rs
+    anchor: pub struct Tracker {
+- id: counter_3
+  selector:
+    path: src/counter.rs
+    anchor: pub struct ObservableCounter {
+- id: no_metrics
+  selector:
+    path: src/metrics.rs
+- id: no_event_bus
+  selector:
+    path: src/event_bus.rs
+- id: no_timer
+  selector:
+    path: src/timer.rs
+- id: no_global_0
+  selector:
+    anchor: MetricsCollector
+- id: no_global_1
+  selector:
+    anchor: AtomicU64
+- id: no_global_2
+  selector:
+    anchor: snapshot
+- id: no_global_3
+  selector:
+    anchor: EventBus
+- id: no_global_4
+  selector:
+    anchor: publish
+- id: no_global_5
+  selector:
+    anchor: subscriber_count
+- id: no_global_6
+  selector:
+    anchor: struct Timer
+- id: no_global_7
+  selector:
+    anchor: elapsed_ms
+- id: no_global_8
+  selector:
+    anchor: restart
+oracle:
+  required:
+  - counter
+  - counter_1
+  - counter_2
+  - counter_3
+  allowed: []
+  forbidden:
+  - no_metrics
+  - no_event_bus
+  - no_timer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

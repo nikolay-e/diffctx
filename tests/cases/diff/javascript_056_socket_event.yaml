@@ -1,0 +1,99 @@
+name: javascript_056_socket_event
+repo:
+  initial_files:
+    events.ts: |
+      export interface ChatMessage {
+          userId: string;
+          text: string;
+          timestamp: number;
+      }
+
+      export const CHAT_EVENT = 'chat:message';
+    socket.ts: |
+      console.log('initial');
+    room-events.ts: |
+      export const ROOM_JOIN = 'room:join';
+      export const ROOM_LEAVE = 'room:leave';
+
+      export interface RoomEvent {
+          roomId: string;
+          userId: string;
+      }
+    socket-auth.ts: |
+      export function authenticateSocket(token: string): { userId: string } | null {
+          if (!token || token.length < 10) return null;
+          return { userId: 'user-' + token.slice(0, 8) };
+      }
+  changed_files:
+    events.ts: |
+      export interface ChatMessage {
+          userId: string;
+          text: string;
+          timestamp: number;
+      }
+
+      export const CHAT_EVENT = 'chat:message';
+    socket.ts: |
+      import { Server } from 'socket.io';
+      import { CHAT_EVENT, ChatMessage } from './events';
+
+      export function setupSocket(io: Server) {
+          io.on('connection', (socket) => {
+              socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                  io.emit(CHAT_EVENT, message);
+              });
+          });
+      }
+    room-events.ts: |
+      export const ROOM_JOIN = 'room:join';
+      export const ROOM_LEAVE = 'room:leave';
+
+      export interface RoomEvent {
+          roomId: string;
+          userId: string;
+      }
+    socket-auth.ts: |
+      export function authenticateSocket(token: string): { userId: string } | null {
+          if (!token || token.length < 10) return null;
+          return { userId: 'user-' + token.slice(0, 8) };
+      }
+  commit_message: Update files
+fragments:
+- id: events
+  selector:
+    path: events.ts
+    anchor: interface ChatMessage {
+- id: events_1
+  selector:
+    path: events.ts
+    anchor: CHAT_EVENT = 'chat:message'
+- id: no_room_events
+  selector:
+    path: room-events.ts
+- id: no_socket_auth
+  selector:
+    path: socket-auth.ts
+- id: no_global_0
+  selector:
+    anchor: ROOM_JOIN
+- id: no_global_1
+  selector:
+    anchor: ROOM_LEAVE
+- id: no_global_2
+  selector:
+    anchor: RoomEvent
+- id: no_global_3
+  selector:
+    anchor: authenticateSocket
+oracle:
+  required:
+  - events
+  - events_1
+  allowed: []
+  forbidden:
+  - no_room_events
+  - no_socket_auth
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

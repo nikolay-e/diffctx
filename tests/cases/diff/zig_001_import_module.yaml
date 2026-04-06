@@ -1,0 +1,280 @@
+name: zig_001_import_module
+repo:
+  initial_files:
+    src/utils.zig: |
+      const std = @import("std");
+
+      pub fn formatNumber(value: i64) []const u8 {
+          var buf: [64]u8 = undefined;
+          const len = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return "?";
+          return buf[0..len];
+      }
+
+      pub fn clamp(value: i64, min_val: i64, max_val: i64) i64 {
+          if (value < min_val) return min_val;
+          if (value > max_val) return max_val;
+          return value;
+      }
+
+      pub fn lerp(a: f64, b: f64, t: f64) f64 {
+          return a + (b - a) * t;
+      }
+    src/main.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      pub fn main() !void {
+          const stdout = std.io.getStdOut().writer();
+          const clamped = utils.clamp(150, 0, 100);
+          try stdout.print("Clamped: {d}\n", .{clamped});
+      }
+    src/renderer.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_RENDER_MARKER_A: []const u8 = "renderer_module";
+      const TRAP_ZIG_001_DRAW_FLAG_B: bool = true;
+
+      pub fn renderValue(value: i64) void {
+          const clamped = utils.clamp(value, 0, 255);
+          _ = clamped;
+      }
+    src/logger.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_LOG_MARKER_C: []const u8 = "logger_module";
+      const TRAP_ZIG_001_LOG_FLAG_D: bool = true;
+
+      pub fn logValue(value: i64) void {
+          const formatted = utils.formatNumber(value);
+          std.debug.print("Value: {s}\n", .{formatted});
+      }
+    src/animation.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_ANIM_MARKER_E: []const u8 = "animation_module";
+      const TRAP_ZIG_001_TWEEN_FLAG_F: bool = true;
+
+      pub fn tweenPosition(start: f64, end: f64, progress: f64) f64 {
+          return utils.lerp(start, end, progress);
+      }
+    src/math.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_001_MATH_MARKER_G: []const u8 = "math_module";
+      const TRAP_ZIG_001_PRECISION_H: f64 = 0.0001;
+
+      pub fn interpolate(a: f64, b: f64, t: f64) f64 {
+          return a * (1.0 - t) + b * t;
+      }
+
+      pub fn distance(x1: f64, y1: f64, x2: f64, y2: f64) f64 {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          return @sqrt(dx * dx + dy * dy);
+      }
+    src/allocator.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_001_ALLOC_MARKER_I: []const u8 = "allocator_module";
+      const TRAP_ZIG_001_HEAP_FLAG_J: bool = true;
+
+      pub fn createAllocator() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+    src/config.zig: |
+      const TRAP_ZIG_001_CONFIG_MARKER_K: []const u8 = "config_module";
+      const TRAP_ZIG_001_VERSION_L: []const u8 = "0.1.0";
+
+      pub const max_buffer_size: usize = 4096;
+      pub const default_port: u16 = 8080;
+  changed_files:
+    src/utils.zig: |
+      const std = @import("std");
+
+      pub fn formatNumber(value: i64) []const u8 {
+          var buf: [64]u8 = undefined;
+          const len = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return "?";
+          return buf[0..len];
+      }
+
+      pub fn clamp(value: i64, min_val: i64, max_val: i64) i64 {
+          if (value < min_val) return min_val;
+          if (value > max_val) return max_val;
+          return value;
+      }
+
+      pub fn lerp(a: f64, b: f64, t: f64) f64 {
+          return a + (b - a) * t;
+      }
+    src/main.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      pub fn main() !void {
+          const stdout = std.io.getStdOut().writer();
+          const clamped = utils.clamp(150, 0, 100);
+          try stdout.print("Clamped: {d}\n", .{clamped});
+
+          const blended = utils.lerp(0.0, 100.0, 0.75);
+          try stdout.print("Blended: {d:.2}\n", .{blended});
+      }
+    src/renderer.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_RENDER_MARKER_A: []const u8 = "renderer_module";
+      const TRAP_ZIG_001_DRAW_FLAG_B: bool = true;
+
+      pub fn renderValue(value: i64) void {
+          const clamped = utils.clamp(value, 0, 255);
+          _ = clamped;
+      }
+    src/logger.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_LOG_MARKER_C: []const u8 = "logger_module";
+      const TRAP_ZIG_001_LOG_FLAG_D: bool = true;
+
+      pub fn logValue(value: i64) void {
+          const formatted = utils.formatNumber(value);
+          std.debug.print("Value: {s}\n", .{formatted});
+      }
+    src/animation.zig: |
+      const std = @import("std");
+      const utils = @import("utils.zig");
+
+      const TRAP_ZIG_001_ANIM_MARKER_E: []const u8 = "animation_module";
+      const TRAP_ZIG_001_TWEEN_FLAG_F: bool = true;
+
+      pub fn tweenPosition(start: f64, end: f64, progress: f64) f64 {
+          return utils.lerp(start, end, progress);
+      }
+    src/math.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_001_MATH_MARKER_G: []const u8 = "math_module";
+      const TRAP_ZIG_001_PRECISION_H: f64 = 0.0001;
+
+      pub fn interpolate(a: f64, b: f64, t: f64) f64 {
+          return a * (1.0 - t) + b * t;
+      }
+
+      pub fn distance(x1: f64, y1: f64, x2: f64, y2: f64) f64 {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          return @sqrt(dx * dx + dy * dy);
+      }
+    src/allocator.zig: |
+      const std = @import("std");
+
+      const TRAP_ZIG_001_ALLOC_MARKER_I: []const u8 = "allocator_module";
+      const TRAP_ZIG_001_HEAP_FLAG_J: bool = true;
+
+      pub fn createAllocator() std.mem.Allocator {
+          return std.heap.page_allocator;
+      }
+    src/config.zig: |
+      const TRAP_ZIG_001_CONFIG_MARKER_K: []const u8 = "config_module";
+      const TRAP_ZIG_001_VERSION_L: []const u8 = "0.1.0";
+
+      pub const max_buffer_size: usize = 4096;
+      pub const default_port: u16 = 8080;
+  commit_message: Update files
+fixtures:
+  auto_garbage: true
+fragments:
+- id: main
+  selector:
+    path: src/main.zig
+    anchor: const blended = utils.lerp(0.0, 100.0, 0.75)
+- id: main_1
+  selector:
+    path: src/main.zig
+    anchor: Blended
+- id: utils
+  selector:
+    path: src/utils.zig
+    anchor: 'pub fn lerp(a: f64, b: f64, t: f64) f64'
+- id: no_renderer
+  selector:
+    path: src/renderer.zig
+- id: no_logger
+  selector:
+    path: src/logger.zig
+- id: no_animation
+  selector:
+    path: src/animation.zig
+- id: no_math
+  selector:
+    path: src/math.zig
+- id: no_allocator
+  selector:
+    path: src/allocator.zig
+- id: no_config
+  selector:
+    path: src/config.zig
+- id: no_global_0
+  selector:
+    anchor: TRAP_ZIG_001_RENDER_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: TRAP_ZIG_001_DRAW_FLAG_B
+- id: no_global_2
+  selector:
+    anchor: TRAP_ZIG_001_LOG_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: TRAP_ZIG_001_LOG_FLAG_D
+- id: no_global_4
+  selector:
+    anchor: TRAP_ZIG_001_ANIM_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: TRAP_ZIG_001_TWEEN_FLAG_F
+- id: no_global_6
+  selector:
+    anchor: TRAP_ZIG_001_MATH_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: TRAP_ZIG_001_PRECISION_H
+- id: no_global_8
+  selector:
+    anchor: TRAP_ZIG_001_ALLOC_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: TRAP_ZIG_001_HEAP_FLAG_J
+- id: no_global_10
+  selector:
+    anchor: TRAP_ZIG_001_CONFIG_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: TRAP_ZIG_001_VERSION_L
+oracle:
+  required:
+  - main
+  - main_1
+  - utils
+  allowed: []
+  forbidden:
+  - no_renderer
+  - no_logger
+  - no_animation
+  - no_math
+  - no_allocator
+  - no_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

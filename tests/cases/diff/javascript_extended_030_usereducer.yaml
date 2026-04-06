@@ -1,0 +1,182 @@
+name: javascript_extended_030_usereducer
+repo:
+  initial_files:
+    src/state/reducer.ts: |
+      export type State = { count: number };
+      export type Action =
+          | { type: 'increment' }
+          | { type: 'decrement' }
+          | { type: 'reset' };
+
+      export function counterReducer(state: State, action: Action): State {
+          switch (action.type) {
+              case 'increment': return { count: state.count + 1 };
+              case 'decrement': return { count: state.count - 1 };
+              case 'reset': return { count: 0 };
+          }
+      }
+    src/components/Counter.tsx: |
+      console.log('initial');
+    src/state/history.ts: |
+      interface HistoryEntry<T> {
+          state: T;
+          timestamp: number;
+      }
+
+      export class StateHistory<T> {
+          private stack: HistoryEntry<T>[] = [];
+          private pointer = -1;
+
+          push(state: T): void {
+              this.stack = this.stack.slice(0, this.pointer + 1);
+              this.stack.push({ state, timestamp: Date.now() });
+              this.pointer++;
+          }
+
+          undo(): T | null {
+              if (this.pointer <= 0) return null;
+              this.pointer--;
+              return this.stack[this.pointer].state;
+          }
+
+          redo(): T | null {
+              if (this.pointer >= this.stack.length - 1) return null;
+              this.pointer++;
+              return this.stack[this.pointer].state;
+          }
+      }
+    src/components/progress-bar.tsx: |
+      interface ProgressBarProps {
+          value: number;
+          max: number;
+          label?: string;
+      }
+
+      export function ProgressBar({ value, max, label }: ProgressBarProps) {
+          const percentage = Math.min(100, Math.round((value / max) * 100));
+          return (
+              <div role="progressbar" aria-valuenow={value} aria-valuemax={max}>
+                  {label && <span>{label}</span>}
+                  <div style={{ width: `${percentage}%` }} />
+              </div>
+          );
+      }
+  changed_files:
+    src/state/reducer.ts: |
+      export type State = { count: number };
+      export type Action =
+          | { type: 'increment' }
+          | { type: 'decrement' }
+          | { type: 'reset' };
+
+      export function counterReducer(state: State, action: Action): State {
+          switch (action.type) {
+              case 'increment': return { count: state.count + 1 };
+              case 'decrement': return { count: state.count - 1 };
+              case 'reset': return { count: 0 };
+          }
+      }
+    src/components/Counter.tsx: |
+      import { useReducer } from 'react';
+      import { counterReducer, State } from '../state/reducer';
+
+      const initialState: State = { count: 0 };
+
+      export function Counter() {
+          const [state, dispatch] = useReducer(counterReducer, initialState);
+          return (
+              <div>
+                  <span>{state.count}</span>
+                  <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+              </div>
+          );
+      }
+    src/state/history.ts: |
+      interface HistoryEntry<T> {
+          state: T;
+          timestamp: number;
+      }
+
+      export class StateHistory<T> {
+          private stack: HistoryEntry<T>[] = [];
+          private pointer = -1;
+
+          push(state: T): void {
+              this.stack = this.stack.slice(0, this.pointer + 1);
+              this.stack.push({ state, timestamp: Date.now() });
+              this.pointer++;
+          }
+
+          undo(): T | null {
+              if (this.pointer <= 0) return null;
+              this.pointer--;
+              return this.stack[this.pointer].state;
+          }
+
+          redo(): T | null {
+              if (this.pointer >= this.stack.length - 1) return null;
+              this.pointer++;
+              return this.stack[this.pointer].state;
+          }
+      }
+    src/components/progress-bar.tsx: |
+      interface ProgressBarProps {
+          value: number;
+          max: number;
+          label?: string;
+      }
+
+      export function ProgressBar({ value, max, label }: ProgressBarProps) {
+          const percentage = Math.min(100, Math.round((value / max) * 100));
+          return (
+              <div role="progressbar" aria-valuenow={value} aria-valuemax={max}>
+                  {label && <span>{label}</span>}
+                  <div style={{ width: `${percentage}%` }} />
+              </div>
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: reducer
+  selector:
+    path: src/state/reducer.ts
+    anchor: counterReducer
+- id: reducer_1
+  selector:
+    path: src/state/reducer.ts
+    anchor: type State
+- id: reducer_2
+  selector:
+    path: src/state/reducer.ts
+    anchor: '''increment'''
+- id: no_history
+  selector:
+    path: src/state/history.ts
+- id: no_progress_bar
+  selector:
+    path: src/components/progress-bar.tsx
+- id: no_global_0
+  selector:
+    anchor: StateHistory
+- id: no_global_1
+  selector:
+    anchor: HistoryEntry
+- id: no_global_2
+  selector:
+    anchor: ProgressBarProps
+- id: no_global_3
+  selector:
+    anchor: ProgressBar
+oracle:
+  required:
+  - reducer
+  - reducer_1
+  - reducer_2
+  allowed: []
+  forbidden:
+  - no_history
+  - no_progress_bar
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

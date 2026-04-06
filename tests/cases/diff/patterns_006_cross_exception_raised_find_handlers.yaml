@@ -1,0 +1,193 @@
+name: patterns_006_cross_exception_raised_find_handlers
+repo:
+  initial_files:
+    exceptions.py: |
+      class InsufficientFundsError(Exception):
+          def __init__(self, account_id, balance=0, requested=0):
+              self.account_id = account_id
+              self.balance = balance
+              self.requested = requested
+              super().__init__(f"Insufficient funds for account {account_id}")
+
+      class AccountLockedError(Exception):
+          def __init__(self, account_id, reason=""):
+              self.account_id = account_id
+              self.reason = reason
+              super().__init__(f"Account {account_id} is locked: {reason}")
+    service.py: |
+      def transfer(from_account, to_account, amount):
+          return True
+
+      def get_balance(account):
+          return 100
+
+      def validate_account(account_id):
+          return True
+    api/views.py: |
+      from exceptions import InsufficientFundsError
+      from service import transfer
+
+      def transfer_endpoint(request):
+          try:
+              result = transfer(request.from_id, request.to_id, request.amount)
+              return {"success": result}
+          except InsufficientFundsError as e:
+              return {"error": str(e)}
+
+      def balance_endpoint(request):
+          from service import get_balance
+          balance = get_balance(request.account_id)
+          return {"balance": balance}
+    utils/transaction_log.py: |
+      import time
+
+      LOG_FILE_PATH = "/var/log/transactions.log"
+      MAX_LOG_ENTRIES = 100000
+
+      class TransactionLogger:
+          def __init__(self, path: str = LOG_FILE_PATH):
+              self.path = path
+
+          def log_transfer(self, from_id: str, to_id: str, amount: float) -> None:
+              entry = f"{time.time()}|{from_id}|{to_id}|{amount}\n"
+              with open(self.path, "a") as f:
+                  f.write(entry)
+
+          def get_recent(self, count: int = 10) -> list[str]:
+              return []
+    utils/currency_converter.py: |
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): 0.92,
+          ("EUR", "USD"): 1.09,
+          ("USD", "GBP"): 0.79,
+          ("GBP", "USD"): 1.27,
+      }
+
+      class CurrencyConverter:
+          def convert(self, amount: float, from_currency: str, to_currency: str) -> float:
+              rate = EXCHANGE_RATES.get((from_currency, to_currency))
+              if rate is None:
+                  raise ValueError(f"No rate for {from_currency}->{to_currency}")
+              return amount * rate
+  changed_files:
+    exceptions.py: |
+      class InsufficientFundsError(Exception):
+          def __init__(self, account_id, balance=0, requested=0):
+              self.account_id = account_id
+              self.balance = balance
+              self.requested = requested
+              super().__init__(f"Insufficient funds for account {account_id}")
+
+      class AccountLockedError(Exception):
+          def __init__(self, account_id, reason=""):
+              self.account_id = account_id
+              self.reason = reason
+              super().__init__(f"Account {account_id} is locked: {reason}")
+    service.py: |
+      from exceptions import InsufficientFundsError
+
+      def transfer(from_account, to_account, amount):
+          balance = get_balance(from_account)
+          if balance < amount:
+              raise InsufficientFundsError(from_account)
+          return True
+
+      def get_balance(account):
+          return 100
+
+      def validate_account(account_id):
+          return True
+    api/views.py: |
+      from exceptions import InsufficientFundsError
+      from service import transfer
+
+      def transfer_endpoint(request):
+          try:
+              result = transfer(request.from_id, request.to_id, request.amount)
+              return {"success": result}
+          except InsufficientFundsError as e:
+              return {"error": str(e)}
+
+      def balance_endpoint(request):
+          from service import get_balance
+          balance = get_balance(request.account_id)
+          return {"balance": balance}
+    utils/transaction_log.py: |
+      import time
+
+      LOG_FILE_PATH = "/var/log/transactions.log"
+      MAX_LOG_ENTRIES = 100000
+
+      class TransactionLogger:
+          def __init__(self, path: str = LOG_FILE_PATH):
+              self.path = path
+
+          def log_transfer(self, from_id: str, to_id: str, amount: float) -> None:
+              entry = f"{time.time()}|{from_id}|{to_id}|{amount}\n"
+              with open(self.path, "a") as f:
+                  f.write(entry)
+
+          def get_recent(self, count: int = 10) -> list[str]:
+              return []
+    utils/currency_converter.py: |
+      EXCHANGE_RATES = {
+          ("USD", "EUR"): 0.92,
+          ("EUR", "USD"): 1.09,
+          ("USD", "GBP"): 0.79,
+          ("GBP", "USD"): 1.27,
+      }
+
+      class CurrencyConverter:
+          def convert(self, amount: float, from_currency: str, to_currency: str) -> float:
+              rate = EXCHANGE_RATES.get((from_currency, to_currency))
+              if rate is None:
+                  raise ValueError(f"No rate for {from_currency}->{to_currency}")
+              return amount * rate
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.py
+    anchor: from exceptions import InsufficientFundsError
+- id: service_1
+  selector:
+    path: service.py
+    anchor: balance = get_balance(from_account)
+- id: no_transaction_log
+  selector:
+    path: utils/transaction_log.py
+- id: no_currency_converter
+  selector:
+    path: utils/currency_converter.py
+- id: no_global_0
+  selector:
+    anchor: TransactionLogger
+- id: no_global_1
+  selector:
+    anchor: LOG_FILE_PATH
+- id: no_global_2
+  selector:
+    anchor: log_transfer
+- id: no_global_3
+  selector:
+    anchor: CurrencyConverter
+- id: no_global_4
+  selector:
+    anchor: EXCHANGE_RATES
+- id: no_global_5
+  selector:
+    anchor: convert
+oracle:
+  required:
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_transaction_log
+  - no_currency_converter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

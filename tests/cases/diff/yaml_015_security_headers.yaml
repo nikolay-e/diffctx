@@ -1,0 +1,139 @@
+name: yaml_015_security_headers
+repo:
+  initial_files:
+    config/security.yaml: |
+      security:
+        headers:
+          x_frame_options: DENY
+          content_security_policy: default-src 'self'
+    src/security.py: |
+      def apply_security_headers(response, headers: dict):
+          for key, value in headers.items():
+              header_name = key.replace("_", "-").title()
+              response.headers[header_name] = value
+          return response
+
+      def get_header_names(headers: dict) -> list[str]:
+          return [k.replace("_", "-").title() for k in headers]
+    config/cors.yaml: |
+      cors:
+        allowed_origins:
+          - https://example.com
+          - https://app.example.com
+        allowed_methods:
+          - GET
+          - POST
+          - PUT
+        allowed_headers:
+          - Content-Type
+          - Authorization
+        max_age: 86400
+    src/csrf.py: |
+      import secrets
+      import hmac
+
+      class CsrfProtection:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def generate_token(self, session_id: str) -> str:
+              return hmac.new(
+                  self.secret_key.encode(),
+                  session_id.encode(),
+                  "sha256",
+              ).hexdigest()
+
+          def validate_token(self, session_id: str, token: str) -> bool:
+              expected = self.generate_token(session_id)
+              return hmac.compare_digest(expected, token)
+  changed_files:
+    config/security.yaml: |
+      security:
+        headers:
+          x_frame_options: SAMEORIGIN
+          content_security_policy: default-src 'self'; script-src 'self' 'unsafe-inline'
+          strict_transport_security: max-age=31536000
+    src/security.py: |
+      def apply_security_headers(response, headers: dict):
+          for key, value in headers.items():
+              header_name = key.replace("_", "-").title()
+              response.headers[header_name] = value
+          return response
+
+      def get_header_names(headers: dict) -> list[str]:
+          return [k.replace("_", "-").title() for k in headers]
+    config/cors.yaml: |
+      cors:
+        allowed_origins:
+          - https://example.com
+          - https://app.example.com
+        allowed_methods:
+          - GET
+          - POST
+          - PUT
+        allowed_headers:
+          - Content-Type
+          - Authorization
+        max_age: 86400
+    src/csrf.py: |
+      import secrets
+      import hmac
+
+      class CsrfProtection:
+          def __init__(self, secret_key: str):
+              self.secret_key = secret_key
+
+          def generate_token(self, session_id: str) -> str:
+              return hmac.new(
+                  self.secret_key.encode(),
+                  session_id.encode(),
+                  "sha256",
+              ).hexdigest()
+
+          def validate_token(self, session_id: str, token: str) -> bool:
+              expected = self.generate_token(session_id)
+              return hmac.compare_digest(expected, token)
+  commit_message: Update files
+fragments:
+- id: security
+  selector:
+    path: src/security.py
+    anchor: key.replace("_", "-").title()
+- id: security_1
+  selector:
+    path: src/security.py
+    anchor: response.headers[header_name] = value
+- id: no_cors
+  selector:
+    path: config/cors.yaml
+- id: no_csrf
+  selector:
+    path: src/csrf.py
+- id: no_global_0
+  selector:
+    anchor: allowed_origins
+- id: no_global_1
+  selector:
+    anchor: allowed_methods
+- id: no_global_2
+  selector:
+    anchor: CsrfProtection
+- id: no_global_3
+  selector:
+    anchor: generate_token
+- id: no_global_4
+  selector:
+    anchor: validate_token
+oracle:
+  required:
+  - security
+  - security_1
+  allowed: []
+  forbidden:
+  - no_cors
+  - no_csrf
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

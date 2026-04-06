@@ -15,7 +15,7 @@ from .core import _compute_seed_weights, _identify_core_fragments
 from .edges import discover_all_related_files
 from .file_importance import compute_file_importance
 from .filtering import (
-    _apply_same_file_floor,
+    _apply_hunk_proximity_bonus,
     _cap_context_fragments,
     _filter_low_relevance_fragments,
     _filter_unrelated_fragments,
@@ -79,12 +79,13 @@ def _select_with_ppr(
     budget_tokens: int | None,
     alpha: float,
     tau: float,
+    hunks: list[Any],
     repo_root: Path | None = None,
     seed_weights: dict[FragmentId, float] | None = None,
 ) -> tuple[list[Fragment], Any]:
     graph = build_graph(all_fragments, repo_root=repo_root)
     rel_scores = personalized_pagerank(graph, core_ids, alpha=alpha, seed_weights=seed_weights)
-    _apply_same_file_floor(rel_scores, core_ids, all_fragments)
+    _apply_hunk_proximity_bonus(rel_scores, core_ids, all_fragments, hunks)
 
     filtered_fragments = _filter_unrelated_fragments(all_fragments, core_ids, graph)
     filtered_fragments = _filter_low_relevance_fragments(filtered_fragments, core_ids, rel_scores)
@@ -274,6 +275,7 @@ def build_diff_context(
             budget_tokens,
             alpha,
             tau,
+            hunks=hunks,
             repo_root=root_dir,
             seed_weights=seed_weights,
         )

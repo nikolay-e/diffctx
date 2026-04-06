@@ -1,0 +1,380 @@
+name: jvm_and_compiled_030_java_extends_base_class
+repo:
+  initial_files:
+    src/main/java/com/example/BaseEntity.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @MappedSuperclass
+      public abstract class BaseEntity {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          public Long getId() { return id; }
+          public LocalDateTime getCreatedAt() { return createdAt; }
+      }
+    src/main/java/com/example/Product.java: |
+      package com.example;
+
+      import javax.persistence.*;
+
+      @Entity
+      public class Product extends BaseEntity {
+          private String name;
+          private Double price;
+
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+          public Double getPrice() { return price; }
+          public void setPrice(Double price) { this.price = price; }
+      }
+    src/main/java/com/example/Order.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "orders")
+      public class Order extends BaseEntity {
+          private String status;
+          private BigDecimal totalAmount;
+
+          @ManyToOne
+          @JoinColumn(name = "customer_id")
+          private Customer customer;
+
+          public String getStatus() { return status; }
+          public void setStatus(String status) { this.status = status; }
+          public BigDecimal getTotalAmount() { return totalAmount; }
+      }
+    src/main/java/com/example/audit/AuditLog.java: |
+      package com.example.audit;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @Entity
+      @Table(name = "audit_logs")
+      public class AuditLog {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          @Column(name = "updated_at")
+          private LocalDateTime updatedAt;
+
+          private String entityType;
+          private String action;
+          private String details;
+
+          public Long getId() { return id; }
+          public String getAction() { return action; }
+      }
+    src/test/java/com/example/BaseEntityTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class BaseEntityTest {
+          @Test
+          void entityHasId() {
+              Product product = new Product();
+              assertNull(product.getId());
+          }
+
+          @Test
+          void entityHasCreatedAt() {
+              Product product = new Product();
+              assertNull(product.getCreatedAt());
+          }
+      }
+    src/main/java/com/example/ProductRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface ProductRepository extends JpaRepository<Product, Long> {
+          List<Product> findByName(String name);
+          List<Product> findByPriceLessThan(Double maxPrice);
+      }
+    src/main/java/com/example/audit/TimestampListener.java: |
+      package com.example.audit;
+
+      import javax.persistence.PrePersist;
+      import javax.persistence.PreUpdate;
+      import java.time.LocalDateTime;
+
+      public class TimestampListener {
+          @PrePersist
+          public void setCreatedAt(Object entity) {
+              if (entity instanceof AuditLog log) {
+                  // set timestamp
+              }
+          }
+
+          @PreUpdate
+          public void setUpdatedAt(Object entity) {
+              if (entity instanceof AuditLog log) {
+                  // set timestamp
+              }
+          }
+      }
+  changed_files:
+    src/main/java/com/example/BaseEntity.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @MappedSuperclass
+      public abstract class BaseEntity {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          @Column(name = "updated_at")
+          private LocalDateTime updatedAt;
+
+          @PreUpdate
+          protected void onUpdate() {
+              updatedAt = LocalDateTime.now();
+          }
+
+          public Long getId() { return id; }
+          public LocalDateTime getCreatedAt() { return createdAt; }
+          public LocalDateTime getUpdatedAt() { return updatedAt; }
+      }
+    src/main/java/com/example/Product.java: |
+      package com.example;
+
+      import javax.persistence.*;
+
+      @Entity
+      public class Product extends BaseEntity {
+          private String name;
+          private Double price;
+
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+          public Double getPrice() { return price; }
+          public void setPrice(Double price) { this.price = price; }
+      }
+    src/main/java/com/example/Order.java: |
+      package com.example;
+
+      import javax.persistence.*;
+      import java.math.BigDecimal;
+
+      @Entity
+      @Table(name = "orders")
+      public class Order extends BaseEntity {
+          private String status;
+          private BigDecimal totalAmount;
+
+          @ManyToOne
+          @JoinColumn(name = "customer_id")
+          private Customer customer;
+
+          public String getStatus() { return status; }
+          public void setStatus(String status) { this.status = status; }
+          public BigDecimal getTotalAmount() { return totalAmount; }
+      }
+    src/main/java/com/example/audit/AuditLog.java: |
+      package com.example.audit;
+
+      import javax.persistence.*;
+      import java.time.LocalDateTime;
+
+      @Entity
+      @Table(name = "audit_logs")
+      public class AuditLog {
+          @Id
+          @GeneratedValue(strategy = GenerationType.IDENTITY)
+          private Long id;
+
+          @Column(name = "created_at")
+          private LocalDateTime createdAt;
+
+          @Column(name = "updated_at")
+          private LocalDateTime updatedAt;
+
+          private String entityType;
+          private String action;
+          private String details;
+
+          public Long getId() { return id; }
+          public String getAction() { return action; }
+      }
+    src/test/java/com/example/BaseEntityTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class BaseEntityTest {
+          @Test
+          void entityHasId() {
+              Product product = new Product();
+              assertNull(product.getId());
+          }
+
+          @Test
+          void entityHasCreatedAt() {
+              Product product = new Product();
+              assertNull(product.getCreatedAt());
+          }
+      }
+    src/main/java/com/example/ProductRepository.java: |
+      package com.example;
+
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+      import java.util.List;
+
+      @Repository
+      public interface ProductRepository extends JpaRepository<Product, Long> {
+          List<Product> findByName(String name);
+          List<Product> findByPriceLessThan(Double maxPrice);
+      }
+    src/main/java/com/example/audit/TimestampListener.java: |
+      package com.example.audit;
+
+      import javax.persistence.PrePersist;
+      import javax.persistence.PreUpdate;
+      import java.time.LocalDateTime;
+
+      public class TimestampListener {
+          @PrePersist
+          public void setCreatedAt(Object entity) {
+              if (entity instanceof AuditLog log) {
+                  // set timestamp
+              }
+          }
+
+          @PreUpdate
+          public void setUpdatedAt(Object entity) {
+              if (entity instanceof AuditLog log) {
+                  // set timestamp
+              }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: baseentity
+  selector:
+    path: src/main/java/com/example/BaseEntity.java
+    anchor: '@Column(name = "updated_at")'
+- id: baseentity_1
+  selector:
+    path: src/main/java/com/example/BaseEntity.java
+    anchor: '@PreUpdate'
+- id: baseentity_2
+  selector:
+    path: src/main/java/com/example/BaseEntity.java
+    anchor: protected void onUpdate()
+- id: baseentity_3
+  selector:
+    path: src/main/java/com/example/BaseEntity.java
+    anchor: public LocalDateTime getUpdatedAt()
+- id: product
+  selector:
+    path: src/main/java/com/example/Product.java
+    anchor: public class Product extends BaseEntity
+- id: no_order
+  selector:
+    path: src/main/java/com/example/Order.java
+- id: no_auditlog
+  selector:
+    path: src/main/java/com/example/audit/AuditLog.java
+- id: no_baseentitytest
+  selector:
+    path: src/test/java/com/example/BaseEntityTest.java
+- id: no_productrepository
+  selector:
+    path: src/main/java/com/example/ProductRepository.java
+- id: no_timestamplistener
+  selector:
+    path: src/main/java/com/example/audit/TimestampListener.java
+- id: no_global_0
+  selector:
+    anchor: class Order extends BaseEntity
+- id: no_global_1
+  selector:
+    anchor: totalAmount
+- id: no_global_2
+  selector:
+    anchor: customer_id
+- id: no_global_3
+  selector:
+    anchor: AuditLog
+- id: no_global_4
+  selector:
+    anchor: audit_logs
+- id: no_global_5
+  selector:
+    anchor: entityType
+- id: no_global_6
+  selector:
+    anchor: BaseEntityTest
+- id: no_global_7
+  selector:
+    anchor: assertNull
+- id: no_global_8
+  selector:
+    anchor: ProductRepository
+- id: no_global_9
+  selector:
+    anchor: findByPriceLessThan
+- id: no_global_10
+  selector:
+    anchor: TimestampListener
+- id: no_global_11
+  selector:
+    anchor: setCreatedAt
+- id: no_global_12
+  selector:
+    anchor: setUpdatedAt
+oracle:
+  required:
+  - baseentity
+  - baseentity_1
+  - baseentity_2
+  - baseentity_3
+  - product
+  allowed: []
+  forbidden:
+  - no_order
+  - no_auditlog
+  - no_baseentitytest
+  - no_productrepository
+  - no_timestamplistener
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

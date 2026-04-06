@@ -1,0 +1,330 @@
+name: python_006_generic_container_added
+repo:
+  initial_files:
+    types.py: |
+      from typing import List, Optional, Callable, Any, Dict, Union
+      from dataclasses import dataclass
+      from abc import ABC, abstractmethod
+
+      @dataclass
+      class ProcessingResult:
+          success: bool
+          value: Optional[Any] = None
+          error: Optional[str] = None
+
+      class ItemProcessor(ABC):
+          @abstractmethod
+          def process(self, item: Any) -> ProcessingResult:
+              pass
+
+      class StringProcessor(ItemProcessor):
+          def __init__(self, transform: Optional[Callable[[str], str]] = None):
+              self.transform = transform or (lambda x: x)
+
+          def process(self, item: Any) -> ProcessingResult:
+              if not isinstance(item, str):
+                  return ProcessingResult(success=False, error="Not a string")
+              return ProcessingResult(success=True, value=self.transform(item))
+
+      def process_items(items: List[str]) -> Optional[str]:
+          if not items:
+              return None
+          return items[0]
+
+      def process_all(items: List[Any], processor: ItemProcessor) -> List[ProcessingResult]:
+          return [processor.process(item) for item in items]
+
+      def filter_successful(results: List[ProcessingResult]) -> List[Any]:
+          return [r.value for r in results if r.success]
+
+      def map_items(items: List[Any], func: Callable[[Any], Any]) -> List[Any]:
+          return [func(item) for item in items]
+
+      def reduce_items(items: List[Any], func: Callable[[Any, Any], Any], initial: Any) -> Any:
+          result = initial
+          for item in items:
+              result = func(result, item)
+          return result
+
+      class TypeRegistry:
+          def __init__(self):
+              self._types: Dict[str, type] = {}
+
+          def register(self, name: str, cls: type) -> None:
+              self._types[name] = cls
+
+          def get(self, name: str) -> Optional[type]:
+              return self._types.get(name)
+
+          def create(self, name: str, *args: Any, **kwargs: Any) -> Optional[Any]:
+              cls = self.get(name)
+              return cls(*args, **kwargs) if cls else None
+    serializer.py: |
+      import json
+      from typing import Any, Dict, Optional, TypeVar, Generic, Type
+      from dataclasses import dataclass
+
+      T = TypeVar("T")
+
+      @dataclass
+      class SerializationResult(Generic[T]):
+          data: Optional[T] = None
+          raw: Optional[str] = None
+          error: Optional[str] = None
+
+      class JsonSerializer:
+          def serialize(self, obj: Any) -> SerializationResult[str]:
+              try:
+                  raw = json.dumps(obj)
+                  return SerializationResult(data=raw, raw=raw)
+              except (TypeError, ValueError) as e:
+                  return SerializationResult(error=str(e))
+
+          def deserialize(self, data: str) -> SerializationResult[Dict]:
+              try:
+                  parsed = json.loads(data)
+                  return SerializationResult(data=parsed, raw=data)
+              except json.JSONDecodeError as e:
+                  return SerializationResult(error=str(e))
+
+      class PickleSerializer:
+          def serialize(self, obj: Any) -> bytes:
+              import pickle
+              return pickle.dumps(obj)
+    type_registry.py: |
+      from typing import Dict, Any, Optional, Type, Callable, List
+
+      class PluginRegistry:
+          def __init__(self):
+              self._plugins: Dict[str, Type] = {}
+              self._factories: Dict[str, Callable[..., Any]] = {}
+
+          def register_plugin(self, name: str, cls: Type) -> None:
+              self._plugins[name] = cls
+
+          def register_factory(self, name: str, factory: Callable[..., Any]) -> None:
+              self._factories[name] = factory
+
+          def create(self, name: str, *args: Any, **kwargs: Any) -> Optional[Any]:
+              if name in self._factories:
+                  return self._factories[name](*args, **kwargs)
+              if name in self._plugins:
+                  return self._plugins[name](*args, **kwargs)
+              return None
+
+          def list_registered(self) -> List[str]:
+              return list(set(list(self._plugins.keys()) + list(self._factories.keys())))
+  changed_files:
+    types.py: |
+      from typing import List, Optional, Callable, Any, Dict, Union, TypeVar, Generic
+      from dataclasses import dataclass
+      from abc import ABC, abstractmethod
+
+      T = TypeVar('T')
+      U = TypeVar('U')
+      R = TypeVar('R')
+
+      @dataclass
+      class ProcessingResult:
+          success: bool
+          value: Optional[Any] = None
+          error: Optional[str] = None
+
+      class ItemProcessor(ABC):
+          @abstractmethod
+          def process(self, item: Any) -> ProcessingResult:
+              pass
+
+      class StringProcessor(ItemProcessor):
+          def __init__(self, transform: Optional[Callable[[str], str]] = None):
+              self.transform = transform or (lambda x: x)
+
+          def process(self, item: Any) -> ProcessingResult:
+              if not isinstance(item, str):
+                  return ProcessingResult(success=False, error="Not a string")
+              return ProcessingResult(success=True, value=self.transform(item))
+
+      class Container(Generic[T]):
+          def __init__(self, value: T):
+              self._value = value
+
+          def get(self) -> T:
+              return self._value
+
+          def map(self, func: Callable[[T], U]) -> "Container[U]":
+              return Container(func(self._value))
+
+          def flat_map(self, func: Callable[[T], "Container[U]"]) -> "Container[U]":
+              return func(self._value)
+
+          def filter(self, predicate: Callable[[T], bool]) -> Optional["Container[T]"]:
+              return self if predicate(self._value) else None
+
+          def __eq__(self, other: object) -> bool:
+              if isinstance(other, Container):
+                  return self._value == other._value
+              return False
+
+          def __repr__(self) -> str:
+              return f"Container({self._value!r})"
+
+      class Result(Generic[T]):
+          def __init__(self, value: Optional[T] = None, error: Optional[str] = None):
+              self._value = value
+              self._error = error
+
+          @classmethod
+          def ok(cls, value: T) -> "Result[T]":
+              return cls(value=value)
+
+          @classmethod
+          def err(cls, error: str) -> "Result[T]":
+              return cls(error=error)
+
+          def is_ok(self) -> bool:
+              return self._error is None
+
+          def unwrap(self) -> T:
+              if self._error:
+                  raise ValueError(self._error)
+              return self._value
+
+          def unwrap_or(self, default: T) -> T:
+              return self._value if self._error is None else default
+
+      def process_items(items: List[str]) -> Optional[str]:
+          if not items:
+              return None
+          return items[0]
+
+      def process_all(items: List[Any], processor: ItemProcessor) -> List[ProcessingResult]:
+          return [processor.process(item) for item in items]
+
+      def filter_successful(results: List[ProcessingResult]) -> List[Any]:
+          return [r.value for r in results if r.success]
+
+      def map_items(items: List[Any], func: Callable[[Any], Any]) -> List[Any]:
+          return [func(item) for item in items]
+
+      def reduce_items(items: List[Any], func: Callable[[Any, Any], Any], initial: Any) -> Any:
+          result = initial
+          for item in items:
+              result = func(result, item)
+          return result
+
+      class TypeRegistry:
+          def __init__(self):
+              self._types: Dict[str, type] = {}
+
+          def register(self, name: str, cls: type) -> None:
+              self._types[name] = cls
+
+          def get(self, name: str) -> Optional[type]:
+              return self._types.get(name)
+
+          def create(self, name: str, *args: Any, **kwargs: Any) -> Optional[Any]:
+              cls = self.get(name)
+              return cls(*args, **kwargs) if cls else None
+    serializer.py: |
+      import json
+      from typing import Any, Dict, Optional, TypeVar, Generic, Type
+      from dataclasses import dataclass
+
+      T = TypeVar("T")
+
+      @dataclass
+      class SerializationResult(Generic[T]):
+          data: Optional[T] = None
+          raw: Optional[str] = None
+          error: Optional[str] = None
+
+      class JsonSerializer:
+          def serialize(self, obj: Any) -> SerializationResult[str]:
+              try:
+                  raw = json.dumps(obj)
+                  return SerializationResult(data=raw, raw=raw)
+              except (TypeError, ValueError) as e:
+                  return SerializationResult(error=str(e))
+
+          def deserialize(self, data: str) -> SerializationResult[Dict]:
+              try:
+                  parsed = json.loads(data)
+                  return SerializationResult(data=parsed, raw=data)
+              except json.JSONDecodeError as e:
+                  return SerializationResult(error=str(e))
+
+      class PickleSerializer:
+          def serialize(self, obj: Any) -> bytes:
+              import pickle
+              return pickle.dumps(obj)
+    type_registry.py: |
+      from typing import Dict, Any, Optional, Type, Callable, List
+
+      class PluginRegistry:
+          def __init__(self):
+              self._plugins: Dict[str, Type] = {}
+              self._factories: Dict[str, Callable[..., Any]] = {}
+
+          def register_plugin(self, name: str, cls: Type) -> None:
+              self._plugins[name] = cls
+
+          def register_factory(self, name: str, factory: Callable[..., Any]) -> None:
+              self._factories[name] = factory
+
+          def create(self, name: str, *args: Any, **kwargs: Any) -> Optional[Any]:
+              if name in self._factories:
+                  return self._factories[name](*args, **kwargs)
+              if name in self._plugins:
+                  return self._plugins[name](*args, **kwargs)
+              return None
+
+          def list_registered(self) -> List[str]:
+              return list(set(list(self._plugins.keys()) + list(self._factories.keys())))
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.py
+    anchor: from typing import List, Optional, Callable, Any, Dict, Union, TypeVar, Generic
+- id: types_1
+  selector:
+    path: types.py
+    anchor: 'def flat_map(self, func: Callable[[T], "Container[U]"]) -> "Container[U]":'
+- id: no_serializer
+  selector:
+    path: serializer.py
+- id: no_type_registry
+  selector:
+    path: type_registry.py
+- id: no_global_0
+  selector:
+    anchor: JsonSerializer
+- id: no_global_1
+  selector:
+    anchor: SerializationResult
+- id: no_global_2
+  selector:
+    anchor: PickleSerializer
+- id: no_global_3
+  selector:
+    anchor: PluginRegistry
+- id: no_global_4
+  selector:
+    anchor: register_plugin
+- id: no_global_5
+  selector:
+    anchor: register_factory
+oracle:
+  required:
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_type_registry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

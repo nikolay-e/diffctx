@@ -1,0 +1,228 @@
+name: python_051_flask_extension_init
+repo:
+  initial_files:
+    database.py: |
+      from flask_sqlalchemy import SQLAlchemy
+      from flask_migrate import Migrate
+      from typing import Optional, List, Dict, Any
+      from datetime import datetime
+
+      db = SQLAlchemy()
+      migrate = Migrate()
+
+      class BaseModel(db.Model):
+          __abstract__ = True
+
+          id = db.Column(db.Integer, primary_key=True)
+          created_at = db.Column(db.DateTime, default=datetime.utcnow)
+          updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+          def save(self) -> None:
+              db.session.add(self)
+              db.session.commit()
+
+          def delete(self) -> None:
+              db.session.delete(self)
+              db.session.commit()
+
+          @classmethod
+          def get_by_id(cls, id: int) -> Optional["BaseModel"]:
+              return cls.query.get(id)
+
+          @classmethod
+          def get_all(cls) -> List["BaseModel"]:
+              return cls.query.all()
+
+      def init_extensions(app) -> None:
+          db.init_app(app)
+          migrate.init_app(app, db)
+
+          with app.app_context():
+              db.create_all()
+    factory.py: |
+      from flask import Flask
+      from database import init_extensions
+
+      def create_app() -> Flask:
+          app = Flask(__name__)
+          init_extensions(app)
+          return app
+    extensions/cache_backend.py: |
+      from typing import Any, Optional
+
+      class CacheBackend:
+          def __init__(self, app=None, default_ttl: int = 300):
+              self.default_ttl = default_ttl
+              self._store: dict[str, Any] = {}
+              if app is not None:
+                  self.init_app(app)
+
+          def init_app(self, app) -> None:
+              app.extensions["cache"] = self
+
+          def get(self, key: str) -> Optional[Any]:
+              return self._store.get(key)
+
+          def set(self, key: str, value: Any, ttl: int = None) -> None:
+              self._store[key] = value
+    extensions/mail_service.py: |
+      from typing import Optional
+
+      class MailService:
+          def __init__(self, app=None, smtp_host: str = "localhost"):
+              self.smtp_host = smtp_host
+              if app is not None:
+                  self.init_app(app)
+
+          def init_app(self, app) -> None:
+              self.smtp_host = app.config.get("SMTP_HOST", self.smtp_host)
+              app.extensions["mail"] = self
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+  changed_files:
+    database.py: |
+      from flask_sqlalchemy import SQLAlchemy
+      from flask_migrate import Migrate
+      from typing import Optional, List, Dict, Any
+      from datetime import datetime
+
+      db = SQLAlchemy()
+      migrate = Migrate()
+
+      class BaseModel(db.Model):
+          __abstract__ = True
+
+          id = db.Column(db.Integer, primary_key=True)
+          created_at = db.Column(db.DateTime, default=datetime.utcnow)
+          updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+          def save(self) -> None:
+              db.session.add(self)
+              db.session.commit()
+
+          def delete(self) -> None:
+              db.session.delete(self)
+              db.session.commit()
+
+          @classmethod
+          def get_by_id(cls, id: int) -> Optional["BaseModel"]:
+              return cls.query.get(id)
+
+          @classmethod
+          def get_all(cls) -> List["BaseModel"]:
+              return cls.query.all()
+
+          def to_dict(self) -> Dict[str, Any]:
+              return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+      class TimestampMixin:
+          created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+          updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+      class SoftDeleteMixin:
+          deleted_at = db.Column(db.DateTime, nullable=True)
+          is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+
+          def soft_delete(self) -> None:
+              self.is_deleted = True
+              self.deleted_at = datetime.utcnow()
+              db.session.commit()
+
+          def restore(self) -> None:
+              self.is_deleted = False
+              self.deleted_at = None
+              db.session.commit()
+
+      def init_extensions(app) -> None:
+          db.init_app(app)
+          migrate.init_app(app, db)
+
+          with app.app_context():
+              db.create_all()
+
+      def get_db_session():
+          return db.session
+    factory.py: |
+      from flask import Flask
+      from database import init_extensions
+
+      def create_app() -> Flask:
+          app = Flask(__name__)
+          init_extensions(app)
+          return app
+    extensions/cache_backend.py: |
+      from typing import Any, Optional
+
+      class CacheBackend:
+          def __init__(self, app=None, default_ttl: int = 300):
+              self.default_ttl = default_ttl
+              self._store: dict[str, Any] = {}
+              if app is not None:
+                  self.init_app(app)
+
+          def init_app(self, app) -> None:
+              app.extensions["cache"] = self
+
+          def get(self, key: str) -> Optional[Any]:
+              return self._store.get(key)
+
+          def set(self, key: str, value: Any, ttl: int = None) -> None:
+              self._store[key] = value
+    extensions/mail_service.py: |
+      from typing import Optional
+
+      class MailService:
+          def __init__(self, app=None, smtp_host: str = "localhost"):
+              self.smtp_host = smtp_host
+              if app is not None:
+                  self.init_app(app)
+
+          def init_app(self, app) -> None:
+              self.smtp_host = app.config.get("SMTP_HOST", self.smtp_host)
+              app.extensions["mail"] = self
+
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+  commit_message: Update files
+fragments:
+- id: database_file
+  selector:
+    path: database.py
+- id: req_global_0
+  selector:
+    anchor: 'def to_dict(self) -> Dict[str, Any]:'
+- id: req_global_1
+  selector:
+    anchor: 'class TimestampMixin:'
+- id: no_cache_backend
+  selector:
+    path: extensions/cache_backend.py
+- id: no_mail_service
+  selector:
+    path: extensions/mail_service.py
+- id: no_global_0
+  selector:
+    anchor: CacheBackend
+- id: no_global_1
+  selector:
+    anchor: MailService
+- id: no_global_2
+  selector:
+    anchor: smtp_host
+- id: no_global_3
+  selector:
+    anchor: default_ttl
+oracle:
+  required:
+  - database_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_cache_backend
+  - no_mail_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

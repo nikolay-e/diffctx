@@ -1,0 +1,191 @@
+name: scala_005_implicit_conversion
+repo:
+  initial_files:
+    src/conversions/Implicits.scala: |
+      package conversions
+
+      case class User(name: String, age: Int)
+      case class UserProfile(displayName: String, isMinor: Boolean)
+
+      object Implicits {
+        implicit def stringToUser(s: String): User = User(s, 0)
+
+        implicit def intToUser(id: Int): User = User(s"user-$id", id)
+
+        implicit def userToProfile(u: User): UserProfile =
+          UserProfile(u.name, u.age < 18)
+      }
+    src/services/UserProcessor.scala: |
+      package services
+
+      import conversions.User
+
+      class UserProcessor {
+        def greet(user: User): String = s"Hello, ${user.name}"
+      }
+    src/conversions/JsonCodec.scala: |
+      package conversions
+
+      trait JsonEncoder[T] {
+        def encode(value: T): String
+      }
+
+      trait JsonDecoder[T] {
+        def decode(json: String): Option[T]
+      }
+
+      object JsonCodec {
+        implicit val stringEncoder: JsonEncoder[String] = (value: String) =>
+          s""""$value""""
+
+        implicit val intEncoder: JsonEncoder[Int] = (value: Int) =>
+          value.toString
+
+        def toJson[T](value: T)(implicit encoder: JsonEncoder[T]): String =
+          encoder.encode(value)
+      }
+    src/services/ProfileRenderer.scala: |
+      package services
+
+      import conversions.UserProfile
+
+      class ProfileRenderer {
+        def render(profile: UserProfile): String = {
+          val status = if (profile.isMinor) "Minor" else "Adult"
+          s"${profile.displayName} ($status)"
+        }
+
+        def renderBadge(profile: UserProfile): String = {
+          s"[${profile.displayName}]"
+        }
+      }
+  changed_files:
+    src/conversions/Implicits.scala: |
+      package conversions
+
+      case class User(name: String, age: Int)
+      case class UserProfile(displayName: String, isMinor: Boolean)
+
+      object Implicits {
+        implicit def stringToUser(s: String): User = User(s, 0)
+
+        implicit def intToUser(id: Int): User = User(s"user-$id", id)
+
+        implicit def userToProfile(u: User): UserProfile =
+          UserProfile(u.name, u.age < 18)
+      }
+    src/services/UserProcessor.scala: |
+      package services
+
+      import conversions.{User, Implicits}
+      import Implicits._
+
+      class UserProcessor {
+        def greet(user: User): String = s"Hello, ${user.name}"
+
+        def processString(): String = {
+          val user: User = "John"
+          greet(user)
+        }
+
+        def processId(): String = {
+          val user: User = 42
+          greet(user)
+        }
+
+        def getProfile(user: User): String = {
+          val profile: conversions.UserProfile = user
+          if (profile.isMinor) s"${profile.displayName} is a minor"
+          else s"${profile.displayName} is an adult"
+        }
+      }
+    src/conversions/JsonCodec.scala: |
+      package conversions
+
+      trait JsonEncoder[T] {
+        def encode(value: T): String
+      }
+
+      trait JsonDecoder[T] {
+        def decode(json: String): Option[T]
+      }
+
+      object JsonCodec {
+        implicit val stringEncoder: JsonEncoder[String] = (value: String) =>
+          s""""$value""""
+
+        implicit val intEncoder: JsonEncoder[Int] = (value: Int) =>
+          value.toString
+
+        def toJson[T](value: T)(implicit encoder: JsonEncoder[T]): String =
+          encoder.encode(value)
+      }
+    src/services/ProfileRenderer.scala: |
+      package services
+
+      import conversions.UserProfile
+
+      class ProfileRenderer {
+        def render(profile: UserProfile): String = {
+          val status = if (profile.isMinor) "Minor" else "Adult"
+          s"${profile.displayName} ($status)"
+        }
+
+        def renderBadge(profile: UserProfile): String = {
+          s"[${profile.displayName}]"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: userprocessor
+  selector:
+    path: src/services/UserProcessor.scala
+    anchor: import conversions.{User, Implicits}
+- id: userprocessor_1
+  selector:
+    path: src/services/UserProcessor.scala
+    anchor: import Implicits._
+- id: implicits
+  selector:
+    path: src/conversions/Implicits.scala
+    anchor: implicit def stringToUser
+- id: implicits_1
+  selector:
+    path: src/conversions/Implicits.scala
+    anchor: implicit def userToProfile
+- id: no_jsoncodec
+  selector:
+    path: src/conversions/JsonCodec.scala
+- id: no_profilerenderer
+  selector:
+    path: src/services/ProfileRenderer.scala
+- id: no_global_0
+  selector:
+    anchor: JsonEncoder
+- id: no_global_1
+  selector:
+    anchor: JsonDecoder
+- id: no_global_2
+  selector:
+    anchor: toJson
+- id: no_global_3
+  selector:
+    anchor: ProfileRenderer
+- id: no_global_4
+  selector:
+    anchor: renderBadge
+oracle:
+  required:
+  - userprocessor
+  - userprocessor_1
+  - implicits
+  - implicits_1
+  allowed: []
+  forbidden:
+  - no_jsoncodec
+  - no_profilerenderer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

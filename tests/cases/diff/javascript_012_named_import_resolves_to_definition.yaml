@@ -1,0 +1,185 @@
+name: javascript_012_named_import_resolves_to_definition
+repo:
+  initial_files:
+    utils.ts: |
+      export function fetchUser(id: string): Promise<User> {
+          return fetch(`/api/users/${id}`).then(res => res.json());
+      }
+
+      export function fetchPosts(userId: string): Promise<Post[]> {
+          return fetch(`/api/users/${userId}/posts`).then(res => res.json());
+      }
+    main.ts: |
+      console.log('initial');
+    user-cache.ts: |
+      import { fetchUser } from './utils';
+
+      const cache = new Map<string, { data: unknown; timestamp: number }>();
+      const TTL = 60_000;
+
+      export async function getCachedUser(id: string): Promise<unknown> {
+          const cached = cache.get(id);
+          if (cached && Date.now() - cached.timestamp < TTL) {
+              return cached.data;
+          }
+          const user = await fetchUser(id);
+          cache.set(id, { data: user, timestamp: Date.now() });
+          return user;
+      }
+
+      export function invalidateUserCache(id: string): void {
+          cache.delete(id);
+      }
+
+      export function clearAllCache(): void {
+          cache.clear();
+      }
+    utils.test.ts: |
+      import { fetchUser, fetchPosts } from './utils';
+
+      global.fetch = jest.fn();
+
+      describe('fetchUser', () => {
+          it('should fetch user by id', async () => {
+              (fetch as jest.Mock).mockResolvedValue({
+                  json: () => Promise.resolve({ id: '123', name: 'Alice' }),
+              });
+              const user = await fetchUser('123');
+              expect(fetch).toHaveBeenCalledWith('/api/users/123');
+              expect(user.name).toBe('Alice');
+          });
+      });
+
+      describe('fetchPosts', () => {
+          it('should fetch posts for user', async () => {
+              (fetch as jest.Mock).mockResolvedValue({
+                  json: () => Promise.resolve([{ id: '1', title: 'Post 1' }]),
+              });
+              const posts = await fetchPosts('123');
+              expect(posts).toHaveLength(1);
+          });
+      });
+  changed_files:
+    utils.ts: |
+      export function fetchUser(id: string): Promise<User> {
+          return fetch(`/api/users/${id}`).then(res => res.json());
+      }
+
+      export function fetchPosts(userId: string): Promise<Post[]> {
+          return fetch(`/api/users/${userId}/posts`).then(res => res.json());
+      }
+    main.ts: |
+      import { fetchUser } from './utils';
+
+      async function main() {
+          const user = await fetchUser('123');
+          console.log(user);
+      }
+
+      main();
+    user-cache.ts: |
+      import { fetchUser } from './utils';
+
+      const cache = new Map<string, { data: unknown; timestamp: number }>();
+      const TTL = 60_000;
+
+      export async function getCachedUser(id: string): Promise<unknown> {
+          const cached = cache.get(id);
+          if (cached && Date.now() - cached.timestamp < TTL) {
+              return cached.data;
+          }
+          const user = await fetchUser(id);
+          cache.set(id, { data: user, timestamp: Date.now() });
+          return user;
+      }
+
+      export function invalidateUserCache(id: string): void {
+          cache.delete(id);
+      }
+
+      export function clearAllCache(): void {
+          cache.clear();
+      }
+    utils.test.ts: |
+      import { fetchUser, fetchPosts } from './utils';
+
+      global.fetch = jest.fn();
+
+      describe('fetchUser', () => {
+          it('should fetch user by id', async () => {
+              (fetch as jest.Mock).mockResolvedValue({
+                  json: () => Promise.resolve({ id: '123', name: 'Alice' }),
+              });
+              const user = await fetchUser('123');
+              expect(fetch).toHaveBeenCalledWith('/api/users/123');
+              expect(user.name).toBe('Alice');
+          });
+      });
+
+      describe('fetchPosts', () => {
+          it('should fetch posts for user', async () => {
+              (fetch as jest.Mock).mockResolvedValue({
+                  json: () => Promise.resolve([{ id: '1', title: 'Post 1' }]),
+              });
+              const posts = await fetchPosts('123');
+              expect(posts).toHaveLength(1);
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.ts
+    anchor: import { fetchUser } from './utils'
+- id: main_1
+  selector:
+    path: main.ts
+    anchor: await fetchUser('123')
+- id: utils
+  selector:
+    path: utils.ts
+    anchor: 'export function fetchUser(id: string)'
+- id: utils_1
+  selector:
+    path: utils.ts
+    anchor: fetch(`/api/users/${id}`)
+- id: no_user_cache
+  selector:
+    path: user-cache.ts
+- id: no_utils_test
+  selector:
+    path: utils.test.ts
+- id: no_global_0
+  selector:
+    anchor: getCachedUser
+- id: no_global_1
+  selector:
+    anchor: invalidateUserCache
+- id: no_global_2
+  selector:
+    anchor: clearAllCache
+- id: no_global_3
+  selector:
+    anchor: describe('fetchUser'
+- id: no_global_4
+  selector:
+    anchor: jest.Mock
+- id: no_global_5
+  selector:
+    anchor: mockResolvedValue
+oracle:
+  required:
+  - main
+  - main_1
+  - utils
+  - utils_1
+  allowed: []
+  forbidden:
+  - no_user_cache
+  - no_utils_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

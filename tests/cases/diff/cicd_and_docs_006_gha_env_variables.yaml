@@ -1,0 +1,141 @@
+name: cicd_and_docs_006_gha_env_variables
+repo:
+  initial_files:
+    app.js: |
+      const isCI = process.env.CI === 'true';
+      const nodeEnv = process.env.NODE_ENV || 'development';
+
+      console.log('Running in CI:', isCI);
+      console.log('Environment:', nodeEnv);
+
+      function startServer() {
+        const port = process.env.PORT || 3000;
+        console.log(`Server starting on port ${port}`);
+      }
+
+      startServer();
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: node app.js
+    config/settings.ts: |
+      export const config = {
+        apiUrl: process.env.API_URL || 'http://localhost:8080',
+        debug: process.env.DEBUG === 'true',
+        logLevel: process.env.LOG_LEVEL || 'info'
+      };
+    garbage_feature_flags.ts: |
+      const GARBAGE_CICD_DOCS_006_FLAG_MARKER_A = "launchdarkly";
+      const GARBAGE_CICD_DOCS_006_SEGMENT_MARKER_B = "beta_users";
+
+      class GarbageFeatureFlagService {
+        static GARBAGE_CICD_DOCS_006_CACHE_MARKER_C = 60000;
+        evaluate(): boolean { return false; }
+      }
+    garbage_experiments.ts: |
+      const GARBAGE_CICD_DOCS_006_EXPERIMENT_MARKER_D = "ab_test";
+      const GARBAGE_CICD_DOCS_006_VARIANT_MARKER_E = "control";
+
+      class GarbageExperimentManager {
+        static GARBAGE_CICD_DOCS_006_BUCKET_MARKER_F = 1000;
+        assignVariant(): string { return ""; }
+      }
+  changed_files:
+    app.js: |
+      const isCI = process.env.CI === 'true';
+      const nodeEnv = process.env.NODE_ENV || 'development';
+
+      console.log('Running in CI:', isCI);
+      console.log('Environment:', nodeEnv);
+
+      function startServer() {
+        const port = process.env.PORT || 3000;
+        console.log(`Server starting on port ${port}`);
+      }
+
+      startServer();
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          env:
+            CI: true
+            NODE_ENV: test
+          steps:
+            - uses: actions/checkout@v4
+            - run: node app.js
+    config/settings.ts: |
+      export const config = {
+        apiUrl: process.env.API_URL || 'http://localhost:8080',
+        debug: process.env.DEBUG === 'true',
+        logLevel: process.env.LOG_LEVEL || 'info'
+      };
+    garbage_feature_flags.ts: |
+      const GARBAGE_CICD_DOCS_006_FLAG_MARKER_A = "launchdarkly";
+      const GARBAGE_CICD_DOCS_006_SEGMENT_MARKER_B = "beta_users";
+
+      class GarbageFeatureFlagService {
+        static GARBAGE_CICD_DOCS_006_CACHE_MARKER_C = 60000;
+        evaluate(): boolean { return false; }
+      }
+    garbage_experiments.ts: |
+      const GARBAGE_CICD_DOCS_006_EXPERIMENT_MARKER_D = "ab_test";
+      const GARBAGE_CICD_DOCS_006_VARIANT_MARKER_E = "control";
+
+      class GarbageExperimentManager {
+        static GARBAGE_CICD_DOCS_006_BUCKET_MARKER_F = 1000;
+        assignVariant(): string { return ""; }
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'NODE_ENV: test'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_BUCKET_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_CACHE_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_EXPERIMENT_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_FLAG_MARKER_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_SEGMENT_MARKER_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_006_VARIANT_MARKER_E
+- id: no_global_6
+  selector:
+    anchor: garbage_experiments.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_feature_flags.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

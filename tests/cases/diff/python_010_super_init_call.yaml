@@ -1,0 +1,431 @@
+name: python_010_super_init_call
+repo:
+  initial_files:
+    base.py: |
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from abc import ABC, abstractmethod
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class ConfigValidationError:
+          field: str
+          message: str
+
+      class ConfigValidator:
+          def validate_timeout(self, value: int) -> Optional[str]:
+              if value < 0:
+                  return "Timeout must be non-negative"
+              if value > 3600:
+                  return "Timeout cannot exceed 1 hour"
+              return None
+
+          def validate_retries(self, value: int) -> Optional[str]:
+              if value < 0:
+                  return "Retries must be non-negative"
+              if value > 10:
+                  return "Too many retries"
+              return None
+
+      class BaseConfig(ABC):
+          _validator = ConfigValidator()
+
+          def __init__(self, config: Dict[str, Any]):
+              self.debug = config.get("debug", False)
+              self.timeout = config.get("timeout", 30)
+              self.retries = config.get("retries", 3)
+              self.log_level = config.get("log_level", "INFO")
+              self.created_at = datetime.now()
+              self._raw_config = config
+              self._validation_errors: List[ConfigValidationError] = []
+              self._validate()
+
+          def _validate(self) -> None:
+              if error := self._validator.validate_timeout(self.timeout):
+                  self._validation_errors.append(ConfigValidationError("timeout", error))
+              if error := self._validator.validate_retries(self.retries):
+                  self._validation_errors.append(ConfigValidationError("retries", error))
+
+          @property
+          def is_valid(self) -> bool:
+              return len(self._validation_errors) == 0
+
+          @property
+          def errors(self) -> List[ConfigValidationError]:
+              return self._validation_errors.copy()
+
+          def get(self, key: str, default: Any = None) -> Any:
+              return self._raw_config.get(key, default)
+
+          def to_dict(self) -> Dict[str, Any]:
+              return {
+                  "debug": self.debug,
+                  "timeout": self.timeout,
+                  "retries": self.retries,
+                  "log_level": self.log_level,
+              }
+
+          @abstractmethod
+          def validate_specific(self) -> None:
+              pass
+
+          def setup_logging(self) -> None:
+              level = getattr(logging, self.log_level.upper(), logging.INFO)
+              logging.basicConfig(level=level)
+              if self.debug:
+                  logger.setLevel(logging.DEBUG)
+
+      class DatabaseConfig(BaseConfig):
+          def __init__(self, config: Dict[str, Any]):
+              super().__init__(config)
+              self.host = config.get("host", "localhost")
+              self.port = config.get("port", 5432)
+              self.database = config.get("database", "app")
+              self.pool_size = config.get("pool_size", 5)
+
+          def validate_specific(self) -> None:
+              if self.pool_size < 1:
+                  self._validation_errors.append(
+                      ConfigValidationError("pool_size", "Pool size must be at least 1")
+                  )
+
+          def get_connection_string(self) -> str:
+              return f"postgresql://{self.host}:{self.port}/{self.database}"
+    app.py: |
+      from typing import Dict, Any, Optional
+      from dataclasses import dataclass
+
+      @dataclass
+      class AppSettings:
+          name: str
+          version: str
+          environment: str
+
+      class AppConfig:
+          def __init__(self):
+              self.settings: Optional[AppSettings] = None
+
+          def load(self, config: Dict[str, Any]) -> None:
+              self.settings = AppSettings(
+                  name=config.get("name", "app"),
+                  version=config.get("version", "1.0.0"),
+                  environment=config.get("environment", "development")
+              )
+    env_loader.py: |
+      import os
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class EnvConfig:
+          prefix: str = "APP_"
+          required_vars: List[str] = None
+          defaults: Dict[str, str] = None
+
+      class EnvironmentLoader:
+          def __init__(self, config: EnvConfig):
+              self._config = config
+              self._loaded: Dict[str, str] = {}
+
+          def load(self) -> Dict[str, str]:
+              prefix = self._config.prefix
+              self._loaded = {
+                  key[len(prefix):].lower(): value
+                  for key, value in os.environ.items()
+                  if key.startswith(prefix)
+              }
+              return self._loaded
+
+          def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+              return self._loaded.get(key, default)
+
+          def validate_required(self) -> List[str]:
+              if not self._config.required_vars:
+                  return []
+              return [v for v in self._config.required_vars if v not in self._loaded]
+    config_watcher.py: |
+      import time
+      from typing import Callable, Optional, Dict
+      from dataclasses import dataclass
+      from pathlib import Path
+
+      @dataclass
+      class WatcherConfig:
+          config_path: str
+          poll_interval: float = 5.0
+          auto_reload: bool = True
+
+      class ConfigFileWatcher:
+          def __init__(self, config: WatcherConfig):
+              self._config = config
+              self._last_modified: Optional[float] = None
+              self._callbacks: list[Callable] = []
+
+          def register_callback(self, callback: Callable) -> None:
+              self._callbacks.append(callback)
+
+          def check_for_changes(self) -> bool:
+              path = Path(self._config.config_path)
+              if not path.exists():
+                  return False
+              mtime = path.stat().st_mtime
+              if self._last_modified and mtime > self._last_modified:
+                  self._last_modified = mtime
+                  for cb in self._callbacks:
+                      cb(self._config.config_path)
+                  return True
+              self._last_modified = mtime
+              return False
+  changed_files:
+    base.py: |
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from abc import ABC, abstractmethod
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class ConfigValidationError:
+          field: str
+          message: str
+
+      class ConfigValidator:
+          def validate_timeout(self, value: int) -> Optional[str]:
+              if value < 0:
+                  return "Timeout must be non-negative"
+              if value > 3600:
+                  return "Timeout cannot exceed 1 hour"
+              return None
+
+          def validate_retries(self, value: int) -> Optional[str]:
+              if value < 0:
+                  return "Retries must be non-negative"
+              if value > 10:
+                  return "Too many retries"
+              return None
+
+      class BaseConfig(ABC):
+          _validator = ConfigValidator()
+
+          def __init__(self, config: Dict[str, Any]):
+              self.debug = config.get("debug", False)
+              self.timeout = config.get("timeout", 30)
+              self.retries = config.get("retries", 3)
+              self.log_level = config.get("log_level", "INFO")
+              self.created_at = datetime.now()
+              self._raw_config = config
+              self._validation_errors: List[ConfigValidationError] = []
+              self._validate()
+
+          def _validate(self) -> None:
+              if error := self._validator.validate_timeout(self.timeout):
+                  self._validation_errors.append(ConfigValidationError("timeout", error))
+              if error := self._validator.validate_retries(self.retries):
+                  self._validation_errors.append(ConfigValidationError("retries", error))
+
+          @property
+          def is_valid(self) -> bool:
+              return len(self._validation_errors) == 0
+
+          @property
+          def errors(self) -> List[ConfigValidationError]:
+              return self._validation_errors.copy()
+
+          def get(self, key: str, default: Any = None) -> Any:
+              return self._raw_config.get(key, default)
+
+          def to_dict(self) -> Dict[str, Any]:
+              return {
+                  "debug": self.debug,
+                  "timeout": self.timeout,
+                  "retries": self.retries,
+                  "log_level": self.log_level,
+              }
+
+          @abstractmethod
+          def validate_specific(self) -> None:
+              pass
+
+          def setup_logging(self) -> None:
+              level = getattr(logging, self.log_level.upper(), logging.INFO)
+              logging.basicConfig(level=level)
+              if self.debug:
+                  logger.setLevel(logging.DEBUG)
+
+      class DatabaseConfig(BaseConfig):
+          def __init__(self, config: Dict[str, Any]):
+              super().__init__(config)
+              self.host = config.get("host", "localhost")
+              self.port = config.get("port", 5432)
+              self.database = config.get("database", "app")
+              self.pool_size = config.get("pool_size", 5)
+
+          def validate_specific(self) -> None:
+              if self.pool_size < 1:
+                  self._validation_errors.append(
+                      ConfigValidationError("pool_size", "Pool size must be at least 1")
+                  )
+
+          def get_connection_string(self) -> str:
+              return f"postgresql://{self.host}:{self.port}/{self.database}"
+    app.py: |
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass
+      from base import BaseConfig, ConfigValidationError
+
+      @dataclass
+      class AppSettings:
+          name: str
+          version: str
+          environment: str
+
+      class AppConfig(BaseConfig):
+          def __init__(self, config: Dict[str, Any]):
+              super().__init__(config)
+              self.app_name = config.get("name", "app")
+              self.version = config.get("version", "1.0.0")
+              self.environment = config.get("environment", "development")
+              self.allowed_hosts: List[str] = config.get("allowed_hosts", ["localhost"])
+              self.cors_origins: List[str] = config.get("cors_origins", [])
+
+          def validate_specific(self) -> None:
+              if self.environment not in ("development", "staging", "production"):
+                  self._validation_errors.append(
+                      ConfigValidationError("environment", "Invalid environment")
+                  )
+              if not self.allowed_hosts:
+                  self._validation_errors.append(
+                      ConfigValidationError("allowed_hosts", "At least one host required")
+                  )
+
+          def is_production(self) -> bool:
+              return self.environment == "production"
+
+          def get_settings(self) -> AppSettings:
+              return AppSettings(
+                  name=self.app_name,
+                  version=self.version,
+                  environment=self.environment
+              )
+    env_loader.py: |
+      import os
+      from typing import Dict, Any, Optional, List
+      from dataclasses import dataclass
+
+      @dataclass
+      class EnvConfig:
+          prefix: str = "APP_"
+          required_vars: List[str] = None
+          defaults: Dict[str, str] = None
+
+      class EnvironmentLoader:
+          def __init__(self, config: EnvConfig):
+              self._config = config
+              self._loaded: Dict[str, str] = {}
+
+          def load(self) -> Dict[str, str]:
+              prefix = self._config.prefix
+              self._loaded = {
+                  key[len(prefix):].lower(): value
+                  for key, value in os.environ.items()
+                  if key.startswith(prefix)
+              }
+              return self._loaded
+
+          def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+              return self._loaded.get(key, default)
+
+          def validate_required(self) -> List[str]:
+              if not self._config.required_vars:
+                  return []
+              return [v for v in self._config.required_vars if v not in self._loaded]
+    config_watcher.py: |
+      import time
+      from typing import Callable, Optional, Dict
+      from dataclasses import dataclass
+      from pathlib import Path
+
+      @dataclass
+      class WatcherConfig:
+          config_path: str
+          poll_interval: float = 5.0
+          auto_reload: bool = True
+
+      class ConfigFileWatcher:
+          def __init__(self, config: WatcherConfig):
+              self._config = config
+              self._last_modified: Optional[float] = None
+              self._callbacks: list[Callable] = []
+
+          def register_callback(self, callback: Callable) -> None:
+              self._callbacks.append(callback)
+
+          def check_for_changes(self) -> bool:
+              path = Path(self._config.config_path)
+              if not path.exists():
+                  return False
+              mtime = path.stat().st_mtime
+              if self._last_modified and mtime > self._last_modified:
+                  self._last_modified = mtime
+                  for cb in self._callbacks:
+                      cb(self._config.config_path)
+                  return True
+              self._last_modified = mtime
+              return False
+  commit_message: Update files
+fragments:
+- id: app
+  selector:
+    path: app.py
+    anchor: 'class AppConfig(BaseConfig):'
+- id: app_1
+  selector:
+    path: app.py
+    anchor: from base import BaseConfig, ConfigValidationError
+- id: base_file
+  selector:
+    path: base.py
+- id: no_env_loader
+  selector:
+    path: env_loader.py
+- id: no_config_watcher
+  selector:
+    path: config_watcher.py
+- id: no_global_0
+  selector:
+    anchor: EnvironmentLoader
+- id: no_global_1
+  selector:
+    anchor: EnvConfig
+- id: no_global_2
+  selector:
+    anchor: validate_required
+- id: no_global_3
+  selector:
+    anchor: ConfigFileWatcher
+- id: no_global_4
+  selector:
+    anchor: WatcherConfig
+- id: no_global_5
+  selector:
+    anchor: check_for_changes
+oracle:
+  required:
+  - app
+  - app_1
+  - base_file
+  allowed: []
+  forbidden:
+  - no_env_loader
+  - no_config_watcher
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

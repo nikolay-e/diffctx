@@ -1,0 +1,263 @@
+name: scripting_022_class_method
+repo:
+  initial_files:
+    product_catalog.rb: |
+      class ProductCatalog
+        def self.find_by_sku(sku)
+          new(sku: sku, title: "Product")
+        end
+
+        def self.list_all
+          []
+        end
+
+        def self.count
+          0
+        end
+
+        attr_reader :sku, :title
+
+        def initialize(sku:, title:)
+          @sku = sku
+          @title = title
+        end
+      end
+    inventory_controller.rb: |
+      class InventoryController
+      end
+    storage_backend.rb: |
+      class StorageBackend
+        def initialize(connection)
+          @connection = connection
+        end
+
+        def fetch_record(table, id)
+          @connection.execute("SELECT * FROM #{table} WHERE id = ?", id).first
+        end
+
+        def scan_table(table)
+          @connection.execute("SELECT * FROM #{table}")
+        end
+
+        def insert_record(table, attributes)
+          cols = attributes.keys.join(', ')
+          vals = attributes.values.map { |v| "'#{v}'" }.join(', ')
+          @connection.execute("INSERT INTO #{table} (#{cols}) VALUES (#{vals})")
+        end
+      end
+    result_paginator.rb: |
+      class ResultPaginator
+        attr_reader :page, :per_page
+
+        def initialize(collection, page: 1, per_page: 25)
+          @collection = collection
+          @page = page
+          @per_page = per_page
+        end
+
+        def results
+          offset = (page - 1) * per_page
+          @collection[offset, per_page] || []
+        end
+
+        def total_pages
+          (@collection.size.to_f / per_page).ceil
+        end
+
+        def has_next?
+          page < total_pages
+        end
+      end
+    order_controller.rb: |
+      require_relative 'product_catalog'
+
+      class OrderController
+        def create(sku, quantity)
+          product = ProductCatalog.find_by_sku(sku)
+          { product: product.title, quantity: quantity, total: 0 }
+        end
+
+        def list_products
+          ProductCatalog.list_all
+        end
+
+        def product_count
+          ProductCatalog.count
+        end
+      end
+    product_search.rb: |
+      class ProductSearch
+        def initialize(products)
+          @products = products
+        end
+
+        def find_by_title(query)
+          @products.select { |p| p.title.downcase.include?(query.downcase) }
+        end
+
+        def find_by_sku_prefix(prefix)
+          @products.select { |p| p.sku.start_with?(prefix) }
+        end
+
+        def sort_by_title
+          @products.sort_by(&:title)
+        end
+      end
+    lib/base_controller.rb: |
+      class BaseController
+        def show(id)
+          raise NotImplementedError, "#{self.class}#show not implemented"
+        end
+
+        def index
+          raise NotImplementedError, "#{self.class}#index not implemented"
+        end
+
+        def create(params)
+          raise NotImplementedError, "#{self.class}#create not implemented"
+        end
+
+        def destroy(id)
+          raise NotImplementedError, "#{self.class}#destroy not implemented"
+        end
+      end
+  changed_files:
+    product_catalog.rb: |
+      class ProductCatalog
+        def self.find_by_sku(sku)
+          new(sku: sku, title: "Product")
+        end
+
+        def self.list_all
+          []
+        end
+
+        def self.count
+          0
+        end
+
+        attr_reader :sku, :title
+
+        def initialize(sku:, title:)
+          @sku = sku
+          @title = title
+        end
+      end
+    inventory_controller.rb: |
+      require_relative 'product_catalog'
+
+      class InventoryController
+        def show(sku)
+          @product = ProductCatalog.find_by_sku(sku)
+        end
+
+        def index
+          @products = ProductCatalog.list_all
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: product_catalog
+  selector:
+    path: product_catalog.rb
+    anchor: def self.find_by_sku(sku)
+- id: product_catalog_1
+  selector:
+    path: product_catalog.rb
+    anchor: def self.list_all
+- id: inventory_controller
+  selector:
+    path: inventory_controller.rb
+    anchor: ProductCatalog.find_by_sku
+- id: inventory_controller_1
+  selector:
+    path: inventory_controller.rb
+    anchor: ProductCatalog.list_all
+- id: no_storage_backend
+  selector:
+    path: storage_backend.rb
+- id: no_result_paginator
+  selector:
+    path: result_paginator.rb
+- id: no_order_controller
+  selector:
+    path: order_controller.rb
+- id: no_product_search
+  selector:
+    path: product_search.rb
+- id: no_base_controller
+  selector:
+    path: lib/base_controller.rb
+- id: no_global_0
+  selector:
+    anchor: StorageBackend
+- id: no_global_1
+  selector:
+    anchor: fetch_record
+- id: no_global_2
+  selector:
+    anchor: scan_table
+- id: no_global_3
+  selector:
+    anchor: insert_record
+- id: no_global_4
+  selector:
+    anchor: ResultPaginator
+- id: no_global_5
+  selector:
+    anchor: total_pages
+- id: no_global_6
+  selector:
+    anchor: has_next?
+- id: no_global_7
+  selector:
+    anchor: OrderController
+- id: no_global_8
+  selector:
+    anchor: 'product: product.title'
+- id: no_global_9
+  selector:
+    anchor: product_count
+- id: no_global_10
+  selector:
+    anchor: ProductSearch
+- id: no_global_11
+  selector:
+    anchor: find_by_title
+- id: no_global_12
+  selector:
+    anchor: find_by_sku_prefix
+- id: no_global_13
+  selector:
+    anchor: BaseController
+- id: no_global_14
+  selector:
+    anchor: NotImplementedError
+oracle:
+  required:
+  - product_catalog
+  - product_catalog_1
+  - inventory_controller
+  - inventory_controller_1
+  allowed: []
+  forbidden:
+  - no_storage_backend
+  - no_result_paginator
+  - no_order_controller
+  - no_product_search
+  - no_base_controller
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

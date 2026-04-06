@@ -1,0 +1,160 @@
+name: cicd_and_docs_005_gha_run_step
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "frontend-app",
+        "version": "1.5.0",
+        "scripts": {
+          "test": "jest --coverage",
+          "lint": "eslint src/ --ext .ts,.tsx",
+          "build": "vite build"
+        },
+        "dependencies": {
+          "react": "^18.2.0",
+          "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+          "jest": "^29.0.0",
+          "eslint": "^8.50.0"
+        }
+      }
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm install
+    src/components/Button.tsx: |
+      import React from 'react';
+
+      interface ButtonProps {
+        label: string;
+        onClick: () => void;
+      }
+
+      export function Button({ label, onClick }: ButtonProps) {
+        return <button onClick={onClick}>{label}</button>;
+      }
+    garbage_analytics.ts: |
+      const GARBAGE_CICD_DOCS_005_ANALYTICS_MARKER_A = "mixpanel";
+      const GARBAGE_CICD_DOCS_005_EVENT_MARKER_B = "page_view";
+
+      class GarbageAnalyticsService {
+        static GARBAGE_CICD_DOCS_005_BATCH_MARKER_C = 100;
+        track(): void {}
+      }
+    garbage_telemetry.ts: |
+      const GARBAGE_CICD_DOCS_005_TELEMETRY_MARKER_D = "opentelemetry";
+      const GARBAGE_CICD_DOCS_005_SPAN_MARKER_E = "http_request";
+
+      class GarbageTelemetryCollector {
+        static GARBAGE_CICD_DOCS_005_SAMPLE_MARKER_F = 0.1;
+        collect(): void {}
+      }
+  changed_files:
+    package.json: |
+      {
+        "name": "frontend-app",
+        "version": "1.5.0",
+        "scripts": {
+          "test": "jest --coverage",
+          "lint": "eslint src/ --ext .ts,.tsx",
+          "build": "vite build"
+        },
+        "dependencies": {
+          "react": "^18.2.0",
+          "react-dom": "^18.2.0"
+        },
+        "devDependencies": {
+          "jest": "^29.0.0",
+          "eslint": "^8.50.0"
+        }
+      }
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm install
+            - run: npm test
+            - run: npm run lint
+    src/components/Button.tsx: |
+      import React from 'react';
+
+      interface ButtonProps {
+        label: string;
+        onClick: () => void;
+      }
+
+      export function Button({ label, onClick }: ButtonProps) {
+        return <button onClick={onClick}>{label}</button>;
+      }
+    garbage_analytics.ts: |
+      const GARBAGE_CICD_DOCS_005_ANALYTICS_MARKER_A = "mixpanel";
+      const GARBAGE_CICD_DOCS_005_EVENT_MARKER_B = "page_view";
+
+      class GarbageAnalyticsService {
+        static GARBAGE_CICD_DOCS_005_BATCH_MARKER_C = 100;
+        track(): void {}
+      }
+    garbage_telemetry.ts: |
+      const GARBAGE_CICD_DOCS_005_TELEMETRY_MARKER_D = "opentelemetry";
+      const GARBAGE_CICD_DOCS_005_SPAN_MARKER_E = "http_request";
+
+      class GarbageTelemetryCollector {
+        static GARBAGE_CICD_DOCS_005_SAMPLE_MARKER_F = 0.1;
+        collect(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: ci_file
+  selector:
+    path: .github/workflows/ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- run: npm test'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_ANALYTICS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_BATCH_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_EVENT_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_SAMPLE_MARKER_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_SPAN_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_005_TELEMETRY_MARKER_D
+- id: no_global_6
+  selector:
+    anchor: garbage_analytics.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_telemetry.ts
+oracle:
+  required:
+  - ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

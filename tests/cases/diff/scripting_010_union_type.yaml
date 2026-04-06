@@ -1,0 +1,291 @@
+name: scripting_010_union_type
+repo:
+  initial_files:
+    src/Data.php: |
+      <?php
+      class Data {
+          public mixed $value;
+
+          public function __construct(mixed $value) {
+              $this->value = $value;
+          }
+
+          public function isEmpty(): bool {
+              return empty($this->value);
+          }
+
+          public function toArray(): array {
+              return is_array($this->value) ? $this->value : [$this->value];
+          }
+
+          public function count(): int {
+              return is_array($this->value) ? count($this->value) : 1;
+          }
+      }
+    src/Parser.php: |
+      <?php
+      class Parser {
+      }
+    src/Serializer.php: |
+      <?php
+      class Serializer {
+          public function toJson(object $obj): string {
+              return json_encode($obj, JSON_PRETTY_PRINT);
+          }
+
+          public function toXml(array $data, string $root = 'root'): string {
+              $xml = new SimpleXMLElement("<{$root}/>");
+              array_walk_recursive($data, function($val, $key) use ($xml) {
+                  $xml->addChild($key, $val);
+              });
+              return $xml->asXML();
+          }
+
+          public function toCsv(array $rows): string {
+              $output = fopen('php://temp', 'r+');
+              foreach ($rows as $row) {
+                  fputcsv($output, $row);
+              }
+              rewind($output);
+              return stream_get_contents($output);
+          }
+      }
+    src/SchemaValidator.php: |
+      <?php
+      class SchemaValidator {
+          private array $schema;
+
+          public function __construct(array $schema) {
+              $this->schema = $schema;
+          }
+
+          public function validate(array $data): bool {
+              foreach ($this->schema as $field => $type) {
+                  if (!isset($data[$field]) || gettype($data[$field]) !== $type) {
+                      return false;
+                  }
+              }
+              return true;
+          }
+
+          public function errors(array $data): array {
+              $errs = [];
+              foreach ($this->schema as $field => $type) {
+                  if (!isset($data[$field])) {
+                      $errs[] = "Missing field: $field";
+                  }
+              }
+              return $errs;
+          }
+      }
+    src/ResponseParser.php: |
+      <?php
+      require_once 'Data.php';
+
+      class ResponseParser {
+          public function parseBody(string $body): Data {
+              $decoded = json_decode($body, true);
+              return new Data($decoded ?? []);
+          }
+
+          public function parseHeaders(array $headers): Data {
+              $normalized = [];
+              foreach ($headers as $key => $value) {
+                  $normalized[strtolower($key)] = $value;
+              }
+              return new Data($normalized);
+          }
+
+          public function parseStatusLine(string $line): array {
+              preg_match('/HTTP\/(\d\.\d)\s+(\d+)\s+(.*)/', $line, $matches);
+              return ['version' => $matches[1] ?? '', 'status' => (int)($matches[2] ?? 0)];
+          }
+      end
+    src/TypedData.php: |
+      <?php
+      class TypedData {
+          private mixed $value;
+          private string $type;
+
+          public function __construct(mixed $value) {
+              $this->value = $value;
+              $this->type = gettype($value);
+          }
+
+          public function isString(): bool {
+              return $this->type === 'string';
+          }
+
+          public function isArray(): bool {
+              return $this->type === 'array';
+          }
+
+          public function getValue(): mixed {
+              return $this->value;
+          }
+      end
+    src/lib/JsonHelper.php: |
+      <?php
+      class JsonHelper {
+          public static function decode(string $json, bool $assoc = true): mixed {
+              $result = json_decode($json, $assoc);
+              if (json_last_error() !== JSON_ERROR_NONE) {
+                  throw new \RuntimeException('JSON decode error: ' . json_last_error_msg());
+              }
+              return $result;
+          }
+
+          public static function encode(mixed $data): string {
+              $json = json_encode($data, JSON_THROW_ON_ERROR);
+              return $json;
+          }
+
+          public static function isValid(string $json): bool {
+              json_decode($json);
+              return json_last_error() === JSON_ERROR_NONE;
+          }
+      }
+  changed_files:
+    src/Data.php: |
+      <?php
+      class Data {
+          public mixed $value;
+
+          public function __construct(mixed $value) {
+              $this->value = $value;
+          }
+
+          public function isEmpty(): bool {
+              return empty($this->value);
+          }
+
+          public function toArray(): array {
+              return is_array($this->value) ? $this->value : [$this->value];
+          }
+
+          public function count(): int {
+              return is_array($this->value) ? count($this->value) : 1;
+          }
+      }
+    src/Parser.php: |
+      <?php
+      require_once 'Data.php';
+
+      class Parser {
+          public function parse(string|array $input): Data {
+              if (is_string($input)) {
+                  return new Data(json_decode($input, true));
+              }
+              return new Data($input);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: data
+  selector:
+    path: src/Data.php
+    anchor: public mixed $value
+- id: data_1
+  selector:
+    path: src/Data.php
+    anchor: public function __construct(mixed $value)
+- id: parser
+  selector:
+    path: src/Parser.php
+    anchor: string|array $input
+- id: parser_1
+  selector:
+    path: src/Parser.php
+    anchor: new Data
+- id: no_serializer
+  selector:
+    path: src/Serializer.php
+- id: no_schemavalidator
+  selector:
+    path: src/SchemaValidator.php
+- id: no_responseparser
+  selector:
+    path: src/ResponseParser.php
+- id: no_typeddata
+  selector:
+    path: src/TypedData.php
+- id: no_jsonhelper
+  selector:
+    path: src/lib/JsonHelper.php
+- id: no_global_0
+  selector:
+    anchor: toJson
+- id: no_global_1
+  selector:
+    anchor: toXml
+- id: no_global_2
+  selector:
+    anchor: toCsv
+- id: no_global_3
+  selector:
+    anchor: SchemaValidator
+- id: no_global_4
+  selector:
+    anchor: $this->schema
+- id: no_global_5
+  selector:
+    anchor: Missing field
+- id: no_global_6
+  selector:
+    anchor: ResponseParser
+- id: no_global_7
+  selector:
+    anchor: parseBody
+- id: no_global_8
+  selector:
+    anchor: parseHeaders
+- id: no_global_9
+  selector:
+    anchor: parseStatusLine
+- id: no_global_10
+  selector:
+    anchor: TypedData
+- id: no_global_11
+  selector:
+    anchor: isString
+- id: no_global_12
+  selector:
+    anchor: isArray
+- id: no_global_13
+  selector:
+    anchor: JsonHelper
+- id: no_global_14
+  selector:
+    anchor: isValid
+- id: no_global_15
+  selector:
+    anchor: JSON_THROW_ON_ERROR
+oracle:
+  required:
+  - data
+  - data_1
+  - parser
+  - parser_1
+  allowed: []
+  forbidden:
+  - no_serializer
+  - no_schemavalidator
+  - no_responseparser
+  - no_typeddata
+  - no_jsonhelper
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15

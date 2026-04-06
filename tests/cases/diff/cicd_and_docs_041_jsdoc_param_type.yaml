@@ -1,0 +1,311 @@
+name: cicd_and_docs_041_jsdoc_param_type
+repo:
+  initial_files:
+    src/types.ts: |
+      export interface User {
+        id: number;
+        name: string;
+        email: string;
+      }
+
+      export interface Order {
+        id: number;
+        userId: number;
+        items: OrderItem[];
+        total: number;
+      }
+
+      export interface OrderItem {
+        productId: number;
+        quantity: number;
+        price: number;
+      }
+
+      export interface PaymentMethod {
+        type: 'card' | 'paypal' | 'bank';
+        details: Record<string, string>;
+      }
+
+      export interface ProcessResult {
+        success: boolean;
+        orderId: number;
+        transactionId?: string;
+      }
+    src/service.ts: |
+      import { User, Order } from './types';
+
+      /**
+       * Process an order for a user
+       * @param {User} user - The user placing the order
+       * @param {Order} order - The order to process
+       * @returns {boolean} Success status
+       */
+      function processOrder(user: User, order: Order): boolean {
+        return true;
+      }
+
+      export { processOrder };
+    src/checkout/payment-processor.ts: |
+      import { PaymentMethod } from '../types';
+
+      export class PaymentProcessor {
+        private gateway: string;
+
+        constructor(gateway: string) {
+          this.gateway = gateway;
+        }
+
+        async processPayment(method: PaymentMethod, amount: number): Promise<boolean> {
+          console.log(`Processing ${amount} via ${this.gateway}`);
+          return true;
+        }
+
+        async refundPayment(transactionId: string): Promise<boolean> {
+          console.log(`Refunding transaction ${transactionId}`);
+          return true;
+        }
+      }
+    src/validators.ts: |
+      export function validateShippingAddress(address: {
+        street: string;
+        city: string;
+        zip: string;
+        country: string;
+      }): boolean {
+        return address.street.length > 0
+          && address.city.length > 0
+          && address.zip.length > 0;
+      }
+
+      export function validatePostalCode(code: string, country: string): boolean {
+        const patterns: Record<string, RegExp> = {
+          US: /^\d{5}(-\d{4})?$/,
+          UK: /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i,
+          DE: /^\d{5}$/,
+        };
+        return patterns[country]?.test(code) ?? false;
+      }
+    src/events/order-events.ts: |
+      import { Order } from '../types';
+
+      export interface OrderCreatedEvent {
+        type: 'order.created';
+        payload: Order;
+        timestamp: Date;
+        correlationId: string;
+      }
+
+      export interface OrderCancelledEvent {
+        type: 'order.cancelled';
+        orderId: number;
+        reason: string;
+        timestamp: Date;
+        correlationId: string;
+      }
+
+      export function emitOrderEvent(event: OrderCreatedEvent | OrderCancelledEvent): void {
+        console.log(`Event: ${event.type} at ${event.timestamp}`);
+      }
+  changed_files:
+    src/types.ts: |
+      export interface User {
+        id: number;
+        name: string;
+        email: string;
+      }
+
+      export interface Order {
+        id: number;
+        userId: number;
+        items: OrderItem[];
+        total: number;
+      }
+
+      export interface OrderItem {
+        productId: number;
+        quantity: number;
+        price: number;
+      }
+
+      export interface PaymentMethod {
+        type: 'card' | 'paypal' | 'bank';
+        details: Record<string, string>;
+      }
+
+      export interface ProcessResult {
+        success: boolean;
+        orderId: number;
+        transactionId?: string;
+      }
+    src/service.ts: |
+      import { User, Order, PaymentMethod, ProcessResult } from './types';
+
+      /**
+       * Process an order for a user
+       * @param {User} user - The user placing the order
+       * @param {Order} order - The order to process
+       * @param {PaymentMethod} payment - Payment method to use
+       * @returns {Promise<ProcessResult>} Processing result
+       * @throws {ValidationError} If order is invalid
+       */
+      async function processOrder(
+        user: User,
+        order: Order,
+        payment: PaymentMethod
+      ): Promise<ProcessResult> {
+        validateOrder(order);
+        return { success: true, orderId: order.id };
+      }
+
+      function validateOrder(order: Order): void {
+        if (order.items.length === 0) {
+          throw new Error('Order must have items');
+        }
+      }
+
+      export { processOrder };
+    src/checkout/payment-processor.ts: |
+      import { PaymentMethod } from '../types';
+
+      export class PaymentProcessor {
+        private gateway: string;
+
+        constructor(gateway: string) {
+          this.gateway = gateway;
+        }
+
+        async processPayment(method: PaymentMethod, amount: number): Promise<boolean> {
+          console.log(`Processing ${amount} via ${this.gateway}`);
+          return true;
+        }
+
+        async refundPayment(transactionId: string): Promise<boolean> {
+          console.log(`Refunding transaction ${transactionId}`);
+          return true;
+        }
+      }
+    src/validators.ts: |
+      export function validateShippingAddress(address: {
+        street: string;
+        city: string;
+        zip: string;
+        country: string;
+      }): boolean {
+        return address.street.length > 0
+          && address.city.length > 0
+          && address.zip.length > 0;
+      }
+
+      export function validatePostalCode(code: string, country: string): boolean {
+        const patterns: Record<string, RegExp> = {
+          US: /^\d{5}(-\d{4})?$/,
+          UK: /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i,
+          DE: /^\d{5}$/,
+        };
+        return patterns[country]?.test(code) ?? false;
+      }
+    src/events/order-events.ts: |
+      import { Order } from '../types';
+
+      export interface OrderCreatedEvent {
+        type: 'order.created';
+        payload: Order;
+        timestamp: Date;
+        correlationId: string;
+      }
+
+      export interface OrderCancelledEvent {
+        type: 'order.cancelled';
+        orderId: number;
+        reason: string;
+        timestamp: Date;
+        correlationId: string;
+      }
+
+      export function emitOrderEvent(event: OrderCreatedEvent | OrderCancelledEvent): void {
+        console.log(`Event: ${event.type} at ${event.timestamp}`);
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: src/service.ts
+    anchor: async function processOrder
+- id: service_1
+  selector:
+    path: src/service.ts
+    anchor: PaymentMethod
+- id: service_2
+  selector:
+    path: src/service.ts
+    anchor: ProcessResult
+- id: service_3
+  selector:
+    path: src/service.ts
+    anchor: validateOrder
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: interface PaymentMethod
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: interface ProcessResult
+- id: no_payment_processor
+  selector:
+    path: src/checkout/payment-processor.ts
+- id: no_validators
+  selector:
+    path: src/validators.ts
+- id: no_order_events
+  selector:
+    path: src/events/order-events.ts
+- id: no_global_0
+  selector:
+    anchor: PaymentProcessor
+- id: no_global_1
+  selector:
+    anchor: processPayment
+- id: no_global_2
+  selector:
+    anchor: refundPayment
+- id: no_global_3
+  selector:
+    anchor: validateShippingAddress
+- id: no_global_4
+  selector:
+    anchor: validatePostalCode
+- id: no_global_5
+  selector:
+    anchor: OrderCreatedEvent
+- id: no_global_6
+  selector:
+    anchor: OrderCancelledEvent
+- id: no_global_7
+  selector:
+    anchor: emitOrderEvent
+- id: no_global_8
+  selector:
+    anchor: correlationId
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - service_3
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_payment_processor
+  - no_validators
+  - no_order_events
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

@@ -1,0 +1,25 @@
+name: internals_033_trailing_whitespace
+repo:
+  initial_files:
+    whitespace.py: |
+      def placeholder():
+          pass
+  changed_files:
+    whitespace.py: |
+      def process_data():
+          result = calculate()
+          return result
+  commit_message: Update files
+fragments:
+- id: whitespace_file
+  selector:
+    path: whitespace.py
+- id: req_global_0
+  selector:
+    anchor: 'def process_data():'
+oracle:
+  required:
+  - whitespace_file
+  - req_global_0
+  allowed: []
+  forbidden: []

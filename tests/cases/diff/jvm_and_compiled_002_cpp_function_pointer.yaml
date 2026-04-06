@@ -1,0 +1,256 @@
+name: jvm_and_compiled_002_cpp_function_pointer
+repo:
+  initial_files:
+    include/handlers.h: |
+      #pragma once
+      #include <iostream>
+
+      void onSuccess(int code);
+      void onError(int code);
+      void onTimeout(int code);
+    src/handlers.cpp: |
+      #include "handlers.h"
+
+      void onSuccess(int code) {
+          std::cout << "Success: " << code << std::endl;
+      }
+
+      void onError(int code) {
+          std::cerr << "Error: " << code << std::endl;
+      }
+
+      void onTimeout(int code) {
+          std::cerr << "Timeout after " << code << "ms" << std::endl;
+      }
+    src/main.cpp: |
+      #include <iostream>
+
+      int main() {
+          return 0;
+      }
+    src/event_system.cpp: |
+      #include <functional>
+      #include <unordered_map>
+      #include <string>
+      #include <vector>
+
+      using EventCallback = void(*)(int);
+
+      class EventSystem {
+          std::unordered_map<std::string, std::vector<EventCallback>> listeners_;
+      public:
+          void on(const std::string& event, EventCallback cb) {
+              listeners_[event].push_back(cb);
+          }
+
+          void emit(const std::string& event, int data) {
+              auto it = listeners_.find(event);
+              if (it != listeners_.end()) {
+                  for (auto cb : it->second) cb(data);
+              }
+          }
+
+          void clear(const std::string& event) {
+              listeners_.erase(event);
+          }
+      };
+    include/callback_registry.h: |
+      #pragma once
+      #include <vector>
+      #include <string>
+
+      typedef void (*Callback)(int);
+
+      class CallbackRegistry {
+          struct Entry {
+              std::string name;
+              Callback fn;
+          };
+          std::vector<Entry> callbacks_;
+      public:
+          void add(const std::string& name, Callback fn) {
+              callbacks_.push_back({name, fn});
+          }
+
+          Callback find(const std::string& name) const {
+              for (const auto& e : callbacks_) {
+                  if (e.name == name) return e.fn;
+              }
+              return nullptr;
+          }
+
+          void invokeAll(int value) {
+              for (const auto& e : callbacks_) e.fn(value);
+          }
+      };
+    src/signal_handler.cpp: |
+      #include <csignal>
+      #include <iostream>
+
+      typedef void (*SignalHandler)(int);
+
+      void handleSigint(int sig) {
+          std::cout << "Caught SIGINT: " << sig << std::endl;
+      }
+
+      void handleSigterm(int sig) {
+          std::cout << "Caught SIGTERM: " << sig << std::endl;
+      }
+
+      void setupSignals() {
+          signal(SIGINT, handleSigint);
+          signal(SIGTERM, handleSigterm);
+      }
+    tests/handler_test.cpp: |
+      #include "handlers.h"
+      #include <sstream>
+      #include <cassert>
+
+      void test_onSuccess_output() {
+          std::ostringstream capture;
+          auto old = std::cout.rdbuf(capture.rdbuf());
+          onSuccess(200);
+          std::cout.rdbuf(old);
+          assert(capture.str().find("200") != std::string::npos);
+      }
+
+      void test_onError_output() {
+          std::ostringstream capture;
+          auto old = std::cerr.rdbuf(capture.rdbuf());
+          onError(404);
+          std::cerr.rdbuf(old);
+          assert(capture.str().find("404") != std::string::npos);
+      }
+  changed_files:
+    src/main.cpp: |
+      #include "handlers.h"
+
+      typedef void (*Callback)(int);
+
+      void execute(Callback callback, int value) {
+          callback(value);
+      }
+
+      int main() {
+          Callback handler = onSuccess;
+          execute(handler, 200);
+          return 0;
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main.cpp
+    anchor: typedef void (*Callback)(int)
+- id: main_1
+  selector:
+    path: src/main.cpp
+    anchor: void execute(Callback callback, int value)
+- id: main_2
+  selector:
+    path: src/main.cpp
+    anchor: Callback handler = onSuccess
+- id: main_3
+  selector:
+    path: src/main.cpp
+    anchor: execute(handler, 200)
+- id: handlers
+  selector:
+    path: include/handlers.h
+    anchor: void onSuccess(int code)
+- id: handlers_1
+  selector:
+    path: include/handlers.h
+    anchor: void onError(int code)
+- id: handlers_2
+  selector:
+    path: include/handlers.h
+    anchor: void onTimeout(int code)
+- id: handlers_3
+  selector:
+    path: src/handlers.cpp
+    anchor: 'Success: '
+- id: no_event_system
+  selector:
+    path: src/event_system.cpp
+- id: no_callback_registry
+  selector:
+    path: include/callback_registry.h
+- id: no_signal_handler
+  selector:
+    path: src/signal_handler.cpp
+- id: no_handler_test
+  selector:
+    path: tests/handler_test.cpp
+- id: no_global_0
+  selector:
+    anchor: EventSystem
+- id: no_global_1
+  selector:
+    anchor: EventCallback
+- id: no_global_2
+  selector:
+    anchor: listeners_
+- id: no_global_3
+  selector:
+    anchor: emit
+- id: no_global_4
+  selector:
+    anchor: CallbackRegistry
+- id: no_global_5
+  selector:
+    anchor: invokeAll
+- id: no_global_6
+  selector:
+    anchor: find(const std::string
+- id: no_global_7
+  selector:
+    anchor: SignalHandler
+- id: no_global_8
+  selector:
+    anchor: handleSigint
+- id: no_global_9
+  selector:
+    anchor: handleSigterm
+- id: no_global_10
+  selector:
+    anchor: setupSignals
+- id: no_global_11
+  selector:
+    anchor: test_onSuccess_output
+- id: no_global_12
+  selector:
+    anchor: test_onError_output
+- id: no_global_13
+  selector:
+    anchor: rdbuf
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  - handlers
+  - handlers_1
+  - handlers_2
+  - handlers_3
+  allowed: []
+  forbidden:
+  - no_event_system
+  - no_callback_registry
+  - no_signal_handler
+  - no_handler_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

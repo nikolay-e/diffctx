@@ -1,0 +1,309 @@
+name: kubernetes_036_dns_config
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: dns-test-app
+        namespace: production
+        labels:
+          app: dns-test-app
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: dns-test-app
+        template:
+          metadata:
+            labels:
+              app: dns-test-app
+              tier: backend
+          spec:
+            containers:
+            - name: app
+              image: registry.example.com/dns-test-app:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: RESOLVER_TIMEOUT
+                value: "5"
+              - name: DNS_CACHE_TTL
+                value: "30"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: dns-test-app
+        namespace: production
+      spec:
+        selector:
+          app: dns-test-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: dns-test-config
+        namespace: production
+      data:
+        LOG_LEVEL: debug
+        ENABLE_DNS_LOGGING: "true"
+    k8s/base/serviceaccount.yaml: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: dns-test-app
+        namespace: production
+      automountServiceAccountToken: true
+    k8s/system/coredns-corefile.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: coredns
+        namespace: kube-system
+      data:
+        Corefile: |
+          .:53 {
+              errors
+              health
+              kubernetes cluster.local in-addr.arpa ip6.arpa {
+                  pods insecure
+                  fallthrough in-addr.arpa ip6.arpa
+              }
+              forward . /etc/resolv.conf
+              cache 30
+              loop
+              reload
+              loadbalance
+          }
+    k8s/system/external-dns-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: external-dns-config
+        namespace: external-dns
+      data:
+        provider: cloudflare
+        domain-filter: example.com
+        policy: sync
+        registry: txt
+        txt-owner-id: k8s-cluster-prod
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: dns-test-app
+        namespace: production
+        labels:
+          app: dns-test-app
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: dns-test-app
+        template:
+          metadata:
+            labels:
+              app: dns-test-app
+              tier: backend
+          spec:
+            dnsPolicy: None
+            dnsConfig:
+              nameservers:
+              - 8.8.8.8
+              - 8.8.4.4
+              - 1.1.1.1
+              searches:
+              - production.svc.cluster.local
+              - svc.cluster.local
+              - cluster.local
+              - example.com
+              options:
+              - name: ndots
+                value: "2"
+              - name: timeout
+                value: "3"
+              - name: attempts
+                value: "2"
+              - name: rotate
+            containers:
+            - name: app
+              image: registry.example.com/dns-test-app:v1.0.0
+              ports:
+              - containerPort: 8080
+                name: http
+              env:
+              - name: RESOLVER_TIMEOUT
+                value: "5"
+              - name: DNS_CACHE_TTL
+                value: "30"
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: dns-test-app
+        namespace: production
+      spec:
+        selector:
+          app: dns-test-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: dns-test-config
+        namespace: production
+      data:
+        LOG_LEVEL: debug
+        ENABLE_DNS_LOGGING: "true"
+    k8s/base/serviceaccount.yaml: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: dns-test-app
+        namespace: production
+      automountServiceAccountToken: true
+    k8s/system/coredns-corefile.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: coredns
+        namespace: kube-system
+      data:
+        Corefile: |
+          .:53 {
+              errors
+              health
+              kubernetes cluster.local in-addr.arpa ip6.arpa {
+                  pods insecure
+                  fallthrough in-addr.arpa ip6.arpa
+              }
+              forward . /etc/resolv.conf
+              cache 30
+              loop
+              reload
+              loadbalance
+          }
+    k8s/system/external-dns-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: external-dns-config
+        namespace: external-dns
+      data:
+        provider: cloudflare
+        domain-filter: example.com
+        policy: sync
+        registry: txt
+        txt-owner-id: k8s-cluster-prod
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'dnsPolicy: None'
+- id: deployment_1
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: '- 8.8.8.8'
+- id: deployment_2
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: production.svc.cluster.local
+- id: deployment_3
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'name: ndots'
+- id: no_service
+  selector:
+    path: k8s/base/service.yaml
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_serviceaccount
+  selector:
+    path: k8s/base/serviceaccount.yaml
+- id: no_coredns_corefile
+  selector:
+    path: k8s/system/coredns-corefile.yaml
+- id: no_external_dns_config
+  selector:
+    path: k8s/system/external-dns-config.yaml
+- id: no_global_0
+  selector:
+    anchor: 'targetPort: 8080'
+- id: no_global_1
+  selector:
+    anchor: ENABLE_DNS_LOGGING
+- id: no_global_2
+  selector:
+    anchor: dns-test-config
+- id: no_global_3
+  selector:
+    anchor: automountServiceAccountToken
+- id: no_global_4
+  selector:
+    anchor: Corefile
+- id: no_global_5
+  selector:
+    anchor: pods insecure
+- id: no_global_6
+  selector:
+    anchor: loadbalance
+- id: no_global_7
+  selector:
+    anchor: txt-owner-id
+- id: no_global_8
+  selector:
+    anchor: domain-filter
+- id: no_global_9
+  selector:
+    anchor: external-dns-config
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - deployment_3
+  allowed: []
+  forbidden:
+  - no_service
+  - no_configmap
+  - no_serviceaccount
+  - no_coredns_corefile
+  - no_external_dns_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

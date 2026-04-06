@@ -1,0 +1,184 @@
+name: ppr_033_max_iterations_bounded
+repo:
+  initial_files:
+    entry.py: |
+      from layer1 import process1
+
+      def main():
+          return process1()
+    layer1.py: |
+      from layer2 import process2
+
+      def process1():
+          return process2()
+    layer2.py: |
+      from layer3 import process3
+
+      def process2():
+          return process3()
+    layer3.py: |
+      from layer4 import process4
+
+      def process3():
+          return process4()
+    layer4.py: |
+      def process4():
+          return "deep"
+    garbage_entry_consumer.py: |
+      from layer1 import process1
+      GARBAGE_PPR033_CONSUMER_A = "entry_consumer"
+      GARBAGE_PPR033_CONSUMER_B = True
+
+      def consume_entry():
+          return process1()
+
+      class EntryWrapper:
+          GARBAGE_PPR033_WRAPPER_C = 99
+
+          def wrap(self):
+              return process1()
+    garbage_main_mirror.py: |
+      GARBAGE_PPR033_MAIN_D = "main_mirror"
+      GARBAGE_PPR033_MAIN_E = False
+
+      def main():
+          return "unrelated_main"
+
+      def main_helper():
+          GARBAGE_PPR033_HELPER_F = 42
+          return main()
+    garbage_layer_util.py: |
+      GARBAGE_PPR033_LAYER_G = "layer_util"
+      GARBAGE_PPR033_LAYER_H = 0
+
+      def layer_modified():
+          return "_modified"
+
+      def process_layer():
+          return "process"
+  changed_files:
+    entry.py: |
+      from layer1 import process1
+
+      def main():
+          return process1() + "_modified"
+    layer1.py: |
+      from layer2 import process2
+
+      def process1():
+          return process2()
+    layer2.py: |
+      from layer3 import process3
+
+      def process2():
+          return process3()
+    layer3.py: |
+      from layer4 import process4
+
+      def process3():
+          return process4()
+    layer4.py: |
+      def process4():
+          return "deep"
+    garbage_entry_consumer.py: |
+      from layer1 import process1
+      GARBAGE_PPR033_CONSUMER_A = "entry_consumer"
+      GARBAGE_PPR033_CONSUMER_B = True
+
+      def consume_entry():
+          return process1()
+
+      class EntryWrapper:
+          GARBAGE_PPR033_WRAPPER_C = 99
+
+          def wrap(self):
+              return process1()
+    garbage_main_mirror.py: |
+      GARBAGE_PPR033_MAIN_D = "main_mirror"
+      GARBAGE_PPR033_MAIN_E = False
+
+      def main():
+          return "unrelated_main"
+
+      def main_helper():
+          GARBAGE_PPR033_HELPER_F = 42
+          return main()
+    garbage_layer_util.py: |
+      GARBAGE_PPR033_LAYER_G = "layer_util"
+      GARBAGE_PPR033_LAYER_H = 0
+
+      def layer_modified():
+          return "_modified"
+
+      def process_layer():
+          return "process"
+  commit_message: Update files
+fragments:
+- id: entry
+  selector:
+    path: entry.py
+    anchor: 'def main():'
+- id: entry_1
+  selector:
+    path: entry.py
+    anchor: return process1() + "_modified"
+- id: entry_2
+  selector:
+    path: entry.py
+    anchor: from layer1 import process1
+- id: layer1
+  selector:
+    path: layer1.py
+    anchor: 'def process1():'
+- id: no_garbage_entry_consumer
+  selector:
+    path: garbage_entry_consumer.py
+- id: no_garbage_main_mirror
+  selector:
+    path: garbage_main_mirror.py
+- id: no_garbage_layer_util
+  selector:
+    path: garbage_layer_util.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR033_CONSUMER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR033_CONSUMER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR033_WRAPPER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR033_MAIN_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR033_MAIN_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR033_HELPER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR033_LAYER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR033_LAYER_H
+oracle:
+  required:
+  - entry
+  - entry_1
+  - entry_2
+  - layer1
+  allowed: []
+  forbidden:
+  - no_garbage_entry_consumer
+  - no_garbage_main_mirror
+  - no_garbage_layer_util
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

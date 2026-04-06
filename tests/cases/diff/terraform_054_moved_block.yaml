@@ -1,0 +1,201 @@
+name: terraform_054_moved_block
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        subnet_id     = var.private_subnet_id
+
+        vpc_security_group_ids = [aws_security_group.web.id]
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+    outputs.tf: |
+      output "instance_id" {
+        value = aws_instance.web.id
+      }
+
+      output "instance_ip" {
+        value = aws_instance.web.private_ip
+      }
+
+      output "instance_az" {
+        value = aws_instance.web.availability_zone
+      }
+    security.tf: |
+      resource "aws_security_group" "web" {
+        name   = "web-sg"
+        vpc_id = var.vpc_id
+
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+
+        egress {
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      }
+    database/migrations.tf: |
+      resource "aws_db_instance" "primary" {
+        identifier     = "primary-db"
+        engine         = "postgres"
+        instance_class = "db.r5.large"
+      }
+
+      moved {
+        from = aws_db_instance.main
+        to   = aws_db_instance.primary
+      }
+    storage/moved.tf: |
+      resource "aws_s3_bucket" "assets" {
+        bucket = "app-assets"
+      }
+
+      moved {
+        from = aws_s3_bucket.static
+        to   = aws_s3_bucket.assets
+      }
+    networking/nat.tf: |
+      resource "aws_nat_gateway" "main" {
+        allocation_id = aws_eip.nat.id
+        subnet_id     = aws_subnet.public.id
+
+        tags = {
+          Name = "main-nat-gw"
+        }
+      }
+    monitoring/alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "web_cpu" {
+        alarm_name          = "web-instance-cpu-high"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/EC2"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        dimensions = {
+          InstanceId = aws_instance.web.id
+        }
+      }
+  changed_files:
+    main.tf: |
+      # Resources moved to compute.tf
+    compute.tf: |
+      resource "aws_instance" "web_server" {
+        ami           = var.ami_id
+        instance_type = "t3.micro"
+        subnet_id     = var.private_subnet_id
+
+        vpc_security_group_ids = [aws_security_group.web.id]
+
+        tags = {
+          Name = "web-server"
+        }
+      }
+
+      moved {
+        from = aws_instance.web
+        to   = aws_instance.web_server
+      }
+  commit_message: Update files
+fragments:
+- id: compute
+  selector:
+    path: compute.tf
+    anchor: resource "aws_instance" "web_server" {
+- id: compute_1
+  selector:
+    path: compute.tf
+    anchor: from = aws_instance.web
+- id: compute_2
+  selector:
+    path: compute.tf
+    anchor: to   = aws_instance.web_server
+- id: outputs
+  selector:
+    path: outputs.tf
+    anchor: aws_instance.web.id
+- id: outputs_1
+  selector:
+    path: outputs.tf
+    anchor: aws_instance.web.private_ip
+- id: main_file
+  selector:
+    path: main.tf
+- id: no_migrations
+  selector:
+    path: database/migrations.tf
+- id: no_moved
+  selector:
+    path: storage/moved.tf
+- id: no_nat
+  selector:
+    path: networking/nat.tf
+- id: no_alarms
+  selector:
+    path: monitoring/alarms.tf
+- id: no_global_0
+  selector:
+    anchor: aws_db_instance.main
+- id: no_global_1
+  selector:
+    anchor: aws_db_instance.primary
+- id: no_global_2
+  selector:
+    anchor: primary-db
+- id: no_global_3
+  selector:
+    anchor: aws_s3_bucket.static
+- id: no_global_4
+  selector:
+    anchor: aws_s3_bucket.assets
+- id: no_global_5
+  selector:
+    anchor: app-assets
+- id: no_global_6
+  selector:
+    anchor: aws_nat_gateway
+- id: no_global_7
+  selector:
+    anchor: main-nat-gw
+- id: no_global_8
+  selector:
+    anchor: web-instance-cpu-high
+- id: no_global_9
+  selector:
+    anchor: CPUUtilization
+oracle:
+  required:
+  - compute
+  - compute_1
+  - compute_2
+  - outputs
+  - outputs_1
+  - main_file
+  allowed: []
+  forbidden:
+  - no_migrations
+  - no_moved
+  - no_nat
+  - no_alarms
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

@@ -1,0 +1,223 @@
+name: php_016_laravel_model
+repo:
+  initial_files:
+    app/Models/BaseModel.php: |
+      <?php
+      namespace App\Models;
+
+      abstract class BaseModel {
+          protected array $fillable = [];
+          protected array $attributes = [];
+          protected array $casts = [];
+
+          public function fill(array $data): self {
+              foreach ($data as $key => $value) {
+                  if (in_array($key, $this->fillable)) {
+                      $this->attributes[$key] = $value;
+                  }
+              }
+              return $this;
+          }
+
+          public function getAttribute(string $key): mixed {
+              return $this->attributes[$key] ?? null;
+          }
+
+          public function toArray(): array {
+              return $this->attributes;
+          }
+      }
+    app/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User extends BaseModel {
+          protected array $fillable = ['name', 'email'];
+      }
+    app/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      class Product extends BaseModel {
+          protected array $fillable = ['name', 'price', 'sku', 'category'];
+
+          protected array $casts = [
+              'price' => 'decimal',
+              'is_available' => 'boolean',
+          ];
+
+          public static function create(array $data): self {
+              $product = new self();
+              return $product->fill($data);
+          }
+
+          public function getDisplayName(): string {
+              return $this->getAttribute('name') ?? 'Unknown Product';
+          }
+      }
+    app/Models/Profile.php: |
+      <?php
+      namespace App\Models;
+
+      class Profile {
+          private array $data = [];
+
+          public function getAttribute(string $key): mixed {
+              return $this->data[$key] ?? null;
+          }
+
+          public function getDisplayName(): string {
+              $first = $this->getAttribute('first_name') ?? '';
+              $last = $this->getAttribute('last_name') ?? '';
+              return trim("{$first} {$last}") ?: 'Anonymous';
+          }
+
+          public function isAdmin(): bool {
+              return $this->getAttribute('level') === 'admin';
+          }
+      }
+  changed_files:
+    app/Models/BaseModel.php: |
+      <?php
+      namespace App\Models;
+
+      abstract class BaseModel {
+          protected array $fillable = [];
+          protected array $attributes = [];
+          protected array $casts = [];
+
+          public function fill(array $data): self {
+              foreach ($data as $key => $value) {
+                  if (in_array($key, $this->fillable)) {
+                      $this->attributes[$key] = $value;
+                  }
+              }
+              return $this;
+          }
+
+          public function getAttribute(string $key): mixed {
+              return $this->attributes[$key] ?? null;
+          }
+
+          public function toArray(): array {
+              return $this->attributes;
+          }
+      }
+    app/Models/User.php: |
+      <?php
+      namespace App\Models;
+
+      class User extends BaseModel {
+          protected array $fillable = ['name', 'email', 'password', 'role'];
+
+          protected array $casts = [
+              'email_verified_at' => 'datetime',
+              'is_active' => 'boolean',
+          ];
+
+          public static function create(array $data): self {
+              $user = new self();
+              return $user->fill($data);
+          }
+
+          public function isAdmin(): bool {
+              return $this->getAttribute('role') === 'admin';
+          }
+
+          public function getDisplayName(): string {
+              return $this->getAttribute('name') ?? 'Anonymous';
+          }
+      }
+    app/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      class Product extends BaseModel {
+          protected array $fillable = ['name', 'price', 'sku', 'category'];
+
+          protected array $casts = [
+              'price' => 'decimal',
+              'is_available' => 'boolean',
+          ];
+
+          public static function create(array $data): self {
+              $product = new self();
+              return $product->fill($data);
+          }
+
+          public function getDisplayName(): string {
+              return $this->getAttribute('name') ?? 'Unknown Product';
+          }
+      }
+    app/Models/Profile.php: |
+      <?php
+      namespace App\Models;
+
+      class Profile {
+          private array $data = [];
+
+          public function getAttribute(string $key): mixed {
+              return $this->data[$key] ?? null;
+          }
+
+          public function getDisplayName(): string {
+              $first = $this->getAttribute('first_name') ?? '';
+              $last = $this->getAttribute('last_name') ?? '';
+              return trim("{$first} {$last}") ?: 'Anonymous';
+          }
+
+          public function isAdmin(): bool {
+              return $this->getAttribute('level') === 'admin';
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: app/Models/User.php
+    anchor: class User extends BaseModel
+- id: user_1
+  selector:
+    path: app/Models/User.php
+    anchor: 'public function isAdmin(): bool'
+- id: user_2
+  selector:
+    path: app/Models/User.php
+    anchor: $user->fill($data)
+- id: basemodel
+  selector:
+    path: app/Models/BaseModel.php
+    anchor: 'public function fill(array $data): self'
+- id: basemodel_1
+  selector:
+    path: app/Models/BaseModel.php
+    anchor: 'public function getAttribute(string $key): mixed'
+- id: no_product
+  selector:
+    path: app/Models/Product.php
+- id: no_profile
+  selector:
+    path: app/Models/Profile.php
+- id: no_global_0
+  selector:
+    anchor: class Product extends BaseModel
+- id: no_global_1
+  selector:
+    anchor: class Profile
+- id: no_global_2
+  selector:
+    anchor: Unknown Product
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - basemodel
+  - basemodel_1
+  allowed: []
+  forbidden:
+  - no_product
+  - no_profile
+  - no_global_0
+  - no_global_1
+  - no_global_2

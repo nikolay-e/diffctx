@@ -1,0 +1,210 @@
+name: jvm_and_compiled_009_cpp_unique_ptr
+repo:
+  initial_files:
+    include/resource.h: |
+      #pragma once
+      #include <string>
+
+      class Resource {
+      public:
+          std::string id;
+          Resource(const std::string& id) : id(id) {}
+          void use() {}
+      };
+    src/manager.cpp: |
+      #include <iostream>
+      int main() { return 0; }
+    src/connection_pool.cpp: |
+      #include <memory>
+      #include <vector>
+      #include <string>
+
+      class Connection {
+      public:
+          std::string host;
+          int port;
+          Connection(const std::string& h, int p) : host(h), port(p) {}
+          void execute(const std::string& query) {}
+          void close() {}
+      };
+
+      class ConnectionPool {
+          std::vector<std::unique_ptr<Connection>> pool_;
+      public:
+          std::unique_ptr<Connection> acquire(const std::string& host, int port) {
+              return std::make_unique<Connection>(host, port);
+          }
+
+          void releaseAll() { pool_.clear(); }
+          size_t size() const { return pool_.size(); }
+      };
+    include/resource_factory.h: |
+      #pragma once
+      #include "resource.h"
+      #include <memory>
+      #include <string>
+
+      class ResourceFactory {
+      public:
+          static std::unique_ptr<Resource> create(const std::string& id) {
+              return std::make_unique<Resource>(id);
+          }
+
+          static std::unique_ptr<Resource> createWithPrefix(
+              const std::string& prefix,
+              const std::string& name)
+          {
+              return std::make_unique<Resource>(prefix + "-" + name);
+          }
+      };
+    src/shared_cache.cpp: |
+      #include "resource.h"
+      #include <memory>
+      #include <unordered_map>
+      #include <string>
+
+      class SharedCache {
+          std::unordered_map<std::string, std::shared_ptr<Resource>> cache_;
+      public:
+          std::shared_ptr<Resource> get(const std::string& key) {
+              auto it = cache_.find(key);
+              if (it != cache_.end()) return it->second;
+              auto res = std::make_shared<Resource>(key);
+              cache_[key] = res;
+              return res;
+          }
+
+          size_t size() const { return cache_.size(); }
+          void evict(const std::string& key) { cache_.erase(key); }
+      };
+    tests/resource_test.cpp: |
+      #include "resource.h"
+      #include <cassert>
+      #include <memory>
+
+      void test_resource_creation() {
+          auto res = std::make_unique<Resource>("test-1");
+          assert(res->id == "test-1");
+      }
+
+      void test_resource_use() {
+          Resource r("test-2");
+          r.use();
+          assert(r.id == "test-2");
+      }
+  changed_files:
+    src/manager.cpp: |
+      #include "resource.h"
+      #include <memory>
+
+      class ResourceManager {
+      public:
+          std::unique_ptr<Resource> acquire(const std::string& id) {
+              return std::make_unique<Resource>(id);
+          }
+
+          void process() {
+              auto res = acquire("resource-1");
+              res->use();
+          }
+      };
+  commit_message: Update files
+fragments:
+- id: manager
+  selector:
+    path: src/manager.cpp
+    anchor: class ResourceManager
+- id: manager_1
+  selector:
+    path: src/manager.cpp
+    anchor: std::unique_ptr<Resource> acquire
+- id: manager_2
+  selector:
+    path: src/manager.cpp
+    anchor: std::make_unique<Resource>(id)
+- id: manager_3
+  selector:
+    path: src/manager.cpp
+    anchor: res->use()
+- id: resource
+  selector:
+    path: include/resource.h
+    anchor: Resource(const std::string& id)
+- id: resource_1
+  selector:
+    path: include/resource.h
+    anchor: void use()
+- id: no_connection_pool
+  selector:
+    path: src/connection_pool.cpp
+- id: no_resource_factory
+  selector:
+    path: include/resource_factory.h
+- id: no_shared_cache
+  selector:
+    path: src/shared_cache.cpp
+- id: no_resource_test
+  selector:
+    path: tests/resource_test.cpp
+- id: no_global_0
+  selector:
+    anchor: ConnectionPool
+- id: no_global_1
+  selector:
+    anchor: Connection
+- id: no_global_2
+  selector:
+    anchor: execute(const std::string& query)
+- id: no_global_3
+  selector:
+    anchor: releaseAll
+- id: no_global_4
+  selector:
+    anchor: ResourceFactory
+- id: no_global_5
+  selector:
+    anchor: createWithPrefix
+- id: no_global_6
+  selector:
+    anchor: SharedCache
+- id: no_global_7
+  selector:
+    anchor: shared_ptr
+- id: no_global_8
+  selector:
+    anchor: make_shared
+- id: no_global_9
+  selector:
+    anchor: evict
+- id: no_global_10
+  selector:
+    anchor: test_resource_creation
+- id: no_global_11
+  selector:
+    anchor: test_resource_use
+oracle:
+  required:
+  - manager
+  - manager_1
+  - manager_2
+  - manager_3
+  - resource
+  - resource_1
+  allowed: []
+  forbidden:
+  - no_connection_pool
+  - no_resource_factory
+  - no_shared_cache
+  - no_resource_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

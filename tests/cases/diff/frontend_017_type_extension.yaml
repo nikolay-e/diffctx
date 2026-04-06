@@ -1,0 +1,168 @@
+name: frontend_017_type_extension
+repo:
+  initial_files:
+    src/types.ts: |
+      export type User = {
+          id: string;
+          name: string;
+          email: string;
+      };
+
+      export type Timestamps = {
+          createdAt: Date;
+          updatedAt: Date;
+      };
+    src/extended.ts: |
+      console.log('initial');
+    src/permissions.ts: |
+      export type Role = 'admin' | 'editor' | 'viewer';
+
+      export type Permission = 'read' | 'write' | 'delete' | 'manage';
+
+      export type RolePermissions = {
+          [K in Role]: Permission[];
+      };
+
+      export const defaultPermissions: RolePermissions = {
+          admin: ['read', 'write', 'delete', 'manage'],
+          editor: ['read', 'write'],
+          viewer: ['read'],
+      };
+
+      export function hasPermission(role: Role, permission: Permission): boolean {
+          return defaultPermissions[role].includes(permission);
+      }
+    src/types/api.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+          message: string;
+      }
+
+      export interface PaginatedResponse<T> {
+          items: T[];
+          total: number;
+          page: number;
+          pageSize: number;
+          hasMore: boolean;
+      }
+
+      export interface ApiError {
+          code: string;
+          message: string;
+          details?: Record<string, string>;
+      }
+  changed_files:
+    src/types.ts: |
+      export type User = {
+          id: string;
+          name: string;
+          email: string;
+      };
+
+      export type Timestamps = {
+          createdAt: Date;
+          updatedAt: Date;
+      };
+    src/extended.ts: |
+      import { User, Timestamps } from './types';
+
+      export type ExtendedUser = User & {
+          metadata: Record<string, unknown>;
+          role: 'admin' | 'user';
+      };
+
+      export type TimestampedUser = User & Timestamps;
+
+      export type FullUser = User & Timestamps & {
+          preferences: {
+              theme: 'light' | 'dark';
+              notifications: boolean;
+          };
+      };
+    src/permissions.ts: |
+      export type Role = 'admin' | 'editor' | 'viewer';
+
+      export type Permission = 'read' | 'write' | 'delete' | 'manage';
+
+      export type RolePermissions = {
+          [K in Role]: Permission[];
+      };
+
+      export const defaultPermissions: RolePermissions = {
+          admin: ['read', 'write', 'delete', 'manage'],
+          editor: ['read', 'write'],
+          viewer: ['read'],
+      };
+
+      export function hasPermission(role: Role, permission: Permission): boolean {
+          return defaultPermissions[role].includes(permission);
+      }
+    src/types/api.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+          message: string;
+      }
+
+      export interface PaginatedResponse<T> {
+          items: T[];
+          total: number;
+          page: number;
+          pageSize: number;
+          hasMore: boolean;
+      }
+
+      export interface ApiError {
+          code: string;
+          message: string;
+          details?: Record<string, string>;
+      }
+  commit_message: Update files
+fragments:
+- id: extended
+  selector:
+    path: src/extended.ts
+    anchor: import { User, Timestamps } from './types'
+- id: extended_1
+  selector:
+    path: src/extended.ts
+    anchor: type ExtendedUser = User & {
+- id: no_permissions
+  selector:
+    path: src/permissions.ts
+- id: no_api
+  selector:
+    path: src/types/api.ts
+- id: no_global_0
+  selector:
+    anchor: RolePermissions
+- id: no_global_1
+  selector:
+    anchor: hasPermission
+- id: no_global_2
+  selector:
+    anchor: defaultPermissions
+- id: no_global_3
+  selector:
+    anchor: ApiResponse
+- id: no_global_4
+  selector:
+    anchor: PaginatedResponse
+- id: no_global_5
+  selector:
+    anchor: ApiError
+oracle:
+  required:
+  - extended
+  - extended_1
+  allowed: []
+  forbidden:
+  - no_permissions
+  - no_api
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

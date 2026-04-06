@@ -1,0 +1,280 @@
+name: ocaml_003_dune_build
+repo:
+  initial_files:
+    lib/dune: |
+      (library
+       (name mylib)
+       (public_name mylib)
+       (modules
+        Parser
+        Transformer
+        Printer)
+       (libraries yojson cmdliner))
+    lib/parser.ml: |
+      type token =
+        | Ident of string
+        | Number of int
+        | LParen
+        | RParen
+
+      let _GARBAGE_OCAML_003_A = "parser_marker"
+      let _GARBAGE_OCAML_003_B = "token_marker"
+
+      let tokenize input =
+        ignore input;
+        [Ident "placeholder"]
+
+      let parse tokens =
+        ignore tokens;
+        Ident "parsed"
+    lib/transformer.ml: |
+      let _GARBAGE_OCAML_003_C = "transform_marker"
+      let _GARBAGE_OCAML_003_D = "ast_marker"
+
+      let optimize ast =
+        ignore ast;
+        "optimized"
+
+      let simplify ast =
+        ignore ast;
+        "simplified"
+    lib/printer.ml: |
+      let _GARBAGE_OCAML_003_E = "printer_marker"
+      let _GARBAGE_OCAML_003_F = "output_marker"
+
+      let to_string ast =
+        ignore ast;
+        "printed"
+
+      let pretty_print ast indent =
+        ignore ast;
+        ignore indent;
+        "pretty"
+    dune-project: |
+      (lang dune 3.0)
+      (name mylib)
+      (version 0.1.0)
+
+      (generate_opam_files true)
+
+      (package
+       (name mylib)
+       (synopsis "A sample OCaml library")
+       (depends
+        (ocaml (>= 4.14))
+        (yojson (>= 2.0))
+        (cmdliner (>= 1.1))))
+
+      ; GARBAGE_OCAML_003_G = "project_marker"
+      ; GARBAGE_OCAML_003_H = "meta_marker"
+    test/dune: |
+      (test
+       (name test_main)
+       (libraries mylib alcotest))
+
+      ; GARBAGE_OCAML_003_I = "test_dune_marker"
+      ; GARBAGE_OCAML_003_J = "test_config_marker"
+  changed_files:
+    lib/dune: |
+      (library
+       (name mylib)
+       (public_name mylib)
+       (modules
+        Parser
+        Transformer
+        Printer
+        Serializer)
+       (libraries yojson cmdliner))
+    lib/serializer.ml: |
+      type record = {
+        id : int;
+        name : string;
+        tags : string list;
+      }
+
+      let to_json r =
+        `Assoc [
+          ("id", `Int r.id);
+          ("name", `String r.name);
+          ("tags", `List (List.map (fun t -> `String t) r.tags));
+        ]
+
+      let from_json json =
+        let open Yojson.Basic.Util in
+        {
+          id = json |> member "id" |> to_int;
+          name = json |> member "name" |> to_string;
+          tags = json |> member "tags" |> to_list |> List.map to_string;
+        }
+
+      let to_json_string r =
+        Yojson.Basic.to_string (to_json r)
+
+      let from_json_string s =
+        from_json (Yojson.Basic.from_string s)
+    lib/parser.ml: |
+      type token =
+        | Ident of string
+        | Number of int
+        | LParen
+        | RParen
+
+      let _GARBAGE_OCAML_003_A = "parser_marker"
+      let _GARBAGE_OCAML_003_B = "token_marker"
+
+      let tokenize input =
+        ignore input;
+        [Ident "placeholder"]
+
+      let parse tokens =
+        ignore tokens;
+        Ident "parsed"
+    lib/transformer.ml: |
+      let _GARBAGE_OCAML_003_C = "transform_marker"
+      let _GARBAGE_OCAML_003_D = "ast_marker"
+
+      let optimize ast =
+        ignore ast;
+        "optimized"
+
+      let simplify ast =
+        ignore ast;
+        "simplified"
+    lib/printer.ml: |
+      let _GARBAGE_OCAML_003_E = "printer_marker"
+      let _GARBAGE_OCAML_003_F = "output_marker"
+
+      let to_string ast =
+        ignore ast;
+        "printed"
+
+      let pretty_print ast indent =
+        ignore ast;
+        ignore indent;
+        "pretty"
+    dune-project: |
+      (lang dune 3.0)
+      (name mylib)
+      (version 0.1.0)
+
+      (generate_opam_files true)
+
+      (package
+       (name mylib)
+       (synopsis "A sample OCaml library")
+       (depends
+        (ocaml (>= 4.14))
+        (yojson (>= 2.0))
+        (cmdliner (>= 1.1))))
+
+      ; GARBAGE_OCAML_003_G = "project_marker"
+      ; GARBAGE_OCAML_003_H = "meta_marker"
+    test/dune: |
+      (test
+       (name test_main)
+       (libraries mylib alcotest))
+
+      ; GARBAGE_OCAML_003_I = "test_dune_marker"
+      ; GARBAGE_OCAML_003_J = "test_config_marker"
+  commit_message: Update files
+fragments:
+- id: dune
+  selector:
+    path: lib/dune
+    anchor: Serializer
+- id: serializer
+  selector:
+    path: lib/serializer.ml
+    anchor: let to_json r
+- id: serializer_1
+  selector:
+    path: lib/serializer.ml
+    anchor: let from_json json
+- id: serializer_2
+  selector:
+    path: lib/serializer.ml
+    anchor: type record
+- id: no_parser
+  selector:
+    path: lib/parser.ml
+- id: no_transformer
+  selector:
+    path: lib/transformer.ml
+- id: no_printer
+  selector:
+    path: lib/printer.ml
+- id: no_dune_project
+  selector:
+    path: dune-project
+- id: no_dune
+  selector:
+    path: test/dune
+- id: no_global_0
+  selector:
+    anchor: _GARBAGE_OCAML_003_A
+- id: no_global_1
+  selector:
+    anchor: _GARBAGE_OCAML_003_B
+- id: no_global_2
+  selector:
+    anchor: tokenize
+- id: no_global_3
+  selector:
+    anchor: _GARBAGE_OCAML_003_C
+- id: no_global_4
+  selector:
+    anchor: _GARBAGE_OCAML_003_D
+- id: no_global_5
+  selector:
+    anchor: optimize
+- id: no_global_6
+  selector:
+    anchor: simplify
+- id: no_global_7
+  selector:
+    anchor: _GARBAGE_OCAML_003_E
+- id: no_global_8
+  selector:
+    anchor: _GARBAGE_OCAML_003_F
+- id: no_global_9
+  selector:
+    anchor: pretty_print
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_OCAML_003_G
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_OCAML_003_H
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_OCAML_003_I
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_OCAML_003_J
+oracle:
+  required:
+  - dune
+  - serializer
+  - serializer_1
+  - serializer_2
+  allowed: []
+  forbidden:
+  - no_parser
+  - no_transformer
+  - no_printer
+  - no_dune_project
+  - no_dune
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

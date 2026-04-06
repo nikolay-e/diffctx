@@ -1,0 +1,172 @@
+name: jvm_and_compiled_062_swift_environment_object
+repo:
+  initial_files:
+    AppState.swift: |
+      import Combine
+
+      class AppState: ObservableObject {
+          @Published var currentUser: String?
+          @Published var isLoggedIn = false
+
+          func login(username: String) {
+              currentUser = username
+              isLoggedIn = true
+          }
+
+          func logout() {
+              currentUser = nil
+              isLoggedIn = false
+          }
+      }
+    ProfileView.swift: |
+      // Initial
+      import SwiftUI
+      struct ProfileView: View {
+          var body: some View { Text("") }
+      }
+    SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @EnvironmentObject var appState: AppState
+          @State private var notificationsEnabled = true
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  if appState.isLoggedIn {
+                      Button("Sign Out") {
+                          appState.logout()
+                      }
+                  }
+              }
+          }
+      }
+    ThemeManager.swift: |
+      import Combine
+
+      class ThemeManager: ObservableObject {
+          @Published var isDarkMode = false
+          @Published var accentColor = "blue"
+
+          func toggleDarkMode() {
+              isDarkMode.toggle()
+          }
+
+          func setAccent(_ color: String) {
+              accentColor = color
+          }
+      }
+  changed_files:
+    AppState.swift: |
+      import Combine
+
+      class AppState: ObservableObject {
+          @Published var currentUser: String?
+          @Published var isLoggedIn = false
+
+          func login(username: String) {
+              currentUser = username
+              isLoggedIn = true
+          }
+
+          func logout() {
+              currentUser = nil
+              isLoggedIn = false
+          }
+      }
+    ProfileView.swift: |
+      import SwiftUI
+
+      struct ProfileView: View {
+          @EnvironmentObject var appState: AppState
+
+          var body: some View {
+              VStack {
+                  if appState.isLoggedIn {
+                      Text("Welcome, \(appState.currentUser ?? "")")
+                      Button("Logout") {
+                          appState.logout()
+                      }
+                  } else {
+                      Text("Please log in")
+                  }
+              }
+          }
+      }
+    SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @EnvironmentObject var appState: AppState
+          @State private var notificationsEnabled = true
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  if appState.isLoggedIn {
+                      Button("Sign Out") {
+                          appState.logout()
+                      }
+                  }
+              }
+          }
+      }
+    ThemeManager.swift: |
+      import Combine
+
+      class ThemeManager: ObservableObject {
+          @Published var isDarkMode = false
+          @Published var accentColor = "blue"
+
+          func toggleDarkMode() {
+              isDarkMode.toggle()
+          }
+
+          func setAccent(_ color: String) {
+              accentColor = color
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: profileview
+  selector:
+    path: ProfileView.swift
+    anchor: '@EnvironmentObject var appState: AppState'
+- id: no_settingsview
+  selector:
+    path: SettingsView.swift
+- id: no_thememanager
+  selector:
+    path: ThemeManager.swift
+- id: no_global_0
+  selector:
+    anchor: SettingsView
+- id: no_global_1
+  selector:
+    anchor: notificationsEnabled
+- id: no_global_2
+  selector:
+    anchor: ThemeManager
+- id: no_global_3
+  selector:
+    anchor: isDarkMode
+- id: no_global_4
+  selector:
+    anchor: accentColor
+- id: no_global_5
+  selector:
+    anchor: toggleDarkMode
+oracle:
+  required:
+  - profileview
+  allowed: []
+  forbidden:
+  - no_settingsview
+  - no_thememanager
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,160 @@
+name: infrastructure_validation_005_python_import_resolution
+repo:
+  initial_files:
+    utils.py: |
+      from typing import Any, Optional
+
+      def helper() -> str:
+          return "helper result"
+
+      def format_output(data: Any) -> str:
+          return f"Output: {data}"
+
+      def validate_input(value: Optional[str]) -> bool:
+          if value is None:
+              return False
+          return len(value.strip()) > 0
+
+      def parse_config(raw: str) -> dict:
+          lines = raw.strip().split('\n')
+          result = {}
+          for line in lines:
+              if '=' in line:
+                  key, val = line.split('=', 1)
+                  result[key.strip()] = val.strip()
+          return result
+    services.py: |
+      from utils import helper, format_output
+
+      def run_pipeline() -> str:
+          result = helper()
+          return format_output(result)
+
+      def process_batch(items: list) -> list:
+          return [format_output(item) for item in items]
+    main.py: |
+      print("initial")
+    scripts/run_pipeline.sh: |
+      #!/bin/bash
+      python main.py
+    tests/test_utils.py: |
+      def test_helper():
+          pass
+    docs/architecture.md: |
+      # Architecture
+    config/settings.ini: ''
+  changed_files:
+    utils.py: |
+      from typing import Any, Optional
+
+      def helper() -> str:
+          return "helper result"
+
+      def format_output(data: Any) -> str:
+          return f"Output: {data}"
+
+      def validate_input(value: Optional[str]) -> bool:
+          if value is None:
+              return False
+          return len(value.strip()) > 0
+
+      def parse_config(raw: str) -> dict:
+          lines = raw.strip().split('\n')
+          result = {}
+          for line in lines:
+              if '=' in line:
+                  key, val = line.split('=', 1)
+                  result[key.strip()] = val.strip()
+          return result
+    services.py: |
+      from utils import helper, format_output
+
+      def run_pipeline() -> str:
+          result = helper()
+          return format_output(result)
+
+      def process_batch(items: list) -> list:
+          return [format_output(item) for item in items]
+    main.py: |
+      from utils import helper
+
+      def main():
+          result = helper()
+          print(result)
+
+      if __name__ == "__main__":
+          main()
+    scripts/run_pipeline.sh: |
+      #!/bin/bash
+      python main.py
+    tests/test_utils.py: |
+      def test_helper():
+          pass
+    docs/architecture.md: |
+      # Architecture
+    config/settings.ini: ''
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.py
+    anchor: from utils import helper
+- id: main_1
+  selector:
+    path: main.py
+    anchor: result = helper()
+- id: utils
+  selector:
+    path: utils.py
+    anchor: 'def helper() -> str:'
+- id: no_services
+  selector:
+    path: services.py
+- id: no_run_pipeline
+  selector:
+    path: scripts/run_pipeline.sh
+- id: no_test_utils
+  selector:
+    path: tests/test_utils.py
+- id: no_architecture
+  selector:
+    path: docs/architecture.md
+- id: no_settings
+  selector:
+    path: config/settings.ini
+- id: no_global_0
+  selector:
+    anchor: run_pipeline
+- id: no_global_1
+  selector:
+    anchor: process_batch
+- id: no_global_2
+  selector:
+    anchor: format_output
+- id: no_global_3
+  selector:
+    anchor: run_pipeline.sh
+- id: no_global_4
+  selector:
+    anchor: test_helper
+- id: no_global_5
+  selector:
+    anchor: '# Architecture'
+oracle:
+  required:
+  - main
+  - main_1
+  - utils
+  allowed: []
+  forbidden:
+  - no_services
+  - no_run_pipeline
+  - no_test_utils
+  - no_architecture
+  - no_settings
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,435 @@
+name: php_003_trait
+repo:
+  initial_files:
+    src/Traits/LoggingTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait LoggingTrait {
+          private array $logEntries = [];
+
+          public function log(string $level, string $message): void {
+              $entry = sprintf("[%s] %s: %s", date('Y-m-d H:i:s'), strtoupper($level), $message);
+              $this->logEntries[] = $entry;
+          }
+
+          public function logInfo(string $message): void {
+              $this->log('info', $message);
+          }
+
+          public function logError(string $message): void {
+              $this->log('error', $message);
+          }
+
+          public function getLogEntries(): array {
+              return $this->logEntries;
+          }
+
+          public function clearLog(): void {
+              $this->logEntries = [];
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      class OrderService {
+          public function createOrder(array $items): array {
+              return ['items' => $items, 'status' => 'pending'];
+          }
+      }
+    src/Traits/CacheableTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait CacheableTrait {
+          private array $cacheStore = [];
+          private int $cacheTtl = 3600;
+
+          public function cacheGet(string $key): mixed {
+              if (isset($this->cacheStore[$key]) && $this->cacheStore[$key]['expires'] > time()) {
+                  return $this->cacheStore[$key]['value'];
+              }
+              return null;
+          }
+
+          public function cacheSet(string $key, mixed $value): void {
+              $this->cacheStore[$key] = ['value' => $value, 'expires' => time() + $this->cacheTtl];
+          }
+
+          public function cacheFlush(): void {
+              $this->cacheStore = [];
+          }
+      }
+    src/Services/InventoryService.php: |
+      <?php
+      namespace App\Services;
+
+      class InventoryService {
+          private array $stock = [];
+
+          public function checkStock(string $productId): int {
+              return $this->stock[$productId] ?? 0;
+          }
+
+          public function reserveStock(string $productId, int $quantity): bool {
+              $available = $this->checkStock($productId);
+              if ($available >= $quantity) {
+                  $this->stock[$productId] = $available - $quantity;
+                  return true;
+              }
+              return false;
+          }
+
+          public function releaseStock(string $productId, int $quantity): void {
+              $this->stock[$productId] = ($this->stock[$productId] ?? 0) + $quantity;
+          }
+      }
+    src/Traits/TimestampTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait TimestampTrait {
+          private ?\DateTimeImmutable $createdAt = null;
+          private ?\DateTimeImmutable $updatedAt = null;
+
+          public function getCreatedAt(): ?\DateTimeImmutable {
+              return $this->createdAt;
+          }
+
+          public function getUpdatedAt(): ?\DateTimeImmutable {
+              return $this->updatedAt;
+          }
+
+          public function touch(): void {
+              $now = new \DateTimeImmutable();
+              if ($this->createdAt === null) {
+                  $this->createdAt = $now;
+              }
+              $this->updatedAt = $now;
+          }
+      }
+    src/Services/NotificationService.php: |
+      <?php
+      namespace App\Services;
+
+      class NotificationService {
+          private array $deliveryLog = [];
+
+          public function sendNotification(string $channel, string $message): bool {
+              $this->logDelivery($channel, $message);
+              return true;
+          }
+
+          private function logDelivery(string $channel, string $message): void {
+              $this->deliveryLog[] = [
+                  'channel' => $channel,
+                  'message' => $message,
+                  'sent_at' => date('c'),
+              ];
+          }
+
+          public function getDeliveryHistory(): array {
+              return $this->deliveryLog;
+          }
+      }
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentService {
+          private float $taxRate;
+
+          public function __construct(float $taxRate = 0.1) {
+              $this->taxRate = $taxRate;
+          }
+
+          public function processPayment(float $amount): bool {
+              return $amount > 0;
+          }
+
+          public function refund(float $amount): bool {
+              return $amount > 0 && $amount <= 10000;
+          }
+
+          public function calculateTotal(float $amount): float {
+              return round($amount * (1 + $this->taxRate), 2);
+          }
+      }
+  changed_files:
+    src/Traits/LoggingTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait LoggingTrait {
+          private array $logEntries = [];
+
+          public function log(string $level, string $message): void {
+              $entry = sprintf("[%s] %s: %s", date('Y-m-d H:i:s'), strtoupper($level), $message);
+              $this->logEntries[] = $entry;
+          }
+
+          public function logInfo(string $message): void {
+              $this->log('info', $message);
+          }
+
+          public function logError(string $message): void {
+              $this->log('error', $message);
+          }
+
+          public function getLogEntries(): array {
+              return $this->logEntries;
+          }
+
+          public function clearLog(): void {
+              $this->logEntries = [];
+          }
+      }
+    src/Services/OrderService.php: |
+      <?php
+      namespace App\Services;
+
+      use App\Traits\LoggingTrait;
+
+      class OrderService {
+          use LoggingTrait;
+
+          public function createOrder(array $items): array {
+              $this->logInfo("Creating order with " . count($items) . " items");
+              $order = ['items' => $items, 'status' => 'pending'];
+              $this->logInfo("Order created successfully");
+              return $order;
+          }
+
+          public function cancelOrder(int $orderId): bool {
+              $this->logInfo("Cancelling order #$orderId");
+              $this->logError("Order #$orderId cancellation requires approval");
+              return false;
+          }
+      }
+    src/Traits/CacheableTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait CacheableTrait {
+          private array $cacheStore = [];
+          private int $cacheTtl = 3600;
+
+          public function cacheGet(string $key): mixed {
+              if (isset($this->cacheStore[$key]) && $this->cacheStore[$key]['expires'] > time()) {
+                  return $this->cacheStore[$key]['value'];
+              }
+              return null;
+          }
+
+          public function cacheSet(string $key, mixed $value): void {
+              $this->cacheStore[$key] = ['value' => $value, 'expires' => time() + $this->cacheTtl];
+          }
+
+          public function cacheFlush(): void {
+              $this->cacheStore = [];
+          }
+      }
+    src/Services/InventoryService.php: |
+      <?php
+      namespace App\Services;
+
+      class InventoryService {
+          private array $stock = [];
+
+          public function checkStock(string $productId): int {
+              return $this->stock[$productId] ?? 0;
+          }
+
+          public function reserveStock(string $productId, int $quantity): bool {
+              $available = $this->checkStock($productId);
+              if ($available >= $quantity) {
+                  $this->stock[$productId] = $available - $quantity;
+                  return true;
+              }
+              return false;
+          }
+
+          public function releaseStock(string $productId, int $quantity): void {
+              $this->stock[$productId] = ($this->stock[$productId] ?? 0) + $quantity;
+          }
+      }
+    src/Traits/TimestampTrait.php: |
+      <?php
+      namespace App\Traits;
+
+      trait TimestampTrait {
+          private ?\DateTimeImmutable $createdAt = null;
+          private ?\DateTimeImmutable $updatedAt = null;
+
+          public function getCreatedAt(): ?\DateTimeImmutable {
+              return $this->createdAt;
+          }
+
+          public function getUpdatedAt(): ?\DateTimeImmutable {
+              return $this->updatedAt;
+          }
+
+          public function touch(): void {
+              $now = new \DateTimeImmutable();
+              if ($this->createdAt === null) {
+                  $this->createdAt = $now;
+              }
+              $this->updatedAt = $now;
+          }
+      }
+    src/Services/NotificationService.php: |
+      <?php
+      namespace App\Services;
+
+      class NotificationService {
+          private array $deliveryLog = [];
+
+          public function sendNotification(string $channel, string $message): bool {
+              $this->logDelivery($channel, $message);
+              return true;
+          }
+
+          private function logDelivery(string $channel, string $message): void {
+              $this->deliveryLog[] = [
+                  'channel' => $channel,
+                  'message' => $message,
+                  'sent_at' => date('c'),
+              ];
+          }
+
+          public function getDeliveryHistory(): array {
+              return $this->deliveryLog;
+          }
+      }
+    src/Services/PaymentService.php: |
+      <?php
+      namespace App\Services;
+
+      class PaymentService {
+          private float $taxRate;
+
+          public function __construct(float $taxRate = 0.1) {
+              $this->taxRate = $taxRate;
+          }
+
+          public function processPayment(float $amount): bool {
+              return $amount > 0;
+          }
+
+          public function refund(float $amount): bool {
+              return $amount > 0 && $amount <= 10000;
+          }
+
+          public function calculateTotal(float $amount): float {
+              return round($amount * (1 + $this->taxRate), 2);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: orderservice
+  selector:
+    path: src/Services/OrderService.php
+    anchor: use LoggingTrait
+- id: orderservice_1
+  selector:
+    path: src/Services/OrderService.php
+    anchor: $this->logInfo
+- id: orderservice_2
+  selector:
+    path: src/Services/OrderService.php
+    anchor: $this->logError
+- id: loggingtrait
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: trait LoggingTrait
+- id: loggingtrait_1
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: 'public function logInfo(string $message): void'
+- id: loggingtrait_2
+  selector:
+    path: src/Traits/LoggingTrait.php
+    anchor: 'public function logError(string $message): void'
+- id: no_cacheabletrait
+  selector:
+    path: src/Traits/CacheableTrait.php
+- id: no_inventoryservice
+  selector:
+    path: src/Services/InventoryService.php
+- id: no_timestamptrait
+  selector:
+    path: src/Traits/TimestampTrait.php
+- id: no_notificationservice
+  selector:
+    path: src/Services/NotificationService.php
+- id: no_paymentservice
+  selector:
+    path: src/Services/PaymentService.php
+- id: no_global_0
+  selector:
+    anchor: trait CacheableTrait
+- id: no_global_1
+  selector:
+    anchor: cacheGet
+- id: no_global_2
+  selector:
+    anchor: cacheFlush
+- id: no_global_3
+  selector:
+    anchor: class InventoryService
+- id: no_global_4
+  selector:
+    anchor: reserveStock
+- id: no_global_5
+  selector:
+    anchor: releaseStock
+- id: no_global_6
+  selector:
+    anchor: trait TimestampTrait
+- id: no_global_7
+  selector:
+    anchor: getCreatedAt
+- id: no_global_8
+  selector:
+    anchor: class NotificationService
+- id: no_global_9
+  selector:
+    anchor: logDelivery
+- id: no_global_10
+  selector:
+    anchor: getDeliveryHistory
+- id: no_global_11
+  selector:
+    anchor: class PaymentService
+- id: no_global_12
+  selector:
+    anchor: processPayment
+oracle:
+  required:
+  - orderservice
+  - orderservice_1
+  - orderservice_2
+  - loggingtrait
+  - loggingtrait_1
+  - loggingtrait_2
+  allowed: []
+  forbidden:
+  - no_cacheabletrait
+  - no_inventoryservice
+  - no_timestamptrait
+  - no_notificationservice
+  - no_paymentservice
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

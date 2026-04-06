@@ -1,0 +1,220 @@
+name: kubernetes_008_resource_limits
+repo:
+  initial_files:
+    k8s/apps/worker/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+        namespace: production
+        labels:
+          app: worker
+          component: background-jobs
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: worker
+        template:
+          metadata:
+            labels:
+              app: worker
+              component: background-jobs
+          spec:
+            containers:
+            - name: worker
+              image: worker:v1.0.0
+              command: ["python", "-m", "celery", "worker"]
+              env:
+              - name: CELERY_BROKER_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: redis-secret
+                    key: url
+              resources: {}
+    k8s/apps/worker/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: worker-metrics
+        namespace: production
+      spec:
+        selector:
+          app: worker
+        ports:
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+    k8s/limitranges/production-limits.yaml: |
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: default-limits
+        namespace: production
+      spec:
+        limits:
+        - type: Container
+          default:
+            memory: "256Mi"
+            cpu: "500m"
+          defaultRequest:
+            memory: "128Mi"
+            cpu: "100m"
+          max:
+            memory: "4Gi"
+            cpu: "4"
+    k8s/quotas/production-quota.yaml: |
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: production-quota
+        namespace: production
+      spec:
+        hard:
+          requests.cpu: "20"
+          requests.memory: "40Gi"
+          limits.cpu: "40"
+          limits.memory: "80Gi"
+          pods: "100"
+  changed_files:
+    k8s/apps/worker/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: worker
+        namespace: production
+        labels:
+          app: worker
+          component: background-jobs
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: worker
+        template:
+          metadata:
+            labels:
+              app: worker
+              component: background-jobs
+          spec:
+            containers:
+            - name: worker
+              image: worker:v1.0.0
+              command: ["python", "-m", "celery", "worker"]
+              env:
+              - name: CELERY_BROKER_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: redis-secret
+                    key: url
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                  ephemeral-storage: "1Gi"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+                  ephemeral-storage: "2Gi"
+    k8s/apps/worker/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: worker-metrics
+        namespace: production
+      spec:
+        selector:
+          app: worker
+        ports:
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+    k8s/limitranges/production-limits.yaml: |
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: default-limits
+        namespace: production
+      spec:
+        limits:
+        - type: Container
+          default:
+            memory: "256Mi"
+            cpu: "500m"
+          defaultRequest:
+            memory: "128Mi"
+            cpu: "100m"
+          max:
+            memory: "4Gi"
+            cpu: "4"
+    k8s/quotas/production-quota.yaml: |
+      apiVersion: v1
+      kind: ResourceQuota
+      metadata:
+        name: production-quota
+        namespace: production
+      spec:
+        hard:
+          requests.cpu: "20"
+          requests.memory: "40Gi"
+          limits.cpu: "40"
+          limits.memory: "80Gi"
+          pods: "100"
+  commit_message: Update files
+fragments:
+- id: deployment
+  selector:
+    path: k8s/apps/worker/deployment.yaml
+    anchor: 'memory: "512Mi"'
+- id: deployment_1
+  selector:
+    path: k8s/apps/worker/deployment.yaml
+    anchor: 'ephemeral-storage: "1Gi"'
+- id: deployment_2
+  selector:
+    path: k8s/apps/worker/deployment.yaml
+    anchor: 'cpu: "500m"'
+- id: deployment_3
+  selector:
+    path: k8s/apps/worker/deployment.yaml
+    anchor: 'memory: "1Gi"'
+- id: no_production_limits
+  selector:
+    path: k8s/limitranges/production-limits.yaml
+- id: no_production_quota
+  selector:
+    path: k8s/quotas/production-quota.yaml
+- id: no_global_0
+  selector:
+    anchor: default-limits
+- id: no_global_1
+  selector:
+    anchor: LimitRange
+- id: no_global_2
+  selector:
+    anchor: defaultRequest
+- id: no_global_3
+  selector:
+    anchor: production-quota
+- id: no_global_4
+  selector:
+    anchor: ResourceQuota
+- id: no_global_5
+  selector:
+    anchor: 'pods: "100"'
+oracle:
+  required:
+  - deployment
+  - deployment_1
+  - deployment_2
+  - deployment_3
+  allowed: []
+  forbidden:
+  - no_production_limits
+  - no_production_quota
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

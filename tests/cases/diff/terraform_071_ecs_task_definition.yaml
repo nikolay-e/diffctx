@@ -1,0 +1,105 @@
+name: terraform_071_ecs_task_definition
+repo:
+  initial_files:
+    ecs.tf: |
+      resource "aws_ecs_task_definition" "app" {
+        family = "app"
+        container_definitions = jsonencode([{
+          name  = "app"
+          image = "myapp:latest"
+          portMappings = [{
+            containerPort = 8080
+          }]
+        }])
+      }
+    service.tf: |
+      resource "aws_ecs_service" "app" {
+        name            = "app-service"
+        cluster         = aws_ecs_cluster.main.id
+        task_definition = aws_ecs_task_definition.app.arn
+        desired_count   = 2
+      }
+    src/server.py: |
+      from flask import Flask
+      app = Flask(__name__)
+
+      @app.route("/health")
+      def health():
+          return "OK"
+    worker/task.tf: |
+      resource "aws_ecs_task_definition" "worker" {
+        family = "worker"
+        container_definitions = jsonencode([{
+          name  = "worker"
+          image = "worker:latest"
+          cpu   = 128
+        }])
+      }
+    iam/task_role.tf: |
+      resource "aws_iam_role" "ecs_task_execution" {
+        name = "ecs-task-execution"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "ecs-tasks.amazonaws.com" }
+          }]
+        })
+      }
+  changed_files:
+    ecs.tf: |
+      resource "aws_ecs_task_definition" "app" {
+        family = "app"
+        cpu    = "256"
+        memory = "512"
+        container_definitions = jsonencode([{
+          name  = "app"
+          image = "myapp:v2"
+          portMappings = [{
+            containerPort = 8080
+          }]
+        }])
+      }
+  commit_message: Update files
+fragments:
+- id: ecs
+  selector:
+    path: ecs.tf
+    anchor: cpu    = "256"
+- id: ecs_1
+  selector:
+    path: ecs.tf
+    anchor: memory = "512"
+- id: ecs_2
+  selector:
+    path: ecs.tf
+    anchor: image = "myapp:v2"
+- id: service
+  selector:
+    path: service.tf
+    anchor: aws_ecs_task_definition.app.arn
+- id: no_task
+  selector:
+    path: worker/task.tf
+- id: no_task_role
+  selector:
+    path: iam/task_role.tf
+- id: no_global_0
+  selector:
+    anchor: worker:latest
+- id: no_global_1
+  selector:
+    anchor: ecs-task-execution
+oracle:
+  required:
+  - ecs
+  - ecs_1
+  - ecs_2
+  - service
+  allowed: []
+  forbidden:
+  - no_task
+  - no_task_role
+  - no_global_0
+  - no_global_1

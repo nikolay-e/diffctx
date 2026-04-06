@@ -1,0 +1,224 @@
+name: javascript_041_enum_change_pulls_usages
+repo:
+  initial_files:
+    enums.ts: |
+      export enum Status {
+          Pending = 'PENDING',
+          Active = 'ACTIVE',
+          Completed = 'COMPLETED',
+      }
+    task.ts: |
+      import { Status } from './enums';
+
+      export class Task {
+          status: Status = Status.Pending;
+
+          complete() {
+              this.status = Status.Completed;
+          }
+      }
+    status-display.ts: |
+      import { Status } from './enums';
+
+      export function getStatusLabel(status: Status): string {
+          switch (status) {
+              case Status.Pending: return 'Pending';
+              case Status.Active: return 'In Progress';
+              case Status.Completed: return 'Done';
+          }
+      }
+
+      export function getStatusColor(status: Status): string {
+          switch (status) {
+              case Status.Pending: return '#ffc107';
+              case Status.Active: return '#17a2b8';
+              case Status.Completed: return '#28a745';
+          }
+      }
+    priority-enum.ts: |
+      export enum Priority {
+          Low = 'LOW',
+          Medium = 'MEDIUM',
+          High = 'HIGH',
+          Critical = 'CRITICAL',
+      }
+
+      export function isUrgent(priority: Priority): boolean {
+          return priority === Priority.High || priority === Priority.Critical;
+      }
+    task-history.ts: |
+      import { Status } from './enums';
+
+      interface StatusTransition {
+          from: Status;
+          to: Status;
+          timestamp: Date;
+      }
+
+      export class TaskHistory {
+          private transitions: StatusTransition[] = [];
+
+          record(from: Status, to: Status): void {
+              this.transitions.push({ from, to, timestamp: new Date() });
+          }
+
+          getTransitions(): StatusTransition[] {
+              return [...this.transitions];
+          }
+      }
+  changed_files:
+    enums.ts: |
+      export enum Status {
+          Pending = 'PENDING',
+          Active = 'ACTIVE',
+          Completed = 'COMPLETED',
+          Cancelled = 'CANCELLED',
+          OnHold = 'ON_HOLD',
+      }
+    task.ts: |
+      import { Status } from './enums';
+
+      export class Task {
+          status: Status = Status.Pending;
+
+          complete() {
+              this.status = Status.Completed;
+          }
+      }
+    status-display.ts: |
+      import { Status } from './enums';
+
+      export function getStatusLabel(status: Status): string {
+          switch (status) {
+              case Status.Pending: return 'Pending';
+              case Status.Active: return 'In Progress';
+              case Status.Completed: return 'Done';
+          }
+      }
+
+      export function getStatusColor(status: Status): string {
+          switch (status) {
+              case Status.Pending: return '#ffc107';
+              case Status.Active: return '#17a2b8';
+              case Status.Completed: return '#28a745';
+          }
+      }
+    priority-enum.ts: |
+      export enum Priority {
+          Low = 'LOW',
+          Medium = 'MEDIUM',
+          High = 'HIGH',
+          Critical = 'CRITICAL',
+      }
+
+      export function isUrgent(priority: Priority): boolean {
+          return priority === Priority.High || priority === Priority.Critical;
+      }
+    task-history.ts: |
+      import { Status } from './enums';
+
+      interface StatusTransition {
+          from: Status;
+          to: Status;
+          timestamp: Date;
+      }
+
+      export class TaskHistory {
+          private transitions: StatusTransition[] = [];
+
+          record(from: Status, to: Status): void {
+              this.transitions.push({ from, to, timestamp: new Date() });
+          }
+
+          getTransitions(): StatusTransition[] {
+              return [...this.transitions];
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: enums
+  selector:
+    path: enums.ts
+    anchor: enum Status {
+- id: enums_1
+  selector:
+    path: enums.ts
+    anchor: Cancelled = 'CANCELLED'
+- id: enums_2
+  selector:
+    path: enums.ts
+    anchor: OnHold = 'ON_HOLD'
+- id: task
+  selector:
+    path: task.ts
+    anchor: import { Status } from './enums'
+- id: task_1
+  selector:
+    path: task.ts
+    anchor: 'status: Status = Status.Pending'
+- id: task_2
+  selector:
+    path: task.ts
+    anchor: this.status = Status.Completed
+- id: no_status_display
+  selector:
+    path: status-display.ts
+- id: no_priority_enum
+  selector:
+    path: priority-enum.ts
+- id: no_task_history
+  selector:
+    path: task-history.ts
+- id: no_global_0
+  selector:
+    anchor: getStatusLabel
+- id: no_global_1
+  selector:
+    anchor: getStatusColor
+- id: no_global_2
+  selector:
+    anchor: '#ffc107'
+- id: no_global_3
+  selector:
+    anchor: '#28a745'
+- id: no_global_4
+  selector:
+    anchor: Priority
+- id: no_global_5
+  selector:
+    anchor: isUrgent
+- id: no_global_6
+  selector:
+    anchor: '''CRITICAL'''
+- id: no_global_7
+  selector:
+    anchor: TaskHistory
+- id: no_global_8
+  selector:
+    anchor: StatusTransition
+- id: no_global_9
+  selector:
+    anchor: getTransitions
+oracle:
+  required:
+  - enums
+  - enums_1
+  - enums_2
+  - task
+  - task_1
+  - task_2
+  allowed: []
+  forbidden:
+  - no_status_display
+  - no_priority_enum
+  - no_task_history
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

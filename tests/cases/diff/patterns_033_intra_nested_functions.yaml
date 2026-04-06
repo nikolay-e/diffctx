@@ -1,0 +1,129 @@
+name: patterns_033_intra_nested_functions
+repo:
+  initial_files:
+    decorator.py: |
+      def outer_function(config):
+          def inner_validator(value):
+              return value is not None
+
+          def inner_transformer(value):
+              return value.upper()
+
+          def process(data):
+              if not inner_validator(data):
+                  return None
+              return inner_transformer(data)
+
+          return process
+    wrapper.py: |
+      def create_wrapper(prefix):
+          def validate(text):
+              return text is not None and isinstance(text, str)
+
+          def transform(text):
+              return f"{prefix}_{text}"
+
+          def execute(text):
+              if not validate(text):
+                  return None
+              return transform(text)
+
+          return execute
+    middleware.py: |
+      def validate_request(request):
+          if request is not None and 'body' in request:
+              return True
+          return False
+
+      def parse_body(request):
+          if request is not None:
+              return request.get('body', {})
+          return {}
+
+      def handle_request(request):
+          if not validate_request(request):
+              return {'error': 'Invalid request'}
+          return parse_body(request)
+  changed_files:
+    decorator.py: |
+      def outer_function(config):
+          def inner_validator(value):
+              return value is not None and len(value) > 0
+
+          def inner_transformer(value):
+              return value.upper()
+
+          def process(data):
+              if not inner_validator(data):
+                  return None
+              return inner_transformer(data)
+
+          return process
+    wrapper.py: |
+      def create_wrapper(prefix):
+          def validate(text):
+              return text is not None and isinstance(text, str)
+
+          def transform(text):
+              return f"{prefix}_{text}"
+
+          def execute(text):
+              if not validate(text):
+                  return None
+              return transform(text)
+
+          return execute
+    middleware.py: |
+      def validate_request(request):
+          if request is not None and 'body' in request:
+              return True
+          return False
+
+      def parse_body(request):
+          if request is not None:
+              return request.get('body', {})
+          return {}
+
+      def handle_request(request):
+          if not validate_request(request):
+              return {'error': 'Invalid request'}
+          return parse_body(request)
+  commit_message: Update files
+fragments:
+- id: decorator
+  selector:
+    path: decorator.py
+    anchor: return value is not None and len(value) > 0
+- id: no_wrapper
+  selector:
+    path: wrapper.py
+- id: no_middleware
+  selector:
+    path: middleware.py
+- id: no_global_0
+  selector:
+    anchor: create_wrapper
+- id: no_global_1
+  selector:
+    anchor: prefix
+- id: no_global_2
+  selector:
+    anchor: validate_request
+- id: no_global_3
+  selector:
+    anchor: parse_body
+- id: no_global_4
+  selector:
+    anchor: handle_request
+oracle:
+  required:
+  - decorator
+  allowed: []
+  forbidden:
+  - no_wrapper
+  - no_middleware
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

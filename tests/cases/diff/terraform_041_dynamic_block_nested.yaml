@@ -1,0 +1,148 @@
+name: terraform_041_dynamic_block_nested
+repo:
+  initial_files:
+    lb.tf: |
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = aws_acm_certificate.main.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+      }
+    alb.tf: |
+      resource "aws_lb" "main" {
+        name               = "app-alb"
+        internal           = false
+        load_balancer_type = "application"
+        security_groups    = [aws_security_group.alb.id]
+        subnets            = var.public_subnet_ids
+      }
+
+      resource "aws_lb_target_group" "app" {
+        name     = "app-tg"
+        port     = 8080
+        protocol = "HTTP"
+        vpc_id   = aws_vpc.main.id
+      }
+    variables.tf: |
+      variable "redirects" {
+        type = list(object({
+          host   = string
+          target = string
+        }))
+        default = []
+      }
+
+      variable "public_subnet_ids" {
+        type = list(string)
+      }
+    internal/internal_lb.tf: |
+      variable "internal_redirects" {
+        default = [
+          { host = "old-internal.corp.com", target = "new-internal.corp.com" }
+        ]
+      }
+
+      resource "aws_lb_listener" "internal" {
+        load_balancer_arn = aws_lb.internal.arn
+        port              = 443
+        protocol          = "HTTPS"
+
+        dynamic "default_action" {
+          for_each = var.internal_redirects
+          content {
+            type = "redirect"
+            redirect {
+              host        = default_action.value.target
+              status_code = "HTTP_301"
+            }
+          }
+        }
+      }
+    scripts/lb_health.sh: |
+      #!/bin/bash
+      echo "Checking LB health..."
+      aws elbv2 describe-target-health --target-group-arn "$1"
+  changed_files:
+    lb.tf: |
+      resource "aws_lb_listener" "https" {
+        load_balancer_arn = aws_lb.main.arn
+        port              = 443
+        protocol          = "HTTPS"
+        ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        certificate_arn   = aws_acm_certificate.main.arn
+
+        default_action {
+          type             = "forward"
+          target_group_arn = aws_lb_target_group.app.arn
+        }
+
+        dynamic "default_action" {
+          for_each = var.redirects
+          content {
+            type = "redirect"
+            redirect {
+              host        = default_action.value.target
+              port        = "443"
+              protocol    = "HTTPS"
+              status_code = "HTTP_301"
+            }
+          }
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: alb
+  selector:
+    path: alb.tf
+    anchor: resource "aws_lb" "main" {
+- id: alb_1
+  selector:
+    path: alb.tf
+    anchor: name               = "app-alb"
+- id: variables
+  selector:
+    path: variables.tf
+    anchor: variable "redirects" {
+- id: variables_1
+  selector:
+    path: variables.tf
+    anchor: host   = string
+- id: variables_2
+  selector:
+    path: variables.tf
+    anchor: target = string
+- id: no_internal_lb
+  selector:
+    path: internal/internal_lb.tf
+- id: no_lb_health
+  selector:
+    path: scripts/lb_health.sh
+- id: no_global_0
+  selector:
+    anchor: internal_redirects
+- id: no_global_1
+  selector:
+    anchor: aws_lb.internal.arn
+- id: no_global_2
+  selector:
+    anchor: describe-target-health
+oracle:
+  required:
+  - alb
+  - alb_1
+  - variables
+  - variables_1
+  - variables_2
+  allowed: []
+  forbidden:
+  - no_internal_lb
+  - no_lb_health
+  - no_global_0
+  - no_global_1
+  - no_global_2

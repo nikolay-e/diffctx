@@ -1,0 +1,248 @@
+name: kubernetes_014_node_selector
+repo:
+  initial_files:
+    k8s/ml/training-job.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ml-training
+        namespace: ml-workloads
+        labels:
+          app: ml-training
+          workload-type: gpu-intensive
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: ml-training
+        template:
+          metadata:
+            labels:
+              app: ml-training
+              workload-type: gpu-intensive
+          spec:
+            containers:
+            - name: trainer
+              image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+              command: ["python", "train.py"]
+              env:
+              - name: MODEL_NAME
+                value: "gpt-finetune"
+              - name: BATCH_SIZE
+                value: "32"
+              resources:
+                requests:
+                  memory: "16Gi"
+                  cpu: "4"
+                limits:
+                  memory: "32Gi"
+                  cpu: "8"
+    k8s/ml/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ml-training-metrics
+        namespace: ml-workloads
+      spec:
+        selector:
+          app: ml-training
+        ports:
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+    k8s/ml/model-serving.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: model-serving
+        namespace: ml-workloads
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: model-serving
+        template:
+          metadata:
+            labels:
+              app: model-serving
+          spec:
+            containers:
+            - name: serving
+              image: pytorch/torchserve:0.8.0
+              ports:
+              - containerPort: 8080
+              - containerPort: 8081
+              env:
+              - name: MODEL_STORE
+                value: "/models"
+    k8s/infra/gpu-device-plugin.yaml: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: nvidia-device-plugin
+        namespace: kube-system
+      spec:
+        selector:
+          matchLabels:
+            name: nvidia-device-plugin
+        template:
+          spec:
+            tolerations:
+            - key: nvidia.com/gpu
+              operator: Exists
+              effect: NoSchedule
+            containers:
+            - name: nvidia-device-plugin
+              image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+              securityContext:
+                allowPrivilegeEscalation: false
+  changed_files:
+    k8s/ml/training-job.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ml-training
+        namespace: ml-workloads
+        labels:
+          app: ml-training
+          workload-type: gpu-intensive
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: ml-training
+        template:
+          metadata:
+            labels:
+              app: ml-training
+              workload-type: gpu-intensive
+          spec:
+            nodeSelector:
+              accelerator: nvidia-tesla-a100
+              gpu-memory: "80gb"
+              node.kubernetes.io/instance-type: p4d.24xlarge
+            containers:
+            - name: trainer
+              image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+              command: ["python", "train.py"]
+              env:
+              - name: MODEL_NAME
+                value: "gpt-finetune"
+              - name: BATCH_SIZE
+                value: "32"
+              resources:
+                requests:
+                  memory: "16Gi"
+                  cpu: "4"
+                  nvidia.com/gpu: "8"
+                limits:
+                  memory: "32Gi"
+                  cpu: "8"
+                  nvidia.com/gpu: "8"
+    k8s/ml/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ml-training-metrics
+        namespace: ml-workloads
+      spec:
+        selector:
+          app: ml-training
+        ports:
+        - name: metrics
+          port: 9090
+          targetPort: 9090
+    k8s/ml/model-serving.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: model-serving
+        namespace: ml-workloads
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: model-serving
+        template:
+          metadata:
+            labels:
+              app: model-serving
+          spec:
+            containers:
+            - name: serving
+              image: pytorch/torchserve:0.8.0
+              ports:
+              - containerPort: 8080
+              - containerPort: 8081
+              env:
+              - name: MODEL_STORE
+                value: "/models"
+    k8s/infra/gpu-device-plugin.yaml: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: nvidia-device-plugin
+        namespace: kube-system
+      spec:
+        selector:
+          matchLabels:
+            name: nvidia-device-plugin
+        template:
+          spec:
+            tolerations:
+            - key: nvidia.com/gpu
+              operator: Exists
+              effect: NoSchedule
+            containers:
+            - name: nvidia-device-plugin
+              image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+              securityContext:
+                allowPrivilegeEscalation: false
+  commit_message: Update files
+fragments:
+- id: training_job
+  selector:
+    path: k8s/ml/training-job.yaml
+    anchor: 'nodeSelector:'
+- id: training_job_1
+  selector:
+    path: k8s/ml/training-job.yaml
+    anchor: 'accelerator: nvidia-tesla-a100'
+- id: no_model_serving
+  selector:
+    path: k8s/ml/model-serving.yaml
+- id: no_gpu_device_plugin
+  selector:
+    path: k8s/infra/gpu-device-plugin.yaml
+- id: no_global_0
+  selector:
+    anchor: model-serving
+- id: no_global_1
+  selector:
+    anchor: torchserve
+- id: no_global_2
+  selector:
+    anchor: MODEL_STORE
+- id: no_global_3
+  selector:
+    anchor: nvidia-device-plugin
+- id: no_global_4
+  selector:
+    anchor: k8s-device-plugin
+- id: no_global_5
+  selector:
+    anchor: nvcr.io/nvidia
+oracle:
+  required:
+  - training_job
+  - training_job_1
+  allowed: []
+  forbidden:
+  - no_model_serving
+  - no_gpu_device_plugin
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

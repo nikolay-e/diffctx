@@ -1,0 +1,98 @@
+name: internals_004_chinese_in_strings
+repo:
+  initial_files:
+    src/greetings/handler.py: |
+      from src.greetings.templates import get_template
+      def create_greeting(user_name: str, language: str) -> str:
+          template = get_template(language)
+          return template.format(name=user_name)
+      def send_greeting(user_id: int, message: str) -> bool:
+          return len(message) > 0
+    src/greetings/templates.py: |
+      TEMPLATES = {"en": "Hello!", "fr": "Bonjour!"}
+      def get_template(language: str) -> str:
+          return TEMPLATES.get(language, TEMPLATES["en"])
+    garbage_template_cache.py: |
+      GARBAGE_INT_004_CACHE_MARKER_A = "tmpl"
+      GARBAGE_INT_004_EVICT_MARKER_B = "lru"
+
+      class GarbageTemplateCache:
+          def noop(self):
+              pass
+    garbage_greeting_log.py: |
+      GARBAGE_INT_004_LOG_MARKER_C = "greet"
+      GARBAGE_INT_004_AUDIT_MARKER_D = "track"
+
+      class GarbageGreetingLog:
+          def noop(self):
+              pass
+  changed_files:
+    src/greetings/handler.py: |
+      from src.greetings.templates import get_template
+      def create_greeting(user_name: str, language: str) -> str:
+          template = get_template(language)
+          return template.format(name=user_name)
+      def send_greeting(user_id: int, message: str) -> bool:
+          return len(message) > 0
+    src/greetings/templates.py: |
+      TEMPLATES = {"en": "Hello!", "fr": "Bonjour!", "zh": "你好世界!", "zh_formal": "您好，欢迎光临！"}
+      def get_template(language: str) -> str:
+          return TEMPLATES.get(language, TEMPLATES["en"])
+      def list_supported_languages() -> list:
+          return list(TEMPLATES.keys())
+    garbage_template_cache.py: |
+      GARBAGE_INT_004_CACHE_MARKER_A = "tmpl"
+      GARBAGE_INT_004_EVICT_MARKER_B = "lru"
+
+      class GarbageTemplateCache:
+          def noop(self):
+              pass
+    garbage_greeting_log.py: |
+      GARBAGE_INT_004_LOG_MARKER_C = "greet"
+      GARBAGE_INT_004_AUDIT_MARKER_D = "track"
+
+      class GarbageGreetingLog:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: templates_file
+  selector:
+    path: src/greetings/templates.py
+- id: req_global_0
+  selector:
+    anchor: 'TEMPLATES = {"en": "Hello!", "fr": "Bonjour!", "zh": "你好世界!", "zh_formal": "您好，欢迎光临！"}'
+- id: req_global_1
+  selector:
+    anchor: 'def list_supported_languages() -> list:'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_004_AUDIT_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_004_CACHE_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_004_EVICT_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_004_LOG_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: garbage_greeting_log.py
+- id: no_global_5
+  selector:
+    anchor: garbage_template_cache.py
+oracle:
+  required:
+  - templates_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,125 @@
+name: relations_003_module_changed_find_test_module
+repo:
+  initial_files:
+    utils/formatting.py: |
+      def format_currency(amount):
+          return f"${amount:.2f}"
+    tests/utils/test_formatting.py: |
+      from utils.formatting import format_currency
+
+      def test_format_currency():
+          assert format_currency(10) == "$10.00"
+    utils/number_formatting.py: |
+      def format_with_commas(value):
+          return f"{value:,.0f}"
+
+      def format_percentage(value, decimals=1):
+          return f"{value:.{decimals}f}%"
+
+      def format_bytes(size_bytes):
+          for unit in ['B', 'KB', 'MB', 'GB']:
+              if size_bytes < 1024:
+                  return f"{size_bytes:.1f} {unit}"
+              size_bytes /= 1024
+          return f"{size_bytes:.1f} TB"
+    utils/locale_config.py: |
+      SUPPORTED_LOCALES = {
+          "en": {"decimal": ".", "thousands": ",", "currency": "$"},
+          "de": {"decimal": ",", "thousands": ".", "currency": "EUR"},
+          "jp": {"decimal": ".", "thousands": ",", "currency": "JPY"},
+      }
+
+      def get_locale_settings(locale="en"):
+          return SUPPORTED_LOCALES.get(locale, SUPPORTED_LOCALES["en"])
+
+      def format_for_locale(value, locale="en"):
+          settings = get_locale_settings(locale)
+          return f"{settings['currency']}{value}"
+  changed_files:
+    utils/formatting.py: |
+      def format_currency(amount, symbol="$"):
+          return f"{symbol}{amount:.2f}"
+    tests/utils/test_formatting.py: |
+      from utils.formatting import format_currency
+
+      def test_format_currency():
+          assert format_currency(10) == "$10.00"
+    utils/number_formatting.py: |
+      def format_with_commas(value):
+          return f"{value:,.0f}"
+
+      def format_percentage(value, decimals=1):
+          return f"{value:.{decimals}f}%"
+
+      def format_bytes(size_bytes):
+          for unit in ['B', 'KB', 'MB', 'GB']:
+              if size_bytes < 1024:
+                  return f"{size_bytes:.1f} {unit}"
+              size_bytes /= 1024
+          return f"{size_bytes:.1f} TB"
+    utils/locale_config.py: |
+      SUPPORTED_LOCALES = {
+          "en": {"decimal": ".", "thousands": ",", "currency": "$"},
+          "de": {"decimal": ",", "thousands": ".", "currency": "EUR"},
+          "jp": {"decimal": ".", "thousands": ",", "currency": "JPY"},
+      }
+
+      def get_locale_settings(locale="en"):
+          return SUPPORTED_LOCALES.get(locale, SUPPORTED_LOCALES["en"])
+
+      def format_for_locale(value, locale="en"):
+          settings = get_locale_settings(locale)
+          return f"{settings['currency']}{value}"
+  commit_message: Update files
+fragments:
+- id: formatting
+  selector:
+    path: utils/formatting.py
+    anchor: 'def format_currency(amount, symbol="$"):'
+- id: test_formatting
+  selector:
+    path: tests/utils/test_formatting.py
+    anchor: from utils.formatting import format_currency
+- id: test_formatting_1
+  selector:
+    path: tests/utils/test_formatting.py
+    anchor: assert format_currency(10) == "$10.00"
+- id: no_number_formatting
+  selector:
+    path: utils/number_formatting.py
+- id: no_locale_config
+  selector:
+    path: utils/locale_config.py
+- id: no_global_0
+  selector:
+    anchor: format_with_commas
+- id: no_global_1
+  selector:
+    anchor: format_percentage
+- id: no_global_2
+  selector:
+    anchor: format_bytes
+- id: no_global_3
+  selector:
+    anchor: SUPPORTED_LOCALES
+- id: no_global_4
+  selector:
+    anchor: get_locale_settings
+- id: no_global_5
+  selector:
+    anchor: format_for_locale
+oracle:
+  required:
+  - formatting
+  - test_formatting
+  - test_formatting_1
+  allowed: []
+  forbidden:
+  - no_number_formatting
+  - no_locale_config
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,160 @@
+name: javascript_extended_012_redux_action_change
+repo:
+  initial_files:
+    src/store/actions.ts: |
+      export const INCREMENT = 'INCREMENT';
+      export const DECREMENT = 'DECREMENT';
+
+      export const increment = () => ({ type: INCREMENT });
+      export const decrement = () => ({ type: DECREMENT });
+    src/store/reducer.ts: |
+      import { INCREMENT, DECREMENT } from './actions';
+
+      const initialState = { count: 0 };
+
+      export function counterReducer(state = initialState, action: any) {
+          switch (action.type) {
+              case INCREMENT:
+                  return { count: state.count + 1 };
+              case DECREMENT:
+                  return { count: state.count - 1 };
+              default:
+                  return state;
+          }
+      }
+    src/store/selectors.ts: |
+      interface CounterState {
+          count: number;
+      }
+
+      export function selectCount(state: CounterState): number {
+          return state.count;
+      }
+
+      export function selectIsPositive(state: CounterState): boolean {
+          return state.count > 0;
+      }
+
+      export function selectCountDisplay(state: CounterState): string {
+          return `Count: ${state.count}`;
+      }
+    src/store/middleware.ts: |
+      export function loggerMiddleware(store: any) {
+          return (next: any) => (action: any) => {
+              console.log('dispatching:', action.type);
+              const result = next(action);
+              console.log('next state:', store.getState());
+              return result;
+          };
+      }
+
+      export function crashReporter(store: any) {
+          return (next: any) => (action: any) => {
+              try {
+                  return next(action);
+              } catch (err) {
+                  console.error('Caught exception:', err);
+                  throw err;
+              }
+          };
+      }
+  changed_files:
+    src/store/actions.ts: |
+      export const INCREMENT = 'INCREMENT';
+      export const DECREMENT = 'DECREMENT';
+      export const RESET = 'RESET';
+      export const SET = 'SET';
+
+      export const increment = () => ({ type: INCREMENT });
+      export const decrement = () => ({ type: DECREMENT });
+      export const reset = () => ({ type: RESET });
+      export const setValue = (value: number) => ({ type: SET, payload: value });
+    src/store/reducer.ts: |
+      import { INCREMENT, DECREMENT } from './actions';
+
+      const initialState = { count: 0 };
+
+      export function counterReducer(state = initialState, action: any) {
+          switch (action.type) {
+              case INCREMENT:
+                  return { count: state.count + 1 };
+              case DECREMENT:
+                  return { count: state.count - 1 };
+              default:
+                  return state;
+          }
+      }
+    src/store/selectors.ts: |
+      interface CounterState {
+          count: number;
+      }
+
+      export function selectCount(state: CounterState): number {
+          return state.count;
+      }
+
+      export function selectIsPositive(state: CounterState): boolean {
+          return state.count > 0;
+      }
+
+      export function selectCountDisplay(state: CounterState): string {
+          return `Count: ${state.count}`;
+      }
+    src/store/middleware.ts: |
+      export function loggerMiddleware(store: any) {
+          return (next: any) => (action: any) => {
+              console.log('dispatching:', action.type);
+              const result = next(action);
+              console.log('next state:', store.getState());
+              return result;
+          };
+      }
+
+      export function crashReporter(store: any) {
+          return (next: any) => (action: any) => {
+              try {
+                  return next(action);
+              } catch (err) {
+                  console.error('Caught exception:', err);
+                  throw err;
+              }
+          };
+      }
+  commit_message: Update files
+fragments:
+- id: actions_file
+  selector:
+    path: src/store/actions.ts
+- id: req_global_0
+  selector:
+    anchor: INCREMENT = 'INCREMENT'
+- id: req_global_1
+  selector:
+    anchor: DECREMENT = 'DECREMENT'
+- id: no_global_0
+  selector:
+    anchor: selectCount
+- id: no_global_1
+  selector:
+    anchor: selectIsPositive
+- id: no_global_2
+  selector:
+    anchor: selectCountDisplay
+- id: no_global_3
+  selector:
+    anchor: loggerMiddleware
+- id: no_global_4
+  selector:
+    anchor: crashReporter
+oracle:
+  required:
+  - actions_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

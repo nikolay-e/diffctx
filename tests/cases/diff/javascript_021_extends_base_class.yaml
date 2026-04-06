@@ -1,0 +1,184 @@
+name: javascript_021_extends_base_class
+repo:
+  initial_files:
+    base.ts: |
+      export class BaseClass {
+          protected name: string;
+
+          constructor(name: string) {
+              this.name = name;
+          }
+
+          greet(): string {
+              return `Hello, ${this.name}`;
+          }
+      }
+    derived.ts: |
+      console.log('initial');
+    admin-user.ts: |
+      import { BaseClass } from './base';
+
+      export class AdminUser extends BaseClass {
+          private permissions: string[];
+
+          constructor(name: string, permissions: string[]) {
+              super(name);
+              this.permissions = permissions;
+          }
+
+          hasPermission(perm: string): boolean {
+              return this.permissions.includes(perm);
+          }
+
+          describe(): string {
+              return `${this.greet()}, I have ${this.permissions.length} permissions`;
+          }
+      }
+    base-factory.ts: |
+      import { BaseClass } from './base';
+
+      export function createBaseInstance(name: string): BaseClass {
+          return new BaseClass(name);
+      }
+
+      export function createMultiple(names: string[]): BaseClass[] {
+          return names.map(name => new BaseClass(name));
+      }
+
+      export function greetAll(instances: BaseClass[]): string[] {
+          return instances.map(instance => instance.greet());
+      }
+  changed_files:
+    base.ts: |
+      export class BaseClass {
+          protected name: string;
+
+          constructor(name: string) {
+              this.name = name;
+          }
+
+          greet(): string {
+              return `Hello, ${this.name}`;
+          }
+      }
+    derived.ts: |
+      import { BaseClass } from './base';
+
+      export class DerivedClass extends BaseClass {
+          private age: number;
+
+          constructor(name: string, age: number) {
+              super(name);
+              this.age = age;
+          }
+
+          describe(): string {
+              return `${this.greet()}, I am ${this.age} years old`;
+          }
+      }
+    admin-user.ts: |
+      import { BaseClass } from './base';
+
+      export class AdminUser extends BaseClass {
+          private permissions: string[];
+
+          constructor(name: string, permissions: string[]) {
+              super(name);
+              this.permissions = permissions;
+          }
+
+          hasPermission(perm: string): boolean {
+              return this.permissions.includes(perm);
+          }
+
+          describe(): string {
+              return `${this.greet()}, I have ${this.permissions.length} permissions`;
+          }
+      }
+    base-factory.ts: |
+      import { BaseClass } from './base';
+
+      export function createBaseInstance(name: string): BaseClass {
+          return new BaseClass(name);
+      }
+
+      export function createMultiple(names: string[]): BaseClass[] {
+          return names.map(name => new BaseClass(name));
+      }
+
+      export function greetAll(instances: BaseClass[]): string[] {
+          return instances.map(instance => instance.greet());
+      }
+  commit_message: Update files
+fragments:
+- id: derived
+  selector:
+    path: derived.ts
+    anchor: import { BaseClass } from './base'
+- id: derived_1
+  selector:
+    path: derived.ts
+    anchor: class DerivedClass extends BaseClass
+- id: derived_2
+  selector:
+    path: derived.ts
+    anchor: super(name)
+- id: derived_3
+  selector:
+    path: derived.ts
+    anchor: this.greet()
+- id: base
+  selector:
+    path: base.ts
+    anchor: class BaseClass
+- id: base_1
+  selector:
+    path: base.ts
+    anchor: 'constructor(name: string)'
+- id: base_2
+  selector:
+    path: base.ts
+    anchor: 'greet(): string'
+- id: no_admin_user
+  selector:
+    path: admin-user.ts
+- id: no_base_factory
+  selector:
+    path: base-factory.ts
+- id: no_global_0
+  selector:
+    anchor: AdminUser
+- id: no_global_1
+  selector:
+    anchor: hasPermission
+- id: no_global_2
+  selector:
+    anchor: permissions
+- id: no_global_3
+  selector:
+    anchor: createBaseInstance
+- id: no_global_4
+  selector:
+    anchor: createMultiple
+- id: no_global_5
+  selector:
+    anchor: greetAll
+oracle:
+  required:
+  - derived
+  - derived_1
+  - derived_2
+  - derived_3
+  - base
+  - base_1
+  - base_2
+  allowed: []
+  forbidden:
+  - no_admin_user
+  - no_base_factory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

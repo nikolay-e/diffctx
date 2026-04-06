@@ -1,0 +1,497 @@
+name: kubernetes_040_session_affinity
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        labels:
+          app: stateful-web-app
+          tier: frontend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: stateful-web-app
+        template:
+          metadata:
+            labels:
+              app: stateful-web-app
+              tier: frontend
+          spec:
+            containers:
+            - name: webapp
+              image: registry.example.com/stateful-web-app:v2.5.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              env:
+              - name: SESSION_STORE
+                value: "memory"
+              - name: SESSION_TIMEOUT
+                value: "3600"
+              volumeMounts:
+              - name: session-data
+                mountPath: /app/sessions
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+            volumes:
+            - name: session-data
+              emptyDir: {}
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        labels:
+          app: stateful-web-app
+      spec:
+        selector:
+          app: stateful-web-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: https
+          port: 443
+          targetPort: 8443
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/affinity: "cookie"
+          nginx.ingress.kubernetes.io/session-cookie-name: "INGRESSCOOKIE"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: app.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: stateful-web-app
+                  port:
+                    number: 80
+    k8s/base/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: stateful-web-app-pdb
+        namespace: production
+      spec:
+        minAvailable: 3
+        selector:
+          matchLabels:
+            app: stateful-web-app
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: stateful-web-app-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: stateful-web-app
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/monitoring/servicemonitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: stateful-web-app-monitor
+        namespace: monitoring
+        labels:
+          app: stateful-web-app
+      spec:
+        namespaceSelector:
+          matchNames:
+          - production
+        selector:
+          matchLabels:
+            app: stateful-web-app
+        endpoints:
+        - port: http
+          path: /metrics
+          interval: 30s
+    k8s/cache/redis-sentinel.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: redis-sentinel
+        namespace: cache
+      spec:
+        serviceName: redis-sentinel
+        replicas: 3
+        selector:
+          matchLabels:
+            app: redis-sentinel
+        template:
+          spec:
+            containers:
+            - name: redis
+              image: redis:7-alpine
+              ports:
+              - containerPort: 26379
+                name: sentinel
+              command:
+              - redis-sentinel
+              - /etc/redis/sentinel.conf
+    k8s/cache/memcached-pool.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: memcached-pool
+        namespace: cache
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: memcached
+        template:
+          spec:
+            containers:
+            - name: memcached
+              image: memcached:1.6-alpine
+              ports:
+              - containerPort: 11211
+              args:
+              - -m 512
+              - -c 1024
+              resources:
+                limits:
+                  memory: "768Mi"
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        labels:
+          app: stateful-web-app
+          tier: frontend
+      spec:
+        replicas: 5
+        selector:
+          matchLabels:
+            app: stateful-web-app
+        template:
+          metadata:
+            labels:
+              app: stateful-web-app
+              tier: frontend
+          spec:
+            containers:
+            - name: webapp
+              image: registry.example.com/stateful-web-app:v2.5.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              env:
+              - name: SESSION_STORE
+                value: "memory"
+              - name: SESSION_TIMEOUT
+                value: "3600"
+              volumeMounts:
+              - name: session-data
+                mountPath: /app/sessions
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+            volumes:
+            - name: session-data
+              emptyDir: {}
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        labels:
+          app: stateful-web-app
+        annotations:
+          service.kubernetes.io/session-affinity: "ClientIP"
+      spec:
+        selector:
+          app: stateful-web-app
+        sessionAffinity: ClientIP
+        sessionAffinityConfig:
+          clientIP:
+            timeoutSeconds: 3600
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: https
+          port: 443
+          targetPort: 8443
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: stateful-web-app
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/affinity: "cookie"
+          nginx.ingress.kubernetes.io/session-cookie-name: "INGRESSCOOKIE"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: app.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: stateful-web-app
+                  port:
+                    number: 80
+    k8s/base/pdb.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: stateful-web-app-pdb
+        namespace: production
+      spec:
+        minAvailable: 3
+        selector:
+          matchLabels:
+            app: stateful-web-app
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: stateful-web-app-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: stateful-web-app
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/monitoring/servicemonitor.yaml: |
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: stateful-web-app-monitor
+        namespace: monitoring
+        labels:
+          app: stateful-web-app
+      spec:
+        namespaceSelector:
+          matchNames:
+          - production
+        selector:
+          matchLabels:
+            app: stateful-web-app
+        endpoints:
+        - port: http
+          path: /metrics
+          interval: 30s
+    k8s/cache/redis-sentinel.yaml: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: redis-sentinel
+        namespace: cache
+      spec:
+        serviceName: redis-sentinel
+        replicas: 3
+        selector:
+          matchLabels:
+            app: redis-sentinel
+        template:
+          spec:
+            containers:
+            - name: redis
+              image: redis:7-alpine
+              ports:
+              - containerPort: 26379
+                name: sentinel
+              command:
+              - redis-sentinel
+              - /etc/redis/sentinel.conf
+    k8s/cache/memcached-pool.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: memcached-pool
+        namespace: cache
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: memcached
+        template:
+          spec:
+            containers:
+            - name: memcached
+              image: memcached:1.6-alpine
+              ports:
+              - containerPort: 11211
+              args:
+              - -m 512
+              - -c 1024
+              resources:
+                limits:
+                  memory: "768Mi"
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'service.kubernetes.io/session-affinity: "ClientIP"'
+- id: service_1
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'sessionAffinity: ClientIP'
+- id: service_2
+  selector:
+    path: k8s/base/service.yaml
+    anchor: 'timeoutSeconds: 3600'
+- id: deployment
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'value: "memory"'
+- id: deployment_1
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'value: "3600"'
+- id: ingress
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/affinity: "cookie"'
+- id: ingress_1
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/session-cookie-name: "INGRESSCOOKIE"'
+- id: no_pdb
+  selector:
+    path: k8s/base/pdb.yaml
+- id: no_hpa
+  selector:
+    path: k8s/base/hpa.yaml
+- id: no_servicemonitor
+  selector:
+    path: k8s/monitoring/servicemonitor.yaml
+- id: no_redis_sentinel
+  selector:
+    path: k8s/cache/redis-sentinel.yaml
+- id: no_memcached_pool
+  selector:
+    path: k8s/cache/memcached-pool.yaml
+- id: no_global_0
+  selector:
+    anchor: stateful-web-app-pdb
+- id: no_global_1
+  selector:
+    anchor: PodDisruptionBudget
+- id: no_global_2
+  selector:
+    anchor: 'minAvailable: 3'
+- id: no_global_3
+  selector:
+    anchor: stateful-web-app-hpa
+- id: no_global_4
+  selector:
+    anchor: HorizontalPodAutoscaler
+- id: no_global_5
+  selector:
+    anchor: 'averageUtilization: 70'
+- id: no_global_6
+  selector:
+    anchor: stateful-web-app-monitor
+- id: no_global_7
+  selector:
+    anchor: ServiceMonitor
+- id: no_global_8
+  selector:
+    anchor: /metrics
+- id: no_global_9
+  selector:
+    anchor: redis-sentinel
+- id: no_global_10
+  selector:
+    anchor: sentinel.conf
+- id: no_global_11
+  selector:
+    anchor: 'containerPort: 26379'
+- id: no_global_12
+  selector:
+    anchor: memcached-pool
+- id: no_global_13
+  selector:
+    anchor: memcached:1.6-alpine
+- id: no_global_14
+  selector:
+    anchor: 'containerPort: 11211'
+oracle:
+  required:
+  - service
+  - service_1
+  - service_2
+  - deployment
+  - deployment_1
+  - ingress
+  - ingress_1
+  allowed: []
+  forbidden:
+  - no_pdb
+  - no_hpa
+  - no_servicemonitor
+  - no_redis_sentinel
+  - no_memcached_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

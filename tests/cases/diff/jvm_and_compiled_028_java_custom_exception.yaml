@@ -1,0 +1,324 @@
+name: jvm_and_compiled_028_java_custom_exception
+repo:
+  initial_files:
+    src/main/java/com/example/Service.java: |
+      package com.example;
+
+      public class Service {
+          public void process(String input) {
+              if (input == null) {
+                  throw new RuntimeException("Input is null");
+              }
+          }
+      }
+    src/main/java/com/example/exceptions/NotFoundException.java: |
+      package com.example.exceptions;
+
+      public class NotFoundException extends ServiceException {
+          public NotFoundException(String resource, String id) {
+              super(resource + " not found: " + id, "NOT_FOUND");
+          }
+      }
+    src/main/java/com/example/handler/GlobalExceptionHandler.java: |
+      package com.example.handler;
+
+      import org.springframework.http.ResponseEntity;
+      import org.springframework.web.bind.annotation.ControllerAdvice;
+      import org.springframework.web.bind.annotation.ExceptionHandler;
+
+      @ControllerAdvice
+      public class GlobalExceptionHandler {
+          @ExceptionHandler(ServiceException.class)
+          public ResponseEntity<ErrorResponse> handleServiceException(ServiceException ex) {
+              ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+              return ResponseEntity.badRequest().body(response);
+          }
+
+          @ExceptionHandler(NotFoundException.class)
+          public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException ex) {
+              ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+              return ResponseEntity.status(404).body(response);
+          }
+      }
+    src/main/java/com/example/dto/ErrorResponse.java: |
+      package com.example.dto;
+
+      public class ErrorResponse {
+          private final String errorCode;
+          private final String message;
+          private final long timestamp;
+
+          public ErrorResponse(String errorCode, String message) {
+              this.errorCode = errorCode;
+              this.message = message;
+              this.timestamp = System.currentTimeMillis();
+          }
+
+          public String getErrorCode() { return errorCode; }
+          public String getMessage() { return message; }
+          public long getTimestamp() { return timestamp; }
+      }
+    src/main/java/com/example/exceptions/AuthorizationException.java: |
+      package com.example.exceptions;
+
+      public class AuthorizationException extends ServiceException {
+          public AuthorizationException(String action) {
+              super("Not authorized to: " + action, "AUTHORIZATION_ERROR");
+          }
+      }
+    src/test/java/com/example/ServiceTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class ServiceTest {
+          private final Service service = new Service();
+
+          @Test
+          void processNullInputThrows() {
+              assertThrows(RuntimeException.class, () -> service.process(null));
+          }
+
+          @Test
+          void processValidInput() {
+              assertDoesNotThrow(() -> service.process("valid"));
+          }
+      }
+  changed_files:
+    src/main/java/com/example/Service.java: |
+      package com.example;
+
+      public class Service {
+          public void process(String input) {
+              if (input == null) {
+                  throw new ValidationException("Input cannot be null");
+              }
+              if (input.isEmpty()) {
+                  throw new ValidationException("Input cannot be empty");
+              }
+          }
+      }
+    src/main/java/com/example/exceptions/ServiceException.java: |
+      package com.example.exceptions;
+
+      public class ServiceException extends RuntimeException {
+          private final String errorCode;
+
+          public ServiceException(String message, String errorCode) {
+              super(message);
+              this.errorCode = errorCode;
+          }
+
+          public ServiceException(String message, String errorCode, Throwable cause) {
+              super(message, cause);
+              this.errorCode = errorCode;
+          }
+
+          public String getErrorCode() {
+              return errorCode;
+          }
+      }
+    src/main/java/com/example/exceptions/ValidationException.java: |
+      package com.example.exceptions;
+
+      public class ValidationException extends ServiceException {
+          public ValidationException(String message) {
+              super(message, "VALIDATION_ERROR");
+          }
+      }
+    src/main/java/com/example/exceptions/NotFoundException.java: |
+      package com.example.exceptions;
+
+      public class NotFoundException extends ServiceException {
+          public NotFoundException(String resource, String id) {
+              super(resource + " not found: " + id, "NOT_FOUND");
+          }
+      }
+    src/main/java/com/example/handler/GlobalExceptionHandler.java: |
+      package com.example.handler;
+
+      import org.springframework.http.ResponseEntity;
+      import org.springframework.web.bind.annotation.ControllerAdvice;
+      import org.springframework.web.bind.annotation.ExceptionHandler;
+
+      @ControllerAdvice
+      public class GlobalExceptionHandler {
+          @ExceptionHandler(ServiceException.class)
+          public ResponseEntity<ErrorResponse> handleServiceException(ServiceException ex) {
+              ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+              return ResponseEntity.badRequest().body(response);
+          }
+
+          @ExceptionHandler(NotFoundException.class)
+          public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException ex) {
+              ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+              return ResponseEntity.status(404).body(response);
+          }
+      }
+    src/main/java/com/example/dto/ErrorResponse.java: |
+      package com.example.dto;
+
+      public class ErrorResponse {
+          private final String errorCode;
+          private final String message;
+          private final long timestamp;
+
+          public ErrorResponse(String errorCode, String message) {
+              this.errorCode = errorCode;
+              this.message = message;
+              this.timestamp = System.currentTimeMillis();
+          }
+
+          public String getErrorCode() { return errorCode; }
+          public String getMessage() { return message; }
+          public long getTimestamp() { return timestamp; }
+      }
+    src/main/java/com/example/exceptions/AuthorizationException.java: |
+      package com.example.exceptions;
+
+      public class AuthorizationException extends ServiceException {
+          public AuthorizationException(String action) {
+              super("Not authorized to: " + action, "AUTHORIZATION_ERROR");
+          }
+      }
+    src/test/java/com/example/ServiceTest.java: |
+      package com.example;
+
+      import org.junit.jupiter.api.Test;
+      import static org.junit.jupiter.api.Assertions.*;
+
+      class ServiceTest {
+          private final Service service = new Service();
+
+          @Test
+          void processNullInputThrows() {
+              assertThrows(RuntimeException.class, () -> service.process(null));
+          }
+
+          @Test
+          void processValidInput() {
+              assertDoesNotThrow(() -> service.process("valid"));
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: src/main/java/com/example/Service.java
+    anchor: throw new ValidationException("Input cannot be null")
+- id: service_1
+  selector:
+    path: src/main/java/com/example/Service.java
+    anchor: throw new ValidationException("Input cannot be empty")
+- id: serviceexception
+  selector:
+    path: src/main/java/com/example/exceptions/ServiceException.java
+    anchor: public class ServiceException extends RuntimeException
+- id: serviceexception_1
+  selector:
+    path: src/main/java/com/example/exceptions/ServiceException.java
+    anchor: private final String errorCode
+- id: serviceexception_2
+  selector:
+    path: src/main/java/com/example/exceptions/ServiceException.java
+    anchor: public String getErrorCode()
+- id: validationexception
+  selector:
+    path: src/main/java/com/example/exceptions/ValidationException.java
+    anchor: public class ValidationException extends ServiceException
+- id: validationexception_1
+  selector:
+    path: src/main/java/com/example/exceptions/ValidationException.java
+    anchor: super(message, "VALIDATION_ERROR")
+- id: no_notfoundexception
+  selector:
+    path: src/main/java/com/example/exceptions/NotFoundException.java
+- id: no_globalexceptionhandler
+  selector:
+    path: src/main/java/com/example/handler/GlobalExceptionHandler.java
+- id: no_errorresponse
+  selector:
+    path: src/main/java/com/example/dto/ErrorResponse.java
+- id: no_authorizationexception
+  selector:
+    path: src/main/java/com/example/exceptions/AuthorizationException.java
+- id: no_servicetest
+  selector:
+    path: src/test/java/com/example/ServiceTest.java
+- id: no_global_0
+  selector:
+    anchor: NotFoundException
+- id: no_global_1
+  selector:
+    anchor: NOT_FOUND
+- id: no_global_2
+  selector:
+    anchor: 'not found:'
+- id: no_global_3
+  selector:
+    anchor: GlobalExceptionHandler
+- id: no_global_4
+  selector:
+    anchor: '@ControllerAdvice'
+- id: no_global_5
+  selector:
+    anchor: handleServiceException
+- id: no_global_6
+  selector:
+    anchor: handleNotFound
+- id: no_global_7
+  selector:
+    anchor: ErrorResponse
+- id: no_global_8
+  selector:
+    anchor: timestamp
+- id: no_global_9
+  selector:
+    anchor: AuthorizationException
+- id: no_global_10
+  selector:
+    anchor: AUTHORIZATION_ERROR
+- id: no_global_11
+  selector:
+    anchor: Not authorized to
+- id: no_global_12
+  selector:
+    anchor: ServiceTest
+- id: no_global_13
+  selector:
+    anchor: assertThrows
+- id: no_global_14
+  selector:
+    anchor: assertDoesNotThrow
+oracle:
+  required:
+  - service
+  - service_1
+  - serviceexception
+  - serviceexception_1
+  - serviceexception_2
+  - validationexception
+  - validationexception_1
+  allowed: []
+  forbidden:
+  - no_notfoundexception
+  - no_globalexceptionhandler
+  - no_errorresponse
+  - no_authorizationexception
+  - no_servicetest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

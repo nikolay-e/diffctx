@@ -1,0 +1,243 @@
+name: docker_021_env
+repo:
+  initial_files:
+    src/config.ts: |
+      export const config = {
+          nodeEnv: process.env.NODE_ENV || 'development',
+          port: parseInt(process.env.PORT || '3000'),
+          dbUrl: process.env.DATABASE_URL,
+          redisUrl: process.env.REDIS_URL,
+          logLevel: process.env.LOG_LEVEL || 'info'
+      };
+    src/index.ts: |
+      import { config } from './config';
+      import express from 'express';
+
+      const app = express();
+
+      app.get('/health', (req, res) => {
+          res.json({ status: 'ok', port: config.port });
+      });
+
+      app.listen(config.port, () => {
+          console.log(`Running in ${config.nodeEnv} mode on port ${config.port}`);
+      });
+    package.json: |
+      {
+        "name": "api-service",
+        "version": "1.0.0",
+        "main": "dist/index.js",
+        "scripts": {
+          "build": "tsc",
+          "start": "node dist/index.js"
+        }
+      }
+    Dockerfile: |
+      FROM node:20-alpine
+      WORKDIR /app
+      COPY . .
+      RUN npm ci && npm run build
+      CMD ["node", "dist/index.js"]
+    scripts/local_dev.sh: |
+      #!/bin/bash
+      export NODE_ENV=development
+      export LOG_LEVEL=debug
+      npm run dev
+    tests/config.test.ts: |
+      describe('Config', () => {
+          it('should load env vars', () => {
+              process.env.PORT = '4000';
+              const { config } = require('../src/config');
+              expect(config.port).toBe(4000);
+          });
+      });
+    terraform/variables.tf: |
+      variable "environment" { default = "production" }
+      variable "port" { default = 3000 }
+      variable "log_level" { default = "info" }
+    .env.example: |
+      NODE_ENV=development
+      PORT=3000
+      LOG_LEVEL=info
+      DATABASE_URL=postgres://localhost:5432/app
+  changed_files:
+    src/config.ts: |
+      export const config = {
+          nodeEnv: process.env.NODE_ENV || 'development',
+          port: parseInt(process.env.PORT || '3000'),
+          dbUrl: process.env.DATABASE_URL,
+          redisUrl: process.env.REDIS_URL,
+          logLevel: process.env.LOG_LEVEL || 'info'
+      };
+    src/index.ts: |
+      import { config } from './config';
+      import express from 'express';
+
+      const app = express();
+
+      app.get('/health', (req, res) => {
+          res.json({ status: 'ok', port: config.port });
+      });
+
+      app.listen(config.port, () => {
+          console.log(`Running in ${config.nodeEnv} mode on port ${config.port}`);
+      });
+    package.json: |
+      {
+        "name": "api-service",
+        "version": "1.0.0",
+        "main": "dist/index.js",
+        "scripts": {
+          "build": "tsc",
+          "start": "node dist/index.js"
+        }
+      }
+    Dockerfile: |
+      FROM node:20-alpine AS base
+
+      # Build-time arguments for metadata
+      ARG BUILD_DATE
+      ARG GIT_SHA
+      ARG VERSION=0.0.0
+
+      # Python optimization environment variables
+      ENV NODE_ENV=production \
+          NPM_CONFIG_LOGLEVEL=warn \
+          NPM_CONFIG_FUND=false \
+          NPM_CONFIG_AUDIT=false
+
+      # Runtime configuration with secure defaults
+      ENV PORT=3000 \
+          LOG_LEVEL=info \
+          LOG_FORMAT=json \
+          REQUEST_TIMEOUT=30000 \
+          MAX_CONNECTIONS=100 \
+          GRACEFUL_SHUTDOWN_TIMEOUT=10000
+
+      # Container metadata labels
+      LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+            org.opencontainers.image.revision="${GIT_SHA}" \
+            org.opencontainers.image.version="${VERSION}" \
+            org.opencontainers.image.title="api-service"
+
+      FROM base AS builder
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci --only=production && cp -R node_modules /prod_modules && npm ci
+      COPY . .
+      RUN npm run build
+
+      FROM base AS production
+      WORKDIR /app
+      RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+      COPY --from=builder --chown=nodejs:nodejs /prod_modules ./node_modules
+      COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+      USER nodejs
+      EXPOSE ${PORT}
+
+      HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+          CMD node -e "require('http').get('http://localhost:'+process.env.PORT+'/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+      CMD ["node", "dist/index.js"]
+    scripts/local_dev.sh: |
+      #!/bin/bash
+      export NODE_ENV=development
+      export LOG_LEVEL=debug
+      npm run dev
+    tests/config.test.ts: |
+      describe('Config', () => {
+          it('should load env vars', () => {
+              process.env.PORT = '4000';
+              const { config } = require('../src/config');
+              expect(config.port).toBe(4000);
+          });
+      });
+    terraform/variables.tf: |
+      variable "environment" { default = "production" }
+      variable "port" { default = 3000 }
+      variable "log_level" { default = "info" }
+    .env.example: |
+      NODE_ENV=development
+      PORT=3000
+      LOG_LEVEL=info
+      DATABASE_URL=postgres://localhost:5432/app
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: ARG BUILD_DATE
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: ENV NODE_ENV=production \
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: ENV PORT=3000 \
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: LOG_LEVEL=info
+- id: config
+  selector:
+    path: src/config.ts
+    anchor: 'port: parseInt(process.env.PORT || ''3000'')'
+- id: config_1
+  selector:
+    path: src/config.ts
+    anchor: 'logLevel: process.env.LOG_LEVEL || ''info'''
+- id: no_local_dev
+  selector:
+    path: scripts/local_dev.sh
+- id: no_config_test
+  selector:
+    path: tests/config.test.ts
+- id: no_variables
+  selector:
+    path: terraform/variables.tf
+- id: no_env
+  selector:
+    path: .env.example
+- id: no_global_0
+  selector:
+    anchor: NODE_ENV=development
+- id: no_global_1
+  selector:
+    anchor: LOG_LEVEL=debug
+- id: no_global_2
+  selector:
+    anchor: should load env vars
+- id: no_global_3
+  selector:
+    anchor: expect(config.port).toBe(4000)
+- id: no_global_4
+  selector:
+    anchor: variable "environment"
+- id: no_global_5
+  selector:
+    anchor: variable "port"
+- id: no_global_6
+  selector:
+    anchor: DATABASE_URL=postgres://localhost
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - config
+  - config_1
+  allowed: []
+  forbidden:
+  - no_local_dev
+  - no_config_test
+  - no_variables
+  - no_env
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

@@ -1,0 +1,306 @@
+name: rust_011_generic_struct
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod container;
+      pub mod registry;
+      pub mod pool;
+    src/container.rs: |
+      use std::fmt::Debug;
+
+      #[derive(Debug, Clone)]
+      pub struct Container<T> {
+          value: T,
+          label: String,
+      }
+
+      impl<T> Container<T> {
+          pub fn new(value: T, label: &str) -> Self {
+              Self {
+                  value,
+                  label: label.to_string(),
+              }
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+      }
+
+      impl<T: Clone> Container<T> {
+          pub fn value(&self) -> T {
+              self.value.clone()
+          }
+      }
+
+      impl<T: Default> Default for Container<T> {
+          fn default() -> Self {
+              Self {
+                  value: T::default(),
+                  label: String::from("default"),
+              }
+          }
+      }
+    src/registry.rs: |
+      use std::any::Any;
+      use std::collections::HashMap;
+
+      pub struct TypeRegistry {
+          entries: HashMap<String, Box<dyn Any>>,
+      }
+
+      impl TypeRegistry {
+          pub fn new() -> Self {
+              Self { entries: HashMap::new() }
+          }
+
+          pub fn register<T: 'static>(&mut self, name: &str, value: T) {
+              self.entries.insert(name.to_string(), Box::new(value));
+          }
+
+          pub fn get<T: 'static>(&self, name: &str) -> Option<&T> {
+              self.entries.get(name)?.downcast_ref()
+          }
+
+          pub fn contains(&self, name: &str) -> bool {
+              self.entries.contains_key(name)
+          }
+      }
+    src/pool.rs: |
+      pub struct ObjectPool<T> {
+          available: Vec<T>,
+          max_size: usize,
+      }
+
+      impl<T> ObjectPool<T> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  available: Vec::with_capacity(max_size),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<T> {
+              self.available.pop()
+          }
+
+          pub fn release(&mut self, item: T) {
+              if self.available.len() < self.max_size {
+                  self.available.push(item);
+              }
+          }
+
+          pub fn available_count(&self) -> usize {
+              self.available.len()
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod container;
+      pub mod registry;
+      pub mod pool;
+    src/container.rs: |
+      use std::fmt::Debug;
+      use std::marker::PhantomData;
+
+      #[derive(Debug, Clone)]
+      pub struct Container<T> {
+          value: T,
+          label: String,
+      }
+
+      impl<T> Container<T> {
+          pub fn new(value: T, label: &str) -> Self {
+              Self {
+                  value,
+                  label: label.to_string(),
+              }
+          }
+
+          pub fn label(&self) -> &str {
+              &self.label
+          }
+
+          pub fn get(&self) -> &T {
+              &self.value
+          }
+
+          pub fn get_mut(&mut self) -> &mut T {
+              &mut self.value
+          }
+
+          pub fn into_inner(self) -> T {
+              self.value
+          }
+
+          pub fn map<U, F>(self, f: F) -> Container<U>
+          where
+              F: FnOnce(T) -> U,
+          {
+              Container {
+                  value: f(self.value),
+                  label: self.label,
+              }
+          }
+
+          pub fn replace(&mut self, new_value: T) -> T {
+              std::mem::replace(&mut self.value, new_value)
+          }
+      }
+
+      impl<T: Clone> Container<T> {
+          pub fn value(&self) -> T {
+              self.value.clone()
+          }
+
+          pub fn duplicate(&self) -> Self {
+              Self {
+                  value: self.value.clone(),
+                  label: self.label.clone(),
+              }
+          }
+      }
+
+      impl<T: Default> Default for Container<T> {
+          fn default() -> Self {
+              Self {
+                  value: T::default(),
+                  label: String::from("default"),
+              }
+          }
+      }
+
+      #[derive(Debug)]
+      pub struct TypedContainer<T, Tag> {
+          inner: Container<T>,
+          _marker: PhantomData<Tag>,
+      }
+
+      impl<T, Tag> TypedContainer<T, Tag> {
+          pub fn new(value: T, label: &str) -> Self {
+              Self {
+                  inner: Container::new(value, label),
+                  _marker: PhantomData,
+              }
+          }
+
+          pub fn get(&self) -> &T {
+              self.inner.get()
+          }
+      }
+    src/registry.rs: |
+      use std::any::Any;
+      use std::collections::HashMap;
+
+      pub struct TypeRegistry {
+          entries: HashMap<String, Box<dyn Any>>,
+      }
+
+      impl TypeRegistry {
+          pub fn new() -> Self {
+              Self { entries: HashMap::new() }
+          }
+
+          pub fn register<T: 'static>(&mut self, name: &str, value: T) {
+              self.entries.insert(name.to_string(), Box::new(value));
+          }
+
+          pub fn get<T: 'static>(&self, name: &str) -> Option<&T> {
+              self.entries.get(name)?.downcast_ref()
+          }
+
+          pub fn contains(&self, name: &str) -> bool {
+              self.entries.contains_key(name)
+          }
+      }
+    src/pool.rs: |
+      pub struct ObjectPool<T> {
+          available: Vec<T>,
+          max_size: usize,
+      }
+
+      impl<T> ObjectPool<T> {
+          pub fn new(max_size: usize) -> Self {
+              Self {
+                  available: Vec::with_capacity(max_size),
+                  max_size,
+              }
+          }
+
+          pub fn acquire(&mut self) -> Option<T> {
+              self.available.pop()
+          }
+
+          pub fn release(&mut self, item: T) {
+              if self.available.len() < self.max_size {
+                  self.available.push(item);
+              }
+          }
+
+          pub fn available_count(&self) -> usize {
+              self.available.len()
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: container
+  selector:
+    path: src/container.rs
+    anchor: use std::marker::PhantomData;
+- id: container_1
+  selector:
+    path: src/container.rs
+    anchor: pub fn get_mut(&mut self) -> &mut T {
+- id: container_2
+  selector:
+    path: src/container.rs
+    anchor: 'pub fn map<U, F>(self, f: F) -> Container<U>'
+- id: container_3
+  selector:
+    path: src/container.rs
+    anchor: pub struct TypedContainer<T, Tag>
+- id: container_4
+  selector:
+    path: src/container.rs
+    anchor: '_marker: PhantomData<Tag>'
+- id: no_registry
+  selector:
+    path: src/registry.rs
+- id: no_pool
+  selector:
+    path: src/pool.rs
+- id: no_global_0
+  selector:
+    anchor: TypeRegistry
+- id: no_global_1
+  selector:
+    anchor: dyn Any
+- id: no_global_2
+  selector:
+    anchor: downcast_ref
+- id: no_global_3
+  selector:
+    anchor: ObjectPool
+- id: no_global_4
+  selector:
+    anchor: acquire
+- id: no_global_5
+  selector:
+    anchor: with_capacity
+oracle:
+  required:
+  - container
+  - container_1
+  - container_2
+  - container_3
+  - container_4
+  allowed: []
+  forbidden:
+  - no_registry
+  - no_pool
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

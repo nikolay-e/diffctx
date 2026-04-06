@@ -1,0 +1,112 @@
+name: javascript_055_response_json
+repo:
+  initial_files:
+    service.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          success: boolean;
+          timestamp: number;
+      }
+
+      export function createResponse<T>(data: T): ApiResponse<T> {
+          return { data, success: true, timestamp: Date.now() };
+      }
+    handler.ts: |
+      console.log('initial');
+    error-response.ts: |
+      export interface ErrorResponse {
+          error: string;
+          code: number;
+          timestamp: number;
+      }
+
+      export function createErrorResponse(error: string, code: number): ErrorResponse {
+          return { error, code, timestamp: Date.now() };
+      }
+    response-logger.ts: |
+      export function logResponse(method: string, path: string, statusCode: number, durationMs: number): void {
+          console.log(`${method} ${path} → ${statusCode} (${durationMs}ms)`);
+      }
+
+      export function createResponseTimer() {
+          const start = Date.now();
+          return { elapsed: () => Date.now() - start };
+      }
+  changed_files:
+    service.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          success: boolean;
+          timestamp: number;
+      }
+
+      export function createResponse<T>(data: T): ApiResponse<T> {
+          return { data, success: true, timestamp: Date.now() };
+      }
+    handler.ts: |
+      import { Request, Response } from 'express';
+      import { createResponse } from './service';
+
+      export function getDataHandler(req: Request, res: Response) {
+          const data = { message: 'Hello' };
+          res.json(createResponse(data));
+      }
+    error-response.ts: |
+      export interface ErrorResponse {
+          error: string;
+          code: number;
+          timestamp: number;
+      }
+
+      export function createErrorResponse(error: string, code: number): ErrorResponse {
+          return { error, code, timestamp: Date.now() };
+      }
+    response-logger.ts: |
+      export function logResponse(method: string, path: string, statusCode: number, durationMs: number): void {
+          console.log(`${method} ${path} → ${statusCode} (${durationMs}ms)`);
+      }
+
+      export function createResponseTimer() {
+          const start = Date.now();
+          return { elapsed: () => Date.now() - start };
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.ts
+    anchor: function createResponse
+- id: service_1
+  selector:
+    path: service.ts
+    anchor: 'success: true'
+- id: no_error_response
+  selector:
+    path: error-response.ts
+- id: no_response_logger
+  selector:
+    path: response-logger.ts
+- id: no_global_0
+  selector:
+    anchor: ErrorResponse
+- id: no_global_1
+  selector:
+    anchor: createErrorResponse
+- id: no_global_2
+  selector:
+    anchor: logResponse
+- id: no_global_3
+  selector:
+    anchor: createResponseTimer
+oracle:
+  required:
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_error_response
+  - no_response_logger
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

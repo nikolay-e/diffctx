@@ -1,0 +1,225 @@
+name: terraform_055_import_block
+repo:
+  initial_files:
+    main.tf: |
+      # Managed S3 resources
+    policy.tf: |
+      data "aws_iam_policy_document" "bucket_policy" {
+        statement {
+          effect    = "Deny"
+          actions   = ["s3:*"]
+          resources = ["arn:aws:s3:::my-existing-bucket/*"]
+          principals {
+            type        = "*"
+            identifiers = ["*"]
+          }
+          condition {
+            test     = "Bool"
+            variable = "aws:SecureTransport"
+            values   = ["false"]
+          }
+        }
+      }
+
+      resource "aws_s3_bucket_policy" "existing" {
+        bucket = "my-existing-bucket"
+        policy = data.aws_iam_policy_document.bucket_policy.json
+      }
+    cloudfront.tf: |
+      resource "aws_cloudfront_distribution" "website" {
+        enabled             = true
+        default_root_object = "index.html"
+
+        origin {
+          domain_name = "my-existing-bucket.s3.amazonaws.com"
+          origin_id   = "S3-my-existing-bucket"
+
+          s3_origin_config {
+            origin_access_identity = aws_cloudfront_origin_access_identity.main.cloudfront_access_identity_path
+          }
+        }
+
+        default_cache_behavior {
+          allowed_methods  = ["GET", "HEAD"]
+          cached_methods   = ["GET", "HEAD"]
+          target_origin_id = "S3-my-existing-bucket"
+
+          viewer_protocol_policy = "redirect-to-https"
+          forwarded_values {
+            query_string = false
+            cookies { forward = "none" }
+          }
+        }
+
+        restrictions {
+          geo_restriction { restriction_type = "none" }
+        }
+
+        viewer_certificate {
+          cloudfront_default_certificate = true
+        }
+      }
+    database/import.tf: |
+      import {
+        to = aws_db_instance.legacy
+        id = "legacy-database"
+      }
+
+      resource "aws_db_instance" "legacy" {
+        identifier     = "legacy-database"
+        engine         = "mysql"
+        instance_class = "db.t3.medium"
+
+        tags = {
+          ManagedBy = "terraform"
+          Imported  = "true"
+        }
+      }
+    logs/import.tf: |
+      import {
+        to = aws_s3_bucket.access_logs
+        id = "access-logs-bucket"
+      }
+
+      resource "aws_s3_bucket" "access_logs" {
+        bucket = "access-logs-bucket"
+
+        tags = {
+          ManagedBy = "terraform"
+          Purpose   = "access-logging"
+        }
+      }
+    alb.tf: |
+      resource "aws_lb" "app" {
+        name               = "app-lb"
+        internal           = false
+        load_balancer_type = "application"
+        subnets            = var.public_subnet_ids
+      }
+    backup/s3.tf: |
+      resource "aws_s3_bucket" "backups" {
+        bucket = "app-backups-bucket"
+
+        tags = {
+          Purpose = "database-backups"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "backups" {
+        bucket = aws_s3_bucket.backups.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+  changed_files:
+    main.tf: |
+      import {
+        to = aws_s3_bucket.existing
+        id = "my-existing-bucket"
+      }
+
+      resource "aws_s3_bucket" "existing" {
+        bucket = "my-existing-bucket"
+
+        tags = {
+          ManagedBy = "terraform"
+          Imported  = "true"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: to = aws_s3_bucket.existing
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: id = "my-existing-bucket"
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: ManagedBy = "terraform"
+- id: policy
+  selector:
+    path: policy.tf
+    anchor: arn:aws:s3:::my-existing-bucket/*
+- id: policy_1
+  selector:
+    path: policy.tf
+    anchor: aws:SecureTransport
+- id: cloudfront
+  selector:
+    path: cloudfront.tf
+    anchor: my-existing-bucket.s3.amazonaws.com
+- id: cloudfront_1
+  selector:
+    path: cloudfront.tf
+    anchor: S3-my-existing-bucket
+- id: no_import
+  selector:
+    path: database/import.tf
+- id: no_import_1
+  selector:
+    path: logs/import.tf
+- id: no_alb
+  selector:
+    path: alb.tf
+- id: no_s3
+  selector:
+    path: backup/s3.tf
+- id: no_global_0
+  selector:
+    anchor: legacy-database
+- id: no_global_1
+  selector:
+    anchor: aws_db_instance.legacy
+- id: no_global_2
+  selector:
+    anchor: access-logs-bucket
+- id: no_global_3
+  selector:
+    anchor: aws_s3_bucket.access_logs
+- id: no_global_4
+  selector:
+    anchor: access-logging
+- id: no_global_5
+  selector:
+    anchor: app-lb
+- id: no_global_6
+  selector:
+    anchor: load_balancer_type
+- id: no_global_7
+  selector:
+    anchor: app-backups-bucket
+- id: no_global_8
+  selector:
+    anchor: database-backups
+- id: no_global_9
+  selector:
+    anchor: versioning_configuration
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - policy
+  - policy_1
+  - cloudfront
+  - cloudfront_1
+  allowed: []
+  forbidden:
+  - no_import
+  - no_import_1
+  - no_alb
+  - no_s3
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

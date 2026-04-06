@@ -1,0 +1,162 @@
+name: dependencies_034_test_changed_find_fixtures
+repo:
+  initial_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def db_session():
+          return {"connected": True}
+
+      @pytest.fixture
+      def sample_products():
+          return [
+              {"id": 1, "name": "Widget"},
+              {"id": 2, "name": "Gadget"},
+          ]
+    tests/test_orders.py: |
+      def test_create_order():
+          assert True
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP034_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP034_INTEG_SETUP_B = True
+
+      @pytest.fixture
+      def db_session():
+          GARBAGE_DEP034_INTEG_DBSESS_C = "integration_db"
+          return {"connected": True, "pool_size": 5}
+
+      @pytest.fixture
+      def sample_products():
+          return [{"id": 99, "name": "IntegrationWidget"}]
+    tests/test_users.py: |
+      GARBAGE_DEP034_USERTEST_D = "user_test_module"
+      GARBAGE_DEP034_USERTEST_INIT_E = True
+
+      def test_create_user(db_session):
+          GARBAGE_DEP034_USERTEST_RUN_F = "running"
+          assert db_session["connected"]
+    tests/test_inventory.py: |
+      GARBAGE_DEP034_INVTEST_G = "inventory_test_module"
+      GARBAGE_DEP034_INVTEST_SETUP_H = True
+
+      def test_check_stock(sample_products):
+          GARBAGE_DEP034_INVTEST_RUN_I = "checking"
+          assert len(sample_products) == 2
+  changed_files:
+    tests/conftest.py: |
+      import pytest
+
+      @pytest.fixture
+      def db_session():
+          return {"connected": True}
+
+      @pytest.fixture
+      def sample_products():
+          return [
+              {"id": 1, "name": "Widget"},
+              {"id": 2, "name": "Gadget"},
+          ]
+    tests/test_orders.py: |
+      def test_create_order(db_session):
+          assert db_session["connected"]
+
+      def test_bulk_order(db_session, sample_products):
+          assert len(sample_products) == 2
+    tests/integration/conftest.py: |
+      import pytest
+      GARBAGE_DEP034_INTEG_CONFTEST_A = "integration_conftest"
+      GARBAGE_DEP034_INTEG_SETUP_B = True
+
+      @pytest.fixture
+      def db_session():
+          GARBAGE_DEP034_INTEG_DBSESS_C = "integration_db"
+          return {"connected": True, "pool_size": 5}
+
+      @pytest.fixture
+      def sample_products():
+          return [{"id": 99, "name": "IntegrationWidget"}]
+    tests/test_users.py: |
+      GARBAGE_DEP034_USERTEST_D = "user_test_module"
+      GARBAGE_DEP034_USERTEST_INIT_E = True
+
+      def test_create_user(db_session):
+          GARBAGE_DEP034_USERTEST_RUN_F = "running"
+          assert db_session["connected"]
+    tests/test_inventory.py: |
+      GARBAGE_DEP034_INVTEST_G = "inventory_test_module"
+      GARBAGE_DEP034_INVTEST_SETUP_H = True
+
+      def test_check_stock(sample_products):
+          GARBAGE_DEP034_INVTEST_RUN_I = "checking"
+          assert len(sample_products) == 2
+  commit_message: Update files
+fragments:
+- id: test_orders
+  selector:
+    path: tests/test_orders.py
+    anchor: 'def test_create_order(db_session):'
+- id: test_orders_1
+  selector:
+    path: tests/test_orders.py
+    anchor: 'def test_bulk_order(db_session, sample_products):'
+- id: conftest
+  selector:
+    path: tests/conftest.py
+    anchor: 'def db_session():'
+- id: no_conftest
+  selector:
+    path: tests/integration/conftest.py
+- id: no_test_users
+  selector:
+    path: tests/test_users.py
+- id: no_test_inventory
+  selector:
+    path: tests/test_inventory.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP034_INTEG_CONFTEST_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP034_INTEG_SETUP_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP034_INTEG_DBSESS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP034_USERTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP034_USERTEST_INIT_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP034_USERTEST_RUN_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP034_INVTEST_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP034_INVTEST_SETUP_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP034_INVTEST_RUN_I
+oracle:
+  required:
+  - test_orders
+  - test_orders_1
+  - conftest
+  allowed: []
+  forbidden:
+  - no_conftest
+  - no_test_users
+  - no_test_inventory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

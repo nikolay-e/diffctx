@@ -1,0 +1,374 @@
+name: cicd_008_circleci_config
+repo:
+  initial_files:
+    .circleci/config.yml: |
+      version: 2.1
+
+      orbs:
+        python: circleci/python@2.1
+
+      executors:
+        python-executor:
+          docker:
+            - image: cimg/python:3.11
+
+      jobs:
+        build:
+          executor: python-executor
+          steps:
+            - checkout
+            - python/install-packages:
+                pkg-manager: pip
+            - run: pip install .
+            - run: pytest
+    src/calculator.py: |
+      from typing import Union
+      from decimal import Decimal
+
+      Number = Union[int, float, Decimal]
+
+      class Calculator:
+          def __init__(self, precision: int = 2):
+              self.precision = precision
+              self._history: list[tuple[str, Number, Number, Number]] = []
+
+          def add(self, a: Number, b: Number) -> Number:
+              result = a + b
+              self._history.append(("add", a, b, result))
+              return result
+
+          def subtract(self, a: Number, b: Number) -> Number:
+              result = a - b
+              self._history.append(("subtract", a, b, result))
+              return result
+
+          def multiply(self, a: Number, b: Number) -> Number:
+              result = a * b
+              self._history.append(("multiply", a, b, result))
+              return result
+
+          def divide(self, a: Number, b: Number) -> Number:
+              if b == 0:
+                  raise ValueError("Cannot divide by zero")
+              result = round(a / b, self.precision)
+              self._history.append(("divide", a, b, result))
+              return result
+
+          def get_history(self) -> list[tuple[str, Number, Number, Number]]:
+              return self._history.copy()
+
+          def clear_history(self) -> None:
+              self._history.clear()
+
+      def add(a: int, b: int) -> int:
+          return a + b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import Calculator, add
+
+      class TestCalculator:
+          def test_add_integers(self):
+              calc = Calculator()
+              assert calc.add(2, 3) == 5
+
+          def test_add_floats(self):
+              calc = Calculator()
+              assert calc.add(1.5, 2.5) == 4.0
+
+          def test_divide_by_zero(self):
+              calc = Calculator()
+              with pytest.raises(ValueError, match="Cannot divide by zero"):
+                  calc.divide(10, 0)
+
+          def test_history(self):
+              calc = Calculator()
+              calc.add(1, 2)
+              calc.multiply(3, 4)
+              history = calc.get_history()
+              assert len(history) == 2
+
+      def test_add_function():
+          assert add(1, 2) == 3
+    garbage_statistics.py: |
+      GARBAGE_CICD_008_STATS_MARKER_A = "mean"
+      GARBAGE_CICD_008_MODE_MARKER_B = "median"
+
+      class GarbageStatistics:
+          GARBAGE_CICD_008_SAMPLE_MARKER_C = 100
+
+          def compute(self, data: list) -> float:
+              return 0.0
+    garbage_visualization.py: |
+      GARBAGE_CICD_008_CHART_MARKER_D = "bar"
+      GARBAGE_CICD_008_COLOR_MARKER_E = "blue"
+
+      class GarbageChartBuilder:
+          GARBAGE_CICD_008_SIZE_MARKER_F = (800, 600)
+
+          def build(self) -> None:
+              pass
+    .circleci/config.staging.yml: |
+      GARBAGE_CICD_008_STAGING_G = "staging-circleci";
+      GARBAGE_CICD_008_STGCCI_H = "staging-config-cci";
+
+      version: 2.1
+
+      orbs:
+        python: circleci/python@2.1
+
+      executors:
+        python-executor:
+          docker:
+            - image: cimg/python:3.12
+
+      jobs:
+        build:
+          executor: python-executor
+          steps:
+            - checkout
+            - run: pip install -e .[dev]
+            - run: pytest --cov
+
+      workflows:
+        staging:
+          jobs:
+            - build
+    Makefile: "GARBAGE_CICD_008_MAKE_I = \"makefile-build\";\nGARBAGE_CICD_008_MKCOV_J = \"makefile-coverage\";\n\n.PHONY:\
+      \ install test build deploy\n\ninstall:\n\tpip install -e .[dev]\n\ntest:\n\tpytest --cov\n\nbuild:\n\tpython -m build\n\
+      \ndeploy:\n\t./scripts/deploy.sh\n"
+  changed_files:
+    .circleci/config.yml: |
+      version: 2.1
+
+      orbs:
+        python: circleci/python@2.1
+
+      executors:
+        python-executor:
+          docker:
+            - image: cimg/python:3.12
+
+      jobs:
+        build:
+          executor: python-executor
+          steps:
+            - checkout
+            - python/install-packages:
+                pkg-manager: pip
+            - run: pip install -e .[dev]
+            - run: pytest --cov
+        deploy:
+          executor: python-executor
+          steps:
+            - checkout
+            - run: ./deploy.sh
+
+      workflows:
+        main:
+          jobs:
+            - build
+            - deploy:
+                requires:
+                  - build
+    src/calculator.py: |
+      from typing import Union
+      from decimal import Decimal
+
+      Number = Union[int, float, Decimal]
+
+      class Calculator:
+          def __init__(self, precision: int = 2):
+              self.precision = precision
+              self._history: list[tuple[str, Number, Number, Number]] = []
+
+          def add(self, a: Number, b: Number) -> Number:
+              result = a + b
+              self._history.append(("add", a, b, result))
+              return result
+
+          def subtract(self, a: Number, b: Number) -> Number:
+              result = a - b
+              self._history.append(("subtract", a, b, result))
+              return result
+
+          def multiply(self, a: Number, b: Number) -> Number:
+              result = a * b
+              self._history.append(("multiply", a, b, result))
+              return result
+
+          def divide(self, a: Number, b: Number) -> Number:
+              if b == 0:
+                  raise ValueError("Cannot divide by zero")
+              result = round(a / b, self.precision)
+              self._history.append(("divide", a, b, result))
+              return result
+
+          def get_history(self) -> list[tuple[str, Number, Number, Number]]:
+              return self._history.copy()
+
+          def clear_history(self) -> None:
+              self._history.clear()
+
+      def add(a: int, b: int) -> int:
+          return a + b
+    tests/test_calculator.py: |
+      import pytest
+      from src.calculator import Calculator, add
+
+      class TestCalculator:
+          def test_add_integers(self):
+              calc = Calculator()
+              assert calc.add(2, 3) == 5
+
+          def test_add_floats(self):
+              calc = Calculator()
+              assert calc.add(1.5, 2.5) == 4.0
+
+          def test_divide_by_zero(self):
+              calc = Calculator()
+              with pytest.raises(ValueError, match="Cannot divide by zero"):
+                  calc.divide(10, 0)
+
+          def test_history(self):
+              calc = Calculator()
+              calc.add(1, 2)
+              calc.multiply(3, 4)
+              history = calc.get_history()
+              assert len(history) == 2
+
+      def test_add_function():
+          assert add(1, 2) == 3
+    garbage_statistics.py: |
+      GARBAGE_CICD_008_STATS_MARKER_A = "mean"
+      GARBAGE_CICD_008_MODE_MARKER_B = "median"
+
+      class GarbageStatistics:
+          GARBAGE_CICD_008_SAMPLE_MARKER_C = 100
+
+          def compute(self, data: list) -> float:
+              return 0.0
+    garbage_visualization.py: |
+      GARBAGE_CICD_008_CHART_MARKER_D = "bar"
+      GARBAGE_CICD_008_COLOR_MARKER_E = "blue"
+
+      class GarbageChartBuilder:
+          GARBAGE_CICD_008_SIZE_MARKER_F = (800, 600)
+
+          def build(self) -> None:
+              pass
+    .circleci/config.staging.yml: |
+      GARBAGE_CICD_008_STAGING_G = "staging-circleci";
+      GARBAGE_CICD_008_STGCCI_H = "staging-config-cci";
+
+      version: 2.1
+
+      orbs:
+        python: circleci/python@2.1
+
+      executors:
+        python-executor:
+          docker:
+            - image: cimg/python:3.12
+
+      jobs:
+        build:
+          executor: python-executor
+          steps:
+            - checkout
+            - run: pip install -e .[dev]
+            - run: pytest --cov
+
+      workflows:
+        staging:
+          jobs:
+            - build
+    Makefile: "GARBAGE_CICD_008_MAKE_I = \"makefile-build\";\nGARBAGE_CICD_008_MKCOV_J = \"makefile-coverage\";\n\n.PHONY:\
+      \ install test build deploy\n\ninstall:\n\tpip install -e .[dev]\n\ntest:\n\tpytest --cov\n\nbuild:\n\tpython -m build\n\
+      \ndeploy:\n\t./scripts/deploy.sh\n"
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: .circleci/config.yml
+    anchor: cimg/python:3.12
+- id: config_1
+  selector:
+    path: .circleci/config.yml
+    anchor: pip install -e .[dev]
+- id: config_2
+  selector:
+    path: .circleci/config.yml
+    anchor: pytest --cov
+- id: config_3
+  selector:
+    path: .circleci/config.yml
+    anchor: 'deploy:'
+- id: config_4
+  selector:
+    path: .circleci/config.yml
+    anchor: 'workflows:'
+- id: no_garbage_statistics
+  selector:
+    path: garbage_statistics.py
+- id: no_garbage_visualization
+  selector:
+    path: garbage_visualization.py
+- id: no_config_staging
+  selector:
+    path: .circleci/config.staging.yml
+- id: no_makefile
+  selector:
+    path: Makefile
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_008_CHART_MARKER_D
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_008_COLOR_MARKER_E
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_008_MODE_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_008_SAMPLE_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_008_SIZE_MARKER_F
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_008_STATS_MARKER_A
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD_008_STAGING_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD_008_STGCCI_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD_008_MAKE_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD_008_MKCOV_J
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - config_3
+  - config_4
+  allowed: []
+  forbidden:
+  - no_garbage_statistics
+  - no_garbage_visualization
+  - no_config_staging
+  - no_makefile
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

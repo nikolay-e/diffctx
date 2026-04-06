@@ -1,0 +1,370 @@
+name: cicd_015_pyproject_scripts
+repo:
+  initial_files:
+    pyproject.toml: |
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+
+      [project]
+      name = "myapp"
+      version = "1.0.0"
+      description = "A sample application"
+      requires-python = ">=3.10"
+      dependencies = [
+          "click>=8.0",
+          "rich>=13.0",
+      ]
+
+      [project.scripts]
+      myapp = "src.cli:main"
+    src/cli.py: |
+      import click
+      from rich.console import Console
+
+      from .commands import process, export
+      from .config import load_config
+
+      console = Console()
+
+      @click.group()
+      @click.version_option()
+      @click.pass_context
+      def cli(ctx):
+          ctx.ensure_object(dict)
+          ctx.obj["config"] = load_config()
+
+      @cli.command()
+      @click.argument("input_file", type=click.Path(exists=True))
+      @click.option("--output", "-o", type=click.Path(), help="Output file")
+      @click.pass_context
+      def run(ctx, input_file, output):
+          config = ctx.obj["config"]
+          result = process(input_file, config)
+          if output:
+              export(result, output)
+          else:
+              console.print(result)
+
+      @cli.command()
+      @click.pass_context
+      def status(ctx):
+          console.print("[green]Application is running[/green]")
+
+      def main():
+          cli(obj={})
+
+      if __name__ == "__main__":
+          main()
+    src/commands.py: |
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def process(input_file: str, config: Dict[str, Any]) -> Dict[str, Any]:
+          path = Path(input_file)
+          content = path.read_text()
+          lines = content.splitlines()
+
+          return {
+              "file": input_file,
+              "lines": len(lines),
+              "characters": len(content),
+              "config": config.get("name", "default"),
+          }
+
+      def export(data: Dict[str, Any], output_file: str) -> None:
+          import json
+          path = Path(output_file)
+          path.write_text(json.dumps(data, indent=2))
+    src/config.py: |
+      import os
+      from typing import Dict, Any
+
+      def load_config() -> Dict[str, Any]:
+          return {
+              "name": os.getenv("APP_NAME", "myapp"),
+              "debug": os.getenv("DEBUG", "false").lower() == "true",
+              "log_level": os.getenv("LOG_LEVEL", "info"),
+          }
+    garbage_plugin.py: |
+      GARBAGE_CICD_015_PLUGIN_MARKER_A = "extension"
+      GARBAGE_CICD_015_HOOK_MARKER_B = "pre_process"
+
+      class GarbagePluginManager:
+          GARBAGE_CICD_015_ENABLED_MARKER_C = True
+
+          def load(self) -> None:
+              pass
+    garbage_cache.py: |
+      GARBAGE_CICD_015_CACHE_MARKER_D = "memory"
+      GARBAGE_CICD_015_SIZE_MARKER_E = 1000
+
+      class GarbageCacheBackend:
+          GARBAGE_CICD_015_TTL_MARKER_F = 3600
+
+          def get(self, key: str) -> None:
+              pass
+    src/formatter.py: |
+      GARBAGE_CICD_015_CLI_G = "formatter_module"
+      GARBAGE_CICD_015_ENTRY_H = "format_entry"
+
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def format_output(data: Dict[str, Any], style: str = "table") -> str:
+          if style == "table":
+              return "\n".join(f"{k}: {v}" for k, v in data.items())
+          return str(data)
+
+      def write_formatted(data: Dict[str, Any], output: str) -> None:
+          Path(output).write_text(format_output(data))
+    src/commands_extra.py: |
+      GARBAGE_CICD_015_CMDS_I = "extra_commands"
+      GARBAGE_CICD_015_SUBCMD_J = "extra_subcommand"
+
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def validate(input_file: str, config: Dict[str, Any]) -> bool:
+          path = Path(input_file)
+          return path.exists() and path.stat().st_size > 0
+
+      def summarize(data: Dict[str, Any]) -> str:
+          return f"Processed {data.get('lines', 0)} lines"
+  changed_files:
+    pyproject.toml: |
+      [build-system]
+      requires = ["hatchling"]
+      build-backend = "hatchling.build"
+
+      [project]
+      name = "myapp"
+      version = "1.1.0"
+      description = "A sample application"
+      requires-python = ">=3.10"
+      dependencies = [
+          "click>=8.0",
+          "rich>=13.0",
+      ]
+
+      [project.scripts]
+      myapp = "src.cli:main"
+      myapp-server = "src.server:run"
+
+      [project.optional-dependencies]
+      dev = ["pytest", "ruff"]
+    src/cli.py: |
+      import click
+      from rich.console import Console
+
+      from .commands import process, export
+      from .config import load_config
+
+      console = Console()
+
+      @click.group()
+      @click.version_option()
+      @click.pass_context
+      def cli(ctx):
+          ctx.ensure_object(dict)
+          ctx.obj["config"] = load_config()
+
+      @cli.command()
+      @click.argument("input_file", type=click.Path(exists=True))
+      @click.option("--output", "-o", type=click.Path(), help="Output file")
+      @click.pass_context
+      def run(ctx, input_file, output):
+          config = ctx.obj["config"]
+          result = process(input_file, config)
+          if output:
+              export(result, output)
+          else:
+              console.print(result)
+
+      @cli.command()
+      @click.pass_context
+      def status(ctx):
+          console.print("[green]Application is running[/green]")
+
+      def main():
+          cli(obj={})
+
+      if __name__ == "__main__":
+          main()
+    src/commands.py: |
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def process(input_file: str, config: Dict[str, Any]) -> Dict[str, Any]:
+          path = Path(input_file)
+          content = path.read_text()
+          lines = content.splitlines()
+
+          return {
+              "file": input_file,
+              "lines": len(lines),
+              "characters": len(content),
+              "config": config.get("name", "default"),
+          }
+
+      def export(data: Dict[str, Any], output_file: str) -> None:
+          import json
+          path = Path(output_file)
+          path.write_text(json.dumps(data, indent=2))
+    src/config.py: |
+      import os
+      from typing import Dict, Any
+
+      def load_config() -> Dict[str, Any]:
+          return {
+              "name": os.getenv("APP_NAME", "myapp"),
+              "debug": os.getenv("DEBUG", "false").lower() == "true",
+              "log_level": os.getenv("LOG_LEVEL", "info"),
+          }
+    src/server.py: |
+      from http.server import HTTPServer, SimpleHTTPRequestHandler
+      from .config import load_config
+
+      def run():
+          config = load_config()
+          port = int(os.getenv("PORT", "8080"))
+          server = HTTPServer(("", port), SimpleHTTPRequestHandler)
+          print(f"Server running on port {port}")
+          server.serve_forever()
+    garbage_plugin.py: |
+      GARBAGE_CICD_015_PLUGIN_MARKER_A = "extension"
+      GARBAGE_CICD_015_HOOK_MARKER_B = "pre_process"
+
+      class GarbagePluginManager:
+          GARBAGE_CICD_015_ENABLED_MARKER_C = True
+
+          def load(self) -> None:
+              pass
+    garbage_cache.py: |
+      GARBAGE_CICD_015_CACHE_MARKER_D = "memory"
+      GARBAGE_CICD_015_SIZE_MARKER_E = 1000
+
+      class GarbageCacheBackend:
+          GARBAGE_CICD_015_TTL_MARKER_F = 3600
+
+          def get(self, key: str) -> None:
+              pass
+    src/formatter.py: |
+      GARBAGE_CICD_015_CLI_G = "formatter_module"
+      GARBAGE_CICD_015_ENTRY_H = "format_entry"
+
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def format_output(data: Dict[str, Any], style: str = "table") -> str:
+          if style == "table":
+              return "\n".join(f"{k}: {v}" for k, v in data.items())
+          return str(data)
+
+      def write_formatted(data: Dict[str, Any], output: str) -> None:
+          Path(output).write_text(format_output(data))
+    src/commands_extra.py: |
+      GARBAGE_CICD_015_CMDS_I = "extra_commands"
+      GARBAGE_CICD_015_SUBCMD_J = "extra_subcommand"
+
+      from pathlib import Path
+      from typing import Any, Dict
+
+      def validate(input_file: str, config: Dict[str, Any]) -> bool:
+          path = Path(input_file)
+          return path.exists() and path.stat().st_size > 0
+
+      def summarize(data: Dict[str, Any]) -> str:
+          return f"Processed {data.get('lines', 0)} lines"
+  commit_message: Update files
+fragments:
+- id: pyproject
+  selector:
+    path: pyproject.toml
+    anchor: myapp-server = "src.server:run"
+- id: pyproject_1
+  selector:
+    path: pyproject.toml
+    anchor: '[project.optional-dependencies]'
+- id: pyproject_2
+  selector:
+    path: pyproject.toml
+    anchor: version = "1.1.0"
+- id: pyproject_3
+  selector:
+    path: pyproject.toml
+    anchor: dev = ["pytest", "ruff"]
+- id: server
+  selector:
+    path: src/server.py
+    anchor: def run()
+- id: server_1
+  selector:
+    path: src/server.py
+    anchor: from .config import load_config
+- id: no_garbage_plugin
+  selector:
+    path: garbage_plugin.py
+- id: no_garbage_cache
+  selector:
+    path: garbage_cache.py
+- id: no_formatter
+  selector:
+    path: src/formatter.py
+- id: no_commands_extra
+  selector:
+    path: src/commands_extra.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_015_PLUGIN_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_015_HOOK_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_015_ENABLED_MARKER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_015_CACHE_MARKER_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_015_SIZE_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_015_TTL_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_CICD_015_CLI_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_CICD_015_ENTRY_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_CICD_015_CMDS_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_CICD_015_SUBCMD_J
+oracle:
+  required:
+  - pyproject
+  - pyproject_1
+  - pyproject_2
+  - pyproject_3
+  - server
+  - server_1
+  allowed: []
+  forbidden:
+  - no_garbage_plugin
+  - no_garbage_cache
+  - no_formatter
+  - no_commands_extra
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

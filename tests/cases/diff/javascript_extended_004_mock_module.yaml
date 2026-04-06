@@ -1,0 +1,193 @@
+name: javascript_extended_004_mock_module
+repo:
+  initial_files:
+    src/api.ts: |
+      export interface UserResponse {
+          id: string;
+          name: string;
+          email: string;
+          role: string;
+      }
+
+      export async function fetchUser(id: string): Promise<UserResponse> {
+          const response = await fetch(`/api/users/${id}`);
+          if (!response.ok) {
+              throw new Error(`User not found: ${id}`);
+          }
+          return response.json();
+      }
+
+      export async function fetchUsers(): Promise<UserResponse[]> {
+          const response = await fetch('/api/users');
+          return response.json();
+      }
+    src/service.ts: |
+      import { fetchUser } from './api';
+
+      export async function getUserDisplayName(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return `${user.name} (${user.role})`;
+      }
+
+      export async function getUserEmail(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return user.email;
+      }
+    src/service.test.ts: |
+      console.log('placeholder');
+    src/unrelated/storage.ts: |
+      export class StorageAdapter {
+          private data: Record<string, string> = {};
+
+          save(key: string, value: string): void {
+              this.data[key] = value;
+          }
+
+          load(key: string): string | undefined {
+              return this.data[key];
+          }
+      }
+
+      export function syncStorage(): void {
+          console.log('syncing storage');
+      }
+    src/unrelated/notifications.ts: |
+      export class Notifier {
+          send(message: string): void {
+              console.log('notification:', message);
+          }
+      }
+
+      export function dispatchNotification(userId: string, text: string): void {
+          console.log('dispatching to', userId, text);
+      }
+  changed_files:
+    src/api.ts: |
+      export interface UserResponse {
+          id: string;
+          name: string;
+          email: string;
+          role: string;
+      }
+
+      export async function fetchUser(id: string): Promise<UserResponse> {
+          const response = await fetch(`/api/users/${id}`);
+          if (!response.ok) {
+              throw new Error(`User not found: ${id}`);
+          }
+          return response.json();
+      }
+
+      export async function fetchUsers(): Promise<UserResponse[]> {
+          const response = await fetch('/api/users');
+          return response.json();
+      }
+    src/service.ts: |
+      import { fetchUser } from './api';
+
+      export async function getUserDisplayName(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return `${user.name} (${user.role})`;
+      }
+
+      export async function getUserEmail(id: string): Promise<string> {
+          const user = await fetchUser(id);
+          return user.email;
+      }
+    src/service.test.ts: |
+      import { getUserDisplayName, getUserEmail } from './service';
+      import { fetchUser } from './api';
+
+      jest.mock('./api');
+
+      const mockedFetchUser = fetchUser as jest.MockedFunction<typeof fetchUser>;
+
+      describe('UserService', () => {
+          beforeEach(() => {
+              mockedFetchUser.mockReset();
+          });
+
+          it('should return display name with role', async () => {
+              mockedFetchUser.mockResolvedValue({
+                  id: '1', name: 'Alice', email: 'alice@test.com', role: 'admin',
+              });
+              const name = await getUserDisplayName('1');
+              expect(name).toBe('Alice (admin)');
+          });
+
+          it('should return user email', async () => {
+              mockedFetchUser.mockResolvedValue({
+                  id: '2', name: 'Bob', email: 'bob@test.com', role: 'user',
+              });
+              const email = await getUserEmail('2');
+              expect(email).toBe('bob@test.com');
+          });
+      });
+    src/unrelated/storage.ts: |
+      export class StorageAdapter {
+          private data: Record<string, string> = {};
+
+          save(key: string, value: string): void {
+              this.data[key] = value;
+          }
+
+          load(key: string): string | undefined {
+              return this.data[key];
+          }
+      }
+
+      export function syncStorage(): void {
+          console.log('syncing storage');
+      }
+    src/unrelated/notifications.ts: |
+      export class Notifier {
+          send(message: string): void {
+              console.log('notification:', message);
+          }
+      }
+
+      export function dispatchNotification(userId: string, text: string): void {
+          console.log('dispatching to', userId, text);
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: src/service.ts
+    anchor: getUserDisplayName
+- id: service_1
+  selector:
+    path: src/service.ts
+    anchor: user.name
+- id: api
+  selector:
+    path: src/api.ts
+    anchor: UserResponse
+- id: api_1
+  selector:
+    path: src/api.ts
+    anchor: fetchUser
+- id: no_global_0
+  selector:
+    anchor: StorageAdapter
+- id: no_global_1
+  selector:
+    anchor: syncStorage
+- id: no_global_2
+  selector:
+    anchor: Notifier
+- id: no_global_3
+  selector:
+    anchor: dispatchNotification
+oracle:
+  required:
+  - service
+  - service_1
+  - api
+  - api_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

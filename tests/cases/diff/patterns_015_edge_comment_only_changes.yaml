@@ -1,0 +1,105 @@
+name: patterns_015_edge_comment_only_changes
+repo:
+  initial_files:
+    test.py: |
+      def process():
+          return 42
+    utils/comment_stripper.py: |
+      import re
+
+      COMMENT_PATTERN = r"#.*$"
+      DOCSTRING_PATTERN = r'""".*?"""'
+
+      class CommentStripper:
+          def strip_line_comments(self, source: str) -> str:
+              return re.sub(COMMENT_PATTERN, "", source, flags=re.MULTILINE)
+
+          def strip_docstrings(self, source: str) -> str:
+              return re.sub(DOCSTRING_PATTERN, "", source, flags=re.DOTALL)
+    utils/todo_tracker.py: |
+      TODO_KEYWORDS = ["TODO", "FIXME", "HACK", "XXX"]
+
+      class TodoTracker:
+          def scan_file(self, filepath: str) -> list[dict]:
+              return []
+
+          def count_todos(self, filepath: str) -> int:
+              return 0
+
+          def get_summary(self, filepaths: list[str]) -> dict:
+              return {"total": 0, "by_keyword": {}}
+  changed_files:
+    test.py: |
+      # TODO: refactor this later
+      def process():
+          return 42
+    utils/comment_stripper.py: |
+      import re
+
+      COMMENT_PATTERN = r"#.*$"
+      DOCSTRING_PATTERN = r'""".*?"""'
+
+      class CommentStripper:
+          def strip_line_comments(self, source: str) -> str:
+              return re.sub(COMMENT_PATTERN, "", source, flags=re.MULTILINE)
+
+          def strip_docstrings(self, source: str) -> str:
+              return re.sub(DOCSTRING_PATTERN, "", source, flags=re.DOTALL)
+    utils/todo_tracker.py: |
+      TODO_KEYWORDS = ["TODO", "FIXME", "HACK", "XXX"]
+
+      class TodoTracker:
+          def scan_file(self, filepath: str) -> list[dict]:
+              return []
+
+          def count_todos(self, filepath: str) -> int:
+              return 0
+
+          def get_summary(self, filepaths: list[str]) -> dict:
+              return {"total": 0, "by_keyword": {}}
+  commit_message: Update files
+fragments:
+- id: test_file
+  selector:
+    path: test.py
+- id: req_global_0
+  selector:
+    anchor: '# TODO: refactor this later'
+- id: no_comment_stripper
+  selector:
+    path: utils/comment_stripper.py
+- id: no_todo_tracker
+  selector:
+    path: utils/todo_tracker.py
+- id: no_global_0
+  selector:
+    anchor: CommentStripper
+- id: no_global_1
+  selector:
+    anchor: COMMENT_PATTERN
+- id: no_global_2
+  selector:
+    anchor: DOCSTRING_PATTERN
+- id: no_global_3
+  selector:
+    anchor: TodoTracker
+- id: no_global_4
+  selector:
+    anchor: TODO_KEYWORDS
+- id: no_global_5
+  selector:
+    anchor: count_todos
+oracle:
+  required:
+  - test_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_comment_stripper
+  - no_todo_tracker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

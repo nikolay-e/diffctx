@@ -1,0 +1,276 @@
+name: json_001_package_json_scripts
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "myapp",
+        "version": "1.0.0",
+        "description": "Web application with build pipeline",
+        "scripts": {
+          "build": "webpack",
+          "test": "jest",
+          "start": "node dist/server.js"
+        },
+        "dependencies": {
+          "express": "^4.18.0",
+          "lodash": "^4.17.21"
+        },
+        "devDependencies": {
+          "webpack": "^5.88.0",
+          "webpack-cli": "^5.1.0",
+          "jest": "^29.6.0"
+        }
+      }
+    webpack.config.js: |
+      const path = require('path');
+
+      module.exports = {
+          entry: './src/index.js',
+          output: {
+              filename: 'bundle.js',
+              path: path.resolve(__dirname, 'dist'),
+              clean: true,
+          },
+          module: {
+              rules: [
+                  {
+                      test: /\.js$/,
+                      exclude: /node_modules/,
+                      use: 'babel-loader',
+                  },
+              ],
+          },
+          resolve: {
+              extensions: ['.js', '.json'],
+          },
+      };
+    src/index.js: |
+      const express = require('express');
+      const { merge } = require('lodash');
+
+      const defaultConfig = { port: 3000, host: 'localhost' };
+
+      function createApp(userConfig) {
+          const config = merge({}, defaultConfig, userConfig);
+          const app = express();
+
+          app.get('/health', (req, res) => {
+              res.json({ status: 'ok', uptime: process.uptime() });
+          });
+
+          app.listen(config.port, config.host, () => {
+              console.log(`Server running on ${config.host}:${config.port}`);
+          });
+
+          return app;
+      }
+
+      module.exports = { createApp };
+    .eslintrc.js: |
+      module.exports = {
+          env: {
+              node: true,
+              es2021: true,
+              jest: true,
+          },
+          extends: ['eslint:recommended'],
+          parserOptions: {
+              ecmaVersion: 'latest',
+              sourceType: 'module',
+          },
+          rules: {
+              'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+              'no-console': 'off',
+              'prefer-const': 'error',
+              'eqeqeq': ['error', 'always'],
+          },
+      };
+    jest.config.js: |
+      module.exports = {
+          testEnvironment: 'node',
+          testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+          transform: {},
+          collectCoverageFrom: [
+              'src/**/*.js',
+              '!src/index.js',
+          ],
+          coverageThresholds: {
+              global: {
+                  branches: 80,
+                  functions: 80,
+                  lines: 80,
+              },
+          },
+          moduleFileExtensions: ['js', 'json'],
+          verbose: true,
+      };
+    .github/workflows/ci.yml: |
+      name: CI
+      on: [push, pull_request]
+      jobs:
+        quality:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: '20'
+                cache: 'npm'
+            - run: npm ci
+            - run: npm run lint
+            - run: npm run test
+            - run: npm run build
+            - uses: actions/upload-artifact@v4
+              with:
+                name: dist
+                path: dist/
+    Dockerfile: |
+      FROM node:20-alpine AS builder
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci
+      COPY . .
+      RUN npm run build
+
+      FROM node:20-alpine
+      WORKDIR /app
+      COPY --from=builder /app/dist ./dist
+      COPY --from=builder /app/node_modules ./node_modules
+      COPY package.json ./
+      EXPOSE 3000
+      CMD ["npm", "start"]
+  changed_files:
+    package.json: |
+      {
+        "name": "myapp",
+        "version": "1.0.0",
+        "description": "Web application with build pipeline",
+        "scripts": {
+          "build": "webpack --mode production",
+          "test": "jest --coverage",
+          "lint": "eslint src",
+          "start": "node dist/server.js"
+        },
+        "dependencies": {
+          "express": "^4.18.0",
+          "lodash": "^4.17.21"
+        },
+        "devDependencies": {
+          "webpack": "^5.88.0",
+          "webpack-cli": "^5.1.0",
+          "jest": "^29.6.0",
+          "eslint": "^8.45.0"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: package
+  selector:
+    path: package.json
+    anchor: '"build": "webpack --mode production"'
+- id: package_1
+  selector:
+    path: package.json
+    anchor: '"test": "jest --coverage"'
+- id: package_2
+  selector:
+    path: package.json
+    anchor: '"lint": "eslint src"'
+- id: package_3
+  selector:
+    path: package.json
+    anchor: '"eslint": "^8.45.0"'
+- id: webpack_config
+  selector:
+    path: webpack.config.js
+    anchor: 'entry: ''./src/index.js'''
+- id: webpack_config_1
+  selector:
+    path: webpack.config.js
+    anchor: 'filename: ''bundle.js'''
+- id: no_eslintrc
+  selector:
+    path: .eslintrc.js
+- id: no_jest_config
+  selector:
+    path: jest.config.js
+- id: no_ci
+  selector:
+    path: .github/workflows/ci.yml
+- id: no_dockerfile
+  selector:
+    path: Dockerfile
+- id: no_index
+  selector:
+    path: src/index.js
+- id: no_global_0
+  selector:
+    anchor: eslint:recommended
+- id: no_global_1
+  selector:
+    anchor: argsIgnorePattern
+- id: no_global_2
+  selector:
+    anchor: eqeqeq
+- id: no_global_3
+  selector:
+    anchor: testEnvironment
+- id: no_global_4
+  selector:
+    anchor: collectCoverageFrom
+- id: no_global_5
+  selector:
+    anchor: coverageThresholds
+- id: no_global_6
+  selector:
+    anchor: actions/checkout@v4
+- id: no_global_7
+  selector:
+    anchor: actions/setup-node@v4
+- id: no_global_8
+  selector:
+    anchor: actions/upload-artifact@v4
+- id: no_global_9
+  selector:
+    anchor: FROM node:20-alpine
+- id: no_global_10
+  selector:
+    anchor: npm ci
+- id: no_global_11
+  selector:
+    anchor: EXPOSE 3000
+- id: no_global_12
+  selector:
+    anchor: createApp
+- id: no_global_13
+  selector:
+    anchor: process.uptime
+oracle:
+  required:
+  - package
+  - package_1
+  - package_2
+  - package_3
+  - webpack_config
+  - webpack_config_1
+  allowed: []
+  forbidden:
+  - no_eslintrc
+  - no_jest_config
+  - no_ci
+  - no_dockerfile
+  - no_index
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

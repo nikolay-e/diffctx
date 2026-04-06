@@ -1,0 +1,266 @@
+name: rust_037_arc_rc_shared_ownership
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod cache;
+      pub mod session_store;
+      pub mod rate_limiter;
+    src/cache.rs: |
+      use std::collections::HashMap;
+
+      pub struct Cache {
+          data: HashMap<String, String>,
+      }
+
+      impl Cache {
+          pub fn new() -> Self {
+              Self { data: HashMap::new() }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.data.get(key)
+          }
+
+          pub fn contains(&self, key: &str) -> bool {
+              self.data.contains_key(key)
+          }
+
+          pub fn len(&self) -> usize {
+              self.data.len()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.data.is_empty()
+          }
+      }
+    src/session_store.rs: |
+      use std::collections::HashMap;
+
+      pub struct Session {
+          pub user_id: String,
+          pub token: String,
+          pub expires_at: u64,
+      }
+
+      pub struct SessionStore {
+          sessions: HashMap<String, Session>,
+      }
+
+      impl SessionStore {
+          pub fn new() -> Self {
+              Self { sessions: HashMap::new() }
+          }
+
+          pub fn create_session(&mut self, user_id: &str, token: &str, ttl: u64) {
+              self.sessions.insert(token.to_string(), Session {
+                  user_id: user_id.to_string(),
+                  token: token.to_string(),
+                  expires_at: ttl,
+              });
+          }
+
+          pub fn get_session(&self, token: &str) -> Option<&Session> {
+              self.sessions.get(token)
+          }
+
+          pub fn revoke(&mut self, token: &str) -> bool {
+              self.sessions.remove(token).is_some()
+          }
+      }
+    src/rate_limiter.rs: |
+      use std::sync::atomic::{AtomicU64, Ordering};
+      use std::collections::HashMap;
+
+      pub struct RateLimiter {
+          limits: HashMap<String, u64>,
+          window_seconds: u64,
+      }
+
+      impl RateLimiter {
+          pub fn new(window_seconds: u64) -> Self {
+              Self {
+                  limits: HashMap::new(),
+                  window_seconds,
+              }
+          }
+
+          pub fn set_limit(&mut self, key: &str, max_requests: u64) {
+              self.limits.insert(key.to_string(), max_requests);
+          }
+
+          pub fn check(&self, key: &str, current_count: u64) -> bool {
+              self.limits.get(key).map_or(true, |&limit| current_count < limit)
+          }
+
+          pub fn window(&self) -> u64 {
+              self.window_seconds
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod cache;
+      pub mod session_store;
+      pub mod rate_limiter;
+    src/cache.rs: |
+      use std::collections::HashMap;
+      use std::sync::{Arc, RwLock};
+
+      pub struct Cache {
+          data: Arc<RwLock<HashMap<String, String>>>,
+      }
+
+      impl Cache {
+          pub fn new() -> Self {
+              Self {
+                  data: Arc::new(RwLock::new(HashMap::new())),
+              }
+          }
+
+          pub fn get(&self, key: &str) -> Option<String> {
+              self.data.read().unwrap().get(key).cloned()
+          }
+
+          pub fn set(&self, key: String, value: String) {
+              self.data.write().unwrap().insert(key, value);
+          }
+
+          pub fn contains(&self, key: &str) -> bool {
+              self.data.read().unwrap().contains_key(key)
+          }
+
+          pub fn len(&self) -> usize {
+              self.data.read().unwrap().len()
+          }
+
+          pub fn is_empty(&self) -> bool {
+              self.data.read().unwrap().is_empty()
+          }
+
+          pub fn clone_handle(&self) -> Arc<RwLock<HashMap<String, String>>> {
+              Arc::clone(&self.data)
+          }
+      }
+
+      impl Clone for Cache {
+          fn clone(&self) -> Self {
+              Self {
+                  data: Arc::clone(&self.data),
+              }
+          }
+      }
+    src/session_store.rs: |
+      use std::collections::HashMap;
+
+      pub struct Session {
+          pub user_id: String,
+          pub token: String,
+          pub expires_at: u64,
+      }
+
+      pub struct SessionStore {
+          sessions: HashMap<String, Session>,
+      }
+
+      impl SessionStore {
+          pub fn new() -> Self {
+              Self { sessions: HashMap::new() }
+          }
+
+          pub fn create_session(&mut self, user_id: &str, token: &str, ttl: u64) {
+              self.sessions.insert(token.to_string(), Session {
+                  user_id: user_id.to_string(),
+                  token: token.to_string(),
+                  expires_at: ttl,
+              });
+          }
+
+          pub fn get_session(&self, token: &str) -> Option<&Session> {
+              self.sessions.get(token)
+          }
+
+          pub fn revoke(&mut self, token: &str) -> bool {
+              self.sessions.remove(token).is_some()
+          }
+      }
+    src/rate_limiter.rs: |
+      use std::sync::atomic::{AtomicU64, Ordering};
+      use std::collections::HashMap;
+
+      pub struct RateLimiter {
+          limits: HashMap<String, u64>,
+          window_seconds: u64,
+      }
+
+      impl RateLimiter {
+          pub fn new(window_seconds: u64) -> Self {
+              Self {
+                  limits: HashMap::new(),
+                  window_seconds,
+              }
+          }
+
+          pub fn set_limit(&mut self, key: &str, max_requests: u64) {
+              self.limits.insert(key.to_string(), max_requests);
+          }
+
+          pub fn check(&self, key: &str, current_count: u64) -> bool {
+              self.limits.get(key).map_or(true, |&limit| current_count < limit)
+          }
+
+          pub fn window(&self) -> u64 {
+              self.window_seconds
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: cache
+  selector:
+    path: src/cache.rs
+    anchor: use std::sync::{Arc, RwLock};
+- id: cache_1
+  selector:
+    path: src/cache.rs
+    anchor: 'data: Arc<RwLock<HashMap<String, String>>>,'
+- id: cache_2
+  selector:
+    path: src/cache.rs
+    anchor: pub fn clone_handle(&self)
+- id: no_session_store
+  selector:
+    path: src/session_store.rs
+- id: no_rate_limiter
+  selector:
+    path: src/rate_limiter.rs
+- id: no_global_0
+  selector:
+    anchor: SessionStore
+- id: no_global_1
+  selector:
+    anchor: create_session
+- id: no_global_2
+  selector:
+    anchor: revoke
+- id: no_global_3
+  selector:
+    anchor: RateLimiter
+- id: no_global_4
+  selector:
+    anchor: set_limit
+- id: no_global_5
+  selector:
+    anchor: window_seconds
+oracle:
+  required:
+  - cache
+  - cache_1
+  - cache_2
+  allowed: []
+  forbidden:
+  - no_session_store
+  - no_rate_limiter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

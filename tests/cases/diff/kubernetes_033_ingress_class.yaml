@@ -1,0 +1,409 @@
+name: kubernetes_033_ingress_class
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-app
+        namespace: production
+        labels:
+          app: web-app
+          tier: frontend
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: web-app
+        template:
+          metadata:
+            labels:
+              app: web-app
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: registry.example.com/web-app:v2.0.0
+              ports:
+              - containerPort: 3000
+                name: http
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                initialDelaySeconds: 10
+                periodSeconds: 15
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-app
+        namespace: production
+      spec:
+        selector:
+          app: web-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+    k8s/base/ingress-class.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: IngressClass
+      metadata:
+        name: nginx-internal
+        annotations:
+          ingressclass.kubernetes.io/is-default-class: "false"
+      spec:
+        controller: k8s.io/ingress-nginx
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-app-ingress
+        namespace: production
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      spec:
+        rules:
+        - host: app.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-app
+                  port:
+                    number: 80
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-app-config
+        namespace: production
+      data:
+        API_URL: https://api.example.com
+        FEATURE_FLAGS: '{"darkMode": true, "analytics": true}'
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web-frontend-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: web-app
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/certs/web-app-certificate.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: web-app-tls
+        namespace: production
+      spec:
+        secretName: web-app-tls
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        dnsNames:
+        - app.example.com
+        renewBefore: 720h
+    k8s/controllers/nginx-ingress-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nginx-ingress-controller
+        namespace: ingress-nginx
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: nginx-ingress
+        template:
+          metadata:
+            labels:
+              app: nginx-ingress
+          spec:
+            containers:
+            - name: controller
+              image: registry.k8s.io/ingress-nginx/controller:v1.9.4
+              args:
+              - /nginx-ingress-controller
+              - --ingress-class=nginx-internal
+              - --election-id=ingress-controller
+              ports:
+              - containerPort: 80
+              - containerPort: 443
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-app
+        namespace: production
+        labels:
+          app: web-app
+          tier: frontend
+      spec:
+        replicas: 4
+        selector:
+          matchLabels:
+            app: web-app
+        template:
+          metadata:
+            labels:
+              app: web-app
+              tier: frontend
+          spec:
+            containers:
+            - name: web
+              image: registry.example.com/web-app:v2.0.0
+              ports:
+              - containerPort: 3000
+                name: http
+              livenessProbe:
+                httpGet:
+                  path: /health
+                  port: 3000
+                initialDelaySeconds: 10
+                periodSeconds: 15
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-app
+        namespace: production
+      spec:
+        selector:
+          app: web-app
+        ports:
+        - name: http
+          port: 80
+          targetPort: 3000
+    k8s/base/ingress-class.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: IngressClass
+      metadata:
+        name: nginx-internal
+        annotations:
+          ingressclass.kubernetes.io/is-default-class: "false"
+      spec:
+        controller: k8s.io/ingress-nginx
+    k8s/base/ingress.yaml: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: web-app-ingress
+        namespace: production
+        labels:
+          app: web-app
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+          nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+      spec:
+        ingressClassName: nginx-internal
+        tls:
+        - hosts:
+          - app.example.com
+          secretName: web-app-tls
+        rules:
+        - host: app.example.com
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-app
+                  port:
+                    number: 80
+            - path: /static
+              pathType: Prefix
+              backend:
+                service:
+                  name: web-app
+                  port:
+                    number: 80
+    k8s/base/configmap.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: web-app-config
+        namespace: production
+      data:
+        API_URL: https://api.example.com
+        FEATURE_FLAGS: '{"darkMode": true, "analytics": true}'
+    k8s/base/hpa.yaml: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web-frontend-hpa
+        namespace: production
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: web-app
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 70
+    k8s/certs/web-app-certificate.yaml: |
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: web-app-tls
+        namespace: production
+      spec:
+        secretName: web-app-tls
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        dnsNames:
+        - app.example.com
+        renewBefore: 720h
+    k8s/controllers/nginx-ingress-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nginx-ingress-controller
+        namespace: ingress-nginx
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: nginx-ingress
+        template:
+          metadata:
+            labels:
+              app: nginx-ingress
+          spec:
+            containers:
+            - name: controller
+              image: registry.k8s.io/ingress-nginx/controller:v1.9.4
+              args:
+              - /nginx-ingress-controller
+              - --ingress-class=nginx-internal
+              - --election-id=ingress-controller
+              ports:
+              - containerPort: 80
+              - containerPort: 443
+  commit_message: Update files
+fragments:
+- id: ingress
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"'
+- id: ingress_1
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'ingressClassName: nginx-internal'
+- id: ingress_2
+  selector:
+    path: k8s/base/ingress.yaml
+    anchor: 'secretName: web-app-tls'
+- id: no_deployment
+  selector:
+    path: k8s/base/deployment.yaml
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_hpa
+  selector:
+    path: k8s/base/hpa.yaml
+- id: no_web_app_certificate
+  selector:
+    path: k8s/certs/web-app-certificate.yaml
+- id: no_nginx_ingress_deployment
+  selector:
+    path: k8s/controllers/nginx-ingress-deployment.yaml
+- id: no_global_0
+  selector:
+    anchor: web-app:v2.0.0
+- id: no_global_1
+  selector:
+    anchor: 'containerPort: 3000'
+- id: no_global_2
+  selector:
+    anchor: FEATURE_FLAGS
+- id: no_global_3
+  selector:
+    anchor: darkMode
+- id: no_global_4
+  selector:
+    anchor: web-frontend-hpa
+- id: no_global_5
+  selector:
+    anchor: averageUtilization
+- id: no_global_6
+  selector:
+    anchor: letsencrypt-prod
+- id: no_global_7
+  selector:
+    anchor: ClusterIssuer
+- id: no_global_8
+  selector:
+    anchor: 'renewBefore: 720h'
+- id: no_global_9
+  selector:
+    anchor: nginx-ingress-controller
+- id: no_global_10
+  selector:
+    anchor: controller:v1.9.4
+- id: no_global_11
+  selector:
+    anchor: election-id
+oracle:
+  required:
+  - ingress
+  - ingress_1
+  - ingress_2
+  allowed: []
+  forbidden:
+  - no_deployment
+  - no_configmap
+  - no_hpa
+  - no_web_app_certificate
+  - no_nginx_ingress_deployment
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

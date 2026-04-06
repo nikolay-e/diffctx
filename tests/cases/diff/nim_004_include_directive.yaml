@@ -1,0 +1,249 @@
+name: nim_004_include_directive
+repo:
+  initial_files:
+    src/helpers.nim: |
+      template tryExcept*(body: untyped, handler: untyped): untyped =
+        try:
+          body
+        except CatchableError as e:
+          handler
+
+      template benchmark*(name: string, body: untyped): untyped =
+        let startTime = cpuTime()
+        body
+        let elapsed = cpuTime() - startTime
+        echo name & " took " & $elapsed & "s"
+
+      proc clamp*[T](value, minVal, maxVal: T): T =
+        if value < minVal: minVal
+        elif value > maxVal: maxVal
+        else: value
+    src/main.nim: |
+      include "helpers"
+      include "constants"
+      import validators
+
+      proc processItem(id: int) =
+        let value = clamp(id, 1, 1000)
+        benchmark("processItem"):
+          echo "Processing item " & $value
+
+      proc main() =
+        for i in 1..MaxItems:
+          processItem(i)
+
+      when isMainModule:
+        main()
+    src/constants.nim: |
+      const MaxItems* = 100
+      const DefaultTimeout* = 30
+      const AppVersion* = "1.0.0"
+
+      let GARBAGE_NIM_004_A = "const_marker"
+      let GARBAGE_NIM_004_B = "version_marker"
+    src/validators.nim: |
+      import strutils
+
+      let GARBAGE_NIM_004_C = "validator_marker"
+      let GARBAGE_NIM_004_D = "rule_marker"
+
+      proc isValidEmail*(email: string): bool =
+        email.contains("@") and email.contains(".")
+
+      proc isValidPort*(port: int): bool =
+        port > 0 and port <= 65535
+
+      proc isNonEmpty*(s: string): bool =
+        s.strip().len > 0
+    src/macrohelpers.nim: |
+      import macros
+
+      let GARBAGE_NIM_004_E = "macro_marker"
+      let GARBAGE_NIM_004_F = "ast_marker"
+
+      template repeat*(count: int, body: untyped): untyped =
+        for i in 0..<count:
+          body
+
+      template debugPrint*(msg: string): untyped =
+        when defined(debug):
+          echo "[DEBUG] " & msg
+
+      macro generateEnum*(name: string, values: varargs[string]): untyped =
+        result = nnkTypeSection.newTree()
+  changed_files:
+    src/helpers.nim: |
+      template tryExcept*(body: untyped, handler: untyped): untyped =
+        try:
+          body
+        except CatchableError as e:
+          handler
+
+      template benchmark*(name: string, body: untyped): untyped =
+        let startTime = cpuTime()
+        body
+        let elapsed = cpuTime() - startTime
+        echo name & " took " & $elapsed & "s"
+
+      template withLogging*(procName: string, body: untyped): untyped =
+        echo ">>> Entering " & procName
+        body
+        echo "<<< Exiting " & procName
+
+      proc clamp*[T](value, minVal, maxVal: T): T =
+        if value < minVal: minVal
+        elif value > maxVal: maxVal
+        else: value
+    src/main.nim: |
+      include "helpers"
+      include "constants"
+      import validators
+
+      proc processItem(id: int) =
+        let value = clamp(id, 1, 1000)
+        withLogging("processItem"):
+          benchmark("processItem"):
+            echo "Processing item " & $value
+
+      proc processAll() =
+        withLogging("processAll"):
+          for i in 1..MaxItems:
+            processItem(i)
+
+      proc main() =
+        processAll()
+
+      when isMainModule:
+        main()
+    src/constants.nim: |
+      const MaxItems* = 100
+      const DefaultTimeout* = 30
+      const AppVersion* = "1.0.0"
+
+      let GARBAGE_NIM_004_A = "const_marker"
+      let GARBAGE_NIM_004_B = "version_marker"
+    src/validators.nim: |
+      import strutils
+
+      let GARBAGE_NIM_004_C = "validator_marker"
+      let GARBAGE_NIM_004_D = "rule_marker"
+
+      proc isValidEmail*(email: string): bool =
+        email.contains("@") and email.contains(".")
+
+      proc isValidPort*(port: int): bool =
+        port > 0 and port <= 65535
+
+      proc isNonEmpty*(s: string): bool =
+        s.strip().len > 0
+    src/macrohelpers.nim: |
+      import macros
+
+      let GARBAGE_NIM_004_E = "macro_marker"
+      let GARBAGE_NIM_004_F = "ast_marker"
+
+      template repeat*(count: int, body: untyped): untyped =
+        for i in 0..<count:
+          body
+
+      template debugPrint*(msg: string): untyped =
+        when defined(debug):
+          echo "[DEBUG] " & msg
+
+      macro generateEnum*(name: string, values: varargs[string]): untyped =
+        result = nnkTypeSection.newTree()
+  commit_message: Update files
+fragments:
+- id: helpers
+  selector:
+    path: src/helpers.nim
+    anchor: 'template withLogging*(procName: string, body: untyped): untyped'
+- id: helpers_1
+  selector:
+    path: src/helpers.nim
+    anchor: '>>> Entering '
+- id: helpers_2
+  selector:
+    path: src/helpers.nim
+    anchor: '<<< Exiting '
+- id: main
+  selector:
+    path: src/main.nim
+    anchor: withLogging("processItem")
+- id: main_1
+  selector:
+    path: src/main.nim
+    anchor: proc processAll()
+- id: no_constants
+  selector:
+    path: src/constants.nim
+- id: no_validators
+  selector:
+    path: src/validators.nim
+- id: no_macrohelpers
+  selector:
+    path: src/macrohelpers.nim
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_NIM_004_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_NIM_004_B
+- id: no_global_2
+  selector:
+    anchor: DefaultTimeout
+- id: no_global_3
+  selector:
+    anchor: AppVersion
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_NIM_004_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_NIM_004_D
+- id: no_global_6
+  selector:
+    anchor: isValidEmail
+- id: no_global_7
+  selector:
+    anchor: isValidPort
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_NIM_004_E
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_NIM_004_F
+- id: no_global_10
+  selector:
+    anchor: template repeat*
+- id: no_global_11
+  selector:
+    anchor: debugPrint
+- id: no_global_12
+  selector:
+    anchor: generateEnum
+oracle:
+  required:
+  - helpers
+  - helpers_1
+  - helpers_2
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_constants
+  - no_validators
+  - no_macrohelpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

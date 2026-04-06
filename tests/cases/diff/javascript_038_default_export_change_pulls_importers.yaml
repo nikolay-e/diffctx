@@ -1,0 +1,122 @@
+name: javascript_038_default_export_change_pulls_importers
+repo:
+  initial_files:
+    api.ts: |
+      export default function apiClient() {
+          return { get: (url: string) => fetch(url) };
+      }
+    service.ts: |
+      import client from './api';
+
+      export function getData(url: string) {
+          return client().get(url);
+      }
+    http-types.ts: |
+      export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+      export interface HttpOptions {
+          method: HttpMethod;
+          headers?: Record<string, string>;
+          body?: string;
+      }
+
+      export function createRequest(url: string, options: HttpOptions): Request {
+          return new Request(url, options);
+      }
+    retry-client.ts: |
+      export async function fetchWithRetry(
+          url: string,
+          options?: RequestInit,
+          maxRetries: number = 3
+      ): Promise<Response> {
+          for (let i = 0; i < maxRetries; i++) {
+              try { return await fetch(url, options); }
+              catch (e) { if (i === maxRetries - 1) throw e; }
+          }
+          throw new Error('Unreachable');
+      }
+  changed_files:
+    api.ts: |
+      export default function apiClient(baseUrl = '') {
+          return {
+              get: (url: string) => fetch(baseUrl + url),
+              post: (url: string, data: any) => fetch(baseUrl + url, {
+                  method: 'POST',
+                  body: JSON.stringify(data),
+              }),
+          };
+      }
+    service.ts: |
+      import client from './api';
+
+      export function getData(url: string) {
+          return client().get(url);
+      }
+    http-types.ts: |
+      export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+      export interface HttpOptions {
+          method: HttpMethod;
+          headers?: Record<string, string>;
+          body?: string;
+      }
+
+      export function createRequest(url: string, options: HttpOptions): Request {
+          return new Request(url, options);
+      }
+    retry-client.ts: |
+      export async function fetchWithRetry(
+          url: string,
+          options?: RequestInit,
+          maxRetries: number = 3
+      ): Promise<Response> {
+          for (let i = 0; i < maxRetries; i++) {
+              try { return await fetch(url, options); }
+              catch (e) { if (i === maxRetries - 1) throw e; }
+          }
+          throw new Error('Unreachable');
+      }
+  commit_message: Update files
+fragments:
+- id: service
+  selector:
+    path: service.ts
+    anchor: import client from './api'
+- id: service_1
+  selector:
+    path: service.ts
+    anchor: client().get(url)
+- id: no_http_types
+  selector:
+    path: http-types.ts
+- id: no_retry_client
+  selector:
+    path: retry-client.ts
+- id: no_global_0
+  selector:
+    anchor: HttpMethod
+- id: no_global_1
+  selector:
+    anchor: HttpOptions
+- id: no_global_2
+  selector:
+    anchor: createRequest
+- id: no_global_3
+  selector:
+    anchor: fetchWithRetry
+- id: no_global_4
+  selector:
+    anchor: maxRetries
+oracle:
+  required:
+  - service
+  - service_1
+  allowed: []
+  forbidden:
+  - no_http_types
+  - no_retry_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

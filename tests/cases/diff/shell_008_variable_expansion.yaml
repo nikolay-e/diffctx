@@ -1,0 +1,324 @@
+name: shell_008_variable_expansion
+repo:
+  initial_files:
+    lib/env.sh: |
+      #!/bin/bash
+
+      export CONFIG_PATH="/etc/myapp"
+      export DATA_DIR="/var/lib/myapp"
+      export APP_NAME="myapp"
+      export LOG_DIR="/var/log/myapp"
+
+      resolve_path() {
+          local base=$1
+          local sub=$2
+          echo "${base}/${sub}"
+      }
+
+      get_app_version() {
+          echo "1.2.3"
+      }
+    setup.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Setting up ${APP_NAME}..."
+      mkdir -p "${CONFIG_PATH}"
+    paths.sh: |
+      #!/bin/bash
+
+      export BIN_DIR="/usr/local/bin"
+      export LIB_DIR="/usr/local/lib"
+      export SHARE_DIR="/usr/local/share"
+
+      add_to_path() {
+          local dir=$1
+          if [[ ":$PATH:" != *":$dir:"* ]]; then
+              export PATH="$dir:$PATH"
+          fi
+      }
+
+      ensure_dir_exists() {
+          local dir=$1
+          [[ -d "$dir" ]] || mkdir -p "$dir"
+      }
+
+      remove_from_path() {
+          local dir=$1
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "^$dir$" | tr '\n' ':')
+      }
+    defaults.sh: |
+      #!/bin/bash
+
+      TIMEOUT="${TIMEOUT:-30}"
+      RETRIES="${RETRIES:-3}"
+      VERBOSE="${VERBOSE:-false}"
+      LOG_FORMAT="${LOG_FORMAT:-text}"
+
+      apply_defaults() {
+          echo "Timeout: $TIMEOUT"
+          echo "Retries: $RETRIES"
+          echo "Verbose: $VERBOSE"
+          echo "Log format: $LOG_FORMAT"
+      }
+
+      reset_defaults() {
+          unset TIMEOUT RETRIES VERBOSE LOG_FORMAT
+      }
+    install.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Installing ${APP_NAME} to ${CONFIG_PATH}..."
+
+      install_dir=$(resolve_path "$CONFIG_PATH" "bin")
+      mkdir -p "$install_dir"
+
+      cp -r dist/* "$install_dir/"
+      chmod +x "$install_dir"/*.sh
+
+      echo "Installed ${APP_NAME} version $(get_app_version)"
+    validate_env.sh: |
+      #!/bin/bash
+
+      check_required_dirs() {
+          local status=0
+          for dir in "$CONFIG_PATH" "$DATA_DIR" "$LOG_DIR"; do
+              if [[ ! -d "$dir" ]]; then
+                  echo "ERROR: Required directory missing: $dir"
+                  status=1
+              fi
+          done
+          return $status
+      }
+
+      check_permissions() {
+          local dir=$1
+          if [[ ! -w "$dir" ]]; then
+              echo "ERROR: No write permission on $dir"
+              return 1
+          fi
+          return 0
+      }
+
+      validate_app_name() {
+          if [[ -z "$APP_NAME" ]]; then
+              echo "ERROR: APP_NAME is not set"
+              return 1
+          fi
+          return 0
+      }
+    teardown.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Tearing down ${APP_NAME}..."
+
+      rm -rf "${CONFIG_PATH}/conf.d"
+      rm -rf "${DATA_DIR}/logs"
+      rm -rf "${DATA_DIR}/cache"
+
+      echo "Cleanup complete for ${APP_NAME}"
+
+      remaining=$(find "${CONFIG_PATH}" -type f | wc -l)
+      echo "Remaining files in config: $remaining"
+    lib/logging.sh: |
+      #!/bin/bash
+
+      LOG_LEVEL="${LOG_LEVEL:-info}"
+      LOG_FILE="/var/log/app.log"
+
+      log_message() {
+          local level=$1
+          local message=$2
+          local timestamp
+          timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+          echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+      }
+
+      log_info() {
+          log_message "INFO" "$1"
+      }
+
+      log_error() {
+          log_message "ERROR" "$1"
+      }
+
+      rotate_logs() {
+          local max_size=10485760
+          local size
+          size=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
+          if (( size > max_size )); then
+              mv "$LOG_FILE" "${LOG_FILE}.1"
+              touch "$LOG_FILE"
+          fi
+      }
+  changed_files:
+    lib/env.sh: |
+      #!/bin/bash
+
+      export CONFIG_PATH="/etc/myapp"
+      export DATA_DIR="/var/lib/myapp"
+      export APP_NAME="myapp"
+      export LOG_DIR="/var/log/myapp"
+
+      resolve_path() {
+          local base=$1
+          local sub=$2
+          echo "${base}/${sub}"
+      }
+
+      get_app_version() {
+          echo "1.2.3"
+      }
+    setup.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Setting up ${APP_NAME}..."
+      mkdir -p "${CONFIG_PATH}/conf.d"
+      mkdir -p "${DATA_DIR}/logs"
+      echo "Created directories for ${APP_NAME}"
+
+      config_file=$(resolve_path "$CONFIG_PATH" "${APP_NAME}.conf")
+      cp template.conf "$config_file"
+
+      backup_name="${APP_NAME}_backup_$(date +%Y%m%d)"
+      echo "Backup label: ${backup_name:-unnamed}"
+      echo "Data dir length: ${#DATA_DIR}"
+      echo "Upper name: ${APP_NAME^^}"
+  commit_message: Update files
+fragments:
+- id: env
+  selector:
+    path: lib/env.sh
+    anchor: export CONFIG_PATH="/etc/myapp"
+- id: env_1
+  selector:
+    path: lib/env.sh
+    anchor: export APP_NAME="myapp"
+- id: env_2
+  selector:
+    path: lib/env.sh
+    anchor: resolve_path()
+- id: setup
+  selector:
+    path: setup.sh
+    anchor: resolve_path
+- id: setup_1
+  selector:
+    path: setup.sh
+    anchor: ${APP_NAME^^}
+- id: no_paths
+  selector:
+    path: paths.sh
+- id: no_defaults
+  selector:
+    path: defaults.sh
+- id: no_install
+  selector:
+    path: install.sh
+- id: no_validate_env
+  selector:
+    path: validate_env.sh
+- id: no_teardown
+  selector:
+    path: teardown.sh
+- id: no_logging
+  selector:
+    path: lib/logging.sh
+- id: no_global_0
+  selector:
+    anchor: BIN_DIR
+- id: no_global_1
+  selector:
+    anchor: LIB_DIR
+- id: no_global_2
+  selector:
+    anchor: add_to_path
+- id: no_global_3
+  selector:
+    anchor: remove_from_path
+- id: no_global_4
+  selector:
+    anchor: TIMEOUT
+- id: no_global_5
+  selector:
+    anchor: RETRIES
+- id: no_global_6
+  selector:
+    anchor: apply_defaults
+- id: no_global_7
+  selector:
+    anchor: reset_defaults
+- id: no_global_8
+  selector:
+    anchor: Installing
+- id: no_global_9
+  selector:
+    anchor: cp -r dist
+- id: no_global_10
+  selector:
+    anchor: chmod +x
+- id: no_global_11
+  selector:
+    anchor: check_required_dirs
+- id: no_global_12
+  selector:
+    anchor: check_permissions
+- id: no_global_13
+  selector:
+    anchor: validate_app_name
+- id: no_global_14
+  selector:
+    anchor: Tearing down
+- id: no_global_15
+  selector:
+    anchor: rm -rf
+- id: no_global_16
+  selector:
+    anchor: Cleanup complete
+- id: no_global_17
+  selector:
+    anchor: LOG_LEVEL
+- id: no_global_18
+  selector:
+    anchor: rotate_logs
+- id: no_global_19
+  selector:
+    anchor: log_info
+oracle:
+  required:
+  - env
+  - env_1
+  - env_2
+  - setup
+  - setup_1
+  allowed: []
+  forbidden:
+  - no_paths
+  - no_defaults
+  - no_install
+  - no_validate_env
+  - no_teardown
+  - no_logging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18
+  - no_global_19

@@ -1,0 +1,172 @@
+name: ansible_002_include_vars
+repo:
+  initial_files:
+    playbooks/webserver.yml: |
+      ---
+      - hosts: webservers
+        tasks:
+          - name: Include web variables
+            ansible.builtin.include_vars:
+              file: web_vars.yml
+
+          - name: Install packages
+            ansible.builtin.apt:
+              name: "{{ web_packages }}"
+              state: present
+            become: true
+    vars/web_vars.yml: |
+      ---
+      web_packages:
+        - nginx
+        - certbot
+      web_port: 80
+      web_user: www-data
+      ssl_enabled: false
+    vars/db_vars.yml: |
+      ---
+      GARBAGE_ANS_002_A: "db_packages_marker"
+      db_packages:
+        - postgresql
+        - libpq-dev
+      db_port: 5432
+      db_user: postgres
+    vars/cache_vars.yml: |
+      ---
+      GARBAGE_ANS_002_B: "cache_packages_marker"
+      cache_packages:
+        - redis-server
+      cache_port: 6379
+    playbooks/database.yml: |
+      ---
+      - hosts: dbservers
+        GARBAGE_ANS_002_C: "database_playbook_marker"
+        tasks:
+          - name: Include database variables
+            ansible.builtin.include_vars:
+              file: db_vars.yml
+
+          - name: Install database packages
+            ansible.builtin.apt:
+              name: "{{ db_packages }}"
+              state: present
+    playbooks/monitoring.yml: |
+      ---
+      - hosts: all
+        GARBAGE_ANS_002_D: "monitoring_marker"
+        tasks:
+          - name: Install monitoring agent
+            ansible.builtin.apt:
+              name: node-exporter
+              state: present
+  changed_files:
+    playbooks/webserver.yml: |
+      ---
+      - hosts: webservers
+        tasks:
+          - name: Include web variables
+            ansible.builtin.include_vars:
+              file: web_vars.yml
+
+          - name: Install packages
+            ansible.builtin.apt:
+              name: "{{ web_packages }}"
+              state: present
+            become: true
+
+          - name: Configure SSL certificate
+            ansible.builtin.command:
+              cmd: "certbot certonly --standalone -d {{ ssl_domain }}"
+            when: ssl_enabled
+    vars/web_vars.yml: |
+      ---
+      web_packages:
+        - nginx
+        - certbot
+      web_port: 80
+      web_user: www-data
+      ssl_enabled: false
+      ssl_domain: example.com
+    vars/db_vars.yml: |
+      ---
+      GARBAGE_ANS_002_A: "db_packages_marker"
+      db_packages:
+        - postgresql
+        - libpq-dev
+      db_port: 5432
+      db_user: postgres
+    vars/cache_vars.yml: |
+      ---
+      GARBAGE_ANS_002_B: "cache_packages_marker"
+      cache_packages:
+        - redis-server
+      cache_port: 6379
+    playbooks/database.yml: |
+      ---
+      - hosts: dbservers
+        GARBAGE_ANS_002_C: "database_playbook_marker"
+        tasks:
+          - name: Include database variables
+            ansible.builtin.include_vars:
+              file: db_vars.yml
+
+          - name: Install database packages
+            ansible.builtin.apt:
+              name: "{{ db_packages }}"
+              state: present
+    playbooks/monitoring.yml: |
+      ---
+      - hosts: all
+        GARBAGE_ANS_002_D: "monitoring_marker"
+        tasks:
+          - name: Install monitoring agent
+            ansible.builtin.apt:
+              name: node-exporter
+              state: present
+  commit_message: Update files
+fragments:
+- id: web_vars
+  selector:
+    path: vars/web_vars.yml
+    anchor: ssl_domain
+- id: web_vars_1
+  selector:
+    path: vars/web_vars.yml
+    anchor: ssl_enabled
+- id: no_db_vars
+  selector:
+    path: vars/db_vars.yml
+- id: no_cache_vars
+  selector:
+    path: vars/cache_vars.yml
+- id: no_database
+  selector:
+    path: playbooks/database.yml
+- id: no_monitoring
+  selector:
+    path: playbooks/monitoring.yml
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ANS_002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ANS_002_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ANS_002_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ANS_002_D
+oracle:
+  required:
+  - web_vars
+  - web_vars_1
+  allowed: []
+  forbidden:
+  - no_db_vars
+  - no_cache_vars
+  - no_database
+  - no_monitoring
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

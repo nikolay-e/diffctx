@@ -1,0 +1,234 @@
+name: r_001_source_script
+repo:
+  initial_files:
+    helpers/utils.R: |
+      safe_divide <- function(a, b) {
+        ifelse(b == 0, 0, a / b)
+      }
+
+      normalize_vector <- function(x) {
+        n <- sqrt(sum(x^2))
+        if (n == 0) return(rep(0, length(x)))
+        x / n
+      }
+
+      scale_to_range <- function(x, new_min = 0, new_max = 1) {
+        old_min <- min(x, na.rm = TRUE)
+        old_max <- max(x, na.rm = TRUE)
+        if (old_max == old_min) return(rep(new_min, length(x)))
+        (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
+      }
+
+      remove_outliers <- function(x, threshold = 3) {
+        mu <- mean(x, na.rm = TRUE)
+        sigma <- sd(x, na.rm = TRUE)
+        x[abs(x - mu) <= threshold * sigma]
+      }
+    analysis/main.R: |
+      source("helpers/utils.R")
+
+      data <- read.csv("data/measurements.csv")
+
+      cleaned <- data[complete.cases(data), ]
+      summary_stats <- summary(cleaned$value)
+      cat("Summary:\n")
+      print(summary_stats)
+    helpers/plotting.R: |
+      GARBAGE_R_001_A <- "noise_marker_plotting"
+
+      create_histogram <- function(data, column, bins = 30) {
+        hist(data[[column]], breaks = bins, main = paste("Histogram of", column),
+             xlab = column, col = "steelblue", border = "white")
+      }
+
+      create_scatter <- function(data, x_col, y_col) {
+        plot(data[[x_col]], data[[y_col]],
+             xlab = x_col, ylab = y_col,
+             main = paste(x_col, "vs", y_col),
+             pch = 19, col = rgb(0.2, 0.4, 0.6, 0.5))
+      }
+
+      save_plot <- function(filename, width = 8, height = 6) {
+        pdf(filename, width = width, height = height)
+      }
+    analysis/clustering.R: |
+      GARBAGE_R_001_B <- "noise_marker_clustering"
+
+      source("helpers/utils.R")
+
+      perform_kmeans <- function(data, k = 3) {
+        normalized <- t(apply(data, 1, normalize_vector))
+        result <- kmeans(normalized, centers = k, nstart = 25)
+        return(result)
+      }
+
+      compute_silhouette <- function(data, clusters) {
+        library(cluster)
+        sil <- silhouette(clusters, dist(data))
+        return(mean(sil[, 3]))
+      }
+
+      find_optimal_k <- function(data, max_k = 10) {
+        wss <- sapply(1:max_k, function(k) {
+          kmeans(data, centers = k, nstart = 10)$tot.withinss
+        })
+        return(wss)
+      }
+  changed_files:
+    helpers/utils.R: |
+      safe_divide <- function(a, b) {
+        ifelse(b == 0, 0, a / b)
+      }
+
+      normalize_vector <- function(x) {
+        n <- sqrt(sum(x^2))
+        if (n == 0) return(rep(0, length(x)))
+        x / n
+      }
+
+      scale_to_range <- function(x, new_min = 0, new_max = 1) {
+        old_min <- min(x, na.rm = TRUE)
+        old_max <- max(x, na.rm = TRUE)
+        if (old_max == old_min) return(rep(new_min, length(x)))
+        (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
+      }
+
+      remove_outliers <- function(x, threshold = 3) {
+        mu <- mean(x, na.rm = TRUE)
+        sigma <- sd(x, na.rm = TRUE)
+        x[abs(x - mu) <= threshold * sigma]
+      }
+    analysis/main.R: |
+      source("helpers/utils.R")
+
+      data <- read.csv("data/measurements.csv")
+
+      cleaned <- data[complete.cases(data), ]
+      summary_stats <- summary(cleaned$value)
+      cat("Summary:\n")
+      print(summary_stats)
+
+      feature_cols <- c("height", "weight", "age")
+      features <- as.matrix(cleaned[, feature_cols])
+      normalized_features <- t(apply(features, 1, normalize_vector))
+
+      scaled_values <- scale_to_range(cleaned$value)
+      cat("Normalized feature dimensions:", dim(normalized_features), "\n")
+      cat("Scaled value range:", range(scaled_values), "\n")
+    helpers/plotting.R: |
+      GARBAGE_R_001_A <- "noise_marker_plotting"
+
+      create_histogram <- function(data, column, bins = 30) {
+        hist(data[[column]], breaks = bins, main = paste("Histogram of", column),
+             xlab = column, col = "steelblue", border = "white")
+      }
+
+      create_scatter <- function(data, x_col, y_col) {
+        plot(data[[x_col]], data[[y_col]],
+             xlab = x_col, ylab = y_col,
+             main = paste(x_col, "vs", y_col),
+             pch = 19, col = rgb(0.2, 0.4, 0.6, 0.5))
+      }
+
+      save_plot <- function(filename, width = 8, height = 6) {
+        pdf(filename, width = width, height = height)
+      }
+    analysis/clustering.R: |
+      GARBAGE_R_001_B <- "noise_marker_clustering"
+
+      source("helpers/utils.R")
+
+      perform_kmeans <- function(data, k = 3) {
+        normalized <- t(apply(data, 1, normalize_vector))
+        result <- kmeans(normalized, centers = k, nstart = 25)
+        return(result)
+      }
+
+      compute_silhouette <- function(data, clusters) {
+        library(cluster)
+        sil <- silhouette(clusters, dist(data))
+        return(mean(sil[, 3]))
+      }
+
+      find_optimal_k <- function(data, max_k = 10) {
+        wss <- sapply(1:max_k, function(k) {
+          kmeans(data, centers = k, nstart = 10)$tot.withinss
+        })
+        return(wss)
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: analysis/main.R
+    anchor: source("helpers/utils.R")
+- id: main_1
+  selector:
+    path: analysis/main.R
+    anchor: normalize_vector
+- id: main_2
+  selector:
+    path: analysis/main.R
+    anchor: scale_to_range
+- id: utils
+  selector:
+    path: helpers/utils.R
+    anchor: normalize_vector <- function(x)
+- id: utils_1
+  selector:
+    path: helpers/utils.R
+    anchor: n <- sqrt(sum(x^2))
+- id: utils_2
+  selector:
+    path: helpers/utils.R
+    anchor: scale_to_range <- function
+- id: no_plotting
+  selector:
+    path: helpers/plotting.R
+- id: no_clustering
+  selector:
+    path: analysis/clustering.R
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_R_001_A
+- id: no_global_1
+  selector:
+    anchor: create_histogram
+- id: no_global_2
+  selector:
+    anchor: create_scatter
+- id: no_global_3
+  selector:
+    anchor: save_plot
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_R_001_B
+- id: no_global_5
+  selector:
+    anchor: perform_kmeans
+- id: no_global_6
+  selector:
+    anchor: compute_silhouette
+- id: no_global_7
+  selector:
+    anchor: find_optimal_k
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - utils
+  - utils_1
+  - utils_2
+  allowed: []
+  forbidden:
+  - no_plotting
+  - no_clustering
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

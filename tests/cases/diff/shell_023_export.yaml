@@ -1,0 +1,246 @@
+name: shell_023_export
+repo:
+  initial_files:
+    lib/env.sh: |
+      #!/bin/bash
+
+      export PATH="$PATH:$HOME/bin"
+      export APP_HOME="/opt/myapp"
+      export APP_CONFIG="$APP_HOME/config"
+    app.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Starting app from $APP_HOME"
+      echo "Config dir: $APP_CONFIG"
+    profile.sh: |
+      #!/bin/bash
+
+      export EDITOR="vim"
+      export LANG="en_US.UTF-8"
+      export PS1="\u@\h:\w\$ "
+
+      setup_prompt() {
+          if [[ "$TERM" == "xterm"* ]]; then
+              export PS1="\[\e[32m\]\u@\h\[\e[0m\]:\w\$ "
+          fi
+      }
+    runtime.sh: |
+      #!/bin/bash
+
+      set_open_files_limit() {
+          local limit=${1:-65535}
+          ulimit -n "$limit" 2>/dev/null
+      }
+
+      set_process_priority() {
+          local priority=${1:-10}
+          renice "$priority" $$ > /dev/null 2>&1
+      }
+
+      show_resource_limits() {
+          echo "Open files: $(ulimit -n)"
+          echo "Max procs:  $(ulimit -u)"
+      }
+    scripts/child-script.sh: |
+      #!/bin/bash
+      # Inherits exported env from parent
+      format_output "INFO" "Child script started"
+      echo "Working in: $APP_HOME"
+      echo "Logging to: $APP_LOG"
+      format_output "INFO" "Child script finished"
+    scripts/env_check.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      required_vars=(APP_HOME APP_CONFIG APP_LOG)
+      for var in "${required_vars[@]}"; do
+          if [[ -z "${!var}" ]]; then
+              echo "MISSING: $var"
+          else
+              echo "OK: $var=${!var}"
+          fi
+      done
+    config/env_staging.sh: |
+      #!/bin/bash
+      export PATH="$PATH:$HOME/bin"
+      export APP_HOME="/opt/myapp-staging"
+      export APP_CONFIG="$APP_HOME/config"
+      export APP_LOG="$APP_HOME/logs"
+  changed_files:
+    lib/env.sh: |
+      #!/bin/bash
+
+      export PATH="$PATH:$HOME/bin:/usr/local/app/bin"
+      export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+
+      export APP_HOME="/opt/myapp"
+      export APP_CONFIG="$APP_HOME/config"
+      export APP_LOG="$APP_HOME/logs"
+
+      format_output() {
+          local level=$1
+          local msg=$2
+          echo "[$(date +%H:%M:%S)] [$level] $msg"
+      }
+      export -f format_output
+    app.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      echo "Starting app from $APP_HOME"
+      echo "Config dir: $APP_CONFIG"
+
+      mkdir -p "$APP_LOG"
+      format_output "INFO" "Logging to $APP_LOG"
+
+      ./child-script.sh
+    profile.sh: |
+      #!/bin/bash
+
+      export EDITOR="vim"
+      export LANG="en_US.UTF-8"
+      export PS1="\u@\h:\w\$ "
+
+      setup_prompt() {
+          if [[ "$TERM" == "xterm"* ]]; then
+              export PS1="\[\e[32m\]\u@\h\[\e[0m\]:\w\$ "
+          fi
+      }
+    runtime.sh: |
+      #!/bin/bash
+
+      set_open_files_limit() {
+          local limit=${1:-65535}
+          ulimit -n "$limit" 2>/dev/null
+      }
+
+      set_process_priority() {
+          local priority=${1:-10}
+          renice "$priority" $$ > /dev/null 2>&1
+      }
+
+      show_resource_limits() {
+          echo "Open files: $(ulimit -n)"
+          echo "Max procs:  $(ulimit -u)"
+      }
+    scripts/child-script.sh: |
+      #!/bin/bash
+      # Inherits exported env from parent
+      format_output "INFO" "Child script started"
+      echo "Working in: $APP_HOME"
+      echo "Logging to: $APP_LOG"
+      format_output "INFO" "Child script finished"
+    scripts/env_check.sh: |
+      #!/bin/bash
+      source ./lib/env.sh
+
+      required_vars=(APP_HOME APP_CONFIG APP_LOG)
+      for var in "${required_vars[@]}"; do
+          if [[ -z "${!var}" ]]; then
+              echo "MISSING: $var"
+          else
+              echo "OK: $var=${!var}"
+          fi
+      done
+    config/env_staging.sh: |
+      #!/bin/bash
+      export PATH="$PATH:$HOME/bin"
+      export APP_HOME="/opt/myapp-staging"
+      export APP_CONFIG="$APP_HOME/config"
+      export APP_LOG="$APP_HOME/logs"
+  commit_message: Update files
+fragments:
+- id: env
+  selector:
+    path: lib/env.sh
+    anchor: export APP_HOME="/opt/myapp"
+- id: env_1
+  selector:
+    path: lib/env.sh
+    anchor: export APP_LOG="$APP_HOME/logs"
+- id: env_2
+  selector:
+    path: lib/env.sh
+    anchor: export -f format_output
+- id: app
+  selector:
+    path: app.sh
+    anchor: format_output
+- id: app_1
+  selector:
+    path: app.sh
+    anchor: APP_LOG
+- id: no_profile
+  selector:
+    path: profile.sh
+- id: no_runtime
+  selector:
+    path: runtime.sh
+- id: no_child_script
+  selector:
+    path: scripts/child-script.sh
+- id: no_env_check
+  selector:
+    path: scripts/env_check.sh
+- id: no_env_staging
+  selector:
+    path: config/env_staging.sh
+- id: no_global_0
+  selector:
+    anchor: EDITOR
+- id: no_global_1
+  selector:
+    anchor: setup_prompt
+- id: no_global_2
+  selector:
+    anchor: PS1
+- id: no_global_3
+  selector:
+    anchor: set_open_files_limit
+- id: no_global_4
+  selector:
+    anchor: set_process_priority
+- id: no_global_5
+  selector:
+    anchor: show_resource_limits
+- id: no_global_6
+  selector:
+    anchor: Child script started
+- id: no_global_7
+  selector:
+    anchor: Child script finished
+- id: no_global_8
+  selector:
+    anchor: 'MISSING:'
+- id: no_global_9
+  selector:
+    anchor: required_vars
+- id: no_global_10
+  selector:
+    anchor: myapp-staging
+oracle:
+  required:
+  - env
+  - env_1
+  - env_2
+  - app
+  - app_1
+  allowed: []
+  forbidden:
+  - no_profile
+  - no_runtime
+  - no_child_script
+  - no_env_check
+  - no_env_staging
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

@@ -1,0 +1,167 @@
+name: javascript_extended_028_usestate_generic
+repo:
+  initial_files:
+    src/types.ts: |
+      export interface TodoItem {
+          id: string;
+          text: string;
+          completed: boolean;
+          priority: 'low' | 'medium' | 'high';
+      }
+
+      export interface TodoFilter {
+          showCompleted: boolean;
+          priority?: 'low' | 'medium' | 'high';
+      }
+
+      export function createTodo(text: string, priority: TodoItem['priority'] = 'medium'): TodoItem {
+          return { id: Date.now().toString(), text, completed: false, priority };
+      }
+    src/TodoList.tsx: |
+      console.log('initial');
+    src/db/schema.ts: |
+      interface TableColumn {
+          name: string;
+          type: 'string' | 'number' | 'boolean' | 'date';
+          nullable?: boolean;
+      }
+
+      export const usersTable: TableColumn[] = [
+          { name: 'id', type: 'string' },
+          { name: 'email', type: 'string' },
+          { name: 'created_at', type: 'date' },
+      ];
+
+      export function validateSchema(columns: TableColumn[], data: Record<string, unknown>): boolean {
+          return columns.every(col => col.nullable || data[col.name] !== undefined);
+      }
+    src/config/constants.ts: |
+      export const APP_NAME = 'TodoApp';
+      export const MAX_RETRIES = 3;
+      export const REQUEST_TIMEOUT = 5000;
+
+      export function getApiBaseUrl(): string {
+          return process.env.API_URL || 'http://localhost:3000';
+      }
+  changed_files:
+    src/types.ts: |
+      export interface TodoItem {
+          id: string;
+          text: string;
+          completed: boolean;
+          priority: 'low' | 'medium' | 'high';
+      }
+
+      export interface TodoFilter {
+          showCompleted: boolean;
+          priority?: 'low' | 'medium' | 'high';
+      }
+
+      export function createTodo(text: string, priority: TodoItem['priority'] = 'medium'): TodoItem {
+          return { id: Date.now().toString(), text, completed: false, priority };
+      }
+    src/TodoList.tsx: |
+      import { useState } from 'react';
+      import { TodoItem, createTodo } from './types';
+
+      export function TodoList() {
+          const [todos, setTodos] = useState<TodoItem[]>([]);
+          const [input, setInput] = useState('');
+
+          const addTodo = () => {
+              if (input.trim()) {
+                  setTodos(prev => [...prev, createTodo(input)]);
+                  setInput('');
+              }
+          };
+
+          const toggleTodo = (id: string) => {
+              setTodos(prev =>
+                  prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+              );
+          };
+
+          return (
+              <div>
+                  <input value={input} onChange={e => setInput(e.target.value)} />
+                  <button onClick={addTodo}>Add</button>
+                  {todos.map(t => (
+                      <div key={t.id} onClick={() => toggleTodo(t.id)}>
+                          {t.completed ? '[x]' : '[ ]'} {t.text}
+                      </div>
+                  ))}
+              </div>
+          );
+      }
+    src/db/schema.ts: |
+      interface TableColumn {
+          name: string;
+          type: 'string' | 'number' | 'boolean' | 'date';
+          nullable?: boolean;
+      }
+
+      export const usersTable: TableColumn[] = [
+          { name: 'id', type: 'string' },
+          { name: 'email', type: 'string' },
+          { name: 'created_at', type: 'date' },
+      ];
+
+      export function validateSchema(columns: TableColumn[], data: Record<string, unknown>): boolean {
+          return columns.every(col => col.nullable || data[col.name] !== undefined);
+      }
+    src/config/constants.ts: |
+      export const APP_NAME = 'TodoApp';
+      export const MAX_RETRIES = 3;
+      export const REQUEST_TIMEOUT = 5000;
+
+      export function getApiBaseUrl(): string {
+          return process.env.API_URL || 'http://localhost:3000';
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: TodoItem
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: createTodo
+- id: no_schema
+  selector:
+    path: src/db/schema.ts
+- id: no_constants
+  selector:
+    path: src/config/constants.ts
+- id: no_global_0
+  selector:
+    anchor: TableColumn
+- id: no_global_1
+  selector:
+    anchor: usersTable
+- id: no_global_2
+  selector:
+    anchor: validateSchema
+- id: no_global_3
+  selector:
+    anchor: APP_NAME
+- id: no_global_4
+  selector:
+    anchor: MAX_RETRIES
+- id: no_global_5
+  selector:
+    anchor: getApiBaseUrl
+oracle:
+  required:
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_schema
+  - no_constants
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

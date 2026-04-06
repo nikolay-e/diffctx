@@ -1,0 +1,36 @@
+name: internals_047_star_topology_central_node
+repo:
+  initial_files:
+    star.py: |
+      pass
+  changed_files:
+    star.py: |
+      def utils_helper():
+          pass
+
+      def peripheral_0():
+          utils_helper()
+
+      def peripheral_1():
+          utils_helper()
+
+      def peripheral_2():
+          utils_helper()
+  commit_message: Update files
+fragments:
+- id: star_file
+  selector:
+    path: star.py
+- id: req_global_0
+  selector:
+    anchor: 'def utils_helper():'
+- id: req_global_1
+  selector:
+    anchor: 'def peripheral_0():'
+oracle:
+  required:
+  - star_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

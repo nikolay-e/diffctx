@@ -1,0 +1,336 @@
+name: graph_001_function_call_creates_edge
+repo:
+  initial_files:
+    caller.py: |
+      def main():
+          result = helper()
+          processed = transform(result)
+          return finalize(processed)
+
+      def orchestrate():
+          return main()
+    callee.py: |
+      def helper():
+          data = fetch_data()
+          return validate(data)
+
+      def fetch_data():
+          return {"raw": "content"}
+
+      def validate(data):
+          return data.get("raw") is not None
+    transformer.py: |
+      def transform(value):
+          normalized = normalize(value)
+          return enrich(normalized)
+
+      def normalize(v):
+          return str(v).lower()
+
+      def enrich(v):
+          return f"enriched_{v}"
+    finalizer.py: |
+      def finalize(data):
+          cleaned = cleanup(data)
+          return format_output(cleaned)
+
+      def cleanup(d):
+          return d.strip()
+
+      def format_output(d):
+          return f"[FINAL] {d}"
+    garbage_helper_utils.py: |
+      GARBAGE_GRAPH_001_HELPER_UTILS_A = "helper_utils"
+      GARBAGE_GRAPH_001_HELPER_UTILS_B = True
+
+      def helper():
+          return {"fake": "data"}
+
+      def helper_wrapper():
+          return helper()
+
+      class HelperFactory:
+          GARBAGE_GRAPH_001_HELPER_FACTORY_C = 99
+
+          def create_helper(self):
+              return helper()
+    garbage_pipeline_runner.py: |
+      from transformer import transform
+      from finalizer import finalize
+      GARBAGE_GRAPH_001_PIPELINE_RUNNER_D = "pipeline"
+      GARBAGE_GRAPH_001_PIPELINE_RUNNER_E = 42
+
+      def run_pipeline(data):
+          processed = transform(data)
+          return finalize(processed)
+
+      class PipelineExecutor:
+          GARBAGE_GRAPH_001_PIPELINE_EXEC_F = True
+
+          def execute(self, data):
+              return run_pipeline(data)
+    garbage_coordinator.py: |
+      GARBAGE_GRAPH_001_COORDINATOR_G = "coordinator"
+      GARBAGE_GRAPH_001_COORDINATOR_H = False
+
+      def coordinate():
+          step1 = prepare()
+          step2 = execute_step(step1)
+          return complete(step2)
+
+      def prepare():
+          return "ready"
+
+      def execute_step(data):
+          return f"executed_{data}"
+
+      def complete(data):
+          return f"done_{data}"
+    garbage/unrelated_math_GARBAGE_GRAPH_abc001.py: |
+      def compute_fibonacci_GARBAGE_GRAPH_abc001(n):
+          if n <= 1:
+              return n
+          return compute_fibonacci_GARBAGE_GRAPH_abc001(n-1) + compute_fibonacci_GARBAGE_GRAPH_abc001(n-2)
+
+      def factorial_GARBAGE_GRAPH_abc001(n):
+          if n <= 1:
+              return 1
+          return n * factorial_GARBAGE_GRAPH_abc001(n-1)
+
+      class MathHelper_GARBAGE_GRAPH_abc001:
+          def prime_check(self, n):
+              if n < 2:
+                  return False
+              for i in range(2, int(n**0.5) + 1):
+                  if n % i == 0:
+                      return False
+              return True
+    garbage/random_utils_GARBAGE_GRAPH_abc002.py: |
+      import random
+      def shuffle_list_GARBAGE_GRAPH_abc002(items):
+          return random.sample(items, len(items))
+
+      def random_choice_GARBAGE_GRAPH_abc002(items):
+          return random.choice(items)
+    garbage/string_ops_GARBAGE_GRAPH_abc003.py: |
+      def reverse_string_GARBAGE_GRAPH_abc003(s):
+          return s[::-1]
+
+      def count_vowels_GARBAGE_GRAPH_abc003(s):
+          return sum(1 for c in s.lower() if c in 'aeiou')
+  changed_files:
+    caller.py: |
+      def main():
+          result = helper()
+          processed = transform(result)
+          validated = double_check(processed)
+          return finalize(validated)
+
+      def orchestrate():
+          return main()
+
+      def double_check(value):
+          return value if value else "default"
+    callee.py: |
+      def helper():
+          data = fetch_data()
+          return validate(data)
+
+      def fetch_data():
+          return {"raw": "content"}
+
+      def validate(data):
+          return data.get("raw") is not None
+    transformer.py: |
+      def transform(value):
+          normalized = normalize(value)
+          return enrich(normalized)
+
+      def normalize(v):
+          return str(v).lower()
+
+      def enrich(v):
+          return f"enriched_{v}"
+    finalizer.py: |
+      def finalize(data):
+          cleaned = cleanup(data)
+          return format_output(cleaned)
+
+      def cleanup(d):
+          return d.strip()
+
+      def format_output(d):
+          return f"[FINAL] {d}"
+    garbage_helper_utils.py: |
+      GARBAGE_GRAPH_001_HELPER_UTILS_A = "helper_utils"
+      GARBAGE_GRAPH_001_HELPER_UTILS_B = True
+
+      def helper():
+          return {"fake": "data"}
+
+      def helper_wrapper():
+          return helper()
+
+      class HelperFactory:
+          GARBAGE_GRAPH_001_HELPER_FACTORY_C = 99
+
+          def create_helper(self):
+              return helper()
+    garbage_pipeline_runner.py: |
+      from transformer import transform
+      from finalizer import finalize
+      GARBAGE_GRAPH_001_PIPELINE_RUNNER_D = "pipeline"
+      GARBAGE_GRAPH_001_PIPELINE_RUNNER_E = 42
+
+      def run_pipeline(data):
+          processed = transform(data)
+          return finalize(processed)
+
+      class PipelineExecutor:
+          GARBAGE_GRAPH_001_PIPELINE_EXEC_F = True
+
+          def execute(self, data):
+              return run_pipeline(data)
+    garbage_coordinator.py: |
+      GARBAGE_GRAPH_001_COORDINATOR_G = "coordinator"
+      GARBAGE_GRAPH_001_COORDINATOR_H = False
+
+      def coordinate():
+          step1 = prepare()
+          step2 = execute_step(step1)
+          return complete(step2)
+
+      def prepare():
+          return "ready"
+
+      def execute_step(data):
+          return f"executed_{data}"
+
+      def complete(data):
+          return f"done_{data}"
+    garbage/unrelated_math_GARBAGE_GRAPH_abc001.py: |
+      def compute_fibonacci_GARBAGE_GRAPH_abc001(n):
+          if n <= 1:
+              return n
+          return compute_fibonacci_GARBAGE_GRAPH_abc001(n-1) + compute_fibonacci_GARBAGE_GRAPH_abc001(n-2)
+
+      def factorial_GARBAGE_GRAPH_abc001(n):
+          if n <= 1:
+              return 1
+          return n * factorial_GARBAGE_GRAPH_abc001(n-1)
+
+      class MathHelper_GARBAGE_GRAPH_abc001:
+          def prime_check(self, n):
+              if n < 2:
+                  return False
+              for i in range(2, int(n**0.5) + 1):
+                  if n % i == 0:
+                      return False
+              return True
+    garbage/random_utils_GARBAGE_GRAPH_abc002.py: |
+      import random
+      def shuffle_list_GARBAGE_GRAPH_abc002(items):
+          return random.sample(items, len(items))
+
+      def random_choice_GARBAGE_GRAPH_abc002(items):
+          return random.choice(items)
+    garbage/string_ops_GARBAGE_GRAPH_abc003.py: |
+      def reverse_string_GARBAGE_GRAPH_abc003(s):
+          return s[::-1]
+
+      def count_vowels_GARBAGE_GRAPH_abc003(s):
+          return sum(1 for c in s.lower() if c in 'aeiou')
+  commit_message: Update files
+fragments:
+- id: caller
+  selector:
+    path: caller.py
+    anchor: validated = double_check(processed)
+- id: caller_1
+  selector:
+    path: caller.py
+    anchor: 'def double_check(value):'
+- id: caller_2
+  selector:
+    path: caller.py
+    anchor: return finalize(validated)
+- id: caller_3
+  selector:
+    path: caller.py
+    anchor: 'def main():'
+- id: no_unrelated_math_garbage_graph_abc001
+  selector:
+    path: garbage/unrelated_math_GARBAGE_GRAPH_abc001.py
+- id: no_random_utils_garbage_graph_abc002
+  selector:
+    path: garbage/random_utils_GARBAGE_GRAPH_abc002.py
+- id: no_string_ops_garbage_graph_abc003
+  selector:
+    path: garbage/string_ops_GARBAGE_GRAPH_abc003.py
+- id: no_garbage_helper_utils
+  selector:
+    path: garbage_helper_utils.py
+- id: no_garbage_pipeline_runner
+  selector:
+    path: garbage_pipeline_runner.py
+- id: no_garbage_coordinator
+  selector:
+    path: garbage_coordinator.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_GRAPH_abc001
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_GRAPH_abc002
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_GRAPH_abc003
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_GRAPH_001_HELPER_UTILS_A
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_GRAPH_001_HELPER_UTILS_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_GRAPH_001_HELPER_FACTORY_C
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_GRAPH_001_PIPELINE_RUNNER_D
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_GRAPH_001_PIPELINE_RUNNER_E
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_GRAPH_001_PIPELINE_EXEC_F
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_GRAPH_001_COORDINATOR_G
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_GRAPH_001_COORDINATOR_H
+oracle:
+  required:
+  - caller
+  - caller_1
+  - caller_2
+  - caller_3
+  allowed: []
+  forbidden:
+  - no_unrelated_math_garbage_graph_abc001
+  - no_random_utils_garbage_graph_abc002
+  - no_string_ops_garbage_graph_abc003
+  - no_garbage_helper_utils
+  - no_garbage_pipeline_runner
+  - no_garbage_coordinator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10

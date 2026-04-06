@@ -1,0 +1,360 @@
+name: swift_014_observed_object
+repo:
+  initial_files:
+    Features/Profile/ProfileViewModel.swift: |
+      import Combine
+
+      class ProfileViewModel: ObservableObject {
+          @Published var displayName: String = ""
+          @Published var bio: String = ""
+          @Published var isValid: Bool = false
+
+          private let maxBioLength = 160
+
+          func validate() {
+              isValid = !displayName.trimmingCharacters(in: .whitespaces).isEmpty
+                  && bio.count <= maxBioLength
+          }
+
+          var remainingCharacters: Int {
+              max(0, maxBioLength - bio.count)
+          }
+      }
+    Features/Profile/ProfileFormView.swift: |
+      import SwiftUI
+
+      struct ProfileFormView: View {
+          var body: some View { Text("TODO") }
+      }
+    Features/Settings/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var language: String = "en"
+          @Published var theme: String = "system"
+          @Published var analyticsEnabled: Bool = true
+
+          func resetToDefaults() {
+              language = "en"
+              theme = "system"
+              analyticsEnabled = true
+          }
+      }
+    Features/Feed/FeedView.swift: |
+      import SwiftUI
+
+      struct FeedItem: Identifiable {
+          let id: UUID
+          let title: String
+          let timestamp: Date
+      }
+
+      struct FeedView: View {
+          let items: [FeedItem]
+
+          var body: some View {
+              List(items) { item in
+                  VStack(alignment: .leading) {
+                      Text(item.title).font(.headline)
+                      Text(item.timestamp, style: .relative).font(.caption)
+                  }
+              }
+          }
+      }
+    Features/Profile/ProfilePictureView.swift: |
+      import SwiftUI
+
+      struct ProfilePictureView: View {
+          @ObservedObject var viewModel: ProfileViewModel
+
+          var body: some View {
+              ZStack {
+                  Circle()
+                      .fill(Color.blue.opacity(0.2))
+                      .frame(width: 80, height: 80)
+                  Text(viewModel.displayName.prefix(2).uppercased())
+                      .font(.title2)
+                      .fontWeight(.bold)
+              }
+          }
+      }
+    Features/Profile/ProfileService.swift: |
+      import Foundation
+
+      class ProfileService {
+          func saveProfile(displayName: String, bio: String) async throws {
+              let payload: [String: Any] = [
+                  "displayName": displayName,
+                  "bio": bio
+              ]
+              let data = try JSONSerialization.data(withJSONObject: payload)
+              let url = URL(string: "https://api.example.com/profile")!
+              var request = URLRequest(url: url)
+              request.httpMethod = "PUT"
+              request.httpBody = data
+              _ = try await URLSession.shared.data(for: request)
+          }
+      }
+    Features/Registration/RegistrationViewModel.swift: |
+      import Combine
+
+      class RegistrationViewModel: ObservableObject {
+          @Published var username: String = ""
+          @Published var email: String = ""
+          @Published var password: String = ""
+          @Published var isValid: Bool = false
+
+          func validate() {
+              isValid = !username.isEmpty && email.contains("@") && password.count >= 8
+          }
+      }
+  changed_files:
+    Features/Profile/ProfileViewModel.swift: |
+      import Combine
+
+      class ProfileViewModel: ObservableObject {
+          @Published var displayName: String = ""
+          @Published var bio: String = ""
+          @Published var isValid: Bool = false
+
+          private let maxBioLength = 160
+
+          func validate() {
+              isValid = !displayName.trimmingCharacters(in: .whitespaces).isEmpty
+                  && bio.count <= maxBioLength
+          }
+
+          var remainingCharacters: Int {
+              max(0, maxBioLength - bio.count)
+          }
+      }
+    Features/Profile/ProfileFormView.swift: |
+      import SwiftUI
+
+      struct ProfileFormView: View {
+          @ObservedObject var viewModel: ProfileViewModel
+
+          var body: some View {
+              Form {
+                  Section("Profile") {
+                      TextField("Display Name", text: $viewModel.displayName)
+                      TextEditor(text: $viewModel.bio)
+                      Text("\(viewModel.remainingCharacters) characters remaining")
+                          .font(.caption)
+                          .foregroundColor(viewModel.remainingCharacters < 20 ? .red : .secondary)
+                  }
+                  Section {
+                      Button("Save") {
+                          viewModel.validate()
+                      }
+                      .disabled(!viewModel.isValid)
+                  }
+              }
+              .onChange(of: viewModel.displayName) { _ in viewModel.validate() }
+              .onChange(of: viewModel.bio) { _ in viewModel.validate() }
+          }
+      }
+    Features/Settings/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var language: String = "en"
+          @Published var theme: String = "system"
+          @Published var analyticsEnabled: Bool = true
+
+          func resetToDefaults() {
+              language = "en"
+              theme = "system"
+              analyticsEnabled = true
+          }
+      }
+    Features/Feed/FeedView.swift: |
+      import SwiftUI
+
+      struct FeedItem: Identifiable {
+          let id: UUID
+          let title: String
+          let timestamp: Date
+      }
+
+      struct FeedView: View {
+          let items: [FeedItem]
+
+          var body: some View {
+              List(items) { item in
+                  VStack(alignment: .leading) {
+                      Text(item.title).font(.headline)
+                      Text(item.timestamp, style: .relative).font(.caption)
+                  }
+              }
+          }
+      }
+    Features/Profile/ProfilePictureView.swift: |
+      import SwiftUI
+
+      struct ProfilePictureView: View {
+          @ObservedObject var viewModel: ProfileViewModel
+
+          var body: some View {
+              ZStack {
+                  Circle()
+                      .fill(Color.blue.opacity(0.2))
+                      .frame(width: 80, height: 80)
+                  Text(viewModel.displayName.prefix(2).uppercased())
+                      .font(.title2)
+                      .fontWeight(.bold)
+              }
+          }
+      }
+    Features/Profile/ProfileService.swift: |
+      import Foundation
+
+      class ProfileService {
+          func saveProfile(displayName: String, bio: String) async throws {
+              let payload: [String: Any] = [
+                  "displayName": displayName,
+                  "bio": bio
+              ]
+              let data = try JSONSerialization.data(withJSONObject: payload)
+              let url = URL(string: "https://api.example.com/profile")!
+              var request = URLRequest(url: url)
+              request.httpMethod = "PUT"
+              request.httpBody = data
+              _ = try await URLSession.shared.data(for: request)
+          }
+      }
+    Features/Registration/RegistrationViewModel.swift: |
+      import Combine
+
+      class RegistrationViewModel: ObservableObject {
+          @Published var username: String = ""
+          @Published var email: String = ""
+          @Published var password: String = ""
+          @Published var isValid: Bool = false
+
+          func validate() {
+              isValid = !username.isEmpty && email.contains("@") && password.count >= 8
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: profileformview
+  selector:
+    path: Features/Profile/ProfileFormView.swift
+    anchor: '@ObservedObject var viewModel: ProfileViewModel'
+- id: profileformview_1
+  selector:
+    path: Features/Profile/ProfileFormView.swift
+    anchor: $viewModel.displayName
+- id: profileformview_2
+  selector:
+    path: Features/Profile/ProfileFormView.swift
+    anchor: viewModel.remainingCharacters
+- id: profileformview_3
+  selector:
+    path: Features/Profile/ProfileFormView.swift
+    anchor: .disabled(!viewModel.isValid)
+- id: profileviewmodel
+  selector:
+    path: Features/Profile/ProfileViewModel.swift
+    anchor: 'class ProfileViewModel: ObservableObject'
+- id: profileviewmodel_1
+  selector:
+    path: Features/Profile/ProfileViewModel.swift
+    anchor: '@Published var displayName'
+- id: profileviewmodel_2
+  selector:
+    path: Features/Profile/ProfileViewModel.swift
+    anchor: func validate()
+- id: profileviewmodel_3
+  selector:
+    path: Features/Profile/ProfileViewModel.swift
+    anchor: 'var remainingCharacters: Int'
+- id: no_settingsviewmodel
+  selector:
+    path: Features/Settings/SettingsViewModel.swift
+- id: no_feedview
+  selector:
+    path: Features/Feed/FeedView.swift
+- id: no_profilepictureview
+  selector:
+    path: Features/Profile/ProfilePictureView.swift
+- id: no_profileservice
+  selector:
+    path: Features/Profile/ProfileService.swift
+- id: no_registrationviewmodel
+  selector:
+    path: Features/Registration/RegistrationViewModel.swift
+- id: no_global_0
+  selector:
+    anchor: SettingsViewModel
+- id: no_global_1
+  selector:
+    anchor: analyticsEnabled
+- id: no_global_2
+  selector:
+    anchor: resetToDefaults
+- id: no_global_3
+  selector:
+    anchor: FeedItem
+- id: no_global_4
+  selector:
+    anchor: FeedView
+- id: no_global_5
+  selector:
+    anchor: 'style: .relative'
+- id: no_global_6
+  selector:
+    anchor: ProfilePictureView
+- id: no_global_7
+  selector:
+    anchor: prefix(2)
+- id: no_global_8
+  selector:
+    anchor: .fontWeight(.bold)
+- id: no_global_9
+  selector:
+    anchor: ProfileService
+- id: no_global_10
+  selector:
+    anchor: saveProfile
+- id: no_global_11
+  selector:
+    anchor: api.example.com
+- id: no_global_12
+  selector:
+    anchor: RegistrationViewModel
+- id: no_global_13
+  selector:
+    anchor: password.count >= 8
+oracle:
+  required:
+  - profileformview
+  - profileformview_1
+  - profileformview_2
+  - profileformview_3
+  - profileviewmodel
+  - profileviewmodel_1
+  - profileviewmodel_2
+  - profileviewmodel_3
+  allowed: []
+  forbidden:
+  - no_settingsviewmodel
+  - no_feedview
+  - no_profilepictureview
+  - no_profileservice
+  - no_registrationviewmodel
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

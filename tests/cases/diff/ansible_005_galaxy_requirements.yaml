@@ -1,0 +1,175 @@
+name: ansible_005_galaxy_requirements
+repo:
+  initial_files:
+    requirements.yml: |
+      ---
+      roles:
+        - name: geerlingguy.docker
+          version: "6.1.0"
+        - name: geerlingguy.pip
+          version: "2.2.0"
+    playbooks/infrastructure.yml: |
+      ---
+      - hosts: all
+        become: true
+        roles:
+          - geerlingguy.pip
+          - geerlingguy.docker
+        tasks:
+          - name: Verify Docker is running
+            ansible.builtin.systemd:
+              name: docker
+              state: started
+              enabled: true
+    playbooks/monitoring.yml: |
+      ---
+      - hosts: monitoring
+        GARBAGE_ANS_005_A: "monitoring_playbook_marker"
+        become: true
+        tasks:
+          - name: Install Prometheus
+            ansible.builtin.apt:
+              name: prometheus
+              state: present
+    playbooks/security.yml: |
+      ---
+      - hosts: all
+        GARBAGE_ANS_005_B: "security_playbook_marker"
+        become: true
+        tasks:
+          - name: Configure firewall
+            ansible.builtin.ufw:
+              rule: allow
+              port: "22"
+    roles/custom_app/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_005_C deploy custom app
+        ansible.builtin.copy:
+          src: app.jar
+          dest: /opt/app/app.jar
+    group_vars/all.yml: |
+      ---
+      GARBAGE_ANS_005_D: "global_vars_marker"
+      ntp_server: pool.ntp.org
+      timezone: UTC
+  changed_files:
+    requirements.yml: |
+      ---
+      roles:
+        - name: geerlingguy.docker
+          version: "6.1.0"
+        - name: geerlingguy.pip
+          version: "2.2.0"
+        - name: geerlingguy.certbot
+          version: "5.1.0"
+    playbooks/infrastructure.yml: |
+      ---
+      - hosts: all
+        become: true
+        roles:
+          - geerlingguy.pip
+          - geerlingguy.docker
+        tasks:
+          - name: Verify Docker is running
+            ansible.builtin.systemd:
+              name: docker
+              state: started
+              enabled: true
+    playbooks/webservers.yml: |
+      ---
+      - hosts: webservers
+        become: true
+        roles:
+          - geerlingguy.certbot
+        vars:
+          certbot_auto_renew: true
+          certbot_auto_renew_hour: "3"
+          certbot_create_if_missing: true
+          certbot_certs:
+            - domains:
+                - example.com
+                - www.example.com
+    playbooks/monitoring.yml: |
+      ---
+      - hosts: monitoring
+        GARBAGE_ANS_005_A: "monitoring_playbook_marker"
+        become: true
+        tasks:
+          - name: Install Prometheus
+            ansible.builtin.apt:
+              name: prometheus
+              state: present
+    playbooks/security.yml: |
+      ---
+      - hosts: all
+        GARBAGE_ANS_005_B: "security_playbook_marker"
+        become: true
+        tasks:
+          - name: Configure firewall
+            ansible.builtin.ufw:
+              rule: allow
+              port: "22"
+    roles/custom_app/tasks/main.yml: |
+      ---
+      - name: GARBAGE_ANS_005_C deploy custom app
+        ansible.builtin.copy:
+          src: app.jar
+          dest: /opt/app/app.jar
+    group_vars/all.yml: |
+      ---
+      GARBAGE_ANS_005_D: "global_vars_marker"
+      ntp_server: pool.ntp.org
+      timezone: UTC
+  commit_message: Update files
+fragments:
+- id: requirements
+  selector:
+    path: requirements.yml
+    anchor: geerlingguy.certbot
+- id: webservers
+  selector:
+    path: playbooks/webservers.yml
+    anchor: geerlingguy.certbot
+- id: webservers_1
+  selector:
+    path: playbooks/webservers.yml
+    anchor: certbot_auto_renew
+- id: no_monitoring
+  selector:
+    path: playbooks/monitoring.yml
+- id: no_security
+  selector:
+    path: playbooks/security.yml
+- id: no_main
+  selector:
+    path: roles/custom_app/tasks/main.yml
+- id: no_all
+  selector:
+    path: group_vars/all.yml
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ANS_005_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ANS_005_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ANS_005_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ANS_005_D
+oracle:
+  required:
+  - requirements
+  - webservers
+  - webservers_1
+  allowed: []
+  forbidden:
+  - no_monitoring
+  - no_security
+  - no_main
+  - no_all
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

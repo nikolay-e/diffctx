@@ -1,0 +1,451 @@
+name: terraform_003_api_gateway_route
+repo:
+  initial_files:
+    modules/api_gateway/main.tf: |
+      resource "aws_apigatewayv2_api" "main" {
+        name          = var.api_name
+        protocol_type = "HTTP"
+        description   = var.description
+
+        cors_configuration {
+          allow_origins     = var.cors_origins
+          allow_methods     = var.cors_methods
+          allow_headers     = var.cors_headers
+          max_age           = var.cors_max_age
+          allow_credentials = var.cors_allow_credentials
+        }
+
+        tags = var.tags
+      }
+
+      resource "aws_apigatewayv2_stage" "main" {
+        api_id      = aws_apigatewayv2_api.main.id
+        name        = var.stage_name
+        auto_deploy = var.auto_deploy
+
+        access_log_settings {
+          destination_arn = aws_cloudwatch_log_group.api.arn
+          format = jsonencode({
+            requestId      = "$context.requestId"
+            ip             = "$context.identity.sourceIp"
+            requestTime    = "$context.requestTime"
+            httpMethod     = "$context.httpMethod"
+            routeKey       = "$context.routeKey"
+            status         = "$context.status"
+            responseLength = "$context.responseLength"
+          })
+        }
+
+        default_route_settings {
+          throttling_burst_limit = var.throttling_burst_limit
+          throttling_rate_limit  = var.throttling_rate_limit
+        }
+
+        tags = var.tags
+      }
+
+      resource "aws_cloudwatch_log_group" "api" {
+        name              = "/aws/apigateway/${var.api_name}"
+        retention_in_days = var.log_retention_days
+        tags              = var.tags
+      }
+    modules/api_gateway/variables.tf: |
+      variable "api_name" {
+        type = string
+      }
+
+      variable "description" {
+        type    = string
+        default = ""
+      }
+
+      variable "stage_name" {
+        type    = string
+        default = "$default"
+      }
+
+      variable "auto_deploy" {
+        type    = bool
+        default = true
+      }
+
+      variable "cors_origins" {
+        type    = list(string)
+        default = ["*"]
+      }
+
+      variable "cors_methods" {
+        type    = list(string)
+        default = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+      }
+
+      variable "cors_headers" {
+        type    = list(string)
+        default = ["*"]
+      }
+
+      variable "cors_max_age" {
+        type    = number
+        default = 300
+      }
+
+      variable "cors_allow_credentials" {
+        type    = bool
+        default = false
+      }
+
+      variable "throttling_burst_limit" {
+        type    = number
+        default = 1000
+      }
+
+      variable "throttling_rate_limit" {
+        type    = number
+        default = 500
+      }
+
+      variable "log_retention_days" {
+        type    = number
+        default = 14
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/api.tf: |
+      module "api" {
+        source   = "./modules/api_gateway"
+        api_name = "main-api"
+
+        cors_origins = ["https://example.com"]
+        cors_methods = ["GET", "POST"]
+
+        tags = local.common_tags
+      }
+
+      resource "aws_apigatewayv2_route" "users" {
+        api_id    = module.api.api_id
+        route_key = "GET /users"
+        target    = "integrations/${aws_apigatewayv2_integration.users.id}"
+      }
+
+      resource "aws_apigatewayv2_integration" "users" {
+        api_id             = module.api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.users_lambda.invoke_arn
+        integration_method = "POST"
+      }
+    infrastructure/admin_api.tf: |
+      module "admin_api" {
+        source   = "./modules/api_gateway"
+        api_name = "admin-api"
+
+        cors_origins = ["https://admin.example.com"]
+        cors_methods = ["GET", "POST", "PUT", "DELETE"]
+
+        throttling_burst_limit = 500
+        throttling_rate_limit  = 250
+
+        tags = local.common_tags
+      }
+
+      resource "aws_apigatewayv2_route" "admin_users" {
+        api_id             = module.admin_api.api_id
+        route_key          = "GET /admin/users"
+        target             = "integrations/${aws_apigatewayv2_integration.admin_users.id}"
+        authorization_type = "JWT"
+        authorizer_id      = aws_apigatewayv2_authorizer.admin_jwt.id
+      }
+
+      resource "aws_apigatewayv2_integration" "admin_users" {
+        api_id             = module.admin_api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.admin_lambda.invoke_arn
+        integration_method = "POST"
+      }
+
+      resource "aws_apigatewayv2_authorizer" "admin_jwt" {
+        api_id           = module.admin_api.api_id
+        authorizer_type  = "JWT"
+        identity_sources = ["$request.header.Authorization"]
+        name             = "admin-jwt-authorizer"
+
+        jwt_configuration {
+          audience = [var.admin_cognito_client_id]
+          issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${var.admin_cognito_user_pool_id}"
+        }
+      }
+  changed_files:
+    modules/api_gateway/main.tf: |
+      resource "aws_apigatewayv2_api" "main" {
+        name          = var.api_name
+        protocol_type = "HTTP"
+        description   = var.description
+
+        cors_configuration {
+          allow_origins     = var.cors_origins
+          allow_methods     = var.cors_methods
+          allow_headers     = var.cors_headers
+          max_age           = var.cors_max_age
+          allow_credentials = var.cors_allow_credentials
+        }
+
+        tags = var.tags
+      }
+
+      resource "aws_apigatewayv2_stage" "main" {
+        api_id      = aws_apigatewayv2_api.main.id
+        name        = var.stage_name
+        auto_deploy = var.auto_deploy
+
+        access_log_settings {
+          destination_arn = aws_cloudwatch_log_group.api.arn
+          format = jsonencode({
+            requestId      = "$context.requestId"
+            ip             = "$context.identity.sourceIp"
+            requestTime    = "$context.requestTime"
+            httpMethod     = "$context.httpMethod"
+            routeKey       = "$context.routeKey"
+            status         = "$context.status"
+            responseLength = "$context.responseLength"
+          })
+        }
+
+        default_route_settings {
+          throttling_burst_limit = var.throttling_burst_limit
+          throttling_rate_limit  = var.throttling_rate_limit
+        }
+
+        tags = var.tags
+      }
+
+      resource "aws_cloudwatch_log_group" "api" {
+        name              = "/aws/apigateway/${var.api_name}"
+        retention_in_days = var.log_retention_days
+        tags              = var.tags
+      }
+    modules/api_gateway/variables.tf: |
+      variable "api_name" {
+        type = string
+      }
+
+      variable "description" {
+        type    = string
+        default = ""
+      }
+
+      variable "stage_name" {
+        type    = string
+        default = "$default"
+      }
+
+      variable "auto_deploy" {
+        type    = bool
+        default = true
+      }
+
+      variable "cors_origins" {
+        type    = list(string)
+        default = ["*"]
+      }
+
+      variable "cors_methods" {
+        type    = list(string)
+        default = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+      }
+
+      variable "cors_headers" {
+        type    = list(string)
+        default = ["*"]
+      }
+
+      variable "cors_max_age" {
+        type    = number
+        default = 300
+      }
+
+      variable "cors_allow_credentials" {
+        type    = bool
+        default = false
+      }
+
+      variable "throttling_burst_limit" {
+        type    = number
+        default = 1000
+      }
+
+      variable "throttling_rate_limit" {
+        type    = number
+        default = 500
+      }
+
+      variable "log_retention_days" {
+        type    = number
+        default = 14
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    infrastructure/api.tf: |
+      module "api" {
+        source   = "./modules/api_gateway"
+        api_name = "main-api"
+
+        cors_origins = ["https://example.com", "https://app.example.com"]
+        cors_methods = ["GET", "POST", "PUT", "DELETE"]
+
+        throttling_burst_limit = 2000
+        throttling_rate_limit  = 1000
+
+        tags = local.common_tags
+      }
+
+      resource "aws_apigatewayv2_route" "users" {
+        api_id    = module.api.api_id
+        route_key = "GET /users"
+        target    = "integrations/${aws_apigatewayv2_integration.users.id}"
+      }
+
+      resource "aws_apigatewayv2_route" "users_create" {
+        api_id             = module.api.api_id
+        route_key          = "POST /users"
+        target             = "integrations/${aws_apigatewayv2_integration.users_create.id}"
+        authorization_type = "JWT"
+        authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+      }
+
+      resource "aws_apigatewayv2_route" "users_update" {
+        api_id             = module.api.api_id
+        route_key          = "PUT /users/{id}"
+        target             = "integrations/${aws_apigatewayv2_integration.users_update.id}"
+        authorization_type = "JWT"
+        authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+      }
+
+      resource "aws_apigatewayv2_integration" "users" {
+        api_id             = module.api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.users_lambda.invoke_arn
+        integration_method = "POST"
+      }
+
+      resource "aws_apigatewayv2_integration" "users_create" {
+        api_id             = module.api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.users_create_lambda.invoke_arn
+        integration_method = "POST"
+      }
+
+      resource "aws_apigatewayv2_integration" "users_update" {
+        api_id             = module.api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.users_update_lambda.invoke_arn
+        integration_method = "POST"
+      }
+
+      resource "aws_apigatewayv2_authorizer" "jwt" {
+        api_id           = module.api.api_id
+        authorizer_type  = "JWT"
+        identity_sources = ["$request.header.Authorization"]
+        name             = "jwt-authorizer"
+
+        jwt_configuration {
+          audience = [var.cognito_client_id]
+          issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${var.cognito_user_pool_id}"
+        }
+      }
+    infrastructure/admin_api.tf: |
+      module "admin_api" {
+        source   = "./modules/api_gateway"
+        api_name = "admin-api"
+
+        cors_origins = ["https://admin.example.com"]
+        cors_methods = ["GET", "POST", "PUT", "DELETE"]
+
+        throttling_burst_limit = 500
+        throttling_rate_limit  = 250
+
+        tags = local.common_tags
+      }
+
+      resource "aws_apigatewayv2_route" "admin_users" {
+        api_id             = module.admin_api.api_id
+        route_key          = "GET /admin/users"
+        target             = "integrations/${aws_apigatewayv2_integration.admin_users.id}"
+        authorization_type = "JWT"
+        authorizer_id      = aws_apigatewayv2_authorizer.admin_jwt.id
+      }
+
+      resource "aws_apigatewayv2_integration" "admin_users" {
+        api_id             = module.admin_api.api_id
+        integration_type   = "AWS_PROXY"
+        integration_uri    = module.admin_lambda.invoke_arn
+        integration_method = "POST"
+      }
+
+      resource "aws_apigatewayv2_authorizer" "admin_jwt" {
+        api_id           = module.admin_api.api_id
+        authorizer_type  = "JWT"
+        identity_sources = ["$request.header.Authorization"]
+        name             = "admin-jwt-authorizer"
+
+        jwt_configuration {
+          audience = [var.admin_cognito_client_id]
+          issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${var.admin_cognito_user_pool_id}"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: infrastructure/api.tf
+    anchor: throttling_burst_limit = 2000
+- id: api_1
+  selector:
+    path: infrastructure/api.tf
+    anchor: throttling_rate_limit  = 1000
+- id: api_2
+  selector:
+    path: infrastructure/api.tf
+    anchor: route_key          = "POST /users"
+- id: api_3
+  selector:
+    path: infrastructure/api.tf
+    anchor: route_key          = "PUT /users/{id}"
+- id: api_4
+  selector:
+    path: infrastructure/api.tf
+    anchor: authorization_type = "JWT"
+- id: api_5
+  selector:
+    path: infrastructure/api.tf
+    anchor: audience = [var.cognito_client_id]
+- id: no_admin_api
+  selector:
+    path: infrastructure/admin_api.tf
+- id: no_global_0
+  selector:
+    anchor: admin-api
+- id: no_global_1
+  selector:
+    anchor: admin_jwt
+- id: no_global_2
+  selector:
+    anchor: admin_cognito_client_id
+oracle:
+  required:
+  - api
+  - api_1
+  - api_2
+  - api_3
+  - api_4
+  - api_5
+  allowed: []
+  forbidden:
+  - no_admin_api
+  - no_global_0
+  - no_global_1
+  - no_global_2

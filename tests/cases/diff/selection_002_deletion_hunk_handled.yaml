@@ -1,0 +1,176 @@
+name: selection_002_deletion_hunk_handled
+repo:
+  initial_files:
+    analytics.py: |
+      EVENT_BUFFER = []
+
+      def track_event(name, properties=None):
+          event = {"name": name, "properties": properties or {}}
+          EVENT_BUFFER.append(event)
+          return event
+
+      def track_legacy_event(category, action):
+          event = {"category": category, "action": action, "version": "v1"}
+          EVENT_BUFFER.append(event)
+          return event
+
+      def flush_events():
+          batch = list(EVENT_BUFFER)
+          EVENT_BUFFER.clear()
+          return batch
+    legacy_adapter.py: |
+      from analytics import track_legacy_event
+
+      class LegacyEventAdapter:
+          def __init__(self, default_category="app"):
+              self.default_category = default_category
+
+          def emit(self, action):
+              return track_legacy_event(self.default_category, action)
+
+          def emit_with_category(self, category, action):
+              return track_legacy_event(category, action)
+    dashboard.py: |
+      class AnalyticsDashboard:
+          def __init__(self, db_connection):
+              self.db = db_connection
+
+          def get_daily_counts(self, date_range):
+              query = "SELECT date, count FROM events WHERE date BETWEEN %s AND %s"
+              return self.db.execute(query, date_range)
+
+          def get_top_events(self, limit=10):
+              query = "SELECT name, count FROM events ORDER BY count DESC LIMIT %s"
+              return self.db.execute(query, (limit,))
+
+          def render_summary(self):
+              counts = self.get_daily_counts(("2024-01-01", "2024-12-31"))
+              return {"total": sum(c["count"] for c in counts)}
+    export_csv.py: |
+      import csv
+      from io import StringIO
+
+      class EventExporter:
+          def __init__(self, db_connection):
+              self.db = db_connection
+
+          def export_range(self, start_date, end_date):
+              rows = self.db.execute(
+                  "SELECT * FROM events WHERE date BETWEEN %s AND %s",
+                  (start_date, end_date),
+              )
+              return self._rows_to_csv(rows)
+
+          def _rows_to_csv(self, rows):
+              output = StringIO()
+              writer = csv.DictWriter(output, fieldnames=["name", "date", "count"])
+              writer.writeheader()
+              for row in rows:
+                  writer.writerow(row)
+              return output.getvalue()
+  changed_files:
+    analytics.py: |
+      EVENT_BUFFER = []
+
+      def track_event(name, properties=None):
+          event = {"name": name, "properties": properties or {}}
+          EVENT_BUFFER.append(event)
+          return event
+
+      def flush_events():
+          batch = list(EVENT_BUFFER)
+          EVENT_BUFFER.clear()
+          return batch
+    legacy_adapter.py: |
+      from analytics import track_legacy_event
+
+      class LegacyEventAdapter:
+          def __init__(self, default_category="app"):
+              self.default_category = default_category
+
+          def emit(self, action):
+              return track_legacy_event(self.default_category, action)
+
+          def emit_with_category(self, category, action):
+              return track_legacy_event(category, action)
+    dashboard.py: |
+      class AnalyticsDashboard:
+          def __init__(self, db_connection):
+              self.db = db_connection
+
+          def get_daily_counts(self, date_range):
+              query = "SELECT date, count FROM events WHERE date BETWEEN %s AND %s"
+              return self.db.execute(query, date_range)
+
+          def get_top_events(self, limit=10):
+              query = "SELECT name, count FROM events ORDER BY count DESC LIMIT %s"
+              return self.db.execute(query, (limit,))
+
+          def render_summary(self):
+              counts = self.get_daily_counts(("2024-01-01", "2024-12-31"))
+              return {"total": sum(c["count"] for c in counts)}
+    export_csv.py: |
+      import csv
+      from io import StringIO
+
+      class EventExporter:
+          def __init__(self, db_connection):
+              self.db = db_connection
+
+          def export_range(self, start_date, end_date):
+              rows = self.db.execute(
+                  "SELECT * FROM events WHERE date BETWEEN %s AND %s",
+                  (start_date, end_date),
+              )
+              return self._rows_to_csv(rows)
+
+          def _rows_to_csv(self, rows):
+              output = StringIO()
+              writer = csv.DictWriter(output, fieldnames=["name", "date", "count"])
+              writer.writeheader()
+              for row in rows:
+                  writer.writerow(row)
+              return output.getvalue()
+  commit_message: Update files
+fragments:
+- id: legacy_adapter
+  selector:
+    path: legacy_adapter.py
+    anchor: from analytics import track_legacy_event
+- id: no_dashboard
+  selector:
+    path: dashboard.py
+- id: no_export_csv
+  selector:
+    path: export_csv.py
+- id: no_global_0
+  selector:
+    anchor: AnalyticsDashboard
+- id: no_global_1
+  selector:
+    anchor: get_daily_counts
+- id: no_global_2
+  selector:
+    anchor: render_summary
+- id: no_global_3
+  selector:
+    anchor: EventExporter
+- id: no_global_4
+  selector:
+    anchor: export_range
+- id: no_global_5
+  selector:
+    anchor: _rows_to_csv
+oracle:
+  required:
+  - legacy_adapter
+  allowed: []
+  forbidden:
+  - no_dashboard
+  - no_export_csv
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

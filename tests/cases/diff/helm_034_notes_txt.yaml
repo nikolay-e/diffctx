@@ -1,0 +1,49 @@
+name: helm_034_notes_txt
+repo:
+  initial_files:
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ .Release.Name }}
+    templates/NOTES.txt: |
+      Thank you for installing {{ .Chart.Name }}.
+    unrelated.py: |
+      garbage_marker_12345 = True
+      unused_marker_67890 = False
+  changed_files:
+    templates/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ .Release.Name }}
+    templates/NOTES.txt: |
+      Thank you for installing {{ .Chart.Name }}.
+
+      Get the application URL by running these commands:
+      {{- if .Values.ingress.enabled }}
+        http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+      {{- else }}
+        kubectl port-forward svc/{{ .Release.Name }} 8080:80
+      {{- end }}
+    unrelated.py: |
+      garbage_marker_12345 = True
+      unused_marker_67890 = False
+  commit_message: Update files
+fragments:
+- id: notes_file
+  selector:
+    path: templates/NOTES.txt
+- id: req_global_0
+  selector:
+    anchor: 'Get the application URL by running these commands:'
+- id: no_global_0
+  selector:
+    anchor: unrelated.py
+oracle:
+  required:
+  - notes_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0

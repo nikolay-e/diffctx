@@ -1,0 +1,150 @@
+name: yaml_007_rate_limiting
+repo:
+  initial_files:
+    config/limits.yaml: |
+      rate_limit:
+        requests_per_minute: 60
+        burst: 10
+    src/rate_limiter.py: |
+      class RateLimiter:
+          def __init__(self, rpm: int = 60, burst: int = 10):
+              self.rpm = rpm
+              self.burst = burst
+              self._counters: dict[str, int] = {}
+
+          def check_limit(self, client_id: str) -> bool:
+              count = self._counters.get(client_id, 0)
+              if count >= self.rpm:
+                  return False
+              self._counters[client_id] = count + 1
+              return True
+
+          def reset(self):
+              self._counters.clear()
+    config/throttle.yaml: |
+      throttle:
+        endpoints:
+          /api/search:
+            requests_per_minute: 30
+            burst: 5
+          /api/export:
+            requests_per_minute: 10
+            burst: 2
+        default:
+          requests_per_minute: 60
+    src/ip_blocker.py: |
+      from datetime import datetime, timedelta
+
+      class IpBlocker:
+          def __init__(self, block_duration_minutes: int = 30):
+              self.block_duration = timedelta(minutes=block_duration_minutes)
+              self._blocked: dict[str, datetime] = {}
+
+          def block(self, ip_address: str):
+              self._blocked[ip_address] = datetime.utcnow()
+
+          def is_blocked(self, ip_address: str) -> bool:
+              if ip_address not in self._blocked:
+                  return False
+              blocked_at = self._blocked[ip_address]
+              if datetime.utcnow() - blocked_at > self.block_duration:
+                  del self._blocked[ip_address]
+                  return False
+              return True
+  changed_files:
+    config/limits.yaml: |
+      rate_limit:
+        requests_per_minute: 100
+        burst: 20
+        whitelist:
+          - admin
+    src/rate_limiter.py: |
+      class RateLimiter:
+          def __init__(self, rpm: int = 60, burst: int = 10):
+              self.rpm = rpm
+              self.burst = burst
+              self._counters: dict[str, int] = {}
+
+          def check_limit(self, client_id: str) -> bool:
+              count = self._counters.get(client_id, 0)
+              if count >= self.rpm:
+                  return False
+              self._counters[client_id] = count + 1
+              return True
+
+          def reset(self):
+              self._counters.clear()
+    config/throttle.yaml: |
+      throttle:
+        endpoints:
+          /api/search:
+            requests_per_minute: 30
+            burst: 5
+          /api/export:
+            requests_per_minute: 10
+            burst: 2
+        default:
+          requests_per_minute: 60
+    src/ip_blocker.py: |
+      from datetime import datetime, timedelta
+
+      class IpBlocker:
+          def __init__(self, block_duration_minutes: int = 30):
+              self.block_duration = timedelta(minutes=block_duration_minutes)
+              self._blocked: dict[str, datetime] = {}
+
+          def block(self, ip_address: str):
+              self._blocked[ip_address] = datetime.utcnow()
+
+          def is_blocked(self, ip_address: str) -> bool:
+              if ip_address not in self._blocked:
+                  return False
+              blocked_at = self._blocked[ip_address]
+              if datetime.utcnow() - blocked_at > self.block_duration:
+                  del self._blocked[ip_address]
+                  return False
+              return True
+  commit_message: Update files
+fragments:
+- id: limits
+  selector:
+    path: config/limits.yaml
+    anchor: 'requests_per_minute: 100'
+- id: limits_1
+  selector:
+    path: config/limits.yaml
+    anchor: whitelist
+- id: no_throttle
+  selector:
+    path: config/throttle.yaml
+- id: no_ip_blocker
+  selector:
+    path: src/ip_blocker.py
+- id: no_global_0
+  selector:
+    anchor: /api/search
+- id: no_global_1
+  selector:
+    anchor: /api/export
+- id: no_global_2
+  selector:
+    anchor: IpBlocker
+- id: no_global_3
+  selector:
+    anchor: is_blocked
+- id: no_global_4
+  selector:
+    anchor: block_duration
+oracle:
+  required:
+  - limits
+  - limits_1
+  allowed: []
+  forbidden:
+  - no_throttle
+  - no_ip_blocker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

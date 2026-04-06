@@ -1,0 +1,303 @@
+name: prisma_002_schema_to_client
+repo:
+  initial_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id          Int      @id @default(autoincrement())
+        name        String
+        description String?
+        price       Float
+        inStock     Boolean  @default(true)
+        createdAt   DateTime @default(now())
+        updatedAt   DateTime @updatedAt
+      }
+
+      model Order {
+        id        Int         @id @default(autoincrement())
+        total     Float
+        status    OrderStatus @default(PENDING)
+        items     OrderItem[]
+        createdAt DateTime    @default(now())
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        quantity  Int
+        price     Float
+        order     Order @relation(fields: [orderId], references: [id])
+        orderId   Int
+        productId Int
+      }
+
+      enum OrderStatus {
+        PENDING
+        CONFIRMED
+        SHIPPED
+        DELIVERED
+      }
+    src/services/product.service.ts: |
+      import { PrismaClient, Product } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getAllProducts(): Promise<Product[]> {
+        return prisma.product.findMany({
+          where: { inStock: true },
+          orderBy: { name: 'asc' },
+        });
+      }
+
+      export async function getProductById(id: number): Promise<Product | null> {
+        return prisma.product.findUnique({
+          where: { id },
+        });
+      }
+
+      export async function createProduct(
+        data: Pick<Product, 'name' | 'price' | 'description'>
+      ): Promise<Product> {
+        return prisma.product.create({ data });
+      }
+    src/services/order.service.ts: |
+      // GARBAGE_PRISMA_002_A: order_service_marker
+      import { PrismaClient, Order } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getOrderById(id: number): Promise<Order | null> {
+        return prisma.order.findUnique({
+          where: { id },
+          include: { items: true },
+        });
+      }
+    src/routes/order.routes.ts: |
+      // GARBAGE_PRISMA_002_B: order_routes_marker
+      import { Router } from 'express';
+      import { getOrderById } from '../services/order.service';
+
+      const router = Router();
+
+      router.get('/:id', async (req, res) => {
+        const order = await getOrderById(parseInt(req.params.id));
+        res.json(order);
+      });
+
+      export default router;
+    src/routes/product.routes.ts: |
+      // GARBAGE_PRISMA_002_C: product_routes_marker
+      import { Router } from 'express';
+      import { getAllProducts } from '../services/product.service';
+
+      const router = Router();
+
+      router.get('/', async (req, res) => {
+        const products = await getAllProducts();
+        res.json(products);
+      });
+
+      export default router;
+    src/utils/validators.ts: |
+      // GARBAGE_PRISMA_002_D: validators_marker
+      export function isValidPrice(price: number): boolean {
+        return price > 0 && Number.isFinite(price);
+      }
+  changed_files:
+    prisma/schema.prisma: |
+      generator client {
+        provider = "prisma-client-js"
+      }
+
+      datasource db {
+        provider = "postgresql"
+        url      = env("DATABASE_URL")
+      }
+
+      model Product {
+        id          Int      @id @default(autoincrement())
+        name        String
+        description String?
+        sku         String   @unique
+        price       Float
+        compareAt   Float?
+        inStock     Boolean  @default(true)
+        createdAt   DateTime @default(now())
+        updatedAt   DateTime @updatedAt
+      }
+
+      model Order {
+        id        Int         @id @default(autoincrement())
+        total     Float
+        status    OrderStatus @default(PENDING)
+        items     OrderItem[]
+        createdAt DateTime    @default(now())
+      }
+
+      model OrderItem {
+        id        Int   @id @default(autoincrement())
+        quantity  Int
+        price     Float
+        order     Order @relation(fields: [orderId], references: [id])
+        orderId   Int
+        productId Int
+      }
+
+      enum OrderStatus {
+        PENDING
+        CONFIRMED
+        SHIPPED
+        DELIVERED
+      }
+    src/services/product.service.ts: |
+      import { PrismaClient, Product } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getAllProducts(): Promise<Product[]> {
+        return prisma.product.findMany({
+          where: { inStock: true },
+          orderBy: { name: 'asc' },
+        });
+      }
+
+      export async function getProductById(id: number): Promise<Product | null> {
+        return prisma.product.findUnique({
+          where: { id },
+        });
+      }
+
+      export async function getProductBySku(sku: string): Promise<Product | null> {
+        return prisma.product.findUnique({
+          where: { sku },
+        });
+      }
+
+      export async function createProduct(
+        data: Pick<Product, 'name' | 'price' | 'description' | 'sku'>
+      ): Promise<Product> {
+        return prisma.product.create({ data });
+      }
+
+      export async function getDiscountedProducts(): Promise<Product[]> {
+        return prisma.product.findMany({
+          where: {
+            inStock: true,
+            compareAt: { not: null },
+            price: { lt: prisma.product.fields.compareAt },
+          },
+        });
+      }
+    src/services/order.service.ts: |
+      // GARBAGE_PRISMA_002_A: order_service_marker
+      import { PrismaClient, Order } from '@prisma/client';
+
+      const prisma = new PrismaClient();
+
+      export async function getOrderById(id: number): Promise<Order | null> {
+        return prisma.order.findUnique({
+          where: { id },
+          include: { items: true },
+        });
+      }
+    src/routes/order.routes.ts: |
+      // GARBAGE_PRISMA_002_B: order_routes_marker
+      import { Router } from 'express';
+      import { getOrderById } from '../services/order.service';
+
+      const router = Router();
+
+      router.get('/:id', async (req, res) => {
+        const order = await getOrderById(parseInt(req.params.id));
+        res.json(order);
+      });
+
+      export default router;
+    src/routes/product.routes.ts: |
+      // GARBAGE_PRISMA_002_C: product_routes_marker
+      import { Router } from 'express';
+      import { getAllProducts } from '../services/product.service';
+
+      const router = Router();
+
+      router.get('/', async (req, res) => {
+        const products = await getAllProducts();
+        res.json(products);
+      });
+
+      export default router;
+    src/utils/validators.ts: |
+      // GARBAGE_PRISMA_002_D: validators_marker
+      export function isValidPrice(price: number): boolean {
+        return price > 0 && Number.isFinite(price);
+      }
+  commit_message: Update files
+fragments:
+- id: schema
+  selector:
+    path: prisma/schema.prisma
+    anchor: sku
+- id: schema_1
+  selector:
+    path: prisma/schema.prisma
+    anchor: compareAt
+- id: product_service
+  selector:
+    path: src/services/product.service.ts
+    anchor: getProductBySku
+- id: product_service_1
+  selector:
+    path: src/services/product.service.ts
+    anchor: getDiscountedProducts
+- id: product_service_2
+  selector:
+    path: src/services/product.service.ts
+    anchor: compareAt
+- id: no_order_service
+  selector:
+    path: src/services/order.service.ts
+- id: no_order_routes
+  selector:
+    path: src/routes/order.routes.ts
+- id: no_product_routes
+  selector:
+    path: src/routes/product.routes.ts
+- id: no_validators
+  selector:
+    path: src/utils/validators.ts
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PRISMA_002_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PRISMA_002_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PRISMA_002_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PRISMA_002_D
+oracle:
+  required:
+  - schema
+  - schema_1
+  - product_service
+  - product_service_1
+  - product_service_2
+  allowed: []
+  forbidden:
+  - no_order_service
+  - no_order_routes
+  - no_product_routes
+  - no_validators
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

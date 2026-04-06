@@ -1,0 +1,235 @@
+name: python_056_pydantic_validator
+repo:
+  initial_files:
+    schemas.py: |
+      from pydantic import BaseModel, validator
+      from typing import Optional
+      from datetime import date
+
+      class UserCreate(BaseModel):
+          name: str
+          email: str
+          password: str
+          birth_date: Optional[date] = None
+
+          @validator("email")
+          def email_must_be_valid(cls, v):
+              if "@" not in v:
+                  raise ValueError("Invalid email address")
+              return v.lower().strip()
+
+          @validator("password")
+          def password_must_be_strong(cls, v):
+              if len(v) < 8:
+                  raise ValueError("Password must be at least 8 characters")
+              if not any(c.isupper() for c in v):
+                  raise ValueError("Password must contain uppercase letter")
+              return v
+
+      class UserUpdate(BaseModel):
+          name: Optional[str] = None
+          email: Optional[str] = None
+    api.py: |
+      from typing import Any
+
+      def register(data: dict[str, Any]) -> dict[str, Any]:
+          return {"id": 1, **data}
+
+      def update_profile(user_id: int, data: dict[str, Any]) -> dict[str, Any]:
+          return {"id": user_id, **data}
+
+      def get_profile(user_id: int) -> dict[str, Any]:
+          return {"id": user_id, "name": "Test", "email": "test@example.com"}
+    services/geolocation.py: |
+      from typing import Optional
+
+      class GeoLocationService:
+          def __init__(self, api_key: str = "", provider: str = "nominatim"):
+              self.api_key = api_key
+              self.provider = provider
+              self._cache: dict[str, tuple[float, float]] = {}
+
+          def geocode(self, address: str) -> tuple[float, float]:
+              if address in self._cache:
+                  return self._cache[address]
+              return (0.0, 0.0)
+
+          def reverse_geocode(self, lat: float, lon: float) -> str:
+              return f"Address at ({lat}, {lon})"
+
+          def calculate_distance(self, origin: tuple, dest: tuple) -> float:
+              return ((dest[0] - origin[0]) ** 2 + (dest[1] - origin[1]) ** 2) ** 0.5
+    services/payment_gateway.py: |
+      from typing import Optional
+
+      class PaymentGateway:
+          def __init__(self, api_key: str = "", sandbox: bool = True):
+              self.api_key = api_key
+              self.sandbox = sandbox
+              self._transactions: list[dict] = []
+
+          def create_charge(self, amount: int, currency: str = "usd") -> dict:
+              txn = {"id": f"ch_{len(self._transactions)}", "amount": amount, "currency": currency}
+              self._transactions.append(txn)
+              return txn
+
+          def refund(self, charge_id: str) -> dict:
+              return {"id": f"re_{charge_id}", "status": "refunded"}
+
+          def get_balance(self) -> int:
+              return sum(t["amount"] for t in self._transactions)
+  changed_files:
+    schemas.py: |
+      from pydantic import BaseModel, validator
+      from typing import Optional
+      from datetime import date
+
+      class UserCreate(BaseModel):
+          name: str
+          email: str
+          password: str
+          birth_date: Optional[date] = None
+
+          @validator("email")
+          def email_must_be_valid(cls, v):
+              if "@" not in v:
+                  raise ValueError("Invalid email address")
+              return v.lower().strip()
+
+          @validator("password")
+          def password_must_be_strong(cls, v):
+              if len(v) < 8:
+                  raise ValueError("Password must be at least 8 characters")
+              if not any(c.isupper() for c in v):
+                  raise ValueError("Password must contain uppercase letter")
+              return v
+
+      class UserUpdate(BaseModel):
+          name: Optional[str] = None
+          email: Optional[str] = None
+    api.py: |
+      from typing import Any
+      from schemas import UserCreate, UserUpdate
+
+      def register(data: dict[str, Any]) -> dict[str, Any]:
+          user = UserCreate(**data)
+          return {"id": 1, **user.dict()}
+
+      def update_profile(user_id: int, data: dict[str, Any]) -> dict[str, Any]:
+          update = UserUpdate(**data)
+          changes = update.dict(exclude_unset=True)
+          return {"id": user_id, **changes}
+
+      def get_profile(user_id: int) -> dict[str, Any]:
+          return {"id": user_id, "name": "Test", "email": "test@example.com"}
+    services/geolocation.py: |
+      from typing import Optional
+
+      class GeoLocationService:
+          def __init__(self, api_key: str = "", provider: str = "nominatim"):
+              self.api_key = api_key
+              self.provider = provider
+              self._cache: dict[str, tuple[float, float]] = {}
+
+          def geocode(self, address: str) -> tuple[float, float]:
+              if address in self._cache:
+                  return self._cache[address]
+              return (0.0, 0.0)
+
+          def reverse_geocode(self, lat: float, lon: float) -> str:
+              return f"Address at ({lat}, {lon})"
+
+          def calculate_distance(self, origin: tuple, dest: tuple) -> float:
+              return ((dest[0] - origin[0]) ** 2 + (dest[1] - origin[1]) ** 2) ** 0.5
+    services/payment_gateway.py: |
+      from typing import Optional
+
+      class PaymentGateway:
+          def __init__(self, api_key: str = "", sandbox: bool = True):
+              self.api_key = api_key
+              self.sandbox = sandbox
+              self._transactions: list[dict] = []
+
+          def create_charge(self, amount: int, currency: str = "usd") -> dict:
+              txn = {"id": f"ch_{len(self._transactions)}", "amount": amount, "currency": currency}
+              self._transactions.append(txn)
+              return txn
+
+          def refund(self, charge_id: str) -> dict:
+              return {"id": f"re_{charge_id}", "status": "refunded"}
+
+          def get_balance(self) -> int:
+              return sum(t["amount"] for t in self._transactions)
+  commit_message: Update files
+fragments:
+- id: api
+  selector:
+    path: api.py
+    anchor: from schemas import UserCreate, UserUpdate
+- id: api_1
+  selector:
+    path: api.py
+    anchor: user = UserCreate(**data)
+- id: api_2
+  selector:
+    path: api.py
+    anchor: update.dict(exclude_unset=True)
+- id: schemas
+  selector:
+    path: schemas.py
+    anchor: class UserCreate(BaseModel)
+- id: schemas_1
+  selector:
+    path: schemas.py
+    anchor: '@validator("email")'
+- id: schemas_2
+  selector:
+    path: schemas.py
+    anchor: email_must_be_valid
+- id: schemas_3
+  selector:
+    path: schemas.py
+    anchor: class UserUpdate(BaseModel)
+- id: no_geolocation
+  selector:
+    path: services/geolocation.py
+- id: no_payment_gateway
+  selector:
+    path: services/payment_gateway.py
+- id: no_global_0
+  selector:
+    anchor: GeoLocationService
+- id: no_global_1
+  selector:
+    anchor: reverse_geocode
+- id: no_global_2
+  selector:
+    anchor: calculate_distance
+- id: no_global_3
+  selector:
+    anchor: PaymentGateway
+- id: no_global_4
+  selector:
+    anchor: create_charge
+- id: no_global_5
+  selector:
+    anchor: get_balance
+oracle:
+  required:
+  - api
+  - api_1
+  - api_2
+  - schemas
+  - schemas_1
+  - schemas_2
+  - schemas_3
+  allowed: []
+  forbidden:
+  - no_geolocation
+  - no_payment_gateway
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,121 @@
+name: csharp_024_nullable_reference
+repo:
+  initial_files:
+    Models/Configuration.cs: |
+      namespace MyApp.Models;
+
+      public class Configuration
+      {
+          public string? ConnectionString { get; set; }
+          public int? Port { get; set; }
+          public string Environment { get; set; } = "Development";
+      }
+    Services/ConfigService.cs: |
+      namespace MyApp.Services;
+
+      public class ConfigService { }
+    Unrelated/FileWatcher.cs: |
+      namespace MyApp.Unrelated;
+
+      public class FileWatcher
+      {
+          private const string GARBAGE_CS_024_FILE_WATCHER_A = "file_watcher_marker";
+
+          public void Watch(string path) => _ = GARBAGE_CS_024_FILE_WATCHER_A + path;
+      }
+    Unrelated/CleanupService.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CleanupService
+      {
+          public const string GARBAGE_CS_024_CLEANUP_SERVICE_B = "cleanup_service_marker";
+
+          public void Cleanup() => _ = GARBAGE_CS_024_CLEANUP_SERVICE_B;
+      }
+  changed_files:
+    Models/Configuration.cs: |
+      namespace MyApp.Models;
+
+      public class Configuration
+      {
+          public string? ConnectionString { get; set; }
+          public int? Port { get; set; }
+          public string Environment { get; set; } = "Development";
+      }
+    Services/ConfigService.cs: |
+      using MyApp.Models;
+
+      namespace MyApp.Services;
+
+      public class ConfigService
+      {
+          private readonly Configuration _config;
+
+          public ConfigService(Configuration config)
+          {
+              _config = config;
+          }
+
+          public string GetConnectionString()
+          {
+              return _config.ConnectionString
+                  ?? throw new InvalidOperationException("Connection string not configured");
+          }
+
+          public int GetPort()
+          {
+              return _config.Port ?? 8080;
+          }
+      }
+    Unrelated/FileWatcher.cs: |
+      namespace MyApp.Unrelated;
+
+      public class FileWatcher
+      {
+          private const string GARBAGE_CS_024_FILE_WATCHER_A = "file_watcher_marker";
+
+          public void Watch(string path) => _ = GARBAGE_CS_024_FILE_WATCHER_A + path;
+      }
+    Unrelated/CleanupService.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CleanupService
+      {
+          public const string GARBAGE_CS_024_CLEANUP_SERVICE_B = "cleanup_service_marker";
+
+          public void Cleanup() => _ = GARBAGE_CS_024_CLEANUP_SERVICE_B;
+      }
+  commit_message: Update files
+fragments:
+- id: configservice_file
+  selector:
+    path: Services/ConfigService.cs
+- id: req_global_0
+  selector:
+    anchor: using MyApp.Models;
+- id: req_global_1
+  selector:
+    anchor: public string GetConnectionString()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_024_CLEANUP_SERVICE_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_024_FILE_WATCHER_A
+- id: no_global_2
+  selector:
+    anchor: CleanupService.cs
+- id: no_global_3
+  selector:
+    anchor: FileWatcher.cs
+oracle:
+  required:
+  - configservice_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

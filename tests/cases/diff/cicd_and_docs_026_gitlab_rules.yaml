@@ -1,0 +1,123 @@
+name: cicd_and_docs_026_gitlab_rules
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      deploy:
+        script:
+          - npm ci
+          - ./deploy.sh
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      echo "Deploying to production..."
+      aws ecs update-service --cluster main --service app
+    package.json: |
+      {
+        "name": "gitlab-rules-app",
+        "version": "1.0.0",
+        "scripts": {
+          "deploy": "./deploy.sh"
+        }
+      }
+    garbage_condition.ts: |
+      const GARBAGE_CICD_DOCS_026_CONDITION_MARKER_A = "branch";
+      const GARBAGE_CICD_DOCS_026_PATTERN_MARKER_B = "main";
+
+      class GarbageConditionEvaluator {
+        static GARBAGE_CICD_DOCS_026_STRICT_MARKER_C = true;
+        evaluate(): boolean { return false; }
+      }
+    garbage_trigger.ts: |
+      const GARBAGE_CICD_DOCS_026_TRIGGER_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_026_WHEN_MARKER_E = "on_success";
+
+      class GarbageTriggerHandler {
+        static GARBAGE_CICD_DOCS_026_ALLOW_MARKER_F = true;
+        trigger(): void {}
+      }
+  changed_files:
+    .gitlab-ci.yml: |
+      deploy:
+        script:
+          - npm ci
+          - ./deploy.sh
+        rules:
+          - if: $CI_COMMIT_BRANCH == "main"
+          - if: $CI_COMMIT_TAG
+            when: always
+          - when: never
+    deploy.sh: |
+      #!/bin/bash
+      set -e
+      echo "Deploying to production..."
+      aws ecs update-service --cluster main --service app
+    package.json: |
+      {
+        "name": "gitlab-rules-app",
+        "version": "1.0.0",
+        "scripts": {
+          "deploy": "./deploy.sh"
+        }
+      }
+    garbage_condition.ts: |
+      const GARBAGE_CICD_DOCS_026_CONDITION_MARKER_A = "branch";
+      const GARBAGE_CICD_DOCS_026_PATTERN_MARKER_B = "main";
+
+      class GarbageConditionEvaluator {
+        static GARBAGE_CICD_DOCS_026_STRICT_MARKER_C = true;
+        evaluate(): boolean { return false; }
+      }
+    garbage_trigger.ts: |
+      const GARBAGE_CICD_DOCS_026_TRIGGER_MARKER_D = "manual";
+      const GARBAGE_CICD_DOCS_026_WHEN_MARKER_E = "on_success";
+
+      class GarbageTriggerHandler {
+        static GARBAGE_CICD_DOCS_026_ALLOW_MARKER_F = true;
+        trigger(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- if: $CI_COMMIT_BRANCH == "main"'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_ALLOW_MARKER_F
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_CONDITION_MARKER_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_PATTERN_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_STRICT_MARKER_C
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_TRIGGER_MARKER_D
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_026_WHEN_MARKER_E
+- id: no_global_6
+  selector:
+    anchor: garbage_condition.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_trigger.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

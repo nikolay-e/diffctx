@@ -1,0 +1,128 @@
+name: cicd_and_docs_027_gitlab_only_except
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      release:
+        script:
+          - npm ci
+          - ./release.sh
+    release.sh: |
+      #!/bin/bash
+      set -e
+      VERSION=$(git describe --tags --always)
+      echo "Releasing version: $VERSION"
+      npm publish
+    package.json: |
+      {
+        "name": "gitlab-release-app",
+        "version": "1.0.0",
+        "scripts": {
+          "release": "./release.sh"
+        }
+      }
+    garbage_filter.ts: |
+      const GARBAGE_CICD_DOCS_027_FILTER_MARKER_A = "include";
+      const GARBAGE_CICD_DOCS_027_EXCLUDE_MARKER_B = "test/*";
+
+      class GarbageFilterMatcher {
+        static GARBAGE_CICD_DOCS_027_GLOB_MARKER_C = true;
+        match(): boolean { return false; }
+      }
+    garbage_ref.ts: |
+      const GARBAGE_CICD_DOCS_027_REF_MARKER_D = "tags";
+      const GARBAGE_CICD_DOCS_027_BRANCH_MARKER_E = "main";
+
+      class GarbageRefResolver {
+        static GARBAGE_CICD_DOCS_027_FORCE_MARKER_F = false;
+        resolve(): string { return ""; }
+      }
+  changed_files:
+    .gitlab-ci.yml: |
+      release:
+        script:
+          - npm ci
+          - ./release.sh
+        only:
+          - tags
+        except:
+          - branches
+    release.sh: |
+      #!/bin/bash
+      set -e
+      VERSION=$(git describe --tags --always)
+      echo "Releasing version: $VERSION"
+      npm publish
+    package.json: |
+      {
+        "name": "gitlab-release-app",
+        "version": "1.0.0",
+        "scripts": {
+          "release": "./release.sh"
+        }
+      }
+    garbage_filter.ts: |
+      const GARBAGE_CICD_DOCS_027_FILTER_MARKER_A = "include";
+      const GARBAGE_CICD_DOCS_027_EXCLUDE_MARKER_B = "test/*";
+
+      class GarbageFilterMatcher {
+        static GARBAGE_CICD_DOCS_027_GLOB_MARKER_C = true;
+        match(): boolean { return false; }
+      }
+    garbage_ref.ts: |
+      const GARBAGE_CICD_DOCS_027_REF_MARKER_D = "tags";
+      const GARBAGE_CICD_DOCS_027_BRANCH_MARKER_E = "main";
+
+      class GarbageRefResolver {
+        static GARBAGE_CICD_DOCS_027_FORCE_MARKER_F = false;
+        resolve(): string { return ""; }
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: '- tags'
+- id: req_global_1
+  selector:
+    anchor: '- branches'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_BRANCH_MARKER_E
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_EXCLUDE_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_FILTER_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_FORCE_MARKER_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_GLOB_MARKER_C
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_027_REF_MARKER_D
+- id: no_global_6
+  selector:
+    anchor: garbage_filter.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_ref.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,100 @@
+name: terraform_032_data_source
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_instance" "web" {
+        ami           = "ami-12345"
+        instance_type = "t3.micro"
+      }
+    networking/ami_lookup.tf: |
+      data "aws_ami" "network_appliance" {
+        most_recent = true
+        owners      = ["self"]
+
+        filter {
+          name   = "name"
+          values = ["network-appliance-*"]
+        }
+      }
+
+      resource "aws_instance" "firewall" {
+        ami           = data.aws_ami.network_appliance.id
+        instance_type = "c5.xlarge"
+      }
+    packer/web.pkr.hcl: |
+      source "amazon-ebs" "web" {
+        ami_name      = "web-server-{{timestamp}}"
+        instance_type = "t3.micro"
+        source_ami_filter {
+          filters = {
+            name = "amzn2-ami-hvm-*-x86_64-gp2"
+          }
+          owners = ["amazon"]
+        }
+      }
+  changed_files:
+    main.tf: |
+      data "aws_ami" "amazon_linux" {
+        most_recent = true
+        owners      = ["amazon"]
+
+        filter {
+          name   = "name"
+          values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+        }
+      }
+
+      resource "aws_instance" "web" {
+        ami           = data.aws_ami.amazon_linux.id
+        instance_type = "t3.micro"
+      }
+  commit_message: Update files
+fragments:
+- id: main_file
+  selector:
+    path: main.tf
+- id: req_global_0
+  selector:
+    anchor: data "aws_ami" "amazon_linux" {
+- id: req_global_1
+  selector:
+    anchor: owners      = ["amazon"]
+- id: req_global_2
+  selector:
+    anchor: data.aws_ami.amazon_linux.id
+- id: no_ami_lookup
+  selector:
+    path: networking/ami_lookup.tf
+- id: no_web_pkr
+  selector:
+    path: packer/web.pkr.hcl
+- id: no_global_0
+  selector:
+    anchor: network_appliance
+- id: no_global_1
+  selector:
+    anchor: network-appliance-*
+- id: no_global_2
+  selector:
+    anchor: c5.xlarge
+- id: no_global_3
+  selector:
+    anchor: amazon-ebs
+- id: no_global_4
+  selector:
+    anchor: web-server-{{timestamp}}
+oracle:
+  required:
+  - main_file
+  - req_global_0
+  - req_global_1
+  - req_global_2
+  allowed: []
+  forbidden:
+  - no_ami_lookup
+  - no_web_pkr
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

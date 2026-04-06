@@ -1,0 +1,134 @@
+name: terraform_038_lifecycle
+repo:
+  initial_files:
+    main.tf: |
+      resource "aws_launch_template" "web" {
+        name_prefix   = "web-"
+        image_id      = var.ami_id
+        instance_type = "t3.micro"
+
+        tag_specifications {
+          resource_type = "instance"
+          tags          = local.instance_tags
+        }
+      }
+    autoscaling.tf: |
+      resource "aws_autoscaling_group" "web" {
+        name                = "web-asg"
+        desired_capacity    = 2
+        max_size            = 4
+        min_size            = 1
+        vpc_zone_identifier = var.subnet_ids
+
+        launch_template {
+          id      = aws_launch_template.web.id
+          version = "$Latest"
+        }
+
+        tag {
+          key                 = "Name"
+          value               = "web-instance"
+          propagate_at_launch = true
+        }
+      }
+    locals.tf: |
+      locals {
+        instance_tags = {
+          Name        = "web-server"
+          Environment = var.environment
+          ManagedBy   = "terraform"
+          LastUpdated = timestamp()
+        }
+      }
+    database/rds.tf: |
+      resource "aws_db_instance" "primary" {
+        identifier     = "primary-db"
+        engine         = "postgres"
+        instance_class = "db.t3.medium"
+
+        lifecycle {
+          create_before_destroy = true
+          prevent_destroy       = true
+          ignore_changes        = [password, engine_version]
+        }
+      }
+    storage/s3.tf: |
+      resource "aws_s3_bucket" "logs" {
+        bucket = "app-logs-bucket"
+
+        tags = {
+          Name    = "logs-bucket"
+          Purpose = "logging"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "logs" {
+        bucket = aws_s3_bucket.logs.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+  changed_files:
+    main.tf: |
+      resource "aws_launch_template" "web" {
+        name_prefix   = "web-"
+        image_id      = var.ami_id
+        instance_type = "t3.micro"
+
+        tag_specifications {
+          resource_type = "instance"
+          tags          = local.instance_tags
+        }
+
+        lifecycle {
+          create_before_destroy = true
+          prevent_destroy       = true
+          ignore_changes        = [tag_specifications]
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: autoscaling
+  selector:
+    path: autoscaling.tf
+    anchor: resource "aws_autoscaling_group" "web" {
+- id: autoscaling_1
+  selector:
+    path: autoscaling.tf
+    anchor: aws_launch_template.web.id
+- id: locals
+  selector:
+    path: locals.tf
+    anchor: instance_tags
+- id: locals_1
+  selector:
+    path: locals.tf
+    anchor: LastUpdated = timestamp()
+- id: no_rds
+  selector:
+    path: database/rds.tf
+- id: no_s3
+  selector:
+    path: storage/s3.tf
+- id: no_global_0
+  selector:
+    anchor: primary-db
+- id: no_global_1
+  selector:
+    anchor: ignore_changes        = [password, engine_version]
+- id: no_global_2
+  selector:
+    anchor: app-logs-bucket
+oracle:
+  required:
+  - autoscaling
+  - autoscaling_1
+  - locals
+  - locals_1
+  allowed: []
+  forbidden:
+  - no_rds
+  - no_s3
+  - no_global_0
+  - no_global_1
+  - no_global_2

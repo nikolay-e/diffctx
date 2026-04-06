@@ -1,0 +1,455 @@
+name: regression_002_irrelevant_sibling_files_excluded
+repo:
+  initial_files:
+    frontend/src/pages/StatisticsPage.tsx: |
+      import React, { useState, useEffect } from 'react';
+      import { useAnalytics } from '../hooks/useAnalytics';
+
+      interface StatisticsPageProps {
+        userId: string;
+      }
+
+      export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId }) => {
+        const { fetchOverview } = useAnalytics();
+        const [overview, setOverview] = useState<Record<string, number> | null>(null);
+        const [loading, setLoading] = useState(true);
+
+        useEffect(() => {
+          setLoading(true);
+          fetchOverview(userId).then((data) => {
+            setOverview(data);
+            setLoading(false);
+          });
+        }, [userId]);
+
+        if (loading) {
+          return <div className="stats-loading">Loading statistics...</div>;
+        }
+
+        return (
+          <div className="statistics-page">
+            <h1>Statistics</h1>
+            <div className="overview-grid">
+              {overview && Object.entries(overview).map(([key, value]) => (
+                <div key={key} className="stat-card">
+                  <span className="stat-label">{key}</span>
+                  <span className="stat-value">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      };
+    frontend/src/hooks/useAnalytics.ts: |
+      import { useState, useCallback } from 'react';
+
+      interface OverviewData {
+        [key: string]: number;
+      }
+
+      export function useAnalytics() {
+        const [isLoading, setIsLoading] = useState(false);
+
+        const fetchOverview = useCallback(async (userId: string): Promise<OverviewData> => {
+          setIsLoading(true);
+          const response = await fetch(`/api/analytics/${userId}/overview`);
+          const data = await response.json();
+          setIsLoading(false);
+          return data;
+        }, []);
+
+        return { fetchOverview, isLoading };
+      }
+    frontend/src/pages/DashboardPage.tsx: |
+      import React, { useEffect, useState } from 'react';
+
+      interface DashboardWidget {
+        id: string;
+        title: string;
+        type: string;
+      }
+
+      export const DashboardPage: React.FC = () => {
+        const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+
+        useEffect(() => {
+          fetch('/api/dashboard/widgets')
+            .then((res) => res.json())
+            .then(setWidgets);
+        }, []);
+
+        const handleRemoveWidget = (widgetId: string) => {
+          setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+        };
+
+        return (
+          <div className="dashboard-page">
+            <h1>Dashboard</h1>
+            {widgets.map((w) => (
+              <div key={w.id} className="widget-card">
+                <span>{w.title}</span>
+                <button onClick={() => handleRemoveWidget(w.id)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        );
+      };
+    frontend/src/pages/SettingsPage.tsx: |
+      import React, { useState } from 'react';
+
+      interface UserSettings {
+        theme: string;
+        notifications: boolean;
+        language: string;
+      }
+
+      export const SettingsPage: React.FC = () => {
+        const [settings, setSettings] = useState<UserSettings>({
+          theme: 'light',
+          notifications: true,
+          language: 'en',
+        });
+
+        const handleThemeChange = (theme: string) => {
+          setSettings((prev) => ({ ...prev, theme }));
+        };
+
+        const handleSave = async () => {
+          await fetch('/api/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+          });
+        };
+
+        return (
+          <div className="settings-page">
+            <h1>Settings</h1>
+            <select value={settings.theme} onChange={(e) => handleThemeChange(e.target.value)}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+            <button onClick={handleSave}>Save</button>
+          </div>
+        );
+      };
+    frontend/src/pages/ProfilePage.tsx: |
+      import React, { useState, useEffect } from 'react';
+
+      interface UserProfile {
+        name: string;
+        email: string;
+        avatarUrl: string;
+      }
+
+      export const ProfilePage: React.FC<{ userId: string }> = ({ userId }) => {
+        const [profile, setProfile] = useState<UserProfile | null>(null);
+
+        useEffect(() => {
+          fetch(`/api/users/${userId}/profile`)
+            .then((res) => res.json())
+            .then(setProfile);
+        }, [userId]);
+
+        const handleUpdateName = (newName: string) => {
+          if (profile) {
+            setProfile({ ...profile, name: newName });
+          }
+        };
+
+        if (!profile) {
+          return <div>Loading profile...</div>;
+        }
+
+        return (
+          <div className="profile-page">
+            <h1>{profile.name}</h1>
+            <p>{profile.email}</p>
+            <input
+              value={profile.name}
+              onChange={(e) => handleUpdateName(e.target.value)}
+            />
+          </div>
+        );
+      };
+  changed_files:
+    frontend/src/pages/StatisticsPage.tsx: |
+      import React, { useState, useEffect } from 'react';
+      import { useAnalytics, useTrendsData } from '../hooks/useAnalytics';
+
+      interface StatisticsPageProps {
+        userId: string;
+      }
+
+      interface TrendPoint {
+        date: string;
+        value: number;
+      }
+
+      export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId }) => {
+        const { fetchOverview } = useAnalytics();
+        const { trends, loadTrends, trendError } = useTrendsData();
+        const [overview, setOverview] = useState<Record<string, number> | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [selectedMetric, setSelectedMetric] = useState<string>('steps');
+
+        useEffect(() => {
+          setLoading(true);
+          Promise.all([
+            fetchOverview(userId),
+            loadTrends(userId, selectedMetric),
+          ]).then(([overviewData]) => {
+            setOverview(overviewData);
+            setLoading(false);
+          });
+        }, [userId, selectedMetric]);
+
+        if (loading) {
+          return <div className="stats-loading">Loading statistics...</div>;
+        }
+
+        return (
+          <div className="statistics-page">
+            <h1>Statistics</h1>
+            <div className="overview-grid">
+              {overview && Object.entries(overview).map(([key, value]) => (
+                <div key={key} className="stat-card">
+                  <span className="stat-label">{key}</span>
+                  <span className="stat-value">{value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="trends-section">
+              <h2>Trends</h2>
+              <select
+                value={selectedMetric}
+                onChange={(e) => setSelectedMetric(e.target.value)}
+              >
+                <option value="steps">Steps</option>
+                <option value="calories">Calories</option>
+                <option value="sleep">Sleep</option>
+              </select>
+              {trendError && <p className="trend-error">{trendError}</p>}
+              <div className="trends-chart">
+                {trends.map((point: TrendPoint) => (
+                  <div key={point.date} className="trend-bar">
+                    <span className="trend-date">{point.date}</span>
+                    <div
+                      className="trend-fill"
+                      style={{ height: `${point.value}%` }}
+                    />
+                    <span className="trend-value">{point.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      };
+    frontend/src/hooks/useAnalytics.ts: |
+      import { useState, useCallback } from 'react';
+
+      interface OverviewData {
+        [key: string]: number;
+      }
+
+      interface TrendPoint {
+        date: string;
+        value: number;
+      }
+
+      export function useAnalytics() {
+        const [isLoading, setIsLoading] = useState(false);
+
+        const fetchOverview = useCallback(async (userId: string): Promise<OverviewData> => {
+          setIsLoading(true);
+          const response = await fetch(`/api/analytics/${userId}/overview`);
+          const data = await response.json();
+          setIsLoading(false);
+          return data;
+        }, []);
+
+        return { fetchOverview, isLoading };
+      }
+
+      export function useTrendsData() {
+        const [trends, setTrends] = useState<TrendPoint[]>([]);
+        const [trendError, setTrendError] = useState<string | null>(null);
+
+        const loadTrends = useCallback(async (userId: string, metric: string): Promise<void> => {
+          setTrendError(null);
+          const response = await fetch(`/api/analytics/${userId}/trends?metric=${metric}`);
+          if (!response.ok) {
+            setTrendError(`Failed to load trends for ${metric}`);
+            return;
+          }
+          const data: TrendPoint[] = await response.json();
+          setTrends(data);
+        }, []);
+
+        return { trends, loadTrends, trendError };
+      }
+    frontend/src/pages/DashboardPage.tsx: |
+      import React, { useEffect, useState } from 'react';
+
+      interface DashboardWidget {
+        id: string;
+        title: string;
+        type: string;
+      }
+
+      export const DashboardPage: React.FC = () => {
+        const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+
+        useEffect(() => {
+          fetch('/api/dashboard/widgets')
+            .then((res) => res.json())
+            .then(setWidgets);
+        }, []);
+
+        const handleRemoveWidget = (widgetId: string) => {
+          setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+        };
+
+        return (
+          <div className="dashboard-page">
+            <h1>Dashboard</h1>
+            {widgets.map((w) => (
+              <div key={w.id} className="widget-card">
+                <span>{w.title}</span>
+                <button onClick={() => handleRemoveWidget(w.id)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        );
+      };
+    frontend/src/pages/SettingsPage.tsx: |
+      import React, { useState } from 'react';
+
+      interface UserSettings {
+        theme: string;
+        notifications: boolean;
+        language: string;
+      }
+
+      export const SettingsPage: React.FC = () => {
+        const [settings, setSettings] = useState<UserSettings>({
+          theme: 'light',
+          notifications: true,
+          language: 'en',
+        });
+
+        const handleThemeChange = (theme: string) => {
+          setSettings((prev) => ({ ...prev, theme }));
+        };
+
+        const handleSave = async () => {
+          await fetch('/api/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+          });
+        };
+
+        return (
+          <div className="settings-page">
+            <h1>Settings</h1>
+            <select value={settings.theme} onChange={(e) => handleThemeChange(e.target.value)}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+            <button onClick={handleSave}>Save</button>
+          </div>
+        );
+      };
+    frontend/src/pages/ProfilePage.tsx: |
+      import React, { useState, useEffect } from 'react';
+
+      interface UserProfile {
+        name: string;
+        email: string;
+        avatarUrl: string;
+      }
+
+      export const ProfilePage: React.FC<{ userId: string }> = ({ userId }) => {
+        const [profile, setProfile] = useState<UserProfile | null>(null);
+
+        useEffect(() => {
+          fetch(`/api/users/${userId}/profile`)
+            .then((res) => res.json())
+            .then(setProfile);
+        }, [userId]);
+
+        const handleUpdateName = (newName: string) => {
+          if (profile) {
+            setProfile({ ...profile, name: newName });
+          }
+        };
+
+        if (!profile) {
+          return <div>Loading profile...</div>;
+        }
+
+        return (
+          <div className="profile-page">
+            <h1>{profile.name}</h1>
+            <p>{profile.email}</p>
+            <input
+              value={profile.name}
+              onChange={(e) => handleUpdateName(e.target.value)}
+            />
+          </div>
+        );
+      };
+  commit_message: Update files
+fragments:
+- id: useanalytics_file
+  selector:
+    path: frontend/src/hooks/useAnalytics.ts
+- id: req_global_0
+  selector:
+    anchor: useTrendsData
+- id: req_global_1
+  selector:
+    anchor: loadTrends
+- id: no_dashboardpage
+  selector:
+    path: frontend/src/pages/DashboardPage.tsx
+- id: no_settingspage
+  selector:
+    path: frontend/src/pages/SettingsPage.tsx
+- id: no_profilepage
+  selector:
+    path: frontend/src/pages/ProfilePage.tsx
+- id: no_global_0
+  selector:
+    anchor: DashboardPage
+- id: no_global_1
+  selector:
+    anchor: handleRemoveWidget
+- id: no_global_2
+  selector:
+    anchor: SettingsPage
+- id: no_global_3
+  selector:
+    anchor: handleThemeChange
+- id: no_global_4
+  selector:
+    anchor: ProfilePage
+- id: no_global_5
+  selector:
+    anchor: handleUpdateName
+oracle:
+  required:
+  - useanalytics_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_dashboardpage
+  - no_settingspage
+  - no_profilepage
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

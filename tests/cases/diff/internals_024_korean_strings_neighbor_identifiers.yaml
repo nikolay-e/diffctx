@@ -1,0 +1,23 @@
+name: internals_024_korean_strings_neighbor_identifiers
+repo:
+  initial_files:
+    korean_str.py: |
+      x = 0
+  changed_files:
+    korean_str.py: |
+      message = "안녕하세요"
+      result = process_data(input_value)
+  commit_message: Update files
+fragments:
+- id: korean_str_file
+  selector:
+    path: korean_str.py
+- id: req_global_0
+  selector:
+    anchor: message = "안녕하세요"
+oracle:
+  required:
+  - korean_str_file
+  - req_global_0
+  allowed: []
+  forbidden: []

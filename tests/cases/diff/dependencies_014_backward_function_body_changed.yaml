@@ -1,0 +1,267 @@
+name: dependencies_014_backward_function_body_changed
+repo:
+  initial_files:
+    calculator.py: |
+      def calculate_total(items):
+          return sum(i.price for i in items)
+    checkout.py: |
+      from calculator import calculate_total
+
+      class CartItem:
+          def __init__(self, price, quantity):
+              self.price = price
+              self.quantity = quantity
+
+      def process_checkout(cart_items):
+          total = calculate_total(cart_items)
+          return {"total": total}
+    invoice.py: |
+      from calculator import calculate_total
+
+      def create_invoice(line_items):
+          amount = calculate_total(line_items)
+          return {"amount": amount}
+    reports/revenue.py: |
+      from calculator import calculate_total
+      GARBAGE_DEP_014_REV_IMPORT_C = "revenue_report"
+      GARBAGE_DEP_014_REV_PERIOD_D = "monthly"
+
+      class RevenueReport:
+          GARBAGE_DEP_014_REV_CLASS_E = True
+
+          def monthly_total(self, orders: list) -> float:
+              return calculate_total(orders)
+
+          def format_report(self, orders: list) -> str:
+              total = calculate_total(orders)
+              return f"Revenue: ${total:.2f}"
+    utils/math_helpers.py: |
+      GARBAGE_DEP_014_MATH_MOD_F = "math_helpers"
+      GARBAGE_DEP_014_MATH_VER_G = "1.5"
+
+      def calculate_total(items):
+          GARBAGE_DEP_014_MATH_CALC_H = True
+          return sum(getattr(i, "amount", 0) for i in items)
+
+      def calculate_tax(total: float, rate: float = 0.1) -> float:
+          GARBAGE_DEP_014_MATH_TAX_I = True
+          return total * rate
+    cart_display.py: |
+      from calculator import calculate_total
+      GARBAGE_DEP_014_DISPLAY_MOD_J = "cart_display"
+      GARBAGE_DEP_014_DISPLAY_FMT_K = "html"
+
+      class CartItem:
+          def __init__(self, price, quantity):
+              self.price = price
+              self.quantity = quantity
+
+      def render_cart(cart_items: list) -> str:
+          total = calculate_total(cart_items)
+          GARBAGE_DEP_014_DISPLAY_RENDER_L = True
+          return f"<div>Total: ${total}</div>"
+    garbage/astronomy_GARBAGE_DEP_014_ASTRO_A.py: |
+      GARBAGE_DEP_014_ASTRO_A = "orbital"
+
+      def orbital_period(semi_major_axis: float) -> float:
+          return (semi_major_axis ** 1.5) * 365.25
+
+      class Planet_GARBAGE_DEP_014_ASTRO_A:
+          def __init__(self, name: str):
+              self.name = name
+    garbage/knitting_GARBAGE_DEP_014_KNIT_B.py: |
+      GARBAGE_DEP_014_KNIT_B = "knitting"
+
+      def yarn_needed(width: float, length: float) -> float:
+          return width * length * 0.01
+
+      class Pattern_GARBAGE_DEP_014_KNIT_B:
+          def __init__(self, name: str):
+              self.name = name
+  changed_files:
+    calculator.py: |
+      def calculate_total(items):
+          return sum(i.price * i.quantity for i in items)
+    checkout.py: |
+      from calculator import calculate_total
+
+      class CartItem:
+          def __init__(self, price, quantity):
+              self.price = price
+              self.quantity = quantity
+
+      def process_checkout(cart_items):
+          total = calculate_total(cart_items)
+          return {"total": total}
+    invoice.py: |
+      from calculator import calculate_total
+
+      def create_invoice(line_items):
+          amount = calculate_total(line_items)
+          return {"amount": amount}
+    reports/revenue.py: |
+      from calculator import calculate_total
+      GARBAGE_DEP_014_REV_IMPORT_C = "revenue_report"
+      GARBAGE_DEP_014_REV_PERIOD_D = "monthly"
+
+      class RevenueReport:
+          GARBAGE_DEP_014_REV_CLASS_E = True
+
+          def monthly_total(self, orders: list) -> float:
+              return calculate_total(orders)
+
+          def format_report(self, orders: list) -> str:
+              total = calculate_total(orders)
+              return f"Revenue: ${total:.2f}"
+    utils/math_helpers.py: |
+      GARBAGE_DEP_014_MATH_MOD_F = "math_helpers"
+      GARBAGE_DEP_014_MATH_VER_G = "1.5"
+
+      def calculate_total(items):
+          GARBAGE_DEP_014_MATH_CALC_H = True
+          return sum(getattr(i, "amount", 0) for i in items)
+
+      def calculate_tax(total: float, rate: float = 0.1) -> float:
+          GARBAGE_DEP_014_MATH_TAX_I = True
+          return total * rate
+    cart_display.py: |
+      from calculator import calculate_total
+      GARBAGE_DEP_014_DISPLAY_MOD_J = "cart_display"
+      GARBAGE_DEP_014_DISPLAY_FMT_K = "html"
+
+      class CartItem:
+          def __init__(self, price, quantity):
+              self.price = price
+              self.quantity = quantity
+
+      def render_cart(cart_items: list) -> str:
+          total = calculate_total(cart_items)
+          GARBAGE_DEP_014_DISPLAY_RENDER_L = True
+          return f"<div>Total: ${total}</div>"
+    garbage/astronomy_GARBAGE_DEP_014_ASTRO_A.py: |
+      GARBAGE_DEP_014_ASTRO_A = "orbital"
+
+      def orbital_period(semi_major_axis: float) -> float:
+          return (semi_major_axis ** 1.5) * 365.25
+
+      class Planet_GARBAGE_DEP_014_ASTRO_A:
+          def __init__(self, name: str):
+              self.name = name
+    garbage/knitting_GARBAGE_DEP_014_KNIT_B.py: |
+      GARBAGE_DEP_014_KNIT_B = "knitting"
+
+      def yarn_needed(width: float, length: float) -> float:
+          return width * length * 0.01
+
+      class Pattern_GARBAGE_DEP_014_KNIT_B:
+          def __init__(self, name: str):
+              self.name = name
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: calculator.py
+    anchor: return sum(i.price * i.quantity for i in items)
+- id: calculator_1
+  selector:
+    path: calculator.py
+    anchor: 'def calculate_total(items):'
+- id: checkout
+  selector:
+    path: checkout.py
+    anchor: from calculator import calculate_total
+- id: checkout_1
+  selector:
+    path: checkout.py
+    anchor: 'def process_checkout(cart_items):'
+- id: checkout_2
+  selector:
+    path: checkout.py
+    anchor: total = calculate_total(cart_items)
+- id: invoice
+  selector:
+    path: invoice.py
+    anchor: from calculator import calculate_total
+- id: invoice_1
+  selector:
+    path: invoice.py
+    anchor: amount = calculate_total(line_items)
+- id: no_revenue
+  selector:
+    path: reports/revenue.py
+- id: no_math_helpers
+  selector:
+    path: utils/math_helpers.py
+- id: no_cart_display
+  selector:
+    path: cart_display.py
+- id: no_astronomy_garbage_dep_014_astro_a
+  selector:
+    path: garbage/astronomy_GARBAGE_DEP_014_ASTRO_A.py
+- id: no_knitting_garbage_dep_014_knit_b
+  selector:
+    path: garbage/knitting_GARBAGE_DEP_014_KNIT_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_014_ASTRO_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_014_KNIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_014_REV_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_014_REV_PERIOD_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_014_REV_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_014_MATH_MOD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_014_MATH_VER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_014_MATH_CALC_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_014_MATH_TAX_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_DEP_014_DISPLAY_MOD_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_DEP_014_DISPLAY_FMT_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_DEP_014_DISPLAY_RENDER_L
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  - checkout
+  - checkout_1
+  - checkout_2
+  - invoice
+  - invoice_1
+  allowed: []
+  forbidden:
+  - no_revenue
+  - no_math_helpers
+  - no_cart_display
+  - no_astronomy_garbage_dep_014_astro_a
+  - no_knitting_garbage_dep_014_knit_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

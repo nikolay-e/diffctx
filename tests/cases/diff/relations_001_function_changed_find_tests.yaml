@@ -1,0 +1,149 @@
+name: relations_001_function_changed_find_tests
+repo:
+  initial_files:
+    calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def subtract(a, b):
+          return a - b
+    tests/test_calculator.py: |
+      from calculator import add, subtract
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 1) == 0
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    math_utils.py: |
+      import math
+
+      def clamp(value, min_val, max_val):
+          return max(min_val, min(value, max_val))
+
+      def round_to_precision(value, precision=2):
+          factor = 10 ** precision
+          return math.floor(value * factor + 0.5) / factor
+
+      def percentage(part, whole):
+          if whole == 0:
+              return 0.0
+          return (part / whole) * 100.0
+    conversion_helpers.py: |
+      def to_int_safe(value, default=0):
+          try:
+              return int(value)
+          except (ValueError, TypeError):
+              return default
+
+      def to_float_safe(value, default=0.0):
+          try:
+              return float(value)
+          except (ValueError, TypeError):
+              return default
+
+      def to_bool(value):
+          if isinstance(value, str):
+              return value.lower() in ('true', '1', 'yes')
+          return bool(value)
+  changed_files:
+    calculator.py: |
+      def add(a, b):
+          return float(a) + float(b)
+
+      def subtract(a, b):
+          return a - b
+    tests/test_calculator.py: |
+      from calculator import add, subtract
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 1) == 0
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    math_utils.py: |
+      import math
+
+      def clamp(value, min_val, max_val):
+          return max(min_val, min(value, max_val))
+
+      def round_to_precision(value, precision=2):
+          factor = 10 ** precision
+          return math.floor(value * factor + 0.5) / factor
+
+      def percentage(part, whole):
+          if whole == 0:
+              return 0.0
+          return (part / whole) * 100.0
+    conversion_helpers.py: |
+      def to_int_safe(value, default=0):
+          try:
+              return int(value)
+          except (ValueError, TypeError):
+              return default
+
+      def to_float_safe(value, default=0.0):
+          try:
+              return float(value)
+          except (ValueError, TypeError):
+              return default
+
+      def to_bool(value):
+          if isinstance(value, str):
+              return value.lower() in ('true', '1', 'yes')
+          return bool(value)
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: calculator.py
+    anchor: return float(a) + float(b)
+- id: test_calculator
+  selector:
+    path: tests/test_calculator.py
+    anchor: from calculator import add, subtract
+- id: test_calculator_1
+  selector:
+    path: tests/test_calculator.py
+    anchor: assert add(1, 2) == 3
+- id: no_math_utils
+  selector:
+    path: math_utils.py
+- id: no_conversion_helpers
+  selector:
+    path: conversion_helpers.py
+- id: no_global_0
+  selector:
+    anchor: clamp
+- id: no_global_1
+  selector:
+    anchor: round_to_precision
+- id: no_global_2
+  selector:
+    anchor: percentage
+- id: no_global_3
+  selector:
+    anchor: to_int_safe
+- id: no_global_4
+  selector:
+    anchor: to_float_safe
+- id: no_global_5
+  selector:
+    anchor: to_bool
+oracle:
+  required:
+  - calculator
+  - test_calculator
+  - test_calculator_1
+  allowed: []
+  forbidden:
+  - no_math_utils
+  - no_conversion_helpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,288 @@
+name: shell_007_source_script
+repo:
+  initial_files:
+    lib/config.sh: |
+      #!/bin/bash
+
+      export DB_HOST="localhost"
+      export DB_PORT="5432"
+      export DB_NAME="myapp"
+      export LOG_LEVEL="info"
+      export MAX_CONNECTIONS="10"
+
+      get_connection_string() {
+          echo "postgres://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+      }
+
+      get_db_url() {
+          echo "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+      }
+    deploy.sh: |
+      #!/bin/bash
+      source ./lib/config.sh
+
+      echo "Starting deployment..."
+    secrets.sh: |
+      #!/bin/bash
+
+      export API_KEY="${API_KEY:-default_key}"
+      export AUTH_TOKEN="${AUTH_TOKEN:-}"
+      export WEBHOOK_SECRET="${WEBHOOK_SECRET:-}"
+
+      validate_credentials() {
+          if [[ -z "$API_KEY" || -z "$AUTH_TOKEN" ]]; then
+              echo "Missing credentials"
+              return 1
+          fi
+          return 0
+      }
+
+      mask_secret() {
+          local secret=$1
+          echo "${secret:0:4}****"
+      }
+    healthcheck.sh: |
+      #!/bin/bash
+
+      HEALTH_ENDPOINT="http://localhost:8080/health"
+      MAX_RETRIES=5
+      RETRY_DELAY=2
+
+      check_health() {
+          local retries=0
+          while (( retries < MAX_RETRIES )); do
+              if curl -sf "$HEALTH_ENDPOINT" > /dev/null; then
+                  echo "Service is healthy"
+                  return 0
+              fi
+              retries=$((retries + 1))
+              sleep "$RETRY_DELAY"
+          done
+          echo "Health check failed after $MAX_RETRIES attempts"
+          return 1
+      }
+
+      check_readiness() {
+          local endpoint="${HEALTH_ENDPOINT}/ready"
+          curl -sf "$endpoint" > /dev/null 2>&1
+      }
+    migrate.sh: |
+      #!/bin/bash
+      source ./lib/config.sh
+
+      echo "Running database migrations..."
+      CONNECTION=$(get_connection_string)
+      echo "Connecting to: $CONNECTION"
+
+      run_migrations() {
+          local direction=${1:-up}
+          echo "Running migrations ($direction) on $DB_HOST:$DB_PORT/$DB_NAME"
+          flyway -url="$CONNECTION" migrate
+      }
+
+      check_pending() {
+          echo "Checking pending migrations on $DB_HOST..."
+          flyway -url="$(get_connection_string)" info
+      }
+
+      run_migrations "$@"
+    rollback.sh: |
+      #!/bin/bash
+
+      ROLLBACK_TIMEOUT=120
+      ROLLBACK_STRATEGY="${ROLLBACK_STRATEGY:-blue-green}"
+
+      rollback_deployment() {
+          local version=$1
+          local log_level="${LOG_LEVEL:-warn}"
+          echo "[$log_level] Rolling back to version $version"
+          echo "Strategy: $ROLLBACK_STRATEGY"
+          echo "Timeout: $ROLLBACK_TIMEOUT seconds"
+      }
+
+      check_rollback_status() {
+          echo "Checking rollback status..."
+          kubectl rollout status deployment/myapp --timeout="${ROLLBACK_TIMEOUT}s"
+      }
+
+      confirm_rollback() {
+          read -rp "Confirm rollback? [y/N] " answer
+          [[ "$answer" == "y" ]]
+      }
+    lib/db_utils.sh: |
+      #!/bin/bash
+
+      get_connection_string() {
+          local host=${1:-localhost}
+          local port=${2:-5432}
+          local db=${3:-postgres}
+          echo "postgresql://${host}:${port}/${db}"
+      }
+
+      test_connection() {
+          local conn_str
+          conn_str=$(get_connection_string "$@")
+          pg_isready -d "$conn_str" > /dev/null 2>&1
+      }
+
+      backup_database() {
+          local conn_str
+          conn_str=$(get_connection_string "$@")
+          local timestamp
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          pg_dump "$conn_str" > "backup_${timestamp}.sql"
+      }
+  changed_files:
+    lib/config.sh: |
+      #!/bin/bash
+
+      export DB_HOST="localhost"
+      export DB_PORT="5432"
+      export DB_NAME="myapp"
+      export LOG_LEVEL="info"
+      export MAX_CONNECTIONS="10"
+
+      get_connection_string() {
+          echo "postgres://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+      }
+
+      get_db_url() {
+          echo "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+      }
+    deploy.sh: |
+      #!/bin/bash
+      source ./lib/config.sh
+
+      echo "Connecting to database..."
+      CONNECTION=$(get_connection_string)
+      echo "Using connection: $CONNECTION"
+
+      if [[ "$LOG_LEVEL" == "debug" ]]; then
+          set -x
+      fi
+
+      echo "Deploying to $DB_HOST..."
+      echo "Log level: $LOG_LEVEL"
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: lib/config.sh
+    anchor: get_connection_string()
+- id: config_1
+  selector:
+    path: lib/config.sh
+    anchor: export LOG_LEVEL="info"
+- id: config_2
+  selector:
+    path: lib/config.sh
+    anchor: export DB_HOST="localhost"
+- id: deploy
+  selector:
+    path: deploy.sh
+    anchor: get_connection_string
+- id: deploy_1
+  selector:
+    path: deploy.sh
+    anchor: LOG_LEVEL
+- id: no_secrets
+  selector:
+    path: secrets.sh
+- id: no_healthcheck
+  selector:
+    path: healthcheck.sh
+- id: no_migrate
+  selector:
+    path: migrate.sh
+- id: no_rollback
+  selector:
+    path: rollback.sh
+- id: no_db_utils
+  selector:
+    path: lib/db_utils.sh
+- id: no_global_0
+  selector:
+    anchor: API_KEY
+- id: no_global_1
+  selector:
+    anchor: AUTH_TOKEN
+- id: no_global_2
+  selector:
+    anchor: validate_credentials
+- id: no_global_3
+  selector:
+    anchor: mask_secret
+- id: no_global_4
+  selector:
+    anchor: HEALTH_ENDPOINT
+- id: no_global_5
+  selector:
+    anchor: check_health
+- id: no_global_6
+  selector:
+    anchor: check_readiness
+- id: no_global_7
+  selector:
+    anchor: Running database migrations
+- id: no_global_8
+  selector:
+    anchor: flyway
+- id: no_global_9
+  selector:
+    anchor: check_pending
+- id: no_global_10
+  selector:
+    anchor: run_migrations
+- id: no_global_11
+  selector:
+    anchor: ROLLBACK_TIMEOUT
+- id: no_global_12
+  selector:
+    anchor: ROLLBACK_STRATEGY
+- id: no_global_13
+  selector:
+    anchor: rollback_deployment
+- id: no_global_14
+  selector:
+    anchor: check_rollback_status
+- id: no_global_15
+  selector:
+    anchor: test_connection
+- id: no_global_16
+  selector:
+    anchor: backup_database
+- id: no_global_17
+  selector:
+    anchor: pg_isready
+oracle:
+  required:
+  - config
+  - config_1
+  - config_2
+  - deploy
+  - deploy_1
+  allowed: []
+  forbidden:
+  - no_secrets
+  - no_healthcheck
+  - no_migrate
+  - no_rollback
+  - no_db_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17

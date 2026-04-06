@@ -1,0 +1,164 @@
+name: dependencies_030_test_function_changed_find_tests
+repo:
+  initial_files:
+    calculator.py: |
+      def add(a, b):
+          return a + b
+
+      def subtract(a, b):
+          return a - b
+    tests/test_calculator.py: |
+      from calculator import add, subtract
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 1) == 0
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    utils/vector_math.py: |
+      GARBAGE_DEP030_VECMATH_A = "vector_module"
+      GARBAGE_DEP030_VECOPS_B = True
+
+      def add(a, b):
+          GARBAGE_DEP030_VECADD_C = "vector_add"
+          return [x + y for x, y in zip(a, b)]
+
+      def subtract(a, b):
+          return [x - y for x, y in zip(a, b)]
+    tests/test_subtract_only.py: |
+      from calculator import subtract
+      GARBAGE_DEP030_SUBTEST_D = "subtract_tests"
+      GARBAGE_DEP030_SUBONLY_E = True
+
+      def test_subtract_large():
+          GARBAGE_DEP030_SUBLARGE_F = "large_test"
+          assert subtract(1000, 500) == 500
+    tests/test_string_ops.py: |
+      GARBAGE_DEP030_STROPS_G = "string_operations"
+      GARBAGE_DEP030_STRTEST_H = True
+
+      def add(a, b):
+          return str(a) + str(b)
+
+      def test_add():
+          GARBAGE_DEP030_STRADD_I = "string_add_test"
+          assert add("hello", " world") == "hello world"
+  changed_files:
+    calculator.py: |
+      def add(a, b):
+          return float(a) + float(b)
+
+      def subtract(a, b):
+          return a - b
+    tests/test_calculator.py: |
+      from calculator import add, subtract
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 1) == 0
+
+      def test_subtract():
+          assert subtract(5, 3) == 2
+    utils/vector_math.py: |
+      GARBAGE_DEP030_VECMATH_A = "vector_module"
+      GARBAGE_DEP030_VECOPS_B = True
+
+      def add(a, b):
+          GARBAGE_DEP030_VECADD_C = "vector_add"
+          return [x + y for x, y in zip(a, b)]
+
+      def subtract(a, b):
+          return [x - y for x, y in zip(a, b)]
+    tests/test_subtract_only.py: |
+      from calculator import subtract
+      GARBAGE_DEP030_SUBTEST_D = "subtract_tests"
+      GARBAGE_DEP030_SUBONLY_E = True
+
+      def test_subtract_large():
+          GARBAGE_DEP030_SUBLARGE_F = "large_test"
+          assert subtract(1000, 500) == 500
+    tests/test_string_ops.py: |
+      GARBAGE_DEP030_STROPS_G = "string_operations"
+      GARBAGE_DEP030_STRTEST_H = True
+
+      def add(a, b):
+          return str(a) + str(b)
+
+      def test_add():
+          GARBAGE_DEP030_STRADD_I = "string_add_test"
+          assert add("hello", " world") == "hello world"
+  commit_message: Update files
+fragments:
+- id: calculator
+  selector:
+    path: calculator.py
+    anchor: return float(a) + float(b)
+- id: calculator_1
+  selector:
+    path: calculator.py
+    anchor: 'def add(a, b):'
+- id: test_calculator
+  selector:
+    path: tests/test_calculator.py
+    anchor: 'def test_add():'
+- id: test_calculator_1
+  selector:
+    path: tests/test_calculator.py
+    anchor: assert add(1, 2) == 3
+- id: no_vector_math
+  selector:
+    path: utils/vector_math.py
+- id: no_test_subtract_only
+  selector:
+    path: tests/test_subtract_only.py
+- id: no_test_string_ops
+  selector:
+    path: tests/test_string_ops.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP030_VECMATH_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP030_VECOPS_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP030_VECADD_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP030_SUBTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP030_SUBONLY_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP030_SUBLARGE_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP030_STROPS_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP030_STRTEST_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP030_STRADD_I
+oracle:
+  required:
+  - calculator
+  - calculator_1
+  - test_calculator
+  - test_calculator_1
+  allowed: []
+  forbidden:
+  - no_vector_math
+  - no_test_subtract_only
+  - no_test_string_ops
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

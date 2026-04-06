@@ -1,0 +1,30 @@
+name: internals_046_non_overlapping_both_selected
+repo:
+  initial_files:
+    file.py: |
+      pass
+  changed_files:
+    file.py: |
+      def concept_a_handler():
+          concept_a_helper()
+
+      def concept_b_handler():
+          concept_b_helper()
+  commit_message: Update files
+fragments:
+- id: file_file
+  selector:
+    path: file.py
+- id: req_global_0
+  selector:
+    anchor: 'def concept_a_handler():'
+- id: req_global_1
+  selector:
+    anchor: 'def concept_b_handler():'
+oracle:
+  required:
+  - file_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

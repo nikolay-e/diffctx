@@ -1,0 +1,34 @@
+name: internals_038_cyclic_dependency_convergence
+repo:
+  initial_files:
+    cycle.py: |
+      def placeholder():
+          pass
+  changed_files:
+    cycle.py: |
+      def func_alpha():
+          func_beta()
+
+      def func_beta():
+          func_gamma()
+
+      def func_gamma():
+          func_alpha()
+  commit_message: Update files
+fragments:
+- id: cycle_file
+  selector:
+    path: cycle.py
+- id: req_global_0
+  selector:
+    anchor: 'def func_alpha():'
+- id: req_global_1
+  selector:
+    anchor: 'def func_beta():'
+oracle:
+  required:
+  - cycle_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

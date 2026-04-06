@@ -1,0 +1,408 @@
+name: dart_003_flutter_stateful_widget
+repo:
+  initial_files:
+    lib/models/cart_item.dart: |
+      class CartItem {
+        final String id;
+        final String name;
+        double price;
+        int quantity;
+
+        CartItem({
+          required this.id,
+          required this.name,
+          required this.price,
+          this.quantity = 1,
+        });
+
+        double get total => price * quantity;
+      }
+    lib/providers/cart_provider.dart: |
+      import 'package:flutter/foundation.dart';
+      import 'package:myapp/models/cart_item.dart';
+
+      class CartProvider extends ChangeNotifier {
+        final List<CartItem> _items = [];
+
+        List<CartItem> get items => List.unmodifiable(_items);
+
+        double get subtotal => _items.fold(0, (sum, item) => sum + item.total);
+
+        void addItem(CartItem item) {
+          _items.add(item);
+          notifyListeners();
+        }
+
+        void removeItem(String itemId) {
+          _items.removeWhere((item) => item.id == itemId);
+          notifyListeners();
+        }
+
+        void applyDiscount(double percentage) {
+          for (final item in _items) {
+            item.price = item.price * (1 - percentage / 100);
+          }
+          notifyListeners();
+        }
+
+        void clearCart() {
+          _items.clear();
+          notifyListeners();
+        }
+      }
+    lib/screens/cart_screen.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CartScreen extends StatefulWidget {
+        const CartScreen({super.key});
+
+        @override
+        State<CartScreen> createState() => _CartScreenState();
+      }
+
+      class _CartScreenState extends State<CartScreen> {
+        @override
+        Widget build(BuildContext context) {
+          final cart = Provider.of<CartProvider>(context);
+          return Scaffold(
+            appBar: AppBar(title: const Text('Cart')),
+            body: ListView.builder(
+              itemCount: cart.items.length,
+              itemBuilder: (context, index) {
+                final item = cart.items[index];
+                return ListTile(
+                  title: Text(item.name),
+                  subtitle: Text('\$${item.price.toStringAsFixed(2)}'),
+                );
+              },
+            ),
+          );
+        }
+      }
+    lib/providers/theme_provider.dart: |
+      import 'package:flutter/foundation.dart';
+      import 'package:flutter/material.dart';
+
+      class ThemeProvider extends ChangeNotifier {
+        ThemeMode _mode = ThemeMode.light;
+
+        ThemeMode get mode => _mode;
+
+        void toggleTheme() {
+          _mode = _mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+          notifyListeners();
+        }
+
+        String get GARBAGE_DART_003_A_THEME_ID => 'default_theme';
+        int get GARBAGE_DART_003_B_TRANSITION_MS => 300;
+      }
+    lib/screens/checkout_screen.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CheckoutScreen extends StatelessWidget {
+        const CheckoutScreen({super.key});
+
+        @override
+        Widget build(BuildContext context) {
+          final cart = Provider.of<CartProvider>(context);
+          return Scaffold(
+            appBar: AppBar(title: const Text('Checkout')),
+            body: Column(
+              children: [
+                Text('Total: \$${cart.subtotal.toStringAsFixed(2)}'),
+                ElevatedButton(
+                  onPressed: () => cart.clearCart(),
+                  child: const Text('GARBAGE_DART_003_C_PLACE_ORDER'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    lib/widgets/cart_badge.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CartBadge extends StatelessWidget {
+        const CartBadge({super.key});
+
+        @override
+        Widget build(BuildContext context) {
+          final count = Provider.of<CartProvider>(context).items.length;
+          return Badge(
+            label: Text('$count'),
+            child: const Icon(Icons.shopping_cart),
+          );
+        }
+
+        String get GARBAGE_DART_003_D_BADGE_KEY => 'cart_icon';
+      }
+  changed_files:
+    lib/models/cart_item.dart: |
+      class CartItem {
+        final String id;
+        final String name;
+        double price;
+        int quantity;
+
+        CartItem({
+          required this.id,
+          required this.name,
+          required this.price,
+          this.quantity = 1,
+        });
+
+        double get total => price * quantity;
+      }
+    lib/providers/cart_provider.dart: |
+      import 'package:flutter/foundation.dart';
+      import 'package:myapp/models/cart_item.dart';
+
+      class CartProvider extends ChangeNotifier {
+        final List<CartItem> _items = [];
+
+        List<CartItem> get items => List.unmodifiable(_items);
+
+        double get subtotal => _items.fold(0, (sum, item) => sum + item.total);
+
+        void addItem(CartItem item) {
+          _items.add(item);
+          notifyListeners();
+        }
+
+        void removeItem(String itemId) {
+          _items.removeWhere((item) => item.id == itemId);
+          notifyListeners();
+        }
+
+        void applyDiscount(double percentage) {
+          for (final item in _items) {
+            item.price = item.price * (1 - percentage / 100);
+          }
+          notifyListeners();
+        }
+
+        void clearCart() {
+          _items.clear();
+          notifyListeners();
+        }
+      }
+    lib/screens/cart_screen.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CartScreen extends StatefulWidget {
+        const CartScreen({super.key});
+
+        @override
+        State<CartScreen> createState() => _CartScreenState();
+      }
+
+      class _CartScreenState extends State<CartScreen> {
+        final TextEditingController _discountController = TextEditingController();
+        bool _discountApplied = false;
+
+        void _applyDiscount() {
+          final percentage = double.tryParse(_discountController.text);
+          if (percentage != null && percentage > 0 && percentage <= 50) {
+            final cart = Provider.of<CartProvider>(context, listen: false);
+            cart.applyDiscount(percentage);
+            setState(() {
+              _discountApplied = true;
+            });
+          }
+        }
+
+        @override
+        void dispose() {
+          _discountController.dispose();
+          super.dispose();
+        }
+
+        @override
+        Widget build(BuildContext context) {
+          final cart = Provider.of<CartProvider>(context);
+          return Scaffold(
+            appBar: AppBar(title: const Text('Cart')),
+            body: Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: cart.items.length,
+                    itemBuilder: (context, index) {
+                      final item = cart.items[index];
+                      return ListTile(
+                        title: Text(item.name),
+                        subtitle: Text('\$${item.price.toStringAsFixed(2)} x ${item.quantity}'),
+                        trailing: Text('\$${item.total.toStringAsFixed(2)}'),
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _discountController,
+                          decoration: const InputDecoration(labelText: 'Discount %'),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: _discountApplied ? null : _applyDiscount,
+                        child: const Text('Apply'),
+                      ),
+                    ],
+                  ),
+                ),
+                Text('Subtotal: \$${cart.subtotal.toStringAsFixed(2)}'),
+              ],
+            ),
+          );
+        }
+      }
+    lib/providers/theme_provider.dart: |
+      import 'package:flutter/foundation.dart';
+      import 'package:flutter/material.dart';
+
+      class ThemeProvider extends ChangeNotifier {
+        ThemeMode _mode = ThemeMode.light;
+
+        ThemeMode get mode => _mode;
+
+        void toggleTheme() {
+          _mode = _mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+          notifyListeners();
+        }
+
+        String get GARBAGE_DART_003_A_THEME_ID => 'default_theme';
+        int get GARBAGE_DART_003_B_TRANSITION_MS => 300;
+      }
+    lib/screens/checkout_screen.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CheckoutScreen extends StatelessWidget {
+        const CheckoutScreen({super.key});
+
+        @override
+        Widget build(BuildContext context) {
+          final cart = Provider.of<CartProvider>(context);
+          return Scaffold(
+            appBar: AppBar(title: const Text('Checkout')),
+            body: Column(
+              children: [
+                Text('Total: \$${cart.subtotal.toStringAsFixed(2)}'),
+                ElevatedButton(
+                  onPressed: () => cart.clearCart(),
+                  child: const Text('GARBAGE_DART_003_C_PLACE_ORDER'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    lib/widgets/cart_badge.dart: |
+      import 'package:flutter/material.dart';
+      import 'package:provider/provider.dart';
+      import 'package:myapp/providers/cart_provider.dart';
+
+      class CartBadge extends StatelessWidget {
+        const CartBadge({super.key});
+
+        @override
+        Widget build(BuildContext context) {
+          final count = Provider.of<CartProvider>(context).items.length;
+          return Badge(
+            label: Text('$count'),
+            child: const Icon(Icons.shopping_cart),
+          );
+        }
+
+        String get GARBAGE_DART_003_D_BADGE_KEY => 'cart_icon';
+      }
+  commit_message: Update files
+fragments:
+- id: cart_screen
+  selector:
+    path: lib/screens/cart_screen.dart
+    anchor: _applyDiscount
+- id: cart_screen_1
+  selector:
+    path: lib/screens/cart_screen.dart
+    anchor: cart.applyDiscount(percentage)
+- id: cart_provider
+  selector:
+    path: lib/providers/cart_provider.dart
+    anchor: void applyDiscount(double percentage)
+- id: cart_provider_1
+  selector:
+    path: lib/providers/cart_provider.dart
+    anchor: notifyListeners()
+- id: cart_provider_2
+  selector:
+    path: lib/providers/cart_provider.dart
+    anchor: item.price = item.price * (1 - percentage / 100)
+- id: no_theme_provider
+  selector:
+    path: lib/providers/theme_provider.dart
+- id: no_checkout_screen
+  selector:
+    path: lib/screens/checkout_screen.dart
+- id: no_cart_badge
+  selector:
+    path: lib/widgets/cart_badge.dart
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DART_003_A_THEME_ID
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DART_003_B_TRANSITION_MS
+- id: no_global_2
+  selector:
+    anchor: ThemeProvider
+- id: no_global_3
+  selector:
+    anchor: toggleTheme
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DART_003_C_PLACE_ORDER
+- id: no_global_5
+  selector:
+    anchor: CheckoutScreen
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DART_003_D_BADGE_KEY
+- id: no_global_7
+  selector:
+    anchor: CartBadge
+oracle:
+  required:
+  - cart_screen
+  - cart_screen_1
+  - cart_provider
+  - cart_provider_1
+  - cart_provider_2
+  allowed: []
+  forbidden:
+  - no_theme_provider
+  - no_checkout_screen
+  - no_cart_badge
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

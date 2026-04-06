@@ -1,0 +1,119 @@
+name: javascript_059_usestate_generic
+repo:
+  initial_files:
+    types.ts: |
+      export interface TodoItem {
+          id: string;
+          text: string;
+          completed: boolean;
+      }
+    TodoList.tsx: |
+      console.log('initial');
+    todo-filters.ts: |
+      import { TodoItem } from './types';
+
+      export function filterCompleted(items: TodoItem[]): TodoItem[] {
+          return items.filter(item => item.completed);
+      }
+
+      export function filterActive(items: TodoItem[]): TodoItem[] {
+          return items.filter(item => !item.completed);
+      }
+    TodoItemView.tsx: |
+      interface TodoItemViewProps {
+          text: string;
+          completed: boolean;
+          onToggle: () => void;
+      }
+
+      export function TodoItemView({ text, completed, onToggle }: TodoItemViewProps) {
+          return (
+              <li onClick={onToggle} style={{ textDecoration: completed ? 'line-through' : 'none' }}>
+                  {text}
+              </li>
+          );
+      }
+  changed_files:
+    types.ts: |
+      export interface TodoItem {
+          id: string;
+          text: string;
+          completed: boolean;
+      }
+    TodoList.tsx: |
+      import { useState } from 'react';
+      import { TodoItem } from './types';
+
+      export function TodoList() {
+          const [todos, setTodos] = useState<TodoItem[]>([]);
+
+          const addTodo = (text: string) => {
+              setTodos([...todos, { id: Date.now().toString(), text, completed: false }]);
+          };
+
+          return <div>{todos.map(t => <span key={t.id}>{t.text}</span>)}</div>;
+      }
+    todo-filters.ts: |
+      import { TodoItem } from './types';
+
+      export function filterCompleted(items: TodoItem[]): TodoItem[] {
+          return items.filter(item => item.completed);
+      }
+
+      export function filterActive(items: TodoItem[]): TodoItem[] {
+          return items.filter(item => !item.completed);
+      }
+    TodoItemView.tsx: |
+      interface TodoItemViewProps {
+          text: string;
+          completed: boolean;
+          onToggle: () => void;
+      }
+
+      export function TodoItemView({ text, completed, onToggle }: TodoItemViewProps) {
+          return (
+              <li onClick={onToggle} style={{ textDecoration: completed ? 'line-through' : 'none' }}>
+                  {text}
+              </li>
+          );
+      }
+  commit_message: Update files
+fragments:
+- id: types
+  selector:
+    path: types.ts
+    anchor: interface TodoItem {
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'completed: boolean'
+- id: no_todo_filters
+  selector:
+    path: todo-filters.ts
+- id: no_todoitemview
+  selector:
+    path: TodoItemView.tsx
+- id: no_global_0
+  selector:
+    anchor: filterCompleted
+- id: no_global_1
+  selector:
+    anchor: filterActive
+- id: no_global_2
+  selector:
+    anchor: TodoItemViewProps
+- id: no_global_3
+  selector:
+    anchor: onToggle
+oracle:
+  required:
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_todo_filters
+  - no_todoitemview
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

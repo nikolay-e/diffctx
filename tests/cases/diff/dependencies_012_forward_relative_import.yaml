@@ -1,0 +1,191 @@
+name: dependencies_012_forward_relative_import
+repo:
+  initial_files:
+    pkg/__init__.py: ''
+    pkg/utils.py: |
+      def helper():
+          return "help"
+    pkg/subpkg/__init__.py: ''
+    pkg/subpkg/module.py: |
+      def action():
+          pass
+    pkg/subpkg/worker.py: |
+      from ..utils import helper
+      GARBAGE_DEP_012_WORKER_IMPORT_C = "worker_module"
+      GARBAGE_DEP_012_WORKER_POOL_D = 4
+
+      class Worker:
+          GARBAGE_DEP_012_WORKER_CLASS_E = True
+
+          def execute(self) -> str:
+              return helper()
+
+          def action(self) -> str:
+              return f"worker_{helper()}"
+    pkg/subpkg/helpers.py: |
+      GARBAGE_DEP_012_HELPERS_MOD_F = "local_helpers"
+      GARBAGE_DEP_012_HELPERS_VER_G = "1.0"
+
+      def helper():
+          GARBAGE_DEP_012_HELPERS_FUNC_H = True
+          return "local_help"
+
+      def action():
+          GARBAGE_DEP_012_HELPERS_ACT_I = True
+          result = helper()
+          return result
+    garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py: |
+      GARBAGE_DEP_012_GARDEN_A = "garden_module"
+
+      def plant_seed(seed_type: str, depth_cm: float) -> dict:
+          return {"seed": seed_type, "depth": depth_cm}
+
+      class Garden_GARBAGE_DEP_012_GARDEN_A:
+          def __init__(self, size_sqm: float):
+              self.size = size_sqm
+              self.plants = []
+    garbage/cooking_GARBAGE_DEP_012_COOK_B.py: |
+      GARBAGE_DEP_012_COOK_B = "recipe_module"
+
+      def bake_time(weight_kg: float) -> int:
+          return int(weight_kg * 45)
+
+      class Recipe_GARBAGE_DEP_012_COOK_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.steps = []
+  changed_files:
+    pkg/__init__.py: ''
+    pkg/utils.py: |
+      def helper():
+          return "help"
+    pkg/subpkg/__init__.py: ''
+    pkg/subpkg/module.py: |
+      from ..utils import helper
+
+      def action():
+          result = helper()
+          return result
+    pkg/subpkg/worker.py: |
+      from ..utils import helper
+      GARBAGE_DEP_012_WORKER_IMPORT_C = "worker_module"
+      GARBAGE_DEP_012_WORKER_POOL_D = 4
+
+      class Worker:
+          GARBAGE_DEP_012_WORKER_CLASS_E = True
+
+          def execute(self) -> str:
+              return helper()
+
+          def action(self) -> str:
+              return f"worker_{helper()}"
+    pkg/subpkg/helpers.py: |
+      GARBAGE_DEP_012_HELPERS_MOD_F = "local_helpers"
+      GARBAGE_DEP_012_HELPERS_VER_G = "1.0"
+
+      def helper():
+          GARBAGE_DEP_012_HELPERS_FUNC_H = True
+          return "local_help"
+
+      def action():
+          GARBAGE_DEP_012_HELPERS_ACT_I = True
+          result = helper()
+          return result
+    garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py: |
+      GARBAGE_DEP_012_GARDEN_A = "garden_module"
+
+      def plant_seed(seed_type: str, depth_cm: float) -> dict:
+          return {"seed": seed_type, "depth": depth_cm}
+
+      class Garden_GARBAGE_DEP_012_GARDEN_A:
+          def __init__(self, size_sqm: float):
+              self.size = size_sqm
+              self.plants = []
+    garbage/cooking_GARBAGE_DEP_012_COOK_B.py: |
+      GARBAGE_DEP_012_COOK_B = "recipe_module"
+
+      def bake_time(weight_kg: float) -> int:
+          return int(weight_kg * 45)
+
+      class Recipe_GARBAGE_DEP_012_COOK_B:
+          def __init__(self, name: str):
+              self.name = name
+              self.steps = []
+  commit_message: Update files
+fragments:
+- id: module
+  selector:
+    path: pkg/subpkg/module.py
+    anchor: from ..utils import helper
+- id: module_1
+  selector:
+    path: pkg/subpkg/module.py
+    anchor: result = helper()
+- id: module_2
+  selector:
+    path: pkg/subpkg/module.py
+    anchor: 'def action():'
+- id: utils
+  selector:
+    path: pkg/utils.py
+    anchor: 'def helper():'
+- id: no_worker
+  selector:
+    path: pkg/subpkg/worker.py
+- id: no_helpers
+  selector:
+    path: pkg/subpkg/helpers.py
+- id: no_gardening_garbage_dep_012_garden_a
+  selector:
+    path: garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py
+- id: no_cooking_garbage_dep_012_cook_b
+  selector:
+    path: garbage/cooking_GARBAGE_DEP_012_COOK_B.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP_012_GARDEN_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP_012_COOK_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP_012_WORKER_IMPORT_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP_012_WORKER_POOL_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP_012_WORKER_CLASS_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP_012_HELPERS_MOD_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP_012_HELPERS_VER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP_012_HELPERS_FUNC_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP_012_HELPERS_ACT_I
+oracle:
+  required:
+  - module
+  - module_1
+  - module_2
+  - utils
+  allowed: []
+  forbidden:
+  - no_worker
+  - no_helpers
+  - no_gardening_garbage_dep_012_garden_a
+  - no_cooking_garbage_dep_012_cook_b
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

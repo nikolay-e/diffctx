@@ -1,0 +1,206 @@
+name: frontend_012_memo
+repo:
+  initial_files:
+    src/components/ExpensiveComponent.tsx: |
+      import React from 'react';
+
+      export function ExpensiveComponent() {
+          return <div>TODO</div>;
+      }
+    src/components/ParentComponent.tsx: |
+      import React from 'react';
+
+      export function ParentComponent() {
+          return <div>TODO</div>;
+      }
+    src/components/ItemCounter.tsx: |
+      import React from 'react';
+
+      interface ItemCounterProps {
+          items: string[];
+          label: string;
+      }
+
+      export function ItemCounter({ items, label }: ItemCounterProps) {
+          const total = items.length;
+          const uniqueCount = new Set(items).size;
+          return (
+              <div className="item-counter">
+                  <h3>{label}</h3>
+                  <p>Total: {total}</p>
+                  <p>Unique: {uniqueCount}</p>
+                  <p>Duplicates: {total - uniqueCount}</p>
+              </div>
+          );
+      }
+    src/utils/deepEqual.ts: |
+      export function deepEqual(a: unknown, b: unknown): boolean {
+          if (a === b) return true;
+          if (typeof a !== typeof b) return false;
+          if (a === null || b === null) return false;
+          if (typeof a !== 'object') return false;
+
+          const keysA = Object.keys(a as object);
+          const keysB = Object.keys(b as object);
+          if (keysA.length !== keysB.length) return false;
+
+          return keysA.every(key =>
+              deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])
+          );
+      }
+
+      export function shallowEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+          const keysA = Object.keys(a);
+          const keysB = Object.keys(b);
+          if (keysA.length !== keysB.length) return false;
+          return keysA.every(key => a[key] === b[key]);
+      }
+  changed_files:
+    src/components/ExpensiveComponent.tsx: |
+      import React, { memo } from 'react';
+
+      interface ExpensiveComponentProps {
+          items: string[];
+          onItemClick: (item: string) => void;
+      }
+
+      function areEqual(
+          prevProps: ExpensiveComponentProps,
+          nextProps: ExpensiveComponentProps
+      ): boolean {
+          return prevProps.items.length === nextProps.items.length &&
+                 prevProps.items.every((item, i) => item === nextProps.items[i]);
+      }
+
+      export const ExpensiveComponent = memo(function ExpensiveComponent({
+          items,
+          onItemClick,
+      }: ExpensiveComponentProps) {
+          console.log('ExpensiveComponent rendering');
+
+          return (
+              <ul>
+                  {items.map((item, index) => (
+                      <li key={index} onClick={() => onItemClick(item)}>
+                          {item}
+                      </li>
+                  ))}
+              </ul>
+          );
+      }, areEqual);
+    src/components/ParentComponent.tsx: |
+      import React, { useState, useCallback } from 'react';
+      import { ExpensiveComponent } from './ExpensiveComponent';
+
+      export function ParentComponent() {
+          const [items] = useState(['apple', 'banana', 'cherry']);
+          const [count, setCount] = useState(0);
+
+          const handleItemClick = useCallback((item: string) => {
+              console.log('Clicked:', item);
+          }, []);
+
+          return (
+              <div>
+                  <p>Count: {count}</p>
+                  <button onClick={() => setCount(c => c + 1)}>Increment</button>
+                  <ExpensiveComponent items={items} onItemClick={handleItemClick} />
+              </div>
+          );
+      }
+    src/components/ItemCounter.tsx: |
+      import React from 'react';
+
+      interface ItemCounterProps {
+          items: string[];
+          label: string;
+      }
+
+      export function ItemCounter({ items, label }: ItemCounterProps) {
+          const total = items.length;
+          const uniqueCount = new Set(items).size;
+          return (
+              <div className="item-counter">
+                  <h3>{label}</h3>
+                  <p>Total: {total}</p>
+                  <p>Unique: {uniqueCount}</p>
+                  <p>Duplicates: {total - uniqueCount}</p>
+              </div>
+          );
+      }
+    src/utils/deepEqual.ts: |
+      export function deepEqual(a: unknown, b: unknown): boolean {
+          if (a === b) return true;
+          if (typeof a !== typeof b) return false;
+          if (a === null || b === null) return false;
+          if (typeof a !== 'object') return false;
+
+          const keysA = Object.keys(a as object);
+          const keysB = Object.keys(b as object);
+          if (keysA.length !== keysB.length) return false;
+
+          return keysA.every(key =>
+              deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])
+          );
+      }
+
+      export function shallowEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+          const keysA = Object.keys(a);
+          const keysB = Object.keys(b);
+          if (keysA.length !== keysB.length) return false;
+          return keysA.every(key => a[key] === b[key]);
+      }
+  commit_message: Update files
+fragments:
+- id: expensivecomponent
+  selector:
+    path: src/components/ExpensiveComponent.tsx
+    anchor: function areEqual(
+- id: expensivecomponent_1
+  selector:
+    path: src/components/ExpensiveComponent.tsx
+    anchor: memo(function ExpensiveComponent
+- id: parentcomponent
+  selector:
+    path: src/components/ParentComponent.tsx
+    anchor: 'useCallback((item: string)'
+- id: parentcomponent_1
+  selector:
+    path: src/components/ParentComponent.tsx
+    anchor: <ExpensiveComponent items={items} onItemClick={handleItemClick} />
+- id: no_itemcounter
+  selector:
+    path: src/components/ItemCounter.tsx
+- id: no_deepequal
+  selector:
+    path: src/utils/deepEqual.ts
+- id: no_global_0
+  selector:
+    anchor: ItemCounter
+- id: no_global_1
+  selector:
+    anchor: ItemCounterProps
+- id: no_global_2
+  selector:
+    anchor: uniqueCount
+- id: no_global_3
+  selector:
+    anchor: deepEqual
+- id: no_global_4
+  selector:
+    anchor: shallowEqual
+oracle:
+  required:
+  - expensivecomponent
+  - expensivecomponent_1
+  - parentcomponent
+  - parentcomponent_1
+  allowed: []
+  forbidden:
+  - no_itemcounter
+  - no_deepequal
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

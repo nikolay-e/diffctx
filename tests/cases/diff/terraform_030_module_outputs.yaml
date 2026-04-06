@@ -1,0 +1,204 @@
+name: terraform_030_module_outputs
+repo:
+  initial_files:
+    modules/rds/main.tf: |
+      resource "aws_db_instance" "main" {
+        identifier     = var.identifier
+        engine         = "postgres"
+        engine_version = "15.4"
+        instance_class = var.instance_class
+        username       = var.username
+        password       = var.password
+        db_name        = var.database
+
+        allocated_storage = var.storage_size
+        storage_encrypted = true
+
+        tags = var.tags
+      }
+    modules/rds/outputs.tf: |
+      output "endpoint" {
+        value = aws_db_instance.main.endpoint
+      }
+    modules/rds/variables.tf: |
+      variable "identifier" {
+        type = string
+      }
+
+      variable "instance_class" {
+        type    = string
+        default = "db.t3.micro"
+      }
+
+      variable "username" {
+        type = string
+      }
+
+      variable "password" {
+        type      = string
+        sensitive = true
+      }
+
+      variable "database" {
+        type = string
+      }
+
+      variable "storage_size" {
+        type    = number
+        default = 20
+      }
+
+      variable "tags" {
+        type    = map(string)
+        default = {}
+      }
+    root/main.tf: |
+      module "database" {
+        source         = "./modules/rds"
+        identifier     = "app-database"
+        instance_class = "db.t3.medium"
+        username       = var.db_username
+        password       = var.db_password
+        database       = "appdb"
+        storage_size   = 50
+
+        tags = {
+          Environment = var.environment
+        }
+      }
+
+      output "db_endpoint" {
+        value = module.database.endpoint
+      }
+    modules/cache/outputs.tf: |
+      output "cache_endpoint" {
+        value = aws_elasticache_cluster.main.cache_nodes[0].address
+      }
+
+      output "cache_port" {
+        value = aws_elasticache_cluster.main.cache_nodes[0].port
+      }
+
+      output "cache_connection_string" {
+        value = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+      }
+    modules/queue/outputs.tf: |
+      output "queue_url" {
+        value = aws_sqs_queue.main.url
+      }
+
+      output "queue_arn" {
+        value = aws_sqs_queue.main.arn
+      }
+
+      output "dlq_url" {
+        value = aws_sqs_queue.dlq.url
+      }
+    monitoring/alarms.tf: |
+      resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
+        alarm_name          = "rds-high-cpu"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "CPUUtilization"
+        namespace           = "AWS/RDS"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 80
+
+        dimensions = {
+          DBInstanceIdentifier = module.database.identifier
+        }
+      }
+
+      resource "aws_cloudwatch_metric_alarm" "rds_connections" {
+        alarm_name          = "rds-high-connections"
+        comparison_operator = "GreaterThanThreshold"
+        evaluation_periods  = 2
+        metric_name         = "DatabaseConnections"
+        namespace           = "AWS/RDS"
+        period              = 300
+        statistic           = "Average"
+        threshold           = 100
+      }
+  changed_files:
+    modules/rds/outputs.tf: |
+      output "endpoint" {
+        value = aws_db_instance.main.endpoint
+      }
+
+      output "port" {
+        value = aws_db_instance.main.port
+      }
+
+      output "connection_string" {
+        value     = "postgres://${var.username}:${var.password}@${aws_db_instance.main.endpoint}/${var.database}"
+        sensitive = true
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: modules/rds/main.tf
+    anchor: resource "aws_db_instance" "main" {
+- id: main_1
+  selector:
+    path: modules/rds/main.tf
+    anchor: engine     = "postgres"
+- id: no_outputs
+  selector:
+    path: modules/cache/outputs.tf
+- id: no_outputs_1
+  selector:
+    path: modules/queue/outputs.tf
+- id: no_alarms
+  selector:
+    path: monitoring/alarms.tf
+- id: no_global_0
+  selector:
+    anchor: cache_endpoint
+- id: no_global_1
+  selector:
+    anchor: cache_port
+- id: no_global_2
+  selector:
+    anchor: cache_connection_string
+- id: no_global_3
+  selector:
+    anchor: aws_elasticache_cluster
+- id: no_global_4
+  selector:
+    anchor: queue_url
+- id: no_global_5
+  selector:
+    anchor: queue_arn
+- id: no_global_6
+  selector:
+    anchor: dlq_url
+- id: no_global_7
+  selector:
+    anchor: rds-high-cpu
+- id: no_global_8
+  selector:
+    anchor: CPUUtilization
+- id: no_global_9
+  selector:
+    anchor: DatabaseConnections
+oracle:
+  required:
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_outputs
+  - no_outputs_1
+  - no_alarms
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

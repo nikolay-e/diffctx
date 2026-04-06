@@ -1,0 +1,326 @@
+name: r_004_rmarkdown_chunk
+repo:
+  initial_files:
+    R/analysis.R: |
+      compute_quarterly_metrics <- function(data, year) {
+        quarters <- paste0(year, "-Q", 1:4)
+        data$quarter <- paste0(format(as.Date(data$date), "%Y"), "-Q",
+                               ceiling(as.numeric(format(as.Date(data$date), "%m")) / 3))
+
+        results <- lapply(quarters, function(q) {
+          quarter_data <- data[data$quarter == q, ]
+          if (nrow(quarter_data) == 0) {
+            warning(paste("No data for", q))
+            return(list(quarter = q, revenue = NA, growth = NA, churn_rate = NA))
+          }
+          list(
+            quarter = q,
+            revenue = sum(quarter_data$amount, na.rm = TRUE),
+            growth = mean(quarter_data$growth_pct, na.rm = TRUE),
+            churn_rate = sum(quarter_data$churned) / nrow(quarter_data)
+          )
+        })
+
+        do.call(rbind, lapply(results, as.data.frame))
+      }
+
+      compute_yoy_change <- function(current, previous) {
+        if (is.na(previous) || previous == 0) return(NA)
+        (current - previous) / previous * 100
+      }
+
+      compute_retention_cohort <- function(data, cohort_col, period_col) {
+        cohorts <- split(data, data[[cohort_col]])
+        retention <- lapply(cohorts, function(cohort) {
+          periods <- sort(unique(cohort[[period_col]]))
+          initial_size <- nrow(cohort[cohort[[period_col]] == periods[1], ])
+          sapply(periods, function(p) {
+            nrow(cohort[cohort[[period_col]] == p, ]) / initial_size
+          })
+        })
+        retention
+      }
+    reports/quarterly.Rmd: |
+      ---
+      title: "Quarterly Business Report"
+      output: html_document
+      ---
+
+      ```{r setup, include=FALSE}
+      knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+      source("R/analysis.R")
+      library(knitr)
+      ```
+
+      ## Overview
+
+      This report summarizes key business metrics for the quarter.
+
+      ```{r load-data}
+      raw_data <- read.csv("data/transactions.csv")
+      current_year <- as.numeric(format(Sys.Date(), "%Y"))
+      ```
+
+      ## Transaction Volume
+
+      ```{r volume}
+      total_transactions <- nrow(raw_data)
+      cat("Total transactions:", total_transactions)
+      ```
+    reports/annual.Rmd: |
+      ---
+      title: "Annual Summary Report"
+      output: pdf_document
+      ---
+
+      ```{r setup, include=FALSE}
+      GARBAGE_R_004_A <- "noise_marker_annual"
+      knitr::opts_chunk$set(echo = FALSE)
+      source("R/analysis.R")
+      ```
+
+      ## Annual Summary
+
+      ```{r annual-metrics}
+      annual_data <- read.csv("data/annual_summary.csv")
+      total_revenue <- sum(annual_data$revenue, na.rm = TRUE)
+      cat("Annual revenue:", total_revenue)
+      ```
+
+      ## Year-over-Year Comparison
+
+      ```{r yoy}
+      yoy <- compute_yoy_change(total_revenue, annual_data$prev_year_revenue[1])
+      cat("YoY change:", yoy, "%")
+      ```
+    R/formatting.R: |
+      GARBAGE_R_004_B <- "noise_marker_formatting"
+
+      format_currency <- function(x, currency = "$") {
+        paste0(currency, formatC(x, format = "f", big.mark = ",", digits = 2))
+      }
+
+      format_percentage <- function(x, digits = 1) {
+        paste0(round(x * 100, digits), "%")
+      }
+
+      format_table_header <- function(headers) {
+        formatted <- gsub("_", " ", headers)
+        tools::toTitleCase(formatted)
+      }
+
+      create_summary_table <- function(data, caption = NULL) {
+        knitr::kable(data, caption = caption, format.args = list(big.mark = ","))
+      }
+  changed_files:
+    R/analysis.R: |
+      compute_quarterly_metrics <- function(data, year) {
+        quarters <- paste0(year, "-Q", 1:4)
+        data$quarter <- paste0(format(as.Date(data$date), "%Y"), "-Q",
+                               ceiling(as.numeric(format(as.Date(data$date), "%m")) / 3))
+
+        results <- lapply(quarters, function(q) {
+          quarter_data <- data[data$quarter == q, ]
+          if (nrow(quarter_data) == 0) {
+            warning(paste("No data for", q))
+            return(list(quarter = q, revenue = NA, growth = NA, churn_rate = NA))
+          }
+          list(
+            quarter = q,
+            revenue = sum(quarter_data$amount, na.rm = TRUE),
+            growth = mean(quarter_data$growth_pct, na.rm = TRUE),
+            churn_rate = sum(quarter_data$churned) / nrow(quarter_data)
+          )
+        })
+
+        do.call(rbind, lapply(results, as.data.frame))
+      }
+
+      compute_yoy_change <- function(current, previous) {
+        if (is.na(previous) || previous == 0) return(NA)
+        (current - previous) / previous * 100
+      }
+
+      compute_retention_cohort <- function(data, cohort_col, period_col) {
+        cohorts <- split(data, data[[cohort_col]])
+        retention <- lapply(cohorts, function(cohort) {
+          periods <- sort(unique(cohort[[period_col]]))
+          initial_size <- nrow(cohort[cohort[[period_col]] == periods[1], ])
+          sapply(periods, function(p) {
+            nrow(cohort[cohort[[period_col]] == p, ]) / initial_size
+          })
+        })
+        retention
+      }
+    reports/quarterly.Rmd: |
+      ---
+      title: "Quarterly Business Report"
+      output: html_document
+      ---
+
+      ```{r setup, include=FALSE}
+      knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+      source("R/analysis.R")
+      library(knitr)
+      ```
+
+      ## Overview
+
+      This report summarizes key business metrics for the quarter.
+
+      ```{r load-data}
+      raw_data <- read.csv("data/transactions.csv")
+      current_year <- as.numeric(format(Sys.Date(), "%Y"))
+      ```
+
+      ## Transaction Volume
+
+      ```{r volume}
+      total_transactions <- nrow(raw_data)
+      cat("Total transactions:", total_transactions)
+      ```
+
+      ## Quarterly Metrics
+
+      ```{r quarterly-metrics}
+      metrics <- compute_quarterly_metrics(raw_data, current_year)
+      kable(metrics, caption = "Quarterly Performance Metrics",
+            col.names = c("Quarter", "Revenue", "Growth %", "Churn Rate"))
+      ```
+
+      ## Quarter-over-Quarter Trends
+
+      ```{r qoq-trends}
+      if (nrow(metrics) >= 2) {
+        for (i in 2:nrow(metrics)) {
+          qoq <- compute_yoy_change(metrics$revenue[i], metrics$revenue[i - 1])
+          cat(metrics$quarter[i], "vs", metrics$quarter[i - 1],
+              ": ", round(qoq, 1), "% change\n")
+        }
+      }
+      ```
+    reports/annual.Rmd: |
+      ---
+      title: "Annual Summary Report"
+      output: pdf_document
+      ---
+
+      ```{r setup, include=FALSE}
+      GARBAGE_R_004_A <- "noise_marker_annual"
+      knitr::opts_chunk$set(echo = FALSE)
+      source("R/analysis.R")
+      ```
+
+      ## Annual Summary
+
+      ```{r annual-metrics}
+      annual_data <- read.csv("data/annual_summary.csv")
+      total_revenue <- sum(annual_data$revenue, na.rm = TRUE)
+      cat("Annual revenue:", total_revenue)
+      ```
+
+      ## Year-over-Year Comparison
+
+      ```{r yoy}
+      yoy <- compute_yoy_change(total_revenue, annual_data$prev_year_revenue[1])
+      cat("YoY change:", yoy, "%")
+      ```
+    R/formatting.R: |
+      GARBAGE_R_004_B <- "noise_marker_formatting"
+
+      format_currency <- function(x, currency = "$") {
+        paste0(currency, formatC(x, format = "f", big.mark = ",", digits = 2))
+      }
+
+      format_percentage <- function(x, digits = 1) {
+        paste0(round(x * 100, digits), "%")
+      }
+
+      format_table_header <- function(headers) {
+        formatted <- gsub("_", " ", headers)
+        tools::toTitleCase(formatted)
+      }
+
+      create_summary_table <- function(data, caption = NULL) {
+        knitr::kable(data, caption = caption, format.args = list(big.mark = ","))
+      }
+  commit_message: Update files
+fragments:
+- id: quarterly
+  selector:
+    path: reports/quarterly.Rmd
+    anchor: compute_quarterly_metrics
+- id: quarterly_1
+  selector:
+    path: reports/quarterly.Rmd
+    anchor: compute_yoy_change
+- id: quarterly_2
+  selector:
+    path: reports/quarterly.Rmd
+    anchor: source("R/analysis.R")
+- id: analysis
+  selector:
+    path: R/analysis.R
+    anchor: compute_quarterly_metrics <- function(data, year)
+- id: analysis_1
+  selector:
+    path: R/analysis.R
+    anchor: revenue = sum(quarter_data$amount
+- id: analysis_2
+  selector:
+    path: R/analysis.R
+    anchor: churn_rate
+- id: no_annual
+  selector:
+    path: reports/annual.Rmd
+- id: no_formatting
+  selector:
+    path: R/formatting.R
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_R_004_A
+- id: no_global_1
+  selector:
+    anchor: noise_marker_annual
+- id: no_global_2
+  selector:
+    anchor: annual_summary.csv
+- id: no_global_3
+  selector:
+    anchor: prev_year_revenue
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_R_004_B
+- id: no_global_5
+  selector:
+    anchor: noise_marker_formatting
+- id: no_global_6
+  selector:
+    anchor: format_currency
+- id: no_global_7
+  selector:
+    anchor: format_percentage
+- id: no_global_8
+  selector:
+    anchor: format_table_header
+oracle:
+  required:
+  - quarterly
+  - quarterly_1
+  - quarterly_2
+  - analysis
+  - analysis_1
+  - analysis_2
+  allowed: []
+  forbidden:
+  - no_annual
+  - no_formatting
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

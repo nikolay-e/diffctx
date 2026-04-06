@@ -1,0 +1,177 @@
+name: javascript_073_indexed_access_type
+repo:
+  initial_files:
+    schema.ts: |
+      export interface Schema {
+          users: { id: string; name: string }[];
+          posts: { id: string; title: string; content: string }[];
+      }
+    accessor.ts: |
+      console.log('initial');
+    schema-builder.ts: |
+      import { Schema } from './schema';
+
+      export function createEmptySchema(): Schema {
+          return { users: [], posts: [] };
+      }
+
+      export function addUser(schema: Schema, id: string, name: string): Schema {
+          return { ...schema, users: [...schema.users, { id, name }] };
+      }
+
+      export function addPost(schema: Schema, id: string, title: string, content: string): Schema {
+          return { ...schema, posts: [...schema.posts, { id, title, content }] };
+      }
+    schema-validator.ts: |
+      import { Schema } from './schema';
+
+      export function validateSchema(schema: Schema): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!Array.isArray(schema.users)) errors.push('users must be an array');
+          if (!Array.isArray(schema.posts)) errors.push('posts must be an array');
+          schema.users.forEach((u, i) => {
+              if (!u.id) errors.push(`users[${i}].id missing`);
+          });
+          return { valid: errors.length === 0, errors };
+      }
+    post-accessor.ts: |
+      import { Schema } from './schema';
+
+      type Post = Schema['posts'][number];
+
+      export function getFirstPost(schema: Schema): Post | undefined {
+          return schema.posts[0];
+      }
+
+      export function getPostsByTitle(schema: Schema, title: string): Post[] {
+          return schema.posts.filter(p => p.title.includes(title));
+      }
+  changed_files:
+    schema.ts: |
+      export interface Schema {
+          users: { id: string; name: string }[];
+          posts: { id: string; title: string; content: string }[];
+      }
+    accessor.ts: |
+      import { Schema } from './schema';
+
+      type User = Schema['users'][number];
+      type Post = Schema['posts'][number];
+
+      function getFirstUser(schema: Schema): User {
+          return schema.users[0];
+      }
+    schema-builder.ts: |
+      import { Schema } from './schema';
+
+      export function createEmptySchema(): Schema {
+          return { users: [], posts: [] };
+      }
+
+      export function addUser(schema: Schema, id: string, name: string): Schema {
+          return { ...schema, users: [...schema.users, { id, name }] };
+      }
+
+      export function addPost(schema: Schema, id: string, title: string, content: string): Schema {
+          return { ...schema, posts: [...schema.posts, { id, title, content }] };
+      }
+    schema-validator.ts: |
+      import { Schema } from './schema';
+
+      export function validateSchema(schema: Schema): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!Array.isArray(schema.users)) errors.push('users must be an array');
+          if (!Array.isArray(schema.posts)) errors.push('posts must be an array');
+          schema.users.forEach((u, i) => {
+              if (!u.id) errors.push(`users[${i}].id missing`);
+          });
+          return { valid: errors.length === 0, errors };
+      }
+    post-accessor.ts: |
+      import { Schema } from './schema';
+
+      type Post = Schema['posts'][number];
+
+      export function getFirstPost(schema: Schema): Post | undefined {
+          return schema.posts[0];
+      }
+
+      export function getPostsByTitle(schema: Schema, title: string): Post[] {
+          return schema.posts.filter(p => p.title.includes(title));
+      }
+  commit_message: Update files
+fragments:
+- id: accessor
+  selector:
+    path: accessor.ts
+    anchor: import { Schema } from './schema'
+- id: accessor_1
+  selector:
+    path: accessor.ts
+    anchor: type User = Schema['users'][number]
+- id: accessor_2
+  selector:
+    path: accessor.ts
+    anchor: type Post = Schema['posts'][number]
+- id: schema
+  selector:
+    path: schema.ts
+    anchor: interface Schema {
+- id: schema_1
+  selector:
+    path: schema.ts
+    anchor: 'users: { id: string; name: string }[]'
+- id: schema_2
+  selector:
+    path: schema.ts
+    anchor: 'posts: { id: string; title: string; content: string }[]'
+- id: no_schema_builder
+  selector:
+    path: schema-builder.ts
+- id: no_schema_validator
+  selector:
+    path: schema-validator.ts
+- id: no_post_accessor
+  selector:
+    path: post-accessor.ts
+- id: no_global_0
+  selector:
+    anchor: createEmptySchema
+- id: no_global_1
+  selector:
+    anchor: addUser
+- id: no_global_2
+  selector:
+    anchor: addPost
+- id: no_global_3
+  selector:
+    anchor: validateSchema
+- id: no_global_4
+  selector:
+    anchor: users must be an array
+- id: no_global_5
+  selector:
+    anchor: getFirstPost
+- id: no_global_6
+  selector:
+    anchor: getPostsByTitle
+oracle:
+  required:
+  - accessor
+  - accessor_1
+  - accessor_2
+  - schema
+  - schema_1
+  - schema_2
+  allowed: []
+  forbidden:
+  - no_schema_builder
+  - no_schema_validator
+  - no_post_accessor
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

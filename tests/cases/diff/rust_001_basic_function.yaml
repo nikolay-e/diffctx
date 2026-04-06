@@ -1,0 +1,245 @@
+name: rust_001_basic_function
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod greeting;
+      pub mod formatting;
+      pub mod localization;
+    src/greeting.rs: |
+      use std::fmt::Display;
+
+      pub fn greet(name: &str) -> String {
+          format!("Hello, {}!", name)
+      }
+
+      pub fn greet_with_title<T: Display>(title: T, name: &str) -> String {
+          format!("Hello, {} {}!", title, name)
+      }
+
+      pub struct Greeter {
+          prefix: String,
+      }
+
+      impl Greeter {
+          pub fn new(prefix: &str) -> Self {
+              Self {
+                  prefix: prefix.to_string(),
+              }
+          }
+
+          pub fn greet(&self, name: &str) -> String {
+              format!("{} {}!", self.prefix, name)
+          }
+      }
+
+      impl Default for Greeter {
+          fn default() -> Self {
+              Self::new("Hello")
+          }
+      }
+    src/formatting.rs: |
+      pub fn pad_left(s: &str, width: usize) -> String {
+          format!("{:>width$}", s, width = width)
+      }
+
+      pub fn pad_right(s: &str, width: usize) -> String {
+          format!("{:<width$}", s, width = width)
+      }
+
+      pub struct TextWrapper {
+          max_width: usize,
+      }
+
+      impl TextWrapper {
+          pub fn new(max_width: usize) -> Self {
+              Self { max_width }
+          }
+
+          pub fn wrap(&self, text: &str) -> Vec<String> {
+              text.chars()
+                  .collect::<Vec<_>>()
+                  .chunks(self.max_width)
+                  .map(|chunk| chunk.iter().collect())
+                  .collect()
+          }
+      }
+    src/localization.rs: |
+      use std::collections::HashMap;
+
+      pub struct MessageCatalog {
+          messages: HashMap<String, String>,
+          locale: String,
+      }
+
+      impl MessageCatalog {
+          pub fn new(locale: &str) -> Self {
+              Self {
+                  messages: HashMap::new(),
+                  locale: locale.to_string(),
+              }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.messages.get(key)
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.messages.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn locale(&self) -> &str {
+              &self.locale
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod greeting;
+      pub mod formatting;
+      pub mod localization;
+    src/greeting.rs: |
+      use std::fmt::Display;
+
+      pub fn greet(name: &str) -> String {
+          format!("Hello, {}!", name)
+      }
+
+      pub fn greet_with_title<T: Display>(title: T, name: &str) -> String {
+          format!("Hello, {} {}!", title, name)
+      }
+
+      pub fn farewell(name: &str) -> String {
+          format!("Goodbye, {}!", name)
+      }
+
+      pub fn farewell_with_message(name: &str, message: &str) -> String {
+          format!("Goodbye, {}! {}", name, message)
+      }
+
+      pub struct Greeter {
+          prefix: String,
+      }
+
+      impl Greeter {
+          pub fn new(prefix: &str) -> Self {
+              Self {
+                  prefix: prefix.to_string(),
+              }
+          }
+
+          pub fn greet(&self, name: &str) -> String {
+              format!("{} {}!", self.prefix, name)
+          }
+
+          pub fn farewell(&self, name: &str) -> String {
+              format!("Farewell from {}, {}!", self.prefix, name)
+          }
+      }
+
+      impl Default for Greeter {
+          fn default() -> Self {
+              Self::new("Hello")
+          }
+      }
+    src/formatting.rs: |
+      pub fn pad_left(s: &str, width: usize) -> String {
+          format!("{:>width$}", s, width = width)
+      }
+
+      pub fn pad_right(s: &str, width: usize) -> String {
+          format!("{:<width$}", s, width = width)
+      }
+
+      pub struct TextWrapper {
+          max_width: usize,
+      }
+
+      impl TextWrapper {
+          pub fn new(max_width: usize) -> Self {
+              Self { max_width }
+          }
+
+          pub fn wrap(&self, text: &str) -> Vec<String> {
+              text.chars()
+                  .collect::<Vec<_>>()
+                  .chunks(self.max_width)
+                  .map(|chunk| chunk.iter().collect())
+                  .collect()
+          }
+      }
+    src/localization.rs: |
+      use std::collections::HashMap;
+
+      pub struct MessageCatalog {
+          messages: HashMap<String, String>,
+          locale: String,
+      }
+
+      impl MessageCatalog {
+          pub fn new(locale: &str) -> Self {
+              Self {
+                  messages: HashMap::new(),
+                  locale: locale.to_string(),
+              }
+          }
+
+          pub fn get(&self, key: &str) -> Option<&String> {
+              self.messages.get(key)
+          }
+
+          pub fn set(&mut self, key: &str, value: &str) {
+              self.messages.insert(key.to_string(), value.to_string());
+          }
+
+          pub fn locale(&self) -> &str {
+              &self.locale
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: greeting
+  selector:
+    path: src/greeting.rs
+    anchor: 'pub fn farewell(name: &str) -> String {'
+- id: greeting_1
+  selector:
+    path: src/greeting.rs
+    anchor: 'pub fn farewell_with_message(name: &str, message: &str) -> String {'
+- id: greeting_2
+  selector:
+    path: src/greeting.rs
+    anchor: 'pub fn farewell(&self, name: &str) -> String {'
+- id: no_formatting
+  selector:
+    path: src/formatting.rs
+- id: no_localization
+  selector:
+    path: src/localization.rs
+- id: no_global_0
+  selector:
+    anchor: TextWrapper
+- id: no_global_1
+  selector:
+    anchor: pad_left
+- id: no_global_2
+  selector:
+    anchor: pad_right
+- id: no_global_3
+  selector:
+    anchor: MessageCatalog
+- id: no_global_4
+  selector:
+    anchor: locale
+oracle:
+  required:
+  - greeting
+  - greeting_1
+  - greeting_2
+  allowed: []
+  forbidden:
+  - no_formatting
+  - no_localization
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

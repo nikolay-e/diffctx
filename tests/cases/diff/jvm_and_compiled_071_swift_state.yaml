@@ -1,0 +1,433 @@
+name: jvm_and_compiled_071_swift_state
+repo:
+  initial_files:
+    models/ItemModel.swift: |
+      import Foundation
+
+      struct Item: Identifiable, Codable {
+          let id: UUID
+          let title: String
+          let description: String
+          let createdAt: Date
+
+          static func sampleItems() -> [String] {
+              return ["Alpha", "Bravo", "Charlie", "Delta"]
+          }
+
+          static func empty() -> Item {
+              return Item(id: UUID(), title: "", description: "", createdAt: Date())
+          }
+      }
+    services/DataService.swift: |
+      import Foundation
+
+      class DataService {
+          static let shared = DataService()
+          private let baseURL = "https://api.example.com"
+
+          func fetchItems(completion: @escaping ([String]) -> Void) {
+              DispatchQueue.global().async {
+                  let items = ["Item 1", "Item 2", "Item 3"]
+                  DispatchQueue.main.async {
+                      completion(items)
+                  }
+              }
+          }
+
+          func fetchItem(by id: String, completion: @escaping (String?) -> Void) {
+              DispatchQueue.global().async {
+                  DispatchQueue.main.async {
+                      completion("Item \(id)")
+                  }
+              }
+          }
+      }
+    ContentView.swift: |
+      import SwiftUI
+      struct ContentView: View {
+          var body: some View { Text("") }
+      }
+    views/SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @State private var notificationsEnabled = true
+          @State private var username = ""
+          @State private var fontSize: Double = 14.0
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  TextField("Username", text: $username)
+                  Slider(value: $fontSize, in: 10...24)
+                  Button("Save") {
+                      notificationsEnabled = true
+                  }
+              }
+          }
+      }
+    views/SearchBarView.swift: |
+      import SwiftUI
+
+      struct SearchBarView: View {
+          @State private var searchText = ""
+          @State private var isSearching = false
+          @State private var results: [String] = []
+
+          var body: some View {
+              VStack {
+                  if isSearching {
+                      ProgressView("Searching...")
+                  } else {
+                      List(results, id: \.self) { result in
+                          Text(result)
+                      }
+                  }
+                  TextField("Search", text: $searchText)
+                  Button("Search") {
+                      isSearching = true
+                  }
+              }
+          }
+      }
+    theme/ThemeManager.swift: |
+      import SwiftUI
+
+      class ThemeManager: ObservableObject {
+          @Published var accentColor: Color = .blue
+          @Published var useDarkMode = false
+          @Published var cornerRadius: CGFloat = 8.0
+
+          func applyTheme() {
+              if useDarkMode {
+                  accentColor = .purple
+              } else {
+                  accentColor = .blue
+              }
+          }
+
+          func resetTheme() {
+              accentColor = .blue
+              useDarkMode = false
+              cornerRadius = 8.0
+          }
+      }
+    storage/LocalStorage.swift: |
+      import Foundation
+
+      class LocalStorage {
+          private let defaults = UserDefaults.standard
+
+          func saveItems(_ items: [String], forKey key: String) {
+              defaults.set(items, forKey: key)
+          }
+
+          func loadItems(forKey key: String) -> [String] {
+              return defaults.stringArray(forKey: key) ?? []
+          }
+
+          func clearAll() {
+              let domain = Bundle.main.bundleIdentifier!
+              defaults.removePersistentDomain(forName: domain)
+          }
+      }
+    navigation/NavigationRouter.swift: |
+      import SwiftUI
+
+      class NavigationRouter: ObservableObject {
+          @Published var currentRoute: String = "home"
+          @Published var navigationStack: [String] = []
+
+          func navigate(to route: String) {
+              navigationStack.append(currentRoute)
+              currentRoute = route
+          }
+
+          func goBack() {
+              if let previous = navigationStack.popLast() {
+                  currentRoute = previous
+              }
+          }
+
+          func reset() {
+              currentRoute = "home"
+              navigationStack = []
+          }
+      }
+  changed_files:
+    models/ItemModel.swift: |
+      import Foundation
+
+      struct Item: Identifiable, Codable {
+          let id: UUID
+          let title: String
+          let description: String
+          let createdAt: Date
+
+          static func sampleItems() -> [String] {
+              return ["Alpha", "Bravo", "Charlie", "Delta"]
+          }
+
+          static func empty() -> Item {
+              return Item(id: UUID(), title: "", description: "", createdAt: Date())
+          }
+      }
+    services/DataService.swift: |
+      import Foundation
+
+      class DataService {
+          static let shared = DataService()
+          private let baseURL = "https://api.example.com"
+
+          func fetchItems(completion: @escaping ([String]) -> Void) {
+              DispatchQueue.global().async {
+                  let items = ["Item 1", "Item 2", "Item 3"]
+                  DispatchQueue.main.async {
+                      completion(items)
+                  }
+              }
+          }
+
+          func fetchItem(by id: String, completion: @escaping (String?) -> Void) {
+              DispatchQueue.global().async {
+                  DispatchQueue.main.async {
+                      completion("Item \(id)")
+                  }
+              }
+          }
+      }
+    ContentView.swift: |
+      import SwiftUI
+
+      struct ContentView: View {
+          @State private var isLoading = false
+          @State private var items: [String] = []
+
+          var body: some View {
+              VStack {
+                  if isLoading {
+                      ProgressView()
+                  } else {
+                      List(items, id: \.self) { item in
+                          Text(item)
+                      }
+                  }
+                  Button("Load") {
+                      isLoading = true
+                  }
+              }
+          }
+      }
+    views/SettingsView.swift: |
+      import SwiftUI
+
+      struct SettingsView: View {
+          @State private var notificationsEnabled = true
+          @State private var username = ""
+          @State private var fontSize: Double = 14.0
+
+          var body: some View {
+              Form {
+                  Toggle("Notifications", isOn: $notificationsEnabled)
+                  TextField("Username", text: $username)
+                  Slider(value: $fontSize, in: 10...24)
+                  Button("Save") {
+                      notificationsEnabled = true
+                  }
+              }
+          }
+      }
+    views/SearchBarView.swift: |
+      import SwiftUI
+
+      struct SearchBarView: View {
+          @State private var searchText = ""
+          @State private var isSearching = false
+          @State private var results: [String] = []
+
+          var body: some View {
+              VStack {
+                  if isSearching {
+                      ProgressView("Searching...")
+                  } else {
+                      List(results, id: \.self) { result in
+                          Text(result)
+                      }
+                  }
+                  TextField("Search", text: $searchText)
+                  Button("Search") {
+                      isSearching = true
+                  }
+              }
+          }
+      }
+    theme/ThemeManager.swift: |
+      import SwiftUI
+
+      class ThemeManager: ObservableObject {
+          @Published var accentColor: Color = .blue
+          @Published var useDarkMode = false
+          @Published var cornerRadius: CGFloat = 8.0
+
+          func applyTheme() {
+              if useDarkMode {
+                  accentColor = .purple
+              } else {
+                  accentColor = .blue
+              }
+          }
+
+          func resetTheme() {
+              accentColor = .blue
+              useDarkMode = false
+              cornerRadius = 8.0
+          }
+      }
+    storage/LocalStorage.swift: |
+      import Foundation
+
+      class LocalStorage {
+          private let defaults = UserDefaults.standard
+
+          func saveItems(_ items: [String], forKey key: String) {
+              defaults.set(items, forKey: key)
+          }
+
+          func loadItems(forKey key: String) -> [String] {
+              return defaults.stringArray(forKey: key) ?? []
+          }
+
+          func clearAll() {
+              let domain = Bundle.main.bundleIdentifier!
+              defaults.removePersistentDomain(forName: domain)
+          }
+      }
+    navigation/NavigationRouter.swift: |
+      import SwiftUI
+
+      class NavigationRouter: ObservableObject {
+          @Published var currentRoute: String = "home"
+          @Published var navigationStack: [String] = []
+
+          func navigate(to route: String) {
+              navigationStack.append(currentRoute)
+              currentRoute = route
+          }
+
+          func goBack() {
+              if let previous = navigationStack.popLast() {
+                  currentRoute = previous
+              }
+          }
+
+          func reset() {
+              currentRoute = "home"
+              navigationStack = []
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: contentview
+  selector:
+    path: ContentView.swift
+    anchor: '@State private var isLoading = false'
+- id: contentview_1
+  selector:
+    path: ContentView.swift
+    anchor: '@State private var items: [String] = []'
+- id: contentview_2
+  selector:
+    path: ContentView.swift
+    anchor: ProgressView()
+- id: contentview_3
+  selector:
+    path: ContentView.swift
+    anchor: Button("Load")
+- id: no_settingsview
+  selector:
+    path: views/SettingsView.swift
+- id: no_searchbarview
+  selector:
+    path: views/SearchBarView.swift
+- id: no_thememanager
+  selector:
+    path: theme/ThemeManager.swift
+- id: no_localstorage
+  selector:
+    path: storage/LocalStorage.swift
+- id: no_navigationrouter
+  selector:
+    path: navigation/NavigationRouter.swift
+- id: no_global_0
+  selector:
+    anchor: SettingsView
+- id: no_global_1
+  selector:
+    anchor: notificationsEnabled
+- id: no_global_2
+  selector:
+    anchor: fontSize
+- id: no_global_3
+  selector:
+    anchor: SearchBarView
+- id: no_global_4
+  selector:
+    anchor: searchText
+- id: no_global_5
+  selector:
+    anchor: isSearching
+- id: no_global_6
+  selector:
+    anchor: ThemeManager
+- id: no_global_7
+  selector:
+    anchor: applyTheme
+- id: no_global_8
+  selector:
+    anchor: resetTheme
+- id: no_global_9
+  selector:
+    anchor: LocalStorage
+- id: no_global_10
+  selector:
+    anchor: saveItems
+- id: no_global_11
+  selector:
+    anchor: loadItems
+- id: no_global_12
+  selector:
+    anchor: NavigationRouter
+- id: no_global_13
+  selector:
+    anchor: navigationStack
+- id: no_global_14
+  selector:
+    anchor: goBack
+oracle:
+  required:
+  - contentview
+  - contentview_1
+  - contentview_2
+  - contentview_3
+  allowed: []
+  forbidden:
+  - no_settingsview
+  - no_searchbarview
+  - no_thememanager
+  - no_localstorage
+  - no_navigationrouter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

@@ -1,0 +1,164 @@
+name: python_045_package_all_export
+repo:
+  initial_files:
+    mylib/validators.py: |
+      def validate_email(email: str) -> bool:
+          return "@" in email and "." in email.split("@")[-1]
+
+      def validate_url(url: str) -> bool:
+          return url.startswith("http://") or url.startswith("https://")
+    mylib/formatters.py: |
+      def format_currency(amount: float, currency: str = "USD") -> str:
+          symbols = {"USD": "$", "EUR": "E", "GBP": "P"}
+          symbol = symbols.get(currency, currency)
+          return f"{symbol}{amount:.2f}"
+
+      def format_percentage(value: float) -> str:
+          return f"{value * 100:.1f}%"
+    mylib/__init__.py: |
+      from .validators import validate_email, validate_url
+      from .formatters import format_currency, format_percentage
+    processors/image_optimizer.py: |
+      from pathlib import Path
+
+      class ImageOptimizer:
+          def __init__(self, quality: int = 85, max_width: int = 1920):
+              self.quality = quality
+              self.max_width = max_width
+
+          def optimize(self, input_path: str, output_path: str) -> dict:
+              return {"input": input_path, "output": output_path, "quality": self.quality}
+
+          def resize(self, width: int, height: int) -> tuple[int, int]:
+              if width > self.max_width:
+                  ratio = self.max_width / width
+                  return self.max_width, int(height * ratio)
+              return width, height
+    generators/report_builder.py: |
+      from typing import Any
+
+      class ReportBuilder:
+          def __init__(self, title: str, page_size: str = "A4"):
+              self.title = title
+              self.page_size = page_size
+              self._sections: list[dict] = []
+
+          def add_section(self, heading: str, content: str) -> None:
+              self._sections.append({"heading": heading, "content": content})
+
+          def generate(self) -> str:
+              parts = [f"# {self.title}\n"]
+              for section in self._sections:
+                  parts.append(f"## {section['heading']}\n{section['content']}\n")
+              return "\n".join(parts)
+  changed_files:
+    mylib/validators.py: |
+      def validate_email(email: str) -> bool:
+          return "@" in email and "." in email.split("@")[-1]
+
+      def validate_url(url: str) -> bool:
+          return url.startswith("http://") or url.startswith("https://")
+    mylib/formatters.py: |
+      def format_currency(amount: float, currency: str = "USD") -> str:
+          symbols = {"USD": "$", "EUR": "E", "GBP": "P"}
+          symbol = symbols.get(currency, currency)
+          return f"{symbol}{amount:.2f}"
+
+      def format_percentage(value: float) -> str:
+          return f"{value * 100:.1f}%"
+    mylib/__init__.py: |
+      from .validators import validate_email, validate_url
+      from .formatters import format_currency, format_percentage
+
+      __all__ = ["validate_email", "validate_url", "format_currency", "format_percentage"]
+    processors/image_optimizer.py: |
+      from pathlib import Path
+
+      class ImageOptimizer:
+          def __init__(self, quality: int = 85, max_width: int = 1920):
+              self.quality = quality
+              self.max_width = max_width
+
+          def optimize(self, input_path: str, output_path: str) -> dict:
+              return {"input": input_path, "output": output_path, "quality": self.quality}
+
+          def resize(self, width: int, height: int) -> tuple[int, int]:
+              if width > self.max_width:
+                  ratio = self.max_width / width
+                  return self.max_width, int(height * ratio)
+              return width, height
+    generators/report_builder.py: |
+      from typing import Any
+
+      class ReportBuilder:
+          def __init__(self, title: str, page_size: str = "A4"):
+              self.title = title
+              self.page_size = page_size
+              self._sections: list[dict] = []
+
+          def add_section(self, heading: str, content: str) -> None:
+              self._sections.append({"heading": heading, "content": content})
+
+          def generate(self) -> str:
+              parts = [f"# {self.title}\n"]
+              for section in self._sections:
+                  parts.append(f"## {section['heading']}\n{section['content']}\n")
+              return "\n".join(parts)
+  commit_message: Update files
+fragments:
+- id: init
+  selector:
+    path: mylib/__init__.py
+    anchor: __all__ = ["validate_email", "validate_url", "format_currency", "format_percentage"]
+- id: init_1
+  selector:
+    path: mylib/__init__.py
+    anchor: from .validators import validate_email, validate_url
+- id: init_2
+  selector:
+    path: mylib/__init__.py
+    anchor: from .formatters import format_currency, format_percentage
+- id: validators
+  selector:
+    path: mylib/validators.py
+    anchor: 'def validate_email(email: str) -> bool:'
+- id: no_image_optimizer
+  selector:
+    path: processors/image_optimizer.py
+- id: no_report_builder
+  selector:
+    path: generators/report_builder.py
+- id: no_global_0
+  selector:
+    anchor: ImageOptimizer
+- id: no_global_1
+  selector:
+    anchor: optimize
+- id: no_global_2
+  selector:
+    anchor: max_width
+- id: no_global_3
+  selector:
+    anchor: ReportBuilder
+- id: no_global_4
+  selector:
+    anchor: add_section
+- id: no_global_5
+  selector:
+    anchor: generate
+oracle:
+  required:
+  - init
+  - init_1
+  - init_2
+  - validators
+  allowed: []
+  forbidden:
+  - no_image_optimizer
+  - no_report_builder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,148 @@
+name: ppr_026_normalization_sum_to_one
+repo:
+  initial_files:
+    mod0.py: |
+      def func0():
+          return 0
+    mod1.py: |
+      def func1():
+          return 1
+    mod2.py: |
+      def func2():
+          return 2
+    mod3.py: |
+      def func3():
+          return 3
+    mod4.py: |
+      def func4():
+          return 4
+    func_registry.py: |
+      def func0():
+          return "unrelated_zero"
+
+      def func2():
+          return "unrelated_two"
+
+      class FuncRegistry:
+          def get_func(self, n):
+              return n
+    numeric_processor.py: |
+      def compute_hundred():
+          return 100
+
+      def compute_two_hundred():
+          return 200
+
+      class NumericProcessor:
+          def process(self, value):
+              return value * 100
+    mod_validator.py: |
+      def mod_helper():
+          return 0
+
+      def mod_validator():
+          return True
+  changed_files:
+    mod0.py: |
+      def func0():
+          return 100
+    mod1.py: |
+      def func1():
+          return 1
+    mod2.py: |
+      def func2():
+          return 200
+    mod3.py: |
+      def func3():
+          return 3
+    mod4.py: |
+      def func4():
+          return 4
+    func_registry.py: |
+      def func0():
+          return "unrelated_zero"
+
+      def func2():
+          return "unrelated_two"
+
+      class FuncRegistry:
+          def get_func(self, n):
+              return n
+    numeric_processor.py: |
+      def compute_hundred():
+          return 100
+
+      def compute_two_hundred():
+          return 200
+
+      class NumericProcessor:
+          def process(self, value):
+              return value * 100
+    mod_validator.py: |
+      def mod_helper():
+          return 0
+
+      def mod_validator():
+          return True
+  commit_message: Update files
+fragments:
+- id: mod0
+  selector:
+    path: mod0.py
+    anchor: 'def func0():'
+- id: mod0_1
+  selector:
+    path: mod0.py
+    anchor: return 100
+- id: mod2
+  selector:
+    path: mod2.py
+    anchor: 'def func2():'
+- id: mod2_1
+  selector:
+    path: mod2.py
+    anchor: return 200
+- id: no_func_registry
+  selector:
+    path: func_registry.py
+- id: no_numeric_processor
+  selector:
+    path: numeric_processor.py
+- id: no_mod_validator
+  selector:
+    path: mod_validator.py
+- id: no_global_0
+  selector:
+    anchor: FuncRegistry
+- id: no_global_1
+  selector:
+    anchor: unrelated_zero
+- id: no_global_2
+  selector:
+    anchor: NumericProcessor
+- id: no_global_3
+  selector:
+    anchor: compute_hundred
+- id: no_global_4
+  selector:
+    anchor: mod_helper
+- id: no_global_5
+  selector:
+    anchor: mod_validator
+oracle:
+  required:
+  - mod0
+  - mod0_1
+  - mod2
+  - mod2_1
+  allowed: []
+  forbidden:
+  - no_func_registry
+  - no_numeric_processor
+  - no_mod_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

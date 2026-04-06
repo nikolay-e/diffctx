@@ -1,0 +1,144 @@
+name: frontend_022_discriminated_union
+repo:
+  initial_files:
+    src/results.ts: |
+      export interface Success<T> {
+          type: 'success';
+          data: T;
+          timestamp: Date;
+      }
+
+      export interface Failure {
+          type: 'failure';
+          error: Error;
+          code: number;
+      }
+
+      export interface Loading {
+          type: 'loading';
+          progress?: number;
+      }
+    src/handlers.ts: |
+      console.log('initial');
+    src/types/action.ts: |
+      export interface IncrementAction {
+          type: 'INCREMENT';
+          payload: number;
+      }
+
+      export interface DecrementAction {
+          type: 'DECREMENT';
+          payload: number;
+      }
+
+      export type CounterAction = IncrementAction | DecrementAction;
+    src/utils/either.ts: |
+      export type Left<L> = { tag: 'left'; value: L };
+      export type Right<R> = { tag: 'right'; value: R };
+      export type Either<L, R> = Left<L> | Right<R>;
+
+      export function isLeft<L, R>(either: Either<L, R>): either is Left<L> {
+          return either.tag === 'left';
+      }
+  changed_files:
+    src/results.ts: |
+      export interface Success<T> {
+          type: 'success';
+          data: T;
+          timestamp: Date;
+      }
+
+      export interface Failure {
+          type: 'failure';
+          error: Error;
+          code: number;
+      }
+
+      export interface Loading {
+          type: 'loading';
+          progress?: number;
+      }
+    src/handlers.ts: |
+      import { Success, Failure, Loading } from './results';
+
+      export type Result<T> = Success<T> | Failure | Loading;
+
+      export function handleResult<T>(result: Result<T>): string {
+          switch (result.type) {
+              case 'success':
+                  return `Data: ${JSON.stringify(result.data)}`;
+              case 'failure':
+                  return `Error ${result.code}: ${result.error.message}`;
+              case 'loading':
+                  return `Loading... ${result.progress ?? 0}%`;
+          }
+      }
+
+      export function isSuccess<T>(result: Result<T>): result is Success<T> {
+          return result.type === 'success';
+      }
+    src/types/action.ts: |
+      export interface IncrementAction {
+          type: 'INCREMENT';
+          payload: number;
+      }
+
+      export interface DecrementAction {
+          type: 'DECREMENT';
+          payload: number;
+      }
+
+      export type CounterAction = IncrementAction | DecrementAction;
+    src/utils/either.ts: |
+      export type Left<L> = { tag: 'left'; value: L };
+      export type Right<R> = { tag: 'right'; value: R };
+      export type Either<L, R> = Left<L> | Right<R>;
+
+      export function isLeft<L, R>(either: Either<L, R>): either is Left<L> {
+          return either.tag === 'left';
+      }
+  commit_message: Update files
+fragments:
+- id: results
+  selector:
+    path: src/results.ts
+    anchor: 'type: ''success'''
+- id: results_1
+  selector:
+    path: src/results.ts
+    anchor: 'type: ''failure'''
+- id: results_2
+  selector:
+    path: src/results.ts
+    anchor: 'type: ''loading'''
+- id: no_action
+  selector:
+    path: src/types/action.ts
+- id: no_either
+  selector:
+    path: src/utils/either.ts
+- id: no_global_0
+  selector:
+    anchor: CounterAction
+- id: no_global_1
+  selector:
+    anchor: IncrementAction
+- id: no_global_2
+  selector:
+    anchor: Either
+- id: no_global_3
+  selector:
+    anchor: isLeft
+oracle:
+  required:
+  - results
+  - results_1
+  - results_2
+  allowed: []
+  forbidden:
+  - no_action
+  - no_either
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

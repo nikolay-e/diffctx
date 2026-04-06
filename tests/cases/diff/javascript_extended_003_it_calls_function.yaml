@@ -1,0 +1,185 @@
+name: javascript_extended_003_it_calls_function
+repo:
+  initial_files:
+    src/validator.ts: |
+      const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const URL_REGEX = /^https?:\/\/[^\s]+$/;
+
+      export function isValidEmail(email: string): boolean {
+          return EMAIL_REGEX.test(email);
+      }
+
+      export function isValidUrl(url: string): boolean {
+          return URL_REGEX.test(url);
+      }
+
+      export function isNonEmpty(value: string): boolean {
+          return value.trim().length > 0;
+      }
+
+      export function isWithinLength(value: string, min: number, max: number): boolean {
+          const len = value.trim().length;
+          return len >= min && len <= max;
+      }
+    src/validator.test.ts: |
+      console.log('placeholder');
+    src/unrelated/cache.ts: |
+      export class CacheManager {
+          private store = new Map<string, unknown>();
+
+          set(key: string, value: unknown): void {
+              this.store.set(key, value);
+          }
+
+          get(key: string): unknown {
+              return this.store.get(key);
+          }
+
+          clear(): void {
+              this.store.clear();
+          }
+      }
+
+      export function evictCache(key: string): void {
+          console.log('evicting cache for:', key);
+      }
+    src/unrelated/queue.ts: |
+      export class TaskQueue {
+          private tasks: string[] = [];
+
+          enqueue(task: string): void {
+              this.tasks.push(task);
+          }
+
+          dequeue(): string | undefined {
+              return this.tasks.shift();
+          }
+      }
+
+      export function processQueue(): void {
+          console.log('processing queue');
+      }
+  changed_files:
+    src/validator.ts: |
+      const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const URL_REGEX = /^https?:\/\/[^\s]+$/;
+
+      export function isValidEmail(email: string): boolean {
+          return EMAIL_REGEX.test(email);
+      }
+
+      export function isValidUrl(url: string): boolean {
+          return URL_REGEX.test(url);
+      }
+
+      export function isNonEmpty(value: string): boolean {
+          return value.trim().length > 0;
+      }
+
+      export function isWithinLength(value: string, min: number, max: number): boolean {
+          const len = value.trim().length;
+          return len >= min && len <= max;
+      }
+    src/validator.test.ts: |
+      import { isValidEmail, isValidUrl, isNonEmpty, isWithinLength } from './validator';
+
+      describe('Validator', () => {
+          it('should validate correct email', () => {
+              expect(isValidEmail('test@example.com')).toBe(true);
+          });
+
+          it('should reject invalid email', () => {
+              expect(isValidEmail('invalid-email')).toBe(false);
+          });
+
+          it('should validate correct URL', () => {
+              expect(isValidUrl('https://example.com')).toBe(true);
+          });
+
+          it('should reject invalid URL', () => {
+              expect(isValidUrl('not-a-url')).toBe(false);
+          });
+
+          it('should check non-empty strings', () => {
+              expect(isNonEmpty('hello')).toBe(true);
+              expect(isNonEmpty('   ')).toBe(false);
+          });
+
+          it('should validate string length bounds', () => {
+              expect(isWithinLength('hello', 1, 10)).toBe(true);
+              expect(isWithinLength('hi', 5, 10)).toBe(false);
+          });
+      });
+    src/unrelated/cache.ts: |
+      export class CacheManager {
+          private store = new Map<string, unknown>();
+
+          set(key: string, value: unknown): void {
+              this.store.set(key, value);
+          }
+
+          get(key: string): unknown {
+              return this.store.get(key);
+          }
+
+          clear(): void {
+              this.store.clear();
+          }
+      }
+
+      export function evictCache(key: string): void {
+          console.log('evicting cache for:', key);
+      }
+    src/unrelated/queue.ts: |
+      export class TaskQueue {
+          private tasks: string[] = [];
+
+          enqueue(task: string): void {
+              this.tasks.push(task);
+          }
+
+          dequeue(): string | undefined {
+              return this.tasks.shift();
+          }
+      }
+
+      export function processQueue(): void {
+          console.log('processing queue');
+      }
+  commit_message: Update files
+fragments:
+- id: validator
+  selector:
+    path: src/validator.ts
+    anchor: EMAIL_REGEX
+- id: validator_1
+  selector:
+    path: src/validator.ts
+    anchor: isValidEmail
+- id: validator_2
+  selector:
+    path: src/validator.ts
+    anchor: isWithinLength
+- id: no_global_0
+  selector:
+    anchor: CacheManager
+- id: no_global_1
+  selector:
+    anchor: evictCache
+- id: no_global_2
+  selector:
+    anchor: TaskQueue
+- id: no_global_3
+  selector:
+    anchor: processQueue
+oracle:
+  required:
+  - validator
+  - validator_1
+  - validator_2
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

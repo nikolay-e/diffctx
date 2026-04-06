@@ -1,0 +1,131 @@
+name: relations_002_class_changed_find_test_class
+repo:
+  initial_files:
+    user_service.py: |
+      class UserService:
+          def __init__(self):
+              self.users = []
+
+          def add_user(self, name):
+              self.users.append(name)
+    tests/test_user_service.py: |
+      from user_service import UserService
+
+      class TestUserService:
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Alice")
+              assert "Alice" in service.users
+    notification_service.py: |
+      class NotificationService:
+          def __init__(self, channel="email"):
+              self.channel = channel
+              self.sent = []
+
+          def send(self, user_id, message):
+              entry = {"user_id": user_id, "message": message, "channel": self.channel}
+              self.sent.append(entry)
+              return entry
+
+          def get_history(self, user_id):
+              return [n for n in self.sent if n["user_id"] == user_id]
+    permission_checker.py: |
+      class PermissionChecker:
+          ROLES = {"admin": ["read", "write", "delete"], "user": ["read"], "editor": ["read", "write"]}
+
+          def __init__(self, role="user"):
+              self.role = role
+
+          def can(self, action):
+              allowed = self.ROLES.get(self.role, [])
+              return action in allowed
+
+          def require(self, action):
+              if not self.can(action):
+                  raise PermissionError(f"Role '{self.role}' cannot '{action}'")
+  changed_files:
+    user_service.py: |
+      class UserService:
+          def __init__(self):
+              self.users = []
+
+          def add_user(self, name):
+              self.users.append(name)
+
+          def deactivate(self, user_id):
+              pass
+    tests/test_user_service.py: |
+      from user_service import UserService
+
+      class TestUserService:
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Alice")
+              assert "Alice" in service.users
+    notification_service.py: |
+      class NotificationService:
+          def __init__(self, channel="email"):
+              self.channel = channel
+              self.sent = []
+
+          def send(self, user_id, message):
+              entry = {"user_id": user_id, "message": message, "channel": self.channel}
+              self.sent.append(entry)
+              return entry
+
+          def get_history(self, user_id):
+              return [n for n in self.sent if n["user_id"] == user_id]
+    permission_checker.py: |
+      class PermissionChecker:
+          ROLES = {"admin": ["read", "write", "delete"], "user": ["read"], "editor": ["read", "write"]}
+
+          def __init__(self, role="user"):
+              self.role = role
+
+          def can(self, action):
+              allowed = self.ROLES.get(self.role, [])
+              return action in allowed
+
+          def require(self, action):
+              if not self.can(action):
+                  raise PermissionError(f"Role '{self.role}' cannot '{action}'")
+  commit_message: Update files
+fragments:
+- id: user_service
+  selector:
+    path: user_service.py
+    anchor: 'def deactivate(self, user_id):'
+- id: test_user_service
+  selector:
+    path: tests/test_user_service.py
+    anchor: from user_service import UserService
+- id: no_notification_service
+  selector:
+    path: notification_service.py
+- id: no_permission_checker
+  selector:
+    path: permission_checker.py
+- id: no_global_0
+  selector:
+    anchor: NotificationService
+- id: no_global_1
+  selector:
+    anchor: get_history
+- id: no_global_2
+  selector:
+    anchor: PermissionChecker
+- id: no_global_3
+  selector:
+    anchor: PermissionError
+oracle:
+  required:
+  - user_service
+  - test_user_service
+  allowed: []
+  forbidden:
+  - no_notification_service
+  - no_permission_checker
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

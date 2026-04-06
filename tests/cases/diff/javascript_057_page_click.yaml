@@ -1,0 +1,114 @@
+name: javascript_057_page_click
+repo:
+  initial_files:
+    login.ts: |
+      export function getLoginUrl(): string {
+          return '/login';
+      }
+
+      export function getCredentials() {
+          return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+      }
+    login.spec.ts: |
+      console.log('initial');
+    registration.ts: |
+      export function getRegistrationUrl(): string {
+          return '/register';
+      }
+
+      export function getRegistrationData() {
+          return { name: 'Test User', email: 'test@example.com', password: 'newpass123' };  // pragma: allowlist secret
+      }
+    test-helpers.ts: |
+      import { Page } from '@playwright/test';
+
+      export async function waitForPageLoad(page: Page): Promise<void> {
+          await page.waitForLoadState('networkidle');
+      }
+
+      export async function clearCookies(page: Page): Promise<void> {
+          await page.context().clearCookies();
+      }
+  changed_files:
+    login.ts: |
+      export function getLoginUrl(): string {
+          return '/login';
+      }
+
+      export function getCredentials() {
+          return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+      }
+    login.spec.ts: |
+      import { test, expect } from '@playwright/test';
+      import { getLoginUrl, getCredentials } from './login';
+
+      test('user can log in', async ({ page }) => {
+          await page.goto(getLoginUrl());
+          const { username, password } = getCredentials();
+          await page.fill('[name=username]', username);
+          await page.fill('[name=password]', password);
+          await page.click('button[type=submit]');
+          await expect(page).toHaveURL('/dashboard');
+      });
+    registration.ts: |
+      export function getRegistrationUrl(): string {
+          return '/register';
+      }
+
+      export function getRegistrationData() {
+          return { name: 'Test User', email: 'test@example.com', password: 'newpass123' };  // pragma: allowlist secret
+      }
+    test-helpers.ts: |
+      import { Page } from '@playwright/test';
+
+      export async function waitForPageLoad(page: Page): Promise<void> {
+          await page.waitForLoadState('networkidle');
+      }
+
+      export async function clearCookies(page: Page): Promise<void> {
+          await page.context().clearCookies();
+      }
+  commit_message: Update files
+fragments:
+- id: login
+  selector:
+    path: login.ts
+    anchor: getLoginUrl()
+- id: login_1
+  selector:
+    path: login.ts
+    anchor: getCredentials()
+- id: no_registration
+  selector:
+    path: registration.ts
+- id: no_test_helpers
+  selector:
+    path: test-helpers.ts
+- id: no_global_0
+  selector:
+    anchor: getRegistrationUrl
+- id: no_global_1
+  selector:
+    anchor: getRegistrationData
+- id: no_global_2
+  selector:
+    anchor: /register
+- id: no_global_3
+  selector:
+    anchor: waitForPageLoad
+- id: no_global_4
+  selector:
+    anchor: clearCookies
+oracle:
+  required:
+  - login
+  - login_1
+  allowed: []
+  forbidden:
+  - no_registration
+  - no_test_helpers
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

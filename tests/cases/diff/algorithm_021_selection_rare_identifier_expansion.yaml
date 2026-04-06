@@ -1,0 +1,535 @@
+name: algorithm_021_selection_rare_identifier_expansion
+repo:
+  initial_files:
+    src/core/main.py: |
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from src.utils.rare_module import unique_helper, RareConfig, RareResult
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class MainConfig:
+          name: str = "main"
+          version: str = "1.0.0"
+          debug: bool = False
+          rare_config: Optional[RareConfig] = None
+
+      @dataclass
+      class MainResult:
+          success: bool
+          data: Optional[Any] = None
+          error: Optional[str] = None
+          timestamp: datetime = field(default_factory=datetime.now)
+
+      class MainProcessor:
+          def __init__(self, config: Optional[MainConfig] = None):
+              self.config = config or MainConfig()
+              self._cache: Dict[str, Any] = {}
+              self._results: List[MainResult] = []
+
+          def main(self, data: Dict[str, Any]) -> MainResult:
+              try:
+                  validated = self._validate_input(data)
+                  processed = unique_helper(validated, self.config.rare_config)
+                  result = self._format_output(processed)
+                  self._results.append(result)
+                  return result
+              except Exception as e:
+                  error_result = MainResult(success=False, error=str(e))
+                  self._results.append(error_result)
+                  return error_result
+
+          def _validate_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+              if not data:
+                  raise ValueError("Empty data")
+              if "id" not in data:
+                  raise ValueError("Missing id")
+              return data
+
+          def _format_output(self, result: RareResult) -> MainResult:
+              return MainResult(
+                  success=result.success,
+                  data=result.data,
+              )
+
+          def get_results(self) -> List[MainResult]:
+              return list(self._results)
+
+          def clear_results(self) -> None:
+              self._results.clear()
+    src/utils/rare_module.py: |
+      from typing import Optional, Dict, Any, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      import hashlib
+      import json
+
+      @dataclass
+      class RareConfig:
+          algorithm: str = "default"
+          iterations: int = 100
+          threshold: float = 0.5
+          options: Dict[str, Any] = field(default_factory=dict)
+
+      @dataclass
+      class RareResult:
+          success: bool
+          data: Optional[Any] = None
+          metadata: Dict[str, Any] = field(default_factory=dict)
+          processing_time_ms: float = 0.0
+
+      def unique_helper(data: Dict[str, Any], config: Optional[RareConfig] = None) -> RareResult:
+          config = config or RareConfig()
+          start_time = datetime.now()
+
+          processed_data = _process_with_algorithm(data, config)
+          validated = _validate_result(processed_data, config)
+
+          end_time = datetime.now()
+          duration = (end_time - start_time).total_seconds() * 1000
+
+          return RareResult(
+              success=validated,
+              data=processed_data,
+              metadata={"algorithm": config.algorithm},
+              processing_time_ms=duration,
+          )
+
+      def _process_with_algorithm(data: Dict, config: RareConfig) -> Dict:
+          result = dict(data)
+          result["processed"] = True
+          result["hash"] = hashlib.md5(json.dumps(data).encode()).hexdigest()
+          return result
+
+      def _validate_result(data: Dict, config: RareConfig) -> bool:
+          return data.get("processed", False)
+
+      class RareProcessor:
+          def __init__(self, config: Optional[RareConfig] = None):
+              self.config = config or RareConfig()
+              self._history: List[RareResult] = []
+
+          def process(self, data: Dict[str, Any]) -> RareResult:
+              result = unique_helper(data, self.config)
+              self._history.append(result)
+              return result
+
+          def get_history(self) -> List[RareResult]:
+              return list(self._history)
+    src/core/legacy_processor.py: |
+      from typing import Optional, Dict, Any, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from src.utils.rare_module import unique_helper, RareConfig, RareResult
+      GARBAGE_ALGO_021_LEGACY_G = "legacy_processor"
+      GARBAGE_ALGO_021_LEGACY_VER_H = "0.9"
+
+      class LegacyProcessor:
+          def __init__(self, config=None):
+              self.config = config
+              self._results: List[RareResult] = []
+
+          def main(self, data: Dict[str, Any]) -> RareResult:
+              GARBAGE_ALGO_021_LEGACY_MAIN_I = True
+              processed = unique_helper(data, self.config)
+              return processed
+
+          def _enhance_result(self, result: RareResult) -> RareResult:
+              if result.data:
+                  result.data["enhanced"] = True
+                  result.data["enhancement_version"] = "legacy"
+              return result
+    src/core/pipeline.py: |
+      from typing import Optional, Dict, Any, List
+      from src.utils.rare_module import RareConfig, RareResult
+      GARBAGE_ALGO_021_PIPELINE_J = "pipeline"
+      GARBAGE_ALGO_021_PIPELINE_VER_K = "1.5"
+
+      class Pipeline:
+          GARBAGE_ALGO_021_PIPELINE_CACHE_L = {}
+
+          def __init__(self, config: Optional[RareConfig] = None):
+              self.config = config or RareConfig()
+              self._cache: Dict[str, Any] = {}
+
+          def _format_output(self, result: RareResult) -> Dict:
+              return {"success": result.success, "data": result.data}
+
+          def _validate_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+              if not data:
+                  raise ValueError("Empty data")
+              return data
+    src/unrelated/garbage_common_module.py: |
+      # GARBAGE_ALGO_COMMON_RARE001
+      GARBAGE_ALGO_COMMON_VERSION_RARE002 = "2.0.0"
+
+      class GarbageCommonHelper:
+          GARBAGE_ALGO_COMMON_CACHE_RARE003 = {}
+
+          def unique_helper_garbage(self, data):
+              return f"GARBAGE_ALGO_UNIQUE_RARE004_{data}"
+
+          def main_garbage(self, input_data):
+              return f"GARBAGE_ALGO_MAIN_RARE005_{input_data}"
+
+          def process_garbage_common(self, items):
+              return f"GARBAGE_ALGO_PROCESSED_RARE006_{items}"
+    src/unrelated/garbage_special_module.py: |
+      # GARBAGE_ALGO_SPECIAL_RARE007
+      GARBAGE_ALGO_SPECIAL_CONFIG_RARE008 = {}
+
+      class GarbageSpecialProcessor:
+          GARBAGE_ALGO_SPECIAL_STATE_RARE009 = "idle"
+
+          def unique_helper_special(self, data):
+              return f"GARBAGE_ALGO_SPECIAL_UNIQUE_RARE010_{data}"
+
+          def main_special(self, input_data):
+              return f"GARBAGE_ALGO_SPECIAL_MAIN_RARE011_{input_data}"
+
+          def transform_garbage_special(self, item):
+              return {"garbage": "GARBAGE_ALGO_SPECIAL_TRANSFORMED_RARE012"}
+    src/unrelated/garbage_utility_module.py: |
+      # GARBAGE_ALGO_UTILITY_RARE013
+      GARBAGE_ALGO_UTILITY_ENABLED_RARE014 = True
+
+      class GarbageUtilityHelper:
+          GARBAGE_ALGO_UTILITY_BUFFER_RARE015 = []
+
+          def unique_helper_utility(self, data, config):
+              return f"GARBAGE_ALGO_UTILITY_UNIQUE_RARE016_{data}"
+
+          def main_utility(self, request):
+              return f"GARBAGE_ALGO_UTILITY_MAIN_RARE017_{request}"
+
+          def execute_garbage_utility(self, task):
+              return f"GARBAGE_ALGO_UTILITY_EXECUTED_RARE018_{task}"
+
+          def validate_garbage_utility(self, input_data):
+              return {"valid": "GARBAGE_ALGO_UTILITY_VALID_RARE019"}
+  changed_files:
+    src/core/main.py: |
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from src.utils.rare_module import unique_helper, RareConfig, RareResult
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      @dataclass
+      class MainConfig:
+          name: str = "main"
+          version: str = "1.0.0"
+          debug: bool = False
+          rare_config: Optional[RareConfig] = None
+
+      @dataclass
+      class MainResult:
+          success: bool
+          data: Optional[Any] = None
+          error: Optional[str] = None
+          timestamp: datetime = field(default_factory=datetime.now)
+
+      class MainProcessor:
+          def __init__(self, config: Optional[MainConfig] = None):
+              self.config = config or MainConfig()
+              self._cache: Dict[str, Any] = {}
+              self._results: List[MainResult] = []
+
+          def main(self, data: Dict[str, Any]) -> MainResult:
+              try:
+                  validated = self._validate_input(data)
+                  processed = unique_helper(validated, self.config.rare_config)
+                  enhanced = self._enhance_result(processed)
+                  result = self._format_output(enhanced)
+                  self._results.append(result)
+                  return result
+              except Exception as e:
+                  error_result = MainResult(success=False, error=str(e))
+                  self._results.append(error_result)
+                  return error_result
+
+          def _enhance_result(self, result: RareResult) -> RareResult:
+              if result.success and result.data:
+                  result.data["enhanced"] = True
+                  result.data["enhancement_version"] = self.config.version
+              return result
+
+          def _validate_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+              if not data:
+                  raise ValueError("Empty data")
+              if "id" not in data:
+                  raise ValueError("Missing id")
+              return data
+
+          def _format_output(self, result: RareResult) -> MainResult:
+              return MainResult(
+                  success=result.success,
+                  data=result.data,
+              )
+
+          def get_results(self) -> List[MainResult]:
+              return list(self._results)
+
+          def clear_results(self) -> None:
+              self._results.clear()
+    src/utils/rare_module.py: |
+      from typing import Optional, Dict, Any, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      import hashlib
+      import json
+
+      @dataclass
+      class RareConfig:
+          algorithm: str = "default"
+          iterations: int = 100
+          threshold: float = 0.5
+          options: Dict[str, Any] = field(default_factory=dict)
+
+      @dataclass
+      class RareResult:
+          success: bool
+          data: Optional[Any] = None
+          metadata: Dict[str, Any] = field(default_factory=dict)
+          processing_time_ms: float = 0.0
+
+      def unique_helper(data: Dict[str, Any], config: Optional[RareConfig] = None) -> RareResult:
+          config = config or RareConfig()
+          start_time = datetime.now()
+
+          processed_data = _process_with_algorithm(data, config)
+          validated = _validate_result(processed_data, config)
+
+          end_time = datetime.now()
+          duration = (end_time - start_time).total_seconds() * 1000
+
+          return RareResult(
+              success=validated,
+              data=processed_data,
+              metadata={"algorithm": config.algorithm},
+              processing_time_ms=duration,
+          )
+
+      def _process_with_algorithm(data: Dict, config: RareConfig) -> Dict:
+          result = dict(data)
+          result["processed"] = True
+          result["hash"] = hashlib.md5(json.dumps(data).encode()).hexdigest()
+          return result
+
+      def _validate_result(data: Dict, config: RareConfig) -> bool:
+          return data.get("processed", False)
+
+      class RareProcessor:
+          def __init__(self, config: Optional[RareConfig] = None):
+              self.config = config or RareConfig()
+              self._history: List[RareResult] = []
+
+          def process(self, data: Dict[str, Any]) -> RareResult:
+              result = unique_helper(data, self.config)
+              self._history.append(result)
+              return result
+
+          def get_history(self) -> List[RareResult]:
+              return list(self._history)
+    src/core/legacy_processor.py: |
+      from typing import Optional, Dict, Any, List
+      from dataclasses import dataclass, field
+      from datetime import datetime
+      from src.utils.rare_module import unique_helper, RareConfig, RareResult
+      GARBAGE_ALGO_021_LEGACY_G = "legacy_processor"
+      GARBAGE_ALGO_021_LEGACY_VER_H = "0.9"
+
+      class LegacyProcessor:
+          def __init__(self, config=None):
+              self.config = config
+              self._results: List[RareResult] = []
+
+          def main(self, data: Dict[str, Any]) -> RareResult:
+              GARBAGE_ALGO_021_LEGACY_MAIN_I = True
+              processed = unique_helper(data, self.config)
+              return processed
+
+          def _enhance_result(self, result: RareResult) -> RareResult:
+              if result.data:
+                  result.data["enhanced"] = True
+                  result.data["enhancement_version"] = "legacy"
+              return result
+    src/core/pipeline.py: |
+      from typing import Optional, Dict, Any, List
+      from src.utils.rare_module import RareConfig, RareResult
+      GARBAGE_ALGO_021_PIPELINE_J = "pipeline"
+      GARBAGE_ALGO_021_PIPELINE_VER_K = "1.5"
+
+      class Pipeline:
+          GARBAGE_ALGO_021_PIPELINE_CACHE_L = {}
+
+          def __init__(self, config: Optional[RareConfig] = None):
+              self.config = config or RareConfig()
+              self._cache: Dict[str, Any] = {}
+
+          def _format_output(self, result: RareResult) -> Dict:
+              return {"success": result.success, "data": result.data}
+
+          def _validate_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+              if not data:
+                  raise ValueError("Empty data")
+              return data
+    src/unrelated/garbage_common_module.py: |
+      # GARBAGE_ALGO_COMMON_RARE001
+      GARBAGE_ALGO_COMMON_VERSION_RARE002 = "2.0.0"
+
+      class GarbageCommonHelper:
+          GARBAGE_ALGO_COMMON_CACHE_RARE003 = {}
+
+          def unique_helper_garbage(self, data):
+              return f"GARBAGE_ALGO_UNIQUE_RARE004_{data}"
+
+          def main_garbage(self, input_data):
+              return f"GARBAGE_ALGO_MAIN_RARE005_{input_data}"
+
+          def process_garbage_common(self, items):
+              return f"GARBAGE_ALGO_PROCESSED_RARE006_{items}"
+    src/unrelated/garbage_special_module.py: |
+      # GARBAGE_ALGO_SPECIAL_RARE007
+      GARBAGE_ALGO_SPECIAL_CONFIG_RARE008 = {}
+
+      class GarbageSpecialProcessor:
+          GARBAGE_ALGO_SPECIAL_STATE_RARE009 = "idle"
+
+          def unique_helper_special(self, data):
+              return f"GARBAGE_ALGO_SPECIAL_UNIQUE_RARE010_{data}"
+
+          def main_special(self, input_data):
+              return f"GARBAGE_ALGO_SPECIAL_MAIN_RARE011_{input_data}"
+
+          def transform_garbage_special(self, item):
+              return {"garbage": "GARBAGE_ALGO_SPECIAL_TRANSFORMED_RARE012"}
+    src/unrelated/garbage_utility_module.py: |
+      # GARBAGE_ALGO_UTILITY_RARE013
+      GARBAGE_ALGO_UTILITY_ENABLED_RARE014 = True
+
+      class GarbageUtilityHelper:
+          GARBAGE_ALGO_UTILITY_BUFFER_RARE015 = []
+
+          def unique_helper_utility(self, data, config):
+              return f"GARBAGE_ALGO_UTILITY_UNIQUE_RARE016_{data}"
+
+          def main_utility(self, request):
+              return f"GARBAGE_ALGO_UTILITY_MAIN_RARE017_{request}"
+
+          def execute_garbage_utility(self, task):
+              return f"GARBAGE_ALGO_UTILITY_EXECUTED_RARE018_{task}"
+
+          def validate_garbage_utility(self, input_data):
+              return {"valid": "GARBAGE_ALGO_UTILITY_VALID_RARE019"}
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/core/main.py
+    anchor: enhanced = self._enhance_result(processed)
+- id: main_1
+  selector:
+    path: src/core/main.py
+    anchor: 'def _enhance_result(self, result: RareResult) -> RareResult:'
+- id: main_2
+  selector:
+    path: src/core/main.py
+    anchor: result.data["enhanced"] = True
+- id: main_3
+  selector:
+    path: src/core/main.py
+    anchor: result.data["enhancement_version"] = self.config.version
+- id: no_garbage_common_module
+  selector:
+    path: src/unrelated/garbage_common_module.py
+- id: no_garbage_special_module
+  selector:
+    path: src/unrelated/garbage_special_module.py
+- id: no_garbage_utility_module
+  selector:
+    path: src/unrelated/garbage_utility_module.py
+- id: no_legacy_processor
+  selector:
+    path: src/core/legacy_processor.py
+- id: no_pipeline
+  selector:
+    path: src/core/pipeline.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_COMMON_CACHE_RARE003
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_COMMON_RARE001
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_COMMON_VERSION_RARE002
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_SPECIAL_CONFIG_RARE008
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_SPECIAL_RARE007
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_SPECIAL_STATE_RARE009
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_UTILITY_BUFFER_RARE015
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_UTILITY_ENABLED_RARE014
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_UTILITY_RARE013
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_021_LEGACY_G
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_021_LEGACY_VER_H
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_021_LEGACY_MAIN_I
+- id: no_global_12
+  selector:
+    anchor: GARBAGE_ALGO_021_PIPELINE_J
+- id: no_global_13
+  selector:
+    anchor: GARBAGE_ALGO_021_PIPELINE_VER_K
+- id: no_global_14
+  selector:
+    anchor: GARBAGE_ALGO_021_PIPELINE_CACHE_L
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  allowed: []
+  forbidden:
+  - no_garbage_common_module
+  - no_garbage_special_module
+  - no_garbage_utility_module
+  - no_legacy_processor
+  - no_pipeline
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

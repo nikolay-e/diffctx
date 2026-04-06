@@ -1,0 +1,216 @@
+name: php_005_abstract_class
+repo:
+  initial_files:
+    src/Controllers/BaseController.php: |
+      <?php
+      namespace App\Controllers;
+
+      abstract class BaseController {
+          abstract protected function getModelName(): string;
+          abstract protected function getValidationRules(): array;
+
+          public function index(): array {
+              return ['model' => $this->getModelName(), 'action' => 'list'];
+          }
+
+          protected function respond(int $status, array $data): array {
+              return ['status' => $status, 'data' => $data, 'model' => $this->getModelName()];
+          }
+
+          protected function validate(array $data): bool {
+              $rules = $this->getValidationRules();
+              foreach ($rules as $field => $required) {
+                  if ($required && !isset($data[$field])) {
+                      return false;
+                  }
+              }
+              return true;
+          }
+      }
+    src/Controllers/ProductController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class ProductController {
+          public function list(): array {
+              return [];
+          }
+      }
+    src/Controllers/CategoryController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class CategoryController {
+          private array $categories = [];
+
+          public function index(): array {
+              return $this->categories;
+          }
+
+          public function create(string $name, ?string $parentId = null): array {
+              $category = ['name' => $name, 'parent' => $parentId];
+              $this->categories[] = $category;
+              return $category;
+          }
+      }
+    src/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      class Product {
+          public string $name;
+          public float $price;
+          public string $sku;
+
+          public function __construct(string $name, float $price, string $sku) {
+              $this->name = $name;
+              $this->price = $price;
+              $this->sku = $sku;
+          }
+
+          public function isAvailable(): bool {
+              return $this->price > 0;
+          }
+      }
+  changed_files:
+    src/Controllers/BaseController.php: |
+      <?php
+      namespace App\Controllers;
+
+      abstract class BaseController {
+          abstract protected function getModelName(): string;
+          abstract protected function getValidationRules(): array;
+
+          public function index(): array {
+              return ['model' => $this->getModelName(), 'action' => 'list'];
+          }
+
+          protected function respond(int $status, array $data): array {
+              return ['status' => $status, 'data' => $data, 'model' => $this->getModelName()];
+          }
+
+          protected function validate(array $data): bool {
+              $rules = $this->getValidationRules();
+              foreach ($rules as $field => $required) {
+                  if ($required && !isset($data[$field])) {
+                      return false;
+                  }
+              }
+              return true;
+          }
+      }
+    src/Controllers/ProductController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class ProductController extends BaseController {
+          protected function getModelName(): string {
+              return 'Product';
+          }
+
+          protected function getValidationRules(): array {
+              return ['name' => true, 'price' => true, 'sku' => false];
+          }
+
+          public function store(array $data): array {
+              if (!$this->validate($data)) {
+                  return $this->respond(422, ['error' => 'Validation failed']);
+              }
+              return $this->respond(201, ['product' => $data]);
+          }
+
+          public function show(int $id): array {
+              return $this->respond(200, ['id' => $id, 'model' => $this->getModelName()]);
+          }
+      }
+    src/Controllers/CategoryController.php: |
+      <?php
+      namespace App\Controllers;
+
+      class CategoryController {
+          private array $categories = [];
+
+          public function index(): array {
+              return $this->categories;
+          }
+
+          public function create(string $name, ?string $parentId = null): array {
+              $category = ['name' => $name, 'parent' => $parentId];
+              $this->categories[] = $category;
+              return $category;
+          }
+      }
+    src/Models/Product.php: |
+      <?php
+      namespace App\Models;
+
+      class Product {
+          public string $name;
+          public float $price;
+          public string $sku;
+
+          public function __construct(string $name, float $price, string $sku) {
+              $this->name = $name;
+              $this->price = $price;
+              $this->sku = $sku;
+          }
+
+          public function isAvailable(): bool {
+              return $this->price > 0;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: productcontroller
+  selector:
+    path: src/Controllers/ProductController.php
+    anchor: extends BaseController
+- id: productcontroller_1
+  selector:
+    path: src/Controllers/ProductController.php
+    anchor: $this->validate($data)
+- id: productcontroller_2
+  selector:
+    path: src/Controllers/ProductController.php
+    anchor: $this->respond(201
+- id: basecontroller
+  selector:
+    path: src/Controllers/BaseController.php
+    anchor: 'abstract protected function getModelName(): string'
+- id: basecontroller_1
+  selector:
+    path: src/Controllers/BaseController.php
+    anchor: 'abstract protected function getValidationRules(): array'
+- id: no_categorycontroller
+  selector:
+    path: src/Controllers/CategoryController.php
+- id: no_product
+  selector:
+    path: src/Models/Product.php
+- id: no_global_0
+  selector:
+    anchor: class CategoryController
+- id: no_global_1
+  selector:
+    anchor: parentId
+- id: no_global_2
+  selector:
+    anchor: class Product
+- id: no_global_3
+  selector:
+    anchor: isAvailable
+oracle:
+  required:
+  - productcontroller
+  - productcontroller_1
+  - productcontroller_2
+  - basecontroller
+  - basecontroller_1
+  allowed: []
+  forbidden:
+  - no_categorycontroller
+  - no_product
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

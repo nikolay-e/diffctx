@@ -1,0 +1,272 @@
+name: scripting_028_refinement
+repo:
+  initial_files:
+    string_ext.rb: |
+      module StringExtensions
+        refine String do
+          def shout
+            upcase + "!"
+          end
+
+          def whisper
+            downcase + "..."
+          end
+
+          def emphasize
+            "*#{self}*"
+          end
+        end
+      end
+    messenger.rb: |
+      class Messenger
+      end
+    text_inflector.rb: |
+      module TextInflector
+        IRREGULAR = {
+          'person' => 'people',
+          'child' => 'children',
+          'mouse' => 'mice'
+        }.freeze
+
+        def self.pluralize(word)
+          return IRREGULAR[word] if IRREGULAR.key?(word)
+          case word
+          when /([^aeiou])y$/i then word.sub(/y$/i, 'ies')
+          when /(s|x|z|ch|sh)$/i then word + 'es'
+          else word + 's'
+          end
+        end
+
+        def self.singularize(word)
+          inverse = IRREGULAR.invert
+          return inverse[word] if inverse.key?(word)
+          word.sub(/s$/, '')
+        end
+      end
+    ansi_colors.rb: |
+      module AnsiColors
+        CODES = { red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36 }.freeze
+
+        def self.colorize(text, color)
+          code = CODES.fetch(color, 0)
+          "\e[#{code}m#{text}\e[0m"
+        end
+
+        def self.bold(text)
+          "\e[1m#{text}\e[0m"
+        end
+
+        def self.strip_ansi(text)
+          text.gsub(/\e\[[0-9;]*m/, '')
+        end
+      end
+    notification.rb: |
+      require_relative 'string_ext'
+
+      class Notification
+        using StringExtensions
+
+        def initialize(title, body)
+          @title = title
+          @body = body
+        end
+
+        def alert_title
+          @title.shout
+        end
+
+        def summary
+          @body.whisper
+        end
+
+        def formatted
+          "#{alert_title}\n#{@body.emphasize}"
+        end
+      end
+    string_sanitizer.rb: |
+      module StringSanitizer
+        SPECIAL_CHARS = /[<>&"']/
+        HTML_ENTITIES = { '<' => '&lt;', '>' => '&gt;', '&' => '&amp;', '"' => '&quot;' }.freeze
+
+        def self.strip_tags(input)
+          input.gsub(/<\/?[^>]+>/, '')
+        end
+
+        def self.escape_html(input)
+          input.gsub(/[<>&"]/) { |match| HTML_ENTITIES[match] || match }
+        end
+
+        def self.normalize_whitespace(input)
+          input.gsub(/\s+/, ' ').strip
+        end
+      end
+    lib/markdown_ext.rb: |
+      module MarkdownExtensions
+        refine String do
+          def to_heading(level = 1)
+            "#{'#' * level} #{self}"
+          end
+
+          def to_bold
+            "**#{self}**"
+          end
+
+          def to_italic
+            "_#{self}_"
+          end
+
+          def to_link(url)
+            "[#{self}](#{url})"
+          end
+        end
+      end
+  changed_files:
+    string_ext.rb: |
+      module StringExtensions
+        refine String do
+          def shout
+            upcase + "!"
+          end
+
+          def whisper
+            downcase + "..."
+          end
+
+          def emphasize
+            "*#{self}*"
+          end
+        end
+      end
+    messenger.rb: |
+      require_relative 'string_ext'
+
+      class Messenger
+        using StringExtensions
+
+        def loud_message(text)
+          text.shout
+        end
+
+        def quiet_message(text)
+          text.whisper
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: string_ext
+  selector:
+    path: string_ext.rb
+    anchor: refine String do
+- id: string_ext_1
+  selector:
+    path: string_ext.rb
+    anchor: def shout
+- id: string_ext_2
+  selector:
+    path: string_ext.rb
+    anchor: def whisper
+- id: messenger
+  selector:
+    path: messenger.rb
+    anchor: using StringExtensions
+- id: messenger_1
+  selector:
+    path: messenger.rb
+    anchor: text.shout
+- id: no_text_inflector
+  selector:
+    path: text_inflector.rb
+- id: no_ansi_colors
+  selector:
+    path: ansi_colors.rb
+- id: no_notification
+  selector:
+    path: notification.rb
+- id: no_string_sanitizer
+  selector:
+    path: string_sanitizer.rb
+- id: no_markdown_ext
+  selector:
+    path: lib/markdown_ext.rb
+- id: no_global_0
+  selector:
+    anchor: TextInflector
+- id: no_global_1
+  selector:
+    anchor: pluralize
+- id: no_global_2
+  selector:
+    anchor: singularize
+- id: no_global_3
+  selector:
+    anchor: IRREGULAR
+- id: no_global_4
+  selector:
+    anchor: AnsiColors
+- id: no_global_5
+  selector:
+    anchor: colorize
+- id: no_global_6
+  selector:
+    anchor: strip_ansi
+- id: no_global_7
+  selector:
+    anchor: Notification
+- id: no_global_8
+  selector:
+    anchor: alert_title
+- id: no_global_9
+  selector:
+    anchor: formatted
+- id: no_global_10
+  selector:
+    anchor: StringSanitizer
+- id: no_global_11
+  selector:
+    anchor: strip_tags
+- id: no_global_12
+  selector:
+    anchor: escape_html
+- id: no_global_13
+  selector:
+    anchor: normalize_whitespace
+- id: no_global_14
+  selector:
+    anchor: MarkdownExtensions
+- id: no_global_15
+  selector:
+    anchor: to_heading
+- id: no_global_16
+  selector:
+    anchor: to_bold
+oracle:
+  required:
+  - string_ext
+  - string_ext_1
+  - string_ext_2
+  - messenger
+  - messenger_1
+  allowed: []
+  forbidden:
+  - no_text_inflector
+  - no_ansi_colors
+  - no_notification
+  - no_string_sanitizer
+  - no_markdown_ext
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16

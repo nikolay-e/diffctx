@@ -1,0 +1,150 @@
+name: patterns_016_edge_dead_code_reference
+repo:
+  initial_files:
+    src/deprecated.py: |
+      def old_function():
+          '''Deprecated: use new_function instead'''
+          return "old"
+
+      def new_function():
+          return "new"
+    src/main.py: |
+      from deprecated import new_function
+
+      def main():
+          return new_function()
+    src/legacy.py: |
+      # This file still uses old_function for backwards compatibility
+      from deprecated import old_function
+
+      def legacy_handler():
+          return old_function()
+    utils/deprecation_report.py: |
+      REPORT_OUTPUT_DIR = "./reports"
+      DEPRECATION_THRESHOLD_DAYS = 90
+
+      class DeprecationReporter:
+          def __init__(self):
+              self._usages: list[dict] = []
+
+          def record_usage(self, symbol: str, file: str, line: int) -> None:
+              self._usages.append({"symbol": symbol, "file": file, "line": line})
+
+          def generate_report(self) -> str:
+              return f"Found {len(self._usages)} deprecated usages"
+
+          def get_symbols_past_threshold(self) -> list[str]:
+              return []
+    utils/migration_guide.py: |
+      API_VERSIONS = ["v1", "v2", "v3"]
+      LATEST_VERSION = "v3"
+
+      class MigrationGuide:
+          def get_breaking_changes(self, from_version: str, to_version: str) -> list[str]:
+              return []
+
+          def get_upgrade_steps(self, from_version: str) -> list[str]:
+              return [f"Upgrade from {from_version} to {LATEST_VERSION}"]
+  changed_files:
+    src/deprecated.py: |
+      import warnings
+
+      def old_function():
+          '''Deprecated: use new_function instead'''
+          warnings.warn(
+              "old_function is deprecated, use new_function",
+              DeprecationWarning,
+              stacklevel=2
+          )
+          return "old"
+
+      def new_function():
+          return "new_v2"
+
+      def newer_function():
+          return "newer"
+    src/main.py: |
+      from deprecated import new_function
+
+      def main():
+          return new_function()
+    src/legacy.py: |
+      # This file still uses old_function for backwards compatibility
+      from deprecated import old_function
+
+      def legacy_handler():
+          return old_function()
+    utils/deprecation_report.py: |
+      REPORT_OUTPUT_DIR = "./reports"
+      DEPRECATION_THRESHOLD_DAYS = 90
+
+      class DeprecationReporter:
+          def __init__(self):
+              self._usages: list[dict] = []
+
+          def record_usage(self, symbol: str, file: str, line: int) -> None:
+              self._usages.append({"symbol": symbol, "file": file, "line": line})
+
+          def generate_report(self) -> str:
+              return f"Found {len(self._usages)} deprecated usages"
+
+          def get_symbols_past_threshold(self) -> list[str]:
+              return []
+    utils/migration_guide.py: |
+      API_VERSIONS = ["v1", "v2", "v3"]
+      LATEST_VERSION = "v3"
+
+      class MigrationGuide:
+          def get_breaking_changes(self, from_version: str, to_version: str) -> list[str]:
+              return []
+
+          def get_upgrade_steps(self, from_version: str) -> list[str]:
+              return [f"Upgrade from {from_version} to {LATEST_VERSION}"]
+  commit_message: Update files
+fragments:
+- id: deprecated
+  selector:
+    path: src/deprecated.py
+    anchor: import warnings
+- id: deprecated_1
+  selector:
+    path: src/deprecated.py
+    anchor: warnings.warn(
+- id: no_deprecation_report
+  selector:
+    path: utils/deprecation_report.py
+- id: no_migration_guide
+  selector:
+    path: utils/migration_guide.py
+- id: no_global_0
+  selector:
+    anchor: DeprecationReporter
+- id: no_global_1
+  selector:
+    anchor: REPORT_OUTPUT_DIR
+- id: no_global_2
+  selector:
+    anchor: DEPRECATION_THRESHOLD_DAYS
+- id: no_global_3
+  selector:
+    anchor: MigrationGuide
+- id: no_global_4
+  selector:
+    anchor: API_VERSIONS
+- id: no_global_5
+  selector:
+    anchor: get_upgrade_steps
+oracle:
+  required:
+  - deprecated
+  - deprecated_1
+  allowed: []
+  forbidden:
+  - no_deprecation_report
+  - no_migration_guide
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

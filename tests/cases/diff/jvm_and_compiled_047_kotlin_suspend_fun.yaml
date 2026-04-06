@@ -1,0 +1,164 @@
+name: jvm_and_compiled_047_kotlin_suspend_fun
+repo:
+  initial_files:
+    src/main/kotlin/com/example/UserService.kt: |
+      package com.example
+
+      class UserService(private val repository: UserRepository) {
+          suspend fun getUser(id: Long): User? {
+              return repository.findById(id)
+          }
+      }
+    src/main/kotlin/com/example/UserController.kt: |
+      package com.example
+
+      import kotlinx.coroutines.runBlocking
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: Long): User? = runBlocking {
+              service.getUser(id)
+          }
+      }
+    src/main/kotlin/com/example/UserCache.kt: |
+      package com.example
+
+      import java.util.concurrent.ConcurrentHashMap
+
+      class UserCache {
+          private val cache = ConcurrentHashMap<Long, User>()
+
+          fun get(id: Long): User? = cache[id]
+
+          fun put(user: User) {
+              cache[user.id] = user
+          }
+
+          fun invalidate(id: Long) {
+              cache.remove(id)
+          }
+
+          fun clear() {
+              cache.clear()
+          }
+      }
+    src/main/kotlin/com/example/RetryPolicy.kt: |
+      package com.example
+
+      data class RetryPolicy(
+          val maxAttempts: Int = 3,
+          val initialDelayMs: Long = 1000,
+          val backoffMultiplier: Double = 2.0,
+          val maxDelayMs: Long = 30000
+      ) {
+          fun delayForAttempt(attempt: Int): Long {
+              val delay = (initialDelayMs * Math.pow(backoffMultiplier, attempt.toDouble())).toLong()
+              return minOf(delay, maxDelayMs)
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/example/UserService.kt: |
+      package com.example
+
+      import kotlinx.coroutines.delay
+
+      class UserService(private val repository: UserRepository) {
+          suspend fun getUser(id: Long): User? {
+              return repository.findById(id)
+          }
+
+          suspend fun getUserWithRetry(id: Long, retries: Int = 3): User? {
+              repeat(retries) { attempt ->
+                  try {
+                      return repository.findById(id)
+                  } catch (e: Exception) {
+                      delay(1000L * (attempt + 1))
+                  }
+              }
+              return null
+          }
+      }
+    src/main/kotlin/com/example/UserController.kt: |
+      package com.example
+
+      import kotlinx.coroutines.runBlocking
+
+      class UserController(private val service: UserService) {
+          fun getUser(id: Long): User? = runBlocking {
+              service.getUser(id)
+          }
+      }
+    src/main/kotlin/com/example/UserCache.kt: |
+      package com.example
+
+      import java.util.concurrent.ConcurrentHashMap
+
+      class UserCache {
+          private val cache = ConcurrentHashMap<Long, User>()
+
+          fun get(id: Long): User? = cache[id]
+
+          fun put(user: User) {
+              cache[user.id] = user
+          }
+
+          fun invalidate(id: Long) {
+              cache.remove(id)
+          }
+
+          fun clear() {
+              cache.clear()
+          }
+      }
+    src/main/kotlin/com/example/RetryPolicy.kt: |
+      package com.example
+
+      data class RetryPolicy(
+          val maxAttempts: Int = 3,
+          val initialDelayMs: Long = 1000,
+          val backoffMultiplier: Double = 2.0,
+          val maxDelayMs: Long = 30000
+      ) {
+          fun delayForAttempt(attempt: Int): Long {
+              val delay = (initialDelayMs * Math.pow(backoffMultiplier, attempt.toDouble())).toLong()
+              return minOf(delay, maxDelayMs)
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: src/main/kotlin/com/example/UserService.kt
+    anchor: import kotlinx.coroutines.delay
+- id: no_usercache
+  selector:
+    path: src/main/kotlin/com/example/UserCache.kt
+- id: no_retrypolicy
+  selector:
+    path: src/main/kotlin/com/example/RetryPolicy.kt
+- id: no_global_0
+  selector:
+    anchor: UserCache
+- id: no_global_1
+  selector:
+    anchor: invalidate
+- id: no_global_2
+  selector:
+    anchor: RetryPolicy
+- id: no_global_3
+  selector:
+    anchor: backoffMultiplier
+- id: no_global_4
+  selector:
+    anchor: delayForAttempt
+oracle:
+  required:
+  - userservice
+  allowed: []
+  forbidden:
+  - no_usercache
+  - no_retrypolicy
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

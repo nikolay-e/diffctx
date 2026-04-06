@@ -1,0 +1,140 @@
+name: cicd_and_docs_025_gitlab_variables
+repo:
+  initial_files:
+    app.js: |
+      const nodeEnv = process.env.NODE_ENV || 'development';
+      const debug = process.env.CI_DEBUG === 'true';
+
+      console.log('NODE_ENV:', nodeEnv);
+      console.log('Debug mode:', debug);
+
+      function main() {
+        if (debug) {
+          console.log('Debug information enabled');
+        }
+      }
+
+      main();
+    .gitlab-ci.yml: |
+      test:
+        script:
+          - npm ci
+          - node app.js
+    package.json: |
+      {
+        "name": "gitlab-variables-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test": "jest"
+        }
+      }
+    garbage_config.ts: |
+      const GARBAGE_CICD_DOCS_025_CONFIG_MARKER_A = "dotenv";
+      const GARBAGE_CICD_DOCS_025_OVERRIDE_MARKER_B = true;
+
+      class GarbageConfigLoader {
+        static GARBAGE_CICD_DOCS_025_MERGE_MARKER_C = "deep";
+        load(): void {}
+      }
+    garbage_secrets.ts: |
+      const GARBAGE_CICD_DOCS_025_SECRETS_MARKER_D = "vault";
+      const GARBAGE_CICD_DOCS_025_PATH_MARKER_E = "/secret/data";
+
+      class GarbageSecretsManager {
+        static GARBAGE_CICD_DOCS_025_ROTATE_MARKER_F = 86400;
+        fetch(): void {}
+      }
+  changed_files:
+    app.js: |
+      const nodeEnv = process.env.NODE_ENV || 'development';
+      const debug = process.env.CI_DEBUG === 'true';
+
+      console.log('NODE_ENV:', nodeEnv);
+      console.log('Debug mode:', debug);
+
+      function main() {
+        if (debug) {
+          console.log('Debug information enabled');
+        }
+      }
+
+      main();
+    .gitlab-ci.yml: |
+      variables:
+        NODE_ENV: production
+        CI_DEBUG: "true"
+
+      test:
+        script:
+          - npm ci
+          - node app.js
+    package.json: |
+      {
+        "name": "gitlab-variables-app",
+        "version": "1.0.0",
+        "scripts": {
+          "test": "jest"
+        }
+      }
+    garbage_config.ts: |
+      const GARBAGE_CICD_DOCS_025_CONFIG_MARKER_A = "dotenv";
+      const GARBAGE_CICD_DOCS_025_OVERRIDE_MARKER_B = true;
+
+      class GarbageConfigLoader {
+        static GARBAGE_CICD_DOCS_025_MERGE_MARKER_C = "deep";
+        load(): void {}
+      }
+    garbage_secrets.ts: |
+      const GARBAGE_CICD_DOCS_025_SECRETS_MARKER_D = "vault";
+      const GARBAGE_CICD_DOCS_025_PATH_MARKER_E = "/secret/data";
+
+      class GarbageSecretsManager {
+        static GARBAGE_CICD_DOCS_025_ROTATE_MARKER_F = 86400;
+        fetch(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: gitlab_ci_file
+  selector:
+    path: .gitlab-ci.yml
+- id: req_global_0
+  selector:
+    anchor: 'NODE_ENV: production'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_CONFIG_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_MERGE_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_OVERRIDE_MARKER_B
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_PATH_MARKER_E
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_ROTATE_MARKER_F
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_CICD_DOCS_025_SECRETS_MARKER_D
+- id: no_global_6
+  selector:
+    anchor: garbage_config.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_secrets.ts
+oracle:
+  required:
+  - gitlab_ci_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

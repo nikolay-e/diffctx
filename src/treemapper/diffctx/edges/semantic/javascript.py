@@ -5,9 +5,9 @@ from collections import defaultdict
 from pathlib import Path
 
 from ...config.weights import LANG_WEIGHTS
-from ...javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, extract_import_sources
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, add_semantic_edges
+from .javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, extract_import_sources
 
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
 _TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}

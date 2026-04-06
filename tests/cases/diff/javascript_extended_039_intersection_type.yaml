@@ -1,0 +1,236 @@
+name: javascript_extended_039_intersection_type
+repo:
+  initial_files:
+    src/types.ts: |
+      export type Named = { name: string };
+
+      export type Aged = { age: number };
+
+      export type Contactable = { email: string; phone?: string };
+
+      export function formatName(entity: Named): string {
+          return entity.name.trim();
+      }
+    src/person.ts: |
+      console.log('initial');
+    src/services/personService.ts: |
+      import { Named, Contactable } from '../types';
+
+      type PersonRecord = Named & Contactable & { id: string };
+
+      const store: PersonRecord[] = [];
+
+      export function savePerson(name: string, email: string): PersonRecord {
+          const record: PersonRecord = { id: Date.now().toString(), name, email };
+          store.push(record);
+          return record;
+      }
+
+      export function findByEmail(email: string): PersonRecord | undefined {
+          return store.find(p => p.email === email);
+      }
+
+      export function listPersons(): PersonRecord[] {
+          return [...store];
+      }
+    src/services/contactValidator.ts: |
+      import { Contactable } from '../types';
+
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const PHONE_RE = /^\+?[\d\s-]{7,15}$/;
+
+      export function validateContact(contact: Contactable): string[] {
+          const errors: string[] = [];
+          if (!EMAIL_RE.test(contact.email)) {
+              errors.push('Invalid email format');
+          }
+          if (contact.phone && !PHONE_RE.test(contact.phone)) {
+              errors.push('Invalid phone format');
+          }
+          return errors;
+      }
+
+      export function isValidEmail(email: string): boolean {
+          return EMAIL_RE.test(email);
+      }
+    src/formatters/nameFormatter.ts: |
+      import { Named } from '../types';
+
+      export function formatDisplayName(entity: Named): string {
+          return entity.name.charAt(0).toUpperCase() + entity.name.slice(1);
+      }
+
+      export function formatInitials(entity: Named): string {
+          return entity.name.split(' ').map(w => w[0]).join('').toUpperCase();
+      }
+
+      export function truncateName(entity: Named, maxLen: number): string {
+          return entity.name.length > maxLen ? entity.name.slice(0, maxLen) + '...' : entity.name;
+      }
+  changed_files:
+    src/types.ts: |
+      export type Named = { name: string };
+
+      export type Aged = { age: number };
+
+      export type Contactable = { email: string; phone?: string };
+
+      export function formatName(entity: Named): string {
+          return entity.name.trim();
+      }
+    src/person.ts: |
+      import { Named, Aged, Contactable, formatName } from './types';
+
+      type Person = Named & Aged & Contactable;
+
+      function createPerson(name: string, age: number, email: string): Person {
+          return { name, age, email };
+      }
+
+      function describePerson(person: Person): string {
+          return `${formatName(person)}, age ${person.age}, email: ${person.email}`;
+      }
+
+      export { Person, createPerson, describePerson };
+    src/services/personService.ts: |
+      import { Named, Contactable } from '../types';
+
+      type PersonRecord = Named & Contactable & { id: string };
+
+      const store: PersonRecord[] = [];
+
+      export function savePerson(name: string, email: string): PersonRecord {
+          const record: PersonRecord = { id: Date.now().toString(), name, email };
+          store.push(record);
+          return record;
+      }
+
+      export function findByEmail(email: string): PersonRecord | undefined {
+          return store.find(p => p.email === email);
+      }
+
+      export function listPersons(): PersonRecord[] {
+          return [...store];
+      }
+    src/services/contactValidator.ts: |
+      import { Contactable } from '../types';
+
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const PHONE_RE = /^\+?[\d\s-]{7,15}$/;
+
+      export function validateContact(contact: Contactable): string[] {
+          const errors: string[] = [];
+          if (!EMAIL_RE.test(contact.email)) {
+              errors.push('Invalid email format');
+          }
+          if (contact.phone && !PHONE_RE.test(contact.phone)) {
+              errors.push('Invalid phone format');
+          }
+          return errors;
+      }
+
+      export function isValidEmail(email: string): boolean {
+          return EMAIL_RE.test(email);
+      }
+    src/formatters/nameFormatter.ts: |
+      import { Named } from '../types';
+
+      export function formatDisplayName(entity: Named): string {
+          return entity.name.charAt(0).toUpperCase() + entity.name.slice(1);
+      }
+
+      export function formatInitials(entity: Named): string {
+          return entity.name.split(' ').map(w => w[0]).join('').toUpperCase();
+      }
+
+      export function truncateName(entity: Named, maxLen: number): string {
+          return entity.name.length > maxLen ? entity.name.slice(0, maxLen) + '...' : entity.name;
+      }
+  commit_message: Update files
+fragments:
+- id: person
+  selector:
+    path: src/person.ts
+    anchor: import { Named, Aged, Contactable, formatName } from './types'
+- id: person_1
+  selector:
+    path: src/person.ts
+    anchor: type Person = Named & Aged & Contactable
+- id: types
+  selector:
+    path: src/types.ts
+    anchor: 'type Named = { name: string }'
+- id: types_1
+  selector:
+    path: src/types.ts
+    anchor: 'type Aged = { age: number }'
+- id: types_2
+  selector:
+    path: src/types.ts
+    anchor: 'type Contactable = { email: string; phone?: string }'
+- id: types_3
+  selector:
+    path: src/types.ts
+    anchor: function formatName
+- id: no_personservice
+  selector:
+    path: src/services/personService.ts
+- id: no_contactvalidator
+  selector:
+    path: src/services/contactValidator.ts
+- id: no_nameformatter
+  selector:
+    path: src/formatters/nameFormatter.ts
+- id: no_global_0
+  selector:
+    anchor: savePerson
+- id: no_global_1
+  selector:
+    anchor: findByEmail
+- id: no_global_2
+  selector:
+    anchor: listPersons
+- id: no_global_3
+  selector:
+    anchor: PersonRecord
+- id: no_global_4
+  selector:
+    anchor: validateContact
+- id: no_global_5
+  selector:
+    anchor: isValidEmail
+- id: no_global_6
+  selector:
+    anchor: EMAIL_RE
+- id: no_global_7
+  selector:
+    anchor: formatDisplayName
+- id: no_global_8
+  selector:
+    anchor: formatInitials
+- id: no_global_9
+  selector:
+    anchor: truncateName
+oracle:
+  required:
+  - person
+  - person_1
+  - types
+  - types_1
+  - types_2
+  - types_3
+  allowed: []
+  forbidden:
+  - no_personservice
+  - no_contactvalidator
+  - no_nameformatter
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9

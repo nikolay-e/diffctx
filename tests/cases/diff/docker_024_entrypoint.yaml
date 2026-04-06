@@ -1,0 +1,185 @@
+name: docker_024_entrypoint
+repo:
+  initial_files:
+    src/main.py: |
+      import sys
+      import argparse
+      import signal
+
+      def signal_handler(signum, frame):
+          print(f"Received signal {signum}, shutting down gracefully...")
+          sys.exit(0)
+
+      def main():
+          parser = argparse.ArgumentParser()
+          parser.add_argument('--config', default='/etc/app/config.yaml')
+          parser.add_argument('--workers', type=int, default=4)
+          parser.add_argument('command', choices=['serve', 'migrate', 'shell'])
+          args = parser.parse_args()
+
+          signal.signal(signal.SIGTERM, signal_handler)
+          signal.signal(signal.SIGINT, signal_handler)
+
+          print(f"Running {args.command} with config: {args.config}")
+
+      if __name__ == '__main__':
+          main()
+    requirements.txt: |
+      pyyaml==6.0.1
+      click==8.1.7
+    Dockerfile: |
+      FROM python:3.11-slim
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install -r requirements.txt
+      COPY src/ ./src/
+      CMD ["python", "src/main.py", "serve"]
+    scripts/docker_entrypoint.sh: |
+      #!/bin/bash
+      set -e
+      echo "Legacy entrypoint"
+      exec python main.py "$@"
+    tests/test_cli.py: |
+      import subprocess
+      def test_cli():
+          result = subprocess.run(['python', 'src/main.py', '--help'], capture_output=True)
+          assert result.returncode == 0
+    helm/values.yaml: |
+      command: ["python"]
+      args: ["src/main.py", "serve", "--workers", "8"]
+    scripts/init.sh: |
+      #!/bin/bash
+      echo "Initializing database..."
+      python src/main.py migrate
+  changed_files:
+    src/main.py: |
+      import sys
+      import argparse
+      import signal
+
+      def signal_handler(signum, frame):
+          print(f"Received signal {signum}, shutting down gracefully...")
+          sys.exit(0)
+
+      def main():
+          parser = argparse.ArgumentParser()
+          parser.add_argument('--config', default='/etc/app/config.yaml')
+          parser.add_argument('--workers', type=int, default=4)
+          parser.add_argument('command', choices=['serve', 'migrate', 'shell'])
+          args = parser.parse_args()
+
+          signal.signal(signal.SIGTERM, signal_handler)
+          signal.signal(signal.SIGINT, signal_handler)
+
+          print(f"Running {args.command} with config: {args.config}")
+
+      if __name__ == '__main__':
+          main()
+    requirements.txt: |
+      pyyaml==6.0.1
+      click==8.1.7
+    Dockerfile: |
+      FROM python:3.12-slim-bookworm AS base
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV PYTHONUNBUFFERED=1
+
+      FROM base AS dependencies
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      FROM base AS production
+      WORKDIR /app
+
+      COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+      COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+      # Copy entrypoint script
+      COPY docker-entrypoint.sh /usr/local/bin/
+      RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+      COPY src/ ./src/
+
+      RUN useradd --create-home appuser && \
+          mkdir -p /etc/app && \
+          chown -R appuser:appuser /app /etc/app
+
+      USER appuser
+
+      # Use entrypoint for initialization logic
+      ENTRYPOINT ["docker-entrypoint.sh"]
+
+      # Default command - can be overridden
+      CMD ["serve", "--workers", "4"]
+
+      EXPOSE 8000
+      STOPSIGNAL SIGTERM
+    scripts/docker_entrypoint.sh: |
+      #!/bin/bash
+      set -e
+      echo "Legacy entrypoint"
+      exec python main.py "$@"
+    tests/test_cli.py: |
+      import subprocess
+      def test_cli():
+          result = subprocess.run(['python', 'src/main.py', '--help'], capture_output=True)
+          assert result.returncode == 0
+    helm/values.yaml: |
+      command: ["python"]
+      args: ["src/main.py", "serve", "--workers", "8"]
+    scripts/init.sh: |
+      #!/bin/bash
+      echo "Initializing database..."
+      python src/main.py migrate
+  commit_message: Update files
+fragments:
+- id: dockerfile
+  selector:
+    path: Dockerfile
+    anchor: ENTRYPOINT ["docker-entrypoint.sh"]
+- id: dockerfile_1
+  selector:
+    path: Dockerfile
+    anchor: CMD ["serve", "--workers", "4"]
+- id: dockerfile_2
+  selector:
+    path: Dockerfile
+    anchor: STOPSIGNAL SIGTERM
+- id: dockerfile_3
+  selector:
+    path: Dockerfile
+    anchor: COPY docker-entrypoint.sh /usr/local/bin/
+- id: main
+  selector:
+    path: src/main.py
+    anchor: parser.add_argument('command', choices=['serve', 'migrate', 'shell'])
+- id: main_1
+  selector:
+    path: src/main.py
+    anchor: signal.signal(signal.SIGTERM, signal_handler)
+- id: no_docker_entrypoint
+  selector:
+    path: scripts/docker_entrypoint.sh
+- id: no_test_cli
+  selector:
+    path: tests/test_cli.py
+- id: no_values
+  selector:
+    path: helm/values.yaml
+- id: no_init
+  selector:
+    path: scripts/init.sh
+oracle:
+  required:
+  - dockerfile
+  - dockerfile_1
+  - dockerfile_2
+  - dockerfile_3
+  - main
+  - main_1
+  allowed: []
+  forbidden:
+  - no_docker_entrypoint
+  - no_test_cli
+  - no_values
+  - no_init

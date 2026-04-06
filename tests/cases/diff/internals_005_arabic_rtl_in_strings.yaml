@@ -1,0 +1,100 @@
+name: internals_005_arabic_rtl_in_strings
+repo:
+  initial_files:
+    src/messaging/sender.py: |
+      from src.messaging.formatter import format_message_body
+      def send_message(recipient: str, body: str) -> dict:
+          formatted = format_message_body(body)
+          return {"to": recipient, "body": formatted, "sent": True}
+      def queue_message(recipient: str, body: str) -> str:
+          return "queued:" + recipient
+    src/messaging/formatter.py: |
+      def format_message_body(body: str) -> str:
+          return body.strip()
+      def add_signature(body: str, sig: str) -> str:
+          return body + "\n" + sig
+    garbage_delivery_tracker.py: |
+      GARBAGE_INT_005_DELIVERY_MARKER_A = "track"
+      GARBAGE_INT_005_STATUS_MARKER_B = "pending"
+
+      class GarbageDeliveryTracker:
+          def noop(self):
+              pass
+    garbage_message_archive.py: |
+      GARBAGE_INT_005_ARCHIVE_MARKER_C = "store"
+      GARBAGE_INT_005_COMPRESS_MARKER_D = "gzip"
+
+      class GarbageMessageArchive:
+          def noop(self):
+              pass
+  changed_files:
+    src/messaging/sender.py: |
+      from src/messaging/formatter import format_message_body
+      def send_message(recipient: str, body: str) -> dict:
+          message = "مرحبا"
+          greeting = "أهلاً وسهلاً"
+          formatted = format_message_body(greeting + ": " + body)
+          return {"to": recipient, "body": formatted, "greeting": message, "sent": True}
+      def queue_message(recipient: str, body: str) -> str:
+          return "queued:" + recipient
+    src/messaging/formatter.py: |
+      def format_message_body(body: str) -> str:
+          return body.strip()
+      def add_signature(body: str, sig: str) -> str:
+          return body + "\n" + sig
+    garbage_delivery_tracker.py: |
+      GARBAGE_INT_005_DELIVERY_MARKER_A = "track"
+      GARBAGE_INT_005_STATUS_MARKER_B = "pending"
+
+      class GarbageDeliveryTracker:
+          def noop(self):
+              pass
+    garbage_message_archive.py: |
+      GARBAGE_INT_005_ARCHIVE_MARKER_C = "store"
+      GARBAGE_INT_005_COMPRESS_MARKER_D = "gzip"
+
+      class GarbageMessageArchive:
+          def noop(self):
+              pass
+  commit_message: Update files
+fragments:
+- id: sender_file
+  selector:
+    path: src/messaging/sender.py
+- id: req_global_0
+  selector:
+    anchor: from src/messaging/formatter import format_message_body
+- id: req_global_1
+  selector:
+    anchor: message = "مرحبا"
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_INT_005_ARCHIVE_MARKER_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_INT_005_COMPRESS_MARKER_D
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_INT_005_DELIVERY_MARKER_A
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_INT_005_STATUS_MARKER_B
+- id: no_global_4
+  selector:
+    anchor: garbage_delivery_tracker.py
+- id: no_global_5
+  selector:
+    anchor: garbage_message_archive.py
+oracle:
+  required:
+  - sender_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,26 @@
+name: internals_031_thai_mixed_with_code
+repo:
+  initial_files:
+    thai_mixed.py: |
+      def placeholder():
+          pass
+  changed_files:
+    thai_mixed.py: |
+      # ฟังก์ชันคำนวณ
+      def compute(x):  # คำนวณค่า
+          # ส่งคืนผลลัพธ์
+          return x * 2
+  commit_message: Update files
+fragments:
+- id: thai_mixed_file
+  selector:
+    path: thai_mixed.py
+- id: req_global_0
+  selector:
+    anchor: 'def compute(x):  # คำนวณค่า'
+oracle:
+  required:
+  - thai_mixed_file
+  - req_global_0
+  allowed: []
+  forbidden: []

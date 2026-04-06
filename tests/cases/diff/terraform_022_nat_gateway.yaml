@@ -1,0 +1,124 @@
+name: terraform_022_nat_gateway
+repo:
+  initial_files:
+    nat.tf: |
+      # NAT gateway resources placeholder
+    network.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block = "10.0.0.0/16"
+      }
+
+      resource "aws_subnet" "public" {
+        vpc_id                  = aws_vpc.main.id
+        cidr_block              = "10.0.0.0/24"
+        map_public_ip_on_launch = true
+      }
+    igw.tf: |
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+      }
+    secondary_nat.tf: |
+      resource "aws_eip" "secondary_nat" {
+        domain = "vpc"
+      }
+
+      resource "aws_nat_gateway" "secondary" {
+        allocation_id = aws_eip.secondary_nat.id
+        subnet_id     = aws_subnet.secondary_public.id
+        depends_on    = [aws_internet_gateway.secondary]
+      }
+    transit_gateway.tf: |
+      resource "aws_ec2_transit_gateway" "main" {
+        description = "Main transit gateway"
+      }
+
+      resource "aws_ec2_transit_gateway_vpc_attachment" "main" {
+        transit_gateway_id = aws_ec2_transit_gateway.main.id
+        vpc_id             = aws_vpc.main.id
+        subnet_ids         = aws_subnet.private[*].id
+      }
+  changed_files:
+    nat.tf: |
+      resource "aws_eip" "nat" {
+        domain = "vpc"
+      }
+
+      resource "aws_nat_gateway" "main" {
+        allocation_id = aws_eip.nat.id
+        subnet_id     = aws_subnet.public.id
+        depends_on    = [aws_internet_gateway.main]
+      }
+    network.tf: |
+      resource "aws_vpc" "main" {
+        cidr_block = "10.0.0.0/16"
+      }
+
+      resource "aws_subnet" "public" {
+        vpc_id                  = aws_vpc.main.id
+        cidr_block              = "10.0.0.0/24"
+        map_public_ip_on_launch = true
+      }
+    igw.tf: |
+      resource "aws_internet_gateway" "main" {
+        vpc_id = aws_vpc.main.id
+      }
+    secondary_nat.tf: |
+      resource "aws_eip" "secondary_nat" {
+        domain = "vpc"
+      }
+
+      resource "aws_nat_gateway" "secondary" {
+        allocation_id = aws_eip.secondary_nat.id
+        subnet_id     = aws_subnet.secondary_public.id
+        depends_on    = [aws_internet_gateway.secondary]
+      }
+    transit_gateway.tf: |
+      resource "aws_ec2_transit_gateway" "main" {
+        description = "Main transit gateway"
+      }
+
+      resource "aws_ec2_transit_gateway_vpc_attachment" "main" {
+        transit_gateway_id = aws_ec2_transit_gateway.main.id
+        vpc_id             = aws_vpc.main.id
+        subnet_ids         = aws_subnet.private[*].id
+      }
+  commit_message: Update files
+fragments:
+- id: network
+  selector:
+    path: network.tf
+    anchor: resource "aws_subnet" "public" {
+- id: network_1
+  selector:
+    path: network.tf
+    anchor: map_public_ip_on_launch = true
+- id: no_secondary_nat
+  selector:
+    path: secondary_nat.tf
+- id: no_transit_gateway
+  selector:
+    path: transit_gateway.tf
+- id: no_global_0
+  selector:
+    anchor: secondary_nat
+- id: no_global_1
+  selector:
+    anchor: aws_internet_gateway.secondary
+- id: no_global_2
+  selector:
+    anchor: aws_ec2_transit_gateway
+- id: no_global_3
+  selector:
+    anchor: transit_gateway_id
+oracle:
+  required:
+  - network
+  - network_1
+  allowed: []
+  forbidden:
+  - no_secondary_nat
+  - no_transit_gateway
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

@@ -6,26 +6,59 @@ from pathlib import Path
 
 from .config.extensions import CODE_EXTENSIONS
 from .graph import Graph
-from .types import Fragment, FragmentId
+from .types import DiffHunk, Fragment, FragmentId
 
 logger = logging.getLogger(__name__)
 
-_SAME_FILE_FLOOR = 0.01
-_HUB_REVERSE_THRESHOLD = 3
+_PROXIMITY_FLOOR_MAX = 0.04
+_PROXIMITY_HALF_DECAY = 50
+_DEFINITION_PROXIMITY_HALF_DECAY = 5
+_HUB_REVERSE_THRESHOLD = 2
 _MAX_CONTEXT_FRAGMENTS_PER_FILE = 10
-_LOW_RELEVANCE_THRESHOLD = 0.005
+_LOW_RELEVANCE_THRESHOLD = 0.02
+_SIZE_PENALTY_BASE_TOKENS = 100
+_SIZE_PENALTY_EXPONENT = 0.5
 
 
-def _apply_same_file_floor(
+def _fragment_hunk_gap(frag_start: int, frag_end: int, hunk_start: int, hunk_end: int) -> int:
+    if frag_end < hunk_start:
+        return hunk_start - frag_end
+    if frag_start > hunk_end:
+        return frag_start - hunk_end
+    return 0
+
+
+def _proximity_score(frag: Fragment, file_hunks: list[tuple[int, int]]) -> float:
+    min_gap = min(_fragment_hunk_gap(frag.start_line, frag.end_line, h_start, h_end) for h_start, h_end in file_hunks)
+    half_decay = _DEFINITION_PROXIMITY_HALF_DECAY if frag.kind == "definition" else _PROXIMITY_HALF_DECAY
+    return _PROXIMITY_FLOOR_MAX / (1.0 + min_gap / half_decay)
+
+
+def _effective_relevance_threshold(token_count: int) -> float:
+    size_factor: float = max(1.0, token_count / _SIZE_PENALTY_BASE_TOKENS) ** _SIZE_PENALTY_EXPONENT
+    return _LOW_RELEVANCE_THRESHOLD * size_factor
+
+
+def _apply_hunk_proximity_bonus(
     rel: dict[FragmentId, float],
     core_ids: set[FragmentId],
     fragments: list[Fragment],
+    hunks: list[DiffHunk],
 ) -> None:
-    core_paths = {fid.path for fid in core_ids}
+    hunks_by_path: dict[Path, list[tuple[int, int]]] = defaultdict(list)
+    for h in hunks:
+        h_start, h_end = h.core_selection_range
+        hunks_by_path[h.path].append((h_start, h_end))
+
     for frag in fragments:
-        if frag.id not in core_ids and frag.path in core_paths:
-            if rel.get(frag.id, 0.0) < _SAME_FILE_FLOOR:
-                rel[frag.id] = _SAME_FILE_FLOOR
+        if frag.id in core_ids:
+            continue
+        file_hunks = hunks_by_path.get(frag.path)
+        if not file_hunks:
+            continue
+        bonus = _proximity_score(frag, file_hunks)
+        if rel.get(frag.id, 0.0) < bonus:
+            rel[frag.id] = bonus
 
 
 def _classify_semantic_edges(
@@ -63,10 +96,10 @@ def _find_hub_noise_paths(
 
     noise_counts: dict[Path, int] = {}
     for deps in reverse_deps.values():
-        if len(deps) > _HUB_REVERSE_THRESHOLD:
+        if len(deps) >= _HUB_REVERSE_THRESHOLD:
             for dep in deps:
                 noise_counts[dep] = noise_counts.get(dep, 0) + 1
-    return {p for p, count in noise_counts.items() if count >= 3 and p not in direct_edge_paths}
+    return {p for p, count in noise_counts.items() if count >= 1 and p not in direct_edge_paths}
 
 
 def _find_config_generic_code_files(
@@ -159,8 +192,7 @@ def _filter_low_relevance_fragments(
     core_ids: set[FragmentId],
     rel: dict[FragmentId, float],
 ) -> list[Fragment]:
-    changed_paths = {fid.path for fid in core_ids}
-    kept = [f for f in fragments if f.path in changed_paths or rel.get(f.id, 0.0) >= _LOW_RELEVANCE_THRESHOLD]
+    kept = [f for f in fragments if f.id in core_ids or rel.get(f.id, 0.0) >= _effective_relevance_threshold(f.token_count)]
     removed = len(fragments) - len(kept)
     if removed:
         logger.debug("diffctx: filtered %d low-relevance fragments (threshold=%.4f)", removed, _LOW_RELEVANCE_THRESHOLD)

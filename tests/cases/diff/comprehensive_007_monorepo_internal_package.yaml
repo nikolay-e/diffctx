@@ -1,0 +1,214 @@
+name: comprehensive_007_monorepo_internal_package
+repo:
+  initial_files:
+    internal/logger/index.ts: |
+      export class Logger {
+          log(message: string) {
+              console.log(message);
+          }
+      }
+
+      export function createLogger(name: string): Logger {
+          return new Logger();
+      }
+
+      export const DEFAULT_LOG_PREFIX = "[APP]";
+    packages/api/src/server.ts: |
+      import { Logger, createLogger } from '../../internal/logger';
+
+      const logger = createLogger('api');
+
+      export function startServer(port: number) {
+          logger.log(`Server started on port ${port}`);
+          return { port, status: 'running' };
+      }
+
+      export function stopServer() {
+          logger.log('Server stopped');
+      }
+    packages/worker/src/main.ts: |
+      import { Logger, createLogger } from '../../internal/logger';
+
+      const logger = createLogger('worker');
+
+      export function runWorker(taskName: string) {
+          logger.log(`Worker started: ${taskName}`);
+          return { task: taskName, status: 'processing' };
+      }
+
+      export function stopWorker() {
+          logger.log('Worker stopped');
+      }
+    internal/health/health.ts: |
+      interface HealthStatus {
+        status: 'ok' | 'degraded' | 'down';
+        uptime: number;
+        checks: Record<string, boolean>;
+      }
+
+      let startTime = Date.now();
+
+      export function getHealthStatus(): HealthStatus {
+        return {
+          status: 'ok',
+          uptime: Date.now() - startTime,
+          checks: {
+            database: true,
+            cache: true,
+          },
+        };
+      }
+
+      export function resetUptime(): void {
+        startTime = Date.now();
+      }
+    internal/metrics/metrics.ts: |
+      interface MetricEntry {
+        name: string;
+        value: number;
+        labels: Record<string, string>;
+      }
+
+      const registry: MetricEntry[] = [];
+
+      export function incrementCounter(name: string, labels: Record<string, string> = {}): void {
+        const existing = registry.find(m => m.name === name);
+        if (existing) {
+          existing.value += 1;
+        } else {
+          registry.push({ name, value: 1, labels });
+        }
+      }
+
+      export function setGauge(name: string, value: number): void {
+        const existing = registry.find(m => m.name === name);
+        if (existing) {
+          existing.value = value;
+        } else {
+          registry.push({ name, value, labels: {} });
+        }
+      }
+
+      export function getMetrics(): MetricEntry[] {
+        return [...registry];
+      }
+    tsconfig.json: |
+      {
+        "compilerOptions": {
+          "target": "ES2022",
+          "module": "NodeNext",
+          "strict": true,
+          "outDir": "dist"
+        }
+      }
+  changed_files:
+    internal/logger/index.ts: |
+      export enum LogLevel {
+          DEBUG = 0,
+          INFO = 1,
+          WARN = 2,
+          ERROR = 3,
+      }
+
+      export class Logger {
+          constructor(private level: LogLevel = LogLevel.INFO) {}
+
+          log(message: string, level: LogLevel = LogLevel.INFO) {
+              if (level >= this.level) {
+                  console.log(`[${LogLevel[level]}] ${message}`);
+              }
+          }
+
+          debug(message: string) {
+              this.log(message, LogLevel.DEBUG);
+          }
+
+          error(message: string) {
+              this.log(message, LogLevel.ERROR);
+          }
+      }
+
+      export function createLogger(name: string, level?: LogLevel): Logger {
+          return new Logger(level);
+      }
+
+      export const DEFAULT_LOG_PREFIX = "[APP]";
+  commit_message: Update files
+fragments:
+- id: index
+  selector:
+    path: internal/logger/index.ts
+    anchor: enum LogLevel
+- id: index_1
+  selector:
+    path: internal/logger/index.ts
+    anchor: 'constructor(private level: LogLevel = LogLevel.INFO)'
+- id: index_2
+  selector:
+    path: internal/logger/index.ts
+    anchor: function createLogger
+- id: server
+  selector:
+    path: packages/api/src/server.ts
+    anchor: createLogger('api')
+- id: main
+  selector:
+    path: packages/worker/src/main.ts
+    anchor: createLogger('worker')
+- id: no_health
+  selector:
+    path: internal/health/health.ts
+- id: no_metrics
+  selector:
+    path: internal/metrics/metrics.ts
+- id: no_tsconfig
+  selector:
+    path: tsconfig.json
+- id: no_global_0
+  selector:
+    anchor: getHealthStatus
+- id: no_global_1
+  selector:
+    anchor: resetUptime
+- id: no_global_2
+  selector:
+    anchor: HealthStatus
+- id: no_global_3
+  selector:
+    anchor: incrementCounter
+- id: no_global_4
+  selector:
+    anchor: setGauge
+- id: no_global_5
+  selector:
+    anchor: getMetrics
+- id: no_global_6
+  selector:
+    anchor: MetricEntry
+- id: no_global_7
+  selector:
+    anchor: ES2022
+- id: no_global_8
+  selector:
+    anchor: NodeNext
+oracle:
+  required:
+  - index
+  - index_1
+  - index_2
+  - server
+  - main
+  allowed: []
+  forbidden:
+  - no_health
+  - no_metrics
+  - no_tsconfig
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

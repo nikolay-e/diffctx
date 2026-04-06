@@ -1,0 +1,320 @@
+name: shell_022_set_options
+repo:
+  initial_files:
+    lib/safety.sh: |
+      #!/bin/bash
+
+      die() {
+          echo "FATAL: $1" >&2
+          exit 1
+      }
+
+      warn() {
+          echo "WARN: $1" >&2
+      }
+
+      trap_errors() {
+          local handler=${1:-_default_error_handler}
+          trap "$handler" ERR
+      }
+
+      _default_error_handler() {
+          local exit_code=$?
+          local line_no=${BASH_LINENO[0]}
+          echo "Error on line $line_no (exit code $exit_code)" >&2
+      }
+    robust.sh: |
+      #!/bin/bash
+      set -e
+      source ./lib/safety.sh
+
+      readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+      echo "Script directory: $SCRIPT_DIR"
+      echo "Running..."
+    debug.sh: |
+      #!/bin/bash
+
+      enable_debug() {
+          export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+          set -x
+      }
+
+      disable_debug() {
+          set +x
+      }
+
+      log_debug() {
+          if [[ "${DEBUG:-0}" == "1" ]]; then
+              echo "DEBUG: $*" >&2
+          fi
+      }
+    signals.sh: |
+      #!/bin/bash
+
+      CLEANUP_FUNCTIONS=()
+
+      register_cleanup() {
+          CLEANUP_FUNCTIONS+=("$1")
+      }
+
+      handle_sigterm() {
+          echo "Received SIGTERM, cleaning up..."
+          for fn in "${CLEANUP_FUNCTIONS[@]}"; do
+              "$fn" 2>/dev/null
+          done
+          exit 143
+      }
+
+      trap handle_sigterm SIGTERM SIGINT
+    scripts/strict_wrapper.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      source ./lib/safety.sh
+
+      trap_errors
+
+      SCRIPT=$1
+      shift
+      if [[ -z "$SCRIPT" ]]; then
+          die "Usage: $0 <script> [args...]"
+      fi
+      if [[ ! -x "$SCRIPT" ]]; then
+          die "Script not executable: $SCRIPT"
+      fi
+      exec "$SCRIPT" "$@"
+    lib/logging.sh: |
+      #!/bin/bash
+      LOG_FILE="${LOG_FILE:-/var/log/app.log}"
+
+      log_info() {
+          echo "[INFO] $(date +%T) $1" | tee -a "$LOG_FILE"
+      }
+
+      log_warn() {
+          echo "[WARN] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+      }
+
+      log_error() {
+          echo "[ERROR] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+      }
+    scripts/lint_strict.sh: |
+      #!/bin/bash
+      shellcheck -S error robust.sh
+      shellcheck -S warning lib/safety.sh
+      echo "Strict lint complete: $?"
+  changed_files:
+    lib/safety.sh: |
+      #!/bin/bash
+
+      die() {
+          echo "FATAL: $1" >&2
+          exit 1
+      }
+
+      warn() {
+          echo "WARN: $1" >&2
+      }
+
+      trap_errors() {
+          local handler=${1:-_default_error_handler}
+          trap "$handler" ERR
+      }
+
+      _default_error_handler() {
+          local exit_code=$?
+          local line_no=${BASH_LINENO[0]}
+          echo "Error on line $line_no (exit code $exit_code)" >&2
+      }
+    robust.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      source ./lib/safety.sh
+
+      trap_errors
+
+      readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      readonly CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+
+      if [[ ! -f "$CONFIG_FILE" ]]; then
+          die "Config file not found: $CONFIG_FILE"
+      fi
+
+      echo "Script directory: $SCRIPT_DIR"
+      echo "Config: $CONFIG_FILE"
+      echo "Running..."
+    debug.sh: |
+      #!/bin/bash
+
+      enable_debug() {
+          export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+          set -x
+      }
+
+      disable_debug() {
+          set +x
+      }
+
+      log_debug() {
+          if [[ "${DEBUG:-0}" == "1" ]]; then
+              echo "DEBUG: $*" >&2
+          fi
+      }
+    signals.sh: |
+      #!/bin/bash
+
+      CLEANUP_FUNCTIONS=()
+
+      register_cleanup() {
+          CLEANUP_FUNCTIONS+=("$1")
+      }
+
+      handle_sigterm() {
+          echo "Received SIGTERM, cleaning up..."
+          for fn in "${CLEANUP_FUNCTIONS[@]}"; do
+              "$fn" 2>/dev/null
+          done
+          exit 143
+      }
+
+      trap handle_sigterm SIGTERM SIGINT
+    scripts/strict_wrapper.sh: |
+      #!/bin/bash
+      set -euo pipefail
+      source ./lib/safety.sh
+
+      trap_errors
+
+      SCRIPT=$1
+      shift
+      if [[ -z "$SCRIPT" ]]; then
+          die "Usage: $0 <script> [args...]"
+      fi
+      if [[ ! -x "$SCRIPT" ]]; then
+          die "Script not executable: $SCRIPT"
+      fi
+      exec "$SCRIPT" "$@"
+    lib/logging.sh: |
+      #!/bin/bash
+      LOG_FILE="${LOG_FILE:-/var/log/app.log}"
+
+      log_info() {
+          echo "[INFO] $(date +%T) $1" | tee -a "$LOG_FILE"
+      }
+
+      log_warn() {
+          echo "[WARN] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+      }
+
+      log_error() {
+          echo "[ERROR] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+      }
+    scripts/lint_strict.sh: |
+      #!/bin/bash
+      shellcheck -S error robust.sh
+      shellcheck -S warning lib/safety.sh
+      echo "Strict lint complete: $?"
+  commit_message: Update files
+fragments:
+- id: safety
+  selector:
+    path: lib/safety.sh
+    anchor: die()
+- id: safety_1
+  selector:
+    path: lib/safety.sh
+    anchor: trap_errors()
+- id: safety_2
+  selector:
+    path: lib/safety.sh
+    anchor: _default_error_handler
+- id: robust
+  selector:
+    path: robust.sh
+    anchor: trap_errors
+- id: robust_1
+  selector:
+    path: robust.sh
+    anchor: die
+- id: robust_2
+  selector:
+    path: robust.sh
+    anchor: set -euo pipefail
+- id: no_debug
+  selector:
+    path: debug.sh
+- id: no_signals
+  selector:
+    path: signals.sh
+- id: no_strict_wrapper
+  selector:
+    path: scripts/strict_wrapper.sh
+- id: no_logging
+  selector:
+    path: lib/logging.sh
+- id: no_lint_strict
+  selector:
+    path: scripts/lint_strict.sh
+- id: no_global_0
+  selector:
+    anchor: enable_debug
+- id: no_global_1
+  selector:
+    anchor: disable_debug
+- id: no_global_2
+  selector:
+    anchor: log_debug
+- id: no_global_3
+  selector:
+    anchor: handle_sigterm
+- id: no_global_4
+  selector:
+    anchor: register_cleanup
+- id: no_global_5
+  selector:
+    anchor: CLEANUP_FUNCTIONS
+- id: no_global_6
+  selector:
+    anchor: Script not executable
+- id: no_global_7
+  selector:
+    anchor: exec "$SCRIPT"
+- id: no_global_8
+  selector:
+    anchor: log_info
+- id: no_global_9
+  selector:
+    anchor: log_warn
+- id: no_global_10
+  selector:
+    anchor: shellcheck -S
+- id: no_global_11
+  selector:
+    anchor: Strict lint complete
+oracle:
+  required:
+  - safety
+  - safety_1
+  - safety_2
+  - robust
+  - robust_1
+  - robust_2
+  allowed: []
+  forbidden:
+  - no_debug
+  - no_signals
+  - no_strict_wrapper
+  - no_logging
+  - no_lint_strict
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

@@ -1,0 +1,177 @@
+name: internals_065_cross_module_isolation
+repo:
+  initial_files:
+    app/auth/login.py: |
+      def authenticate_user(username: str, password: str) -> bool:
+          return len(username) > 0 and len(password) > 0
+
+      def create_session(user_id: int) -> str:
+          return f"session_{user_id}"
+    app/billing/subscription.py: |
+      SUBSCRIPTION_MODULE_MARKER_PPP111 = "billing"
+
+      def authenticate_payment(card_number: str, cvv: str) -> bool:
+          AUTH_PAYMENT_MARKER_QQQ222 = True
+          return len(card_number) == 16
+
+      def create_invoice(amount: float) -> dict:
+          CREATE_INVOICE_MARKER_RRR333 = True
+          return {"amount": amount}
+
+      class SubscriptionManager:
+          MANAGER_MARKER_SSS444 = "subscription"
+
+          def create_session(self, plan_id: int) -> str:
+              SESSION_MARKER_TTT555 = True
+              return f"subscription_{plan_id}"
+    app/analytics/tracking.py: |
+      TRACKING_MODULE_MARKER_UUU666 = "analytics"
+
+      def authenticate_api_key(api_key: str) -> bool:
+          AUTH_API_MARKER_VVV777 = True
+          return len(api_key) == 32
+
+      def create_event(event_type: str) -> dict:
+          CREATE_EVENT_MARKER_WWW888 = True
+          return {"type": event_type}
+
+      class SessionTracker:
+          TRACKER_MARKER_XXX999 = "tracker"
+
+          def create_session(self, visitor_id: str) -> str:
+              VISITOR_SESSION_MARKER_YYY000 = True
+              return f"visit_{visitor_id}"
+  changed_files:
+    app/auth/login.py: |
+      import hashlib
+
+      def authenticate_user(username: str, password: str) -> bool:
+          if not username or not password:
+              return False
+          return len(username) >= 3 and len(password) >= 8
+
+      def create_session(user_id: int) -> str:
+          token = hashlib.sha256(f"user_{user_id}".encode()).hexdigest()[:16]
+          return f"session_{token}"
+
+      def invalidate_session(session_id: str) -> bool:
+          return session_id.startswith("session_")
+    app/billing/subscription.py: |
+      SUBSCRIPTION_MODULE_MARKER_PPP111 = "billing"
+
+      def authenticate_payment(card_number: str, cvv: str) -> bool:
+          AUTH_PAYMENT_MARKER_QQQ222 = True
+          return len(card_number) == 16
+
+      def create_invoice(amount: float) -> dict:
+          CREATE_INVOICE_MARKER_RRR333 = True
+          return {"amount": amount}
+
+      class SubscriptionManager:
+          MANAGER_MARKER_SSS444 = "subscription"
+
+          def create_session(self, plan_id: int) -> str:
+              SESSION_MARKER_TTT555 = True
+              return f"subscription_{plan_id}"
+    app/analytics/tracking.py: |
+      TRACKING_MODULE_MARKER_UUU666 = "analytics"
+
+      def authenticate_api_key(api_key: str) -> bool:
+          AUTH_API_MARKER_VVV777 = True
+          return len(api_key) == 32
+
+      def create_event(event_type: str) -> dict:
+          CREATE_EVENT_MARKER_WWW888 = True
+          return {"type": event_type}
+
+      class SessionTracker:
+          TRACKER_MARKER_XXX999 = "tracker"
+
+          def create_session(self, visitor_id: str) -> str:
+              VISITOR_SESSION_MARKER_YYY000 = True
+              return f"visit_{visitor_id}"
+  commit_message: Update files
+fragments:
+- id: login
+  selector:
+    path: app/auth/login.py
+    anchor: import hashlib
+- id: login_1
+  selector:
+    path: app/auth/login.py
+    anchor: 'if not username or not password:'
+- id: login_2
+  selector:
+    path: app/auth/login.py
+    anchor: 'def invalidate_session(session_id: str) -> bool:'
+- id: no_subscription
+  selector:
+    path: app/billing/subscription.py
+- id: no_tracking
+  selector:
+    path: app/analytics/tracking.py
+- id: no_global_0
+  selector:
+    anchor: SUBSCRIPTION_MODULE_MARKER_PPP111
+- id: no_global_1
+  selector:
+    anchor: AUTH_PAYMENT_MARKER_QQQ222
+- id: no_global_2
+  selector:
+    anchor: CREATE_INVOICE_MARKER_RRR333
+- id: no_global_3
+  selector:
+    anchor: MANAGER_MARKER_SSS444
+- id: no_global_4
+  selector:
+    anchor: SESSION_MARKER_TTT555
+- id: no_global_5
+  selector:
+    anchor: authenticate_payment
+- id: no_global_6
+  selector:
+    anchor: SubscriptionManager
+- id: no_global_7
+  selector:
+    anchor: TRACKING_MODULE_MARKER_UUU666
+- id: no_global_8
+  selector:
+    anchor: AUTH_API_MARKER_VVV777
+- id: no_global_9
+  selector:
+    anchor: CREATE_EVENT_MARKER_WWW888
+- id: no_global_10
+  selector:
+    anchor: TRACKER_MARKER_XXX999
+- id: no_global_11
+  selector:
+    anchor: VISITOR_SESSION_MARKER_YYY000
+- id: no_global_12
+  selector:
+    anchor: authenticate_api_key
+- id: no_global_13
+  selector:
+    anchor: SessionTracker
+oracle:
+  required:
+  - login
+  - login_1
+  - login_2
+  allowed: []
+  forbidden:
+  - no_subscription
+  - no_tracking
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13

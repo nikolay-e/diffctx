@@ -1,0 +1,24 @@
+name: internals_032_thai_in_diff
+repo:
+  initial_files:
+    thai_diff.py: |
+      x = 0
+  changed_files:
+    thai_diff.py: |
+      # ภาษาไทยไม่มีช่องว่าง
+      result = calculate_sum(values)
+      output = format_result(result)
+  commit_message: Update files
+fragments:
+- id: thai_diff_file
+  selector:
+    path: thai_diff.py
+- id: req_global_0
+  selector:
+    anchor: result = calculate_sum(values)
+oracle:
+  required:
+  - thai_diff_file
+  - req_global_0
+  allowed: []
+  forbidden: []

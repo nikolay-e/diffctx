@@ -1,0 +1,197 @@
+name: javascript_083_watch
+repo:
+  initial_files:
+    api.ts: |
+      export async function fetchUserData(userId: string) {
+          return { id: userId, name: 'User' };
+      }
+
+      export async function fetchUserAvatar(userId: string) {
+          return { userId, url: `/avatars/${userId}.png` };
+      }
+    UserDetails.vue: |
+      <template><div>initial</div></template>
+    UserList.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      import UserDetails from './UserDetails.vue';
+
+      const userIds = ref(['u1', 'u2', 'u3']);
+      const selectedId = ref('u1');
+      </script>
+
+      <template>
+          <div>
+              <button v-for="id in userIds" :key="id" @click="selectedId = id">{{ id }}</button>
+              <UserDetails :userId="selectedId" />
+          </div>
+      </template>
+    user-cache.ts: |
+      const cache = new Map<string, { id: string; name: string }>();
+
+      export function getCachedUser(userId: string): { id: string; name: string } | null {
+          return cache.get(userId) ?? null;
+      }
+
+      export function setCachedUser(userId: string, data: { id: string; name: string }): void {
+          cache.set(userId, data);
+      }
+    UserAvatar.vue: |
+      <script setup lang="ts">
+      import { ref, watch } from 'vue';
+      import { fetchUserAvatar } from './api';
+
+      const props = defineProps<{ userId: string }>();
+      const avatarUrl = ref<string | null>(null);
+
+      watch(() => props.userId, async (newId) => {
+          const result = await fetchUserAvatar(newId);
+          avatarUrl.value = result.url;
+      }, { immediate: true });
+      </script>
+
+      <template>
+          <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" />
+      </template>
+  changed_files:
+    api.ts: |
+      export async function fetchUserData(userId: string) {
+          return { id: userId, name: 'User' };
+      }
+
+      export async function fetchUserAvatar(userId: string) {
+          return { userId, url: `/avatars/${userId}.png` };
+      }
+    UserDetails.vue: |
+      <script setup lang="ts">
+      import { ref, watch } from 'vue';
+      import { fetchUserData } from './api';
+
+      const props = defineProps<{ userId: string }>();
+      const userData = ref<{ id: string; name: string } | null>(null);
+
+      watch(() => props.userId, async (newId) => {
+          userData.value = await fetchUserData(newId);
+      }, { immediate: true });
+      </script>
+
+      <template>
+          <div v-if="userData">{{ userData.name }}</div>
+      </template>
+    UserList.vue: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      import UserDetails from './UserDetails.vue';
+
+      const userIds = ref(['u1', 'u2', 'u3']);
+      const selectedId = ref('u1');
+      </script>
+
+      <template>
+          <div>
+              <button v-for="id in userIds" :key="id" @click="selectedId = id">{{ id }}</button>
+              <UserDetails :userId="selectedId" />
+          </div>
+      </template>
+    user-cache.ts: |
+      const cache = new Map<string, { id: string; name: string }>();
+
+      export function getCachedUser(userId: string): { id: string; name: string } | null {
+          return cache.get(userId) ?? null;
+      }
+
+      export function setCachedUser(userId: string, data: { id: string; name: string }): void {
+          cache.set(userId, data);
+      }
+    UserAvatar.vue: |
+      <script setup lang="ts">
+      import { ref, watch } from 'vue';
+      import { fetchUserAvatar } from './api';
+
+      const props = defineProps<{ userId: string }>();
+      const avatarUrl = ref<string | null>(null);
+
+      watch(() => props.userId, async (newId) => {
+          const result = await fetchUserAvatar(newId);
+          avatarUrl.value = result.url;
+      }, { immediate: true });
+      </script>
+
+      <template>
+          <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" />
+      </template>
+  commit_message: Update files
+fragments:
+- id: userdetails
+  selector:
+    path: UserDetails.vue
+    anchor: import { fetchUserData } from './api'
+- id: userdetails_1
+  selector:
+    path: UserDetails.vue
+    anchor: watch(() => props.userId
+- id: userdetails_2
+  selector:
+    path: UserDetails.vue
+    anchor: userData.value = await fetchUserData(newId)
+- id: api
+  selector:
+    path: api.ts
+    anchor: 'async function fetchUserData(userId: string)'
+- id: api_1
+  selector:
+    path: api.ts
+    anchor: 'return { id: userId, name: ''User'' }'
+- id: no_userlist
+  selector:
+    path: UserList.vue
+- id: no_user_cache
+  selector:
+    path: user-cache.ts
+- id: no_useravatar
+  selector:
+    path: UserAvatar.vue
+- id: no_global_0
+  selector:
+    anchor: UserList
+- id: no_global_1
+  selector:
+    anchor: selectedId
+- id: no_global_2
+  selector:
+    anchor: userIds
+- id: no_global_3
+  selector:
+    anchor: getCachedUser
+- id: no_global_4
+  selector:
+    anchor: setCachedUser
+- id: no_global_5
+  selector:
+    anchor: UserAvatar
+- id: no_global_6
+  selector:
+    anchor: fetchUserAvatar
+- id: no_global_7
+  selector:
+    anchor: avatarUrl
+oracle:
+  required:
+  - userdetails
+  - userdetails_1
+  - userdetails_2
+  - api
+  - api_1
+  allowed: []
+  forbidden:
+  - no_userlist
+  - no_user_cache
+  - no_useravatar
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

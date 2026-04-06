@@ -1,0 +1,126 @@
+name: output_008_all_changed_files_included
+repo:
+  initial_files:
+    a.py: |
+      x = 1
+    b.py: |
+      y = 2
+    c.py: |
+      z = 3
+    utils/feature_flag_service.py: |
+      FLAG_STORE_BACKEND = "redis"
+      DEFAULT_FLAG_STATE = False
+
+      class FeatureFlagService:
+          def __init__(self):
+              self._flags: dict[str, bool] = {}
+
+          def is_enabled(self, flag_name: str) -> bool:
+              return self._flags.get(flag_name, DEFAULT_FLAG_STATE)
+
+          def set_flag(self, flag_name: str, enabled: bool) -> None:
+              self._flags[flag_name] = enabled
+    utils/rollout_manager.py: |
+      MAX_ROLLOUT_PERCENTAGE = 100
+      ROLLOUT_INCREMENT = 10
+
+      class RolloutManager:
+          def __init__(self):
+              self._percentages: dict[str, int] = {}
+
+          def set_percentage(self, flag: str, pct: int) -> None:
+              self._percentages[flag] = min(pct, MAX_ROLLOUT_PERCENTAGE)
+
+          def get_percentage(self, flag: str) -> int:
+              return self._percentages.get(flag, 0)
+  changed_files:
+    a.py: |
+      x = 10
+    b.py: |
+      y = 20
+    c.py: |
+      z = 3
+    utils/feature_flag_service.py: |
+      FLAG_STORE_BACKEND = "redis"
+      DEFAULT_FLAG_STATE = False
+
+      class FeatureFlagService:
+          def __init__(self):
+              self._flags: dict[str, bool] = {}
+
+          def is_enabled(self, flag_name: str) -> bool:
+              return self._flags.get(flag_name, DEFAULT_FLAG_STATE)
+
+          def set_flag(self, flag_name: str, enabled: bool) -> None:
+              self._flags[flag_name] = enabled
+    utils/rollout_manager.py: |
+      MAX_ROLLOUT_PERCENTAGE = 100
+      ROLLOUT_INCREMENT = 10
+
+      class RolloutManager:
+          def __init__(self):
+              self._percentages: dict[str, int] = {}
+
+          def set_percentage(self, flag: str, pct: int) -> None:
+              self._percentages[flag] = min(pct, MAX_ROLLOUT_PERCENTAGE)
+
+          def get_percentage(self, flag: str) -> int:
+              return self._percentages.get(flag, 0)
+  commit_message: Update files
+fragments:
+- id: a_file
+  selector:
+    path: a.py
+- id: b_file
+  selector:
+    path: b.py
+- id: req_global_0
+  selector:
+    anchor: x = 10
+- id: no_feature_flag_service
+  selector:
+    path: utils/feature_flag_service.py
+- id: no_rollout_manager
+  selector:
+    path: utils/rollout_manager.py
+- id: no_global_0
+  selector:
+    anchor: c.py
+- id: no_global_1
+  selector:
+    anchor: z = 3
+- id: no_global_2
+  selector:
+    anchor: FeatureFlagService
+- id: no_global_3
+  selector:
+    anchor: FLAG_STORE_BACKEND
+- id: no_global_4
+  selector:
+    anchor: DEFAULT_FLAG_STATE
+- id: no_global_5
+  selector:
+    anchor: RolloutManager
+- id: no_global_6
+  selector:
+    anchor: MAX_ROLLOUT_PERCENTAGE
+- id: no_global_7
+  selector:
+    anchor: ROLLOUT_INCREMENT
+oracle:
+  required:
+  - a_file
+  - b_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_feature_flag_service
+  - no_rollout_manager
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

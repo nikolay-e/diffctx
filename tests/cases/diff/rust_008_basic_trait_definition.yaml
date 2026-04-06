@@ -1,0 +1,310 @@
+name: rust_008_basic_trait_definition
+repo:
+  initial_files:
+    src/lib.rs: |
+      pub mod traits;
+      pub mod printable;
+      pub mod serializable;
+    src/traits.rs: |
+      use std::fmt::Debug;
+
+      pub trait Named {
+          fn name(&self) -> &str;
+
+          fn display_name(&self) -> String {
+              format!("Name: {}", self.name())
+          }
+      }
+
+      pub trait Identifiable {
+          type Id: Debug + Clone;
+
+          fn id(&self) -> Self::Id;
+      }
+
+      pub struct Entity {
+          name: String,
+          id: u64,
+      }
+
+      impl Named for Entity {
+          fn name(&self) -> &str {
+              &self.name
+          }
+      }
+
+      impl Identifiable for Entity {
+          type Id = u64;
+
+          fn id(&self) -> Self::Id {
+              self.id
+          }
+      }
+    src/printable.rs: |
+      pub trait Printable {
+          fn print(&self);
+          fn print_verbose(&self);
+      }
+
+      pub struct Document {
+          title: String,
+          content: String,
+      }
+
+      impl Document {
+          pub fn new(title: &str, content: &str) -> Self {
+              Self {
+                  title: title.to_string(),
+                  content: content.to_string(),
+              }
+          }
+      }
+
+      impl Printable for Document {
+          fn print(&self) {
+              println!("{}", self.title);
+          }
+
+          fn print_verbose(&self) {
+              println!("{}: {}", self.title, self.content);
+          }
+      }
+    src/serializable.rs: |
+      pub trait Serializable {
+          fn to_bytes(&self) -> Vec<u8>;
+          fn from_bytes(data: &[u8]) -> Self where Self: Sized;
+
+          fn to_string_repr(&self) -> String {
+              let bytes = self.to_bytes();
+              bytes.iter().map(|b| format!("{:02x}", b)).collect()
+          }
+      }
+
+      pub struct Record {
+          pub id: u32,
+          pub data: Vec<u8>,
+      }
+
+      impl Serializable for Record {
+          fn to_bytes(&self) -> Vec<u8> {
+              let mut buf = self.id.to_be_bytes().to_vec();
+              buf.extend_from_slice(&self.data);
+              buf
+          }
+
+          fn from_bytes(data: &[u8]) -> Self {
+              let id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+              Self { id, data: data[4..].to_vec() }
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod traits;
+      pub mod printable;
+      pub mod serializable;
+    src/traits.rs: |
+      use std::fmt::Debug;
+
+      pub trait Named {
+          fn name(&self) -> &str;
+
+          fn display_name(&self) -> String {
+              format!("Name: {}", self.name())
+          }
+      }
+
+      pub trait Identifiable {
+          type Id: Debug + Clone;
+
+          fn id(&self) -> Self::Id;
+      }
+
+      pub trait Describable {
+          fn describe(&self) -> String;
+
+          fn short_description(&self) -> String {
+              let desc = self.describe();
+              if desc.len() > 50 {
+                  format!("{}...", &desc[..47])
+              } else {
+                  desc
+              }
+          }
+
+          fn detailed_description(&self) -> String {
+              format!("Description: {}", self.describe())
+          }
+      }
+
+      pub trait Displayable: Named + Describable {
+          fn display(&self) -> String {
+              format!("{}: {}", self.name(), self.short_description())
+          }
+      }
+
+      pub struct Entity {
+          name: String,
+          id: u64,
+          description: String,
+      }
+
+      impl Entity {
+          pub fn new(id: u64, name: &str, description: &str) -> Self {
+              Self {
+                  id,
+                  name: name.to_string(),
+                  description: description.to_string(),
+              }
+          }
+      }
+
+      impl Named for Entity {
+          fn name(&self) -> &str {
+              &self.name
+          }
+      }
+
+      impl Identifiable for Entity {
+          type Id = u64;
+
+          fn id(&self) -> Self::Id {
+              self.id
+          }
+      }
+
+      impl Describable for Entity {
+          fn describe(&self) -> String {
+              self.description.clone()
+          }
+      }
+
+      impl Displayable for Entity {}
+    src/printable.rs: |
+      pub trait Printable {
+          fn print(&self);
+          fn print_verbose(&self);
+      }
+
+      pub struct Document {
+          title: String,
+          content: String,
+      }
+
+      impl Document {
+          pub fn new(title: &str, content: &str) -> Self {
+              Self {
+                  title: title.to_string(),
+                  content: content.to_string(),
+              }
+          }
+      }
+
+      impl Printable for Document {
+          fn print(&self) {
+              println!("{}", self.title);
+          }
+
+          fn print_verbose(&self) {
+              println!("{}: {}", self.title, self.content);
+          }
+      }
+    src/serializable.rs: |
+      pub trait Serializable {
+          fn to_bytes(&self) -> Vec<u8>;
+          fn from_bytes(data: &[u8]) -> Self where Self: Sized;
+
+          fn to_string_repr(&self) -> String {
+              let bytes = self.to_bytes();
+              bytes.iter().map(|b| format!("{:02x}", b)).collect()
+          }
+      }
+
+      pub struct Record {
+          pub id: u32,
+          pub data: Vec<u8>,
+      }
+
+      impl Serializable for Record {
+          fn to_bytes(&self) -> Vec<u8> {
+              let mut buf = self.id.to_be_bytes().to_vec();
+              buf.extend_from_slice(&self.data);
+              buf
+          }
+
+          fn from_bytes(data: &[u8]) -> Self {
+              let id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+              Self { id, data: data[4..].to_vec() }
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: traits
+  selector:
+    path: src/traits.rs
+    anchor: pub trait Describable
+- id: traits_1
+  selector:
+    path: src/traits.rs
+    anchor: fn short_description(&self) -> String {
+- id: traits_2
+  selector:
+    path: src/traits.rs
+    anchor: fn detailed_description(&self) -> String {
+- id: traits_3
+  selector:
+    path: src/traits.rs
+    anchor: 'pub trait Displayable: Named + Describable'
+- id: traits_4
+  selector:
+    path: src/traits.rs
+    anchor: impl Describable for Entity
+- id: traits_5
+  selector:
+    path: src/traits.rs
+    anchor: impl Displayable for Entity
+- id: no_printable
+  selector:
+    path: src/printable.rs
+- id: no_serializable
+  selector:
+    path: src/serializable.rs
+- id: no_global_0
+  selector:
+    anchor: Printable
+- id: no_global_1
+  selector:
+    anchor: print_verbose
+- id: no_global_2
+  selector:
+    anchor: Document
+- id: no_global_3
+  selector:
+    anchor: Serializable
+- id: no_global_4
+  selector:
+    anchor: to_bytes
+- id: no_global_5
+  selector:
+    anchor: from_bytes
+- id: no_global_6
+  selector:
+    anchor: to_string_repr
+oracle:
+  required:
+  - traits
+  - traits_1
+  - traits_2
+  - traits_3
+  - traits_4
+  - traits_5
+  allowed: []
+  forbidden:
+  - no_printable
+  - no_serializable
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

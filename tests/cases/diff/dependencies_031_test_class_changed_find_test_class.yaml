@@ -1,0 +1,176 @@
+name: dependencies_031_test_class_changed_find_test_class
+repo:
+  initial_files:
+    user_service.py: |
+      class UserService:
+          def __init__(self):
+              self.users = []
+
+          def add_user(self, name):
+              self.users.append(name)
+    tests/test_user_service.py: |
+      from user_service import UserService
+
+      class TestUserService:
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Alice")
+              assert "Alice" in service.users
+    admin_service.py: |
+      GARBAGE_DEP031_ADMIN_SVC_A = "admin_service_module"
+      GARBAGE_DEP031_ADMIN_INIT_B = True
+
+      class UserService:
+          GARBAGE_DEP031_ADMIN_CLASS_C = "admin_user_svc"
+
+          def __init__(self):
+              self.admins = []
+
+          def add_user(self, name, role="admin"):
+              self.admins.append({"name": name, "role": role})
+    tests/test_admin_service.py: |
+      from admin_service import UserService
+      GARBAGE_DEP031_ADMINTEST_D = "admin_test_module"
+      GARBAGE_DEP031_ADMINTEST_SETUP_E = True
+
+      class TestUserService:
+          GARBAGE_DEP031_ADMINTEST_CLASS_F = "admin_test_cls"
+
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Bob")
+              assert len(service.admins) == 1
+    order_service.py: |
+      GARBAGE_DEP031_ORDER_SVC_G = "order_service_module"
+      GARBAGE_DEP031_ORDER_INIT_H = True
+
+      class OrderService:
+          def __init__(self):
+              self.orders = []
+
+          def deactivate(self, order_id):
+              GARBAGE_DEP031_ORDER_DEACT_I = "deactivating"
+              pass
+  changed_files:
+    user_service.py: |
+      class UserService:
+          def __init__(self):
+              self.users = []
+
+          def add_user(self, name):
+              self.users.append(name)
+
+          def deactivate(self, user_id):
+              pass
+    tests/test_user_service.py: |
+      from user_service import UserService
+
+      class TestUserService:
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Alice")
+              assert "Alice" in service.users
+    admin_service.py: |
+      GARBAGE_DEP031_ADMIN_SVC_A = "admin_service_module"
+      GARBAGE_DEP031_ADMIN_INIT_B = True
+
+      class UserService:
+          GARBAGE_DEP031_ADMIN_CLASS_C = "admin_user_svc"
+
+          def __init__(self):
+              self.admins = []
+
+          def add_user(self, name, role="admin"):
+              self.admins.append({"name": name, "role": role})
+    tests/test_admin_service.py: |
+      from admin_service import UserService
+      GARBAGE_DEP031_ADMINTEST_D = "admin_test_module"
+      GARBAGE_DEP031_ADMINTEST_SETUP_E = True
+
+      class TestUserService:
+          GARBAGE_DEP031_ADMINTEST_CLASS_F = "admin_test_cls"
+
+          def test_add_user(self):
+              service = UserService()
+              service.add_user("Bob")
+              assert len(service.admins) == 1
+    order_service.py: |
+      GARBAGE_DEP031_ORDER_SVC_G = "order_service_module"
+      GARBAGE_DEP031_ORDER_INIT_H = True
+
+      class OrderService:
+          def __init__(self):
+              self.orders = []
+
+          def deactivate(self, order_id):
+              GARBAGE_DEP031_ORDER_DEACT_I = "deactivating"
+              pass
+  commit_message: Update files
+fragments:
+- id: user_service
+  selector:
+    path: user_service.py
+    anchor: 'def deactivate(self, user_id):'
+- id: user_service_1
+  selector:
+    path: user_service.py
+    anchor: 'class UserService:'
+- id: test_user_service
+  selector:
+    path: tests/test_user_service.py
+    anchor: from user_service import UserService
+- id: no_admin_service
+  selector:
+    path: admin_service.py
+- id: no_test_admin_service
+  selector:
+    path: tests/test_admin_service.py
+- id: no_order_service
+  selector:
+    path: order_service.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_DEP031_ADMIN_SVC_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_DEP031_ADMIN_INIT_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_DEP031_ADMIN_CLASS_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_DEP031_ADMINTEST_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_DEP031_ADMINTEST_SETUP_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_DEP031_ADMINTEST_CLASS_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_DEP031_ORDER_SVC_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_DEP031_ORDER_INIT_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_DEP031_ORDER_DEACT_I
+oracle:
+  required:
+  - user_service
+  - user_service_1
+  - test_user_service
+  allowed: []
+  forbidden:
+  - no_admin_service
+  - no_test_admin_service
+  - no_order_service
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

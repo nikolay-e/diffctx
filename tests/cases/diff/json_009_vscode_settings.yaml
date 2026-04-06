@@ -1,0 +1,196 @@
+name: json_009_vscode_settings
+repo:
+  initial_files:
+    config/settings.json: |
+      {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "python.linting.enabled": true,
+        "python.defaultInterpreterPath": "./venv/bin/python",
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true
+        }
+      }
+    src/main.py: |
+      import os
+      from pathlib import Path
+      from typing import Optional
+
+      from src.config import load_config
+      from src.processor import DataProcessor
+
+
+      def main():
+          config_path = Path(os.environ.get("CONFIG_PATH", "config.yaml"))
+          config = load_config(config_path)
+          processor = DataProcessor(config)
+          results = processor.run()
+          print(f"Processed {len(results)} items")
+          return results
+
+
+      def find_project_root(start: Optional[Path] = None) -> Path:
+          current = start or Path.cwd()
+          while current != current.parent:
+              if (current / "pyproject.toml").exists():
+                  return current
+              current = current.parent
+          raise FileNotFoundError("Could not find project root")
+    src/config.py: |
+      import yaml
+      from pathlib import Path
+      from typing import Any
+
+
+      def load_config(path: Path) -> dict[str, Any]:
+          with open(path) as f:
+              raw = yaml.safe_load(f)
+          return validate_config(raw)
+
+
+      def validate_config(raw: dict) -> dict[str, Any]:
+          required = ["input_dir", "output_dir", "format"]
+          missing = [k for k in required if k not in raw]
+          if missing:
+              raise ValueError(f"Missing config keys: {', '.join(missing)}")
+          return raw
+    docs/style_guide.txt: |
+      Project Style Guide
+      ===================
+
+      Code Formatting:
+      - Use 4 spaces for indentation
+      - Maximum line length: 88 characters
+      - Use trailing commas in multi-line structures
+
+      Naming Conventions:
+      - snake_case for functions and variables
+      - PascalCase for classes
+      - UPPER_CASE for constants
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      echo "Deploying application..."
+      docker build -t myapp:latest .
+      docker push myapp:latest
+      kubectl rollout restart deployment/myapp
+      echo "Deployment complete"
+  changed_files:
+    config/settings.json: |
+      {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.formatting.provider": "black",
+        "python.defaultInterpreterPath": "./venv/bin/python",
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true
+        },
+        "[python]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        }
+      }
+    src/main.py: |
+      import os
+      from pathlib import Path
+      from typing import Optional
+
+      from src.config import load_config
+      from src.processor import DataProcessor
+
+
+      def main():
+          config_path = Path(os.environ.get("CONFIG_PATH", "config.yaml"))
+          config = load_config(config_path)
+          processor = DataProcessor(config)
+          results = processor.run()
+          print(f"Processed {len(results)} items")
+          return results
+
+
+      def find_project_root(start: Optional[Path] = None) -> Path:
+          current = start or Path.cwd()
+          while current != current.parent:
+              if (current / "pyproject.toml").exists():
+                  return current
+              current = current.parent
+          raise FileNotFoundError("Could not find project root")
+    src/config.py: |
+      import yaml
+      from pathlib import Path
+      from typing import Any
+
+
+      def load_config(path: Path) -> dict[str, Any]:
+          with open(path) as f:
+              raw = yaml.safe_load(f)
+          return validate_config(raw)
+
+
+      def validate_config(raw: dict) -> dict[str, Any]:
+          required = ["input_dir", "output_dir", "format"]
+          missing = [k for k in required if k not in raw]
+          if missing:
+              raise ValueError(f"Missing config keys: {', '.join(missing)}")
+          return raw
+    docs/style_guide.txt: |
+      Project Style Guide
+      ===================
+
+      Code Formatting:
+      - Use 4 spaces for indentation
+      - Maximum line length: 88 characters
+      - Use trailing commas in multi-line structures
+
+      Naming Conventions:
+      - snake_case for functions and variables
+      - PascalCase for classes
+      - UPPER_CASE for constants
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      echo "Deploying application..."
+      docker build -t myapp:latest .
+      docker push myapp:latest
+      kubectl rollout restart deployment/myapp
+      echo "Deployment complete"
+  commit_message: Update files
+fragments:
+- id: settings_file
+  selector:
+    path: config/settings.json
+- id: req_global_0
+  selector:
+    anchor: pylintEnabled
+- id: req_global_1
+  selector:
+    anchor: ms-python.black-formatter
+- id: no_global_0
+  selector:
+    anchor: Project Style Guide
+- id: no_global_1
+  selector:
+    anchor: Maximum line length
+- id: no_global_2
+  selector:
+    anchor: docker build
+- id: no_global_3
+  selector:
+    anchor: kubectl rollout
+oracle:
+  required:
+  - settings_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

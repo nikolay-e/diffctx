@@ -1,0 +1,268 @@
+name: scripting_009_nullable_type
+repo:
+  initial_files:
+    src/User.php: |
+      <?php
+      class User {
+          public int $id;
+          public string $name;
+          public ?string $email;
+
+          public function __construct(int $id, string $name, ?string $email = null) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->email = $email;
+          }
+
+          public function hasEmail(): bool {
+              return $this->email !== null;
+          }
+      }
+    src/Repository.php: |
+      <?php
+      class Repository {
+      }
+    src/Validator.php: |
+      <?php
+      class Validator {
+          public function validateName(string $name): bool {
+              return strlen($name) >= 2 && strlen($name) <= 100;
+          }
+
+          public function validateId(int $id): bool {
+              return $id > 0;
+          }
+
+          public function validateEmail(string $email): bool {
+              return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+          }
+
+          public function validateAll(array $data): array {
+              $errors = [];
+              if (!$this->validateName($data['name'] ?? '')) $errors[] = 'Invalid name';
+              if (!$this->validateId($data['id'] ?? 0)) $errors[] = 'Invalid id';
+              return $errors;
+          }
+      }
+    src/UserFormatter.php: |
+      <?php
+      class UserFormatter {
+          public function formatForDisplay(array $userData): string {
+              return sprintf('%s (%d)', $userData['name'], $userData['id']);
+          }
+
+          public function formatForCsv(array $userData): string {
+              return implode(',', [$userData['id'], $userData['name']]);
+          }
+
+          public function formatForJson(array $userData): string {
+              return json_encode($userData);
+          }
+      }
+    src/UserService.php: |
+      <?php
+      require_once 'User.php';
+      require_once 'Repository.php';
+
+      class UserService {
+          private Repository $repository;
+
+          public function __construct(Repository $repository) {
+              $this->repository = $repository;
+          }
+
+          public function getUser(int $id): ?User {
+              return $this->repository->find($id);
+          }
+
+          public function createUser(string $name, string $email): User {
+              $user = new User(rand(1, 9999), $name, $email);
+              $this->repository->save($user);
+              return $user;
+          }
+
+          public function updateUser(int $id, string $name): ?User {
+              $user = $this->repository->find($id);
+              if ($user === null) return null;
+              $user->name = $name;
+              $this->repository->save($user);
+              return $user;
+          }
+      }
+    src/Product.php: |
+      <?php
+      class Product {
+          public int $id;
+          public string $name;
+          public float $price;
+
+          public function __construct(int $id, string $name, float $price = 0.0) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->price = $price;
+          }
+
+          public function formattedPrice(): string {
+              return '$' . number_format($this->price, 2);
+          }
+      }
+    src/lib/CacheableRepository.php: |
+      <?php
+      class CacheableRepository {
+          private array $cache = [];
+
+          public function find(int $id): ?object {
+              return $this->cache[$id] ?? null;
+          }
+
+          public function store(int $id, object $item): void {
+              $this->cache[$id] = $item;
+          }
+
+          public function invalidate(int $id): void {
+              unset($this->cache[$id]);
+          }
+
+          public function flush(): void {
+              $this->cache = [];
+          }
+      }
+  changed_files:
+    src/User.php: |
+      <?php
+      class User {
+          public int $id;
+          public string $name;
+          public ?string $email;
+
+          public function __construct(int $id, string $name, ?string $email = null) {
+              $this->id = $id;
+              $this->name = $name;
+              $this->email = $email;
+          }
+
+          public function hasEmail(): bool {
+              return $this->email !== null;
+          }
+      }
+    src/Repository.php: |
+      <?php
+      require_once 'User.php';
+
+      class Repository {
+          private array $users = [];
+
+          public function find(int $id): ?User {
+              return $this->users[$id] ?? null;
+          }
+
+          public function save(User $user): void {
+              $this->users[$user->id] = $user;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: src/User.php
+    anchor: public int $id
+- id: user_1
+  selector:
+    path: src/User.php
+    anchor: public string $name
+- id: repository
+  selector:
+    path: src/Repository.php
+    anchor: ?User
+- id: repository_1
+  selector:
+    path: src/Repository.php
+    anchor: save(User $user)
+- id: no_validator
+  selector:
+    path: src/Validator.php
+- id: no_userformatter
+  selector:
+    path: src/UserFormatter.php
+- id: no_userservice
+  selector:
+    path: src/UserService.php
+- id: no_product
+  selector:
+    path: src/Product.php
+- id: no_cacheablerepository
+  selector:
+    path: src/lib/CacheableRepository.php
+- id: no_global_0
+  selector:
+    anchor: validateName
+- id: no_global_1
+  selector:
+    anchor: validateEmail
+- id: no_global_2
+  selector:
+    anchor: validateAll
+- id: no_global_3
+  selector:
+    anchor: formatForDisplay
+- id: no_global_4
+  selector:
+    anchor: formatForCsv
+- id: no_global_5
+  selector:
+    anchor: formatForJson
+- id: no_global_6
+  selector:
+    anchor: UserService
+- id: no_global_7
+  selector:
+    anchor: createUser
+- id: no_global_8
+  selector:
+    anchor: updateUser
+- id: no_global_9
+  selector:
+    anchor: Product
+- id: no_global_10
+  selector:
+    anchor: formattedPrice
+- id: no_global_11
+  selector:
+    anchor: $this->price
+- id: no_global_12
+  selector:
+    anchor: CacheableRepository
+- id: no_global_13
+  selector:
+    anchor: invalidate
+- id: no_global_14
+  selector:
+    anchor: flush
+oracle:
+  required:
+  - user
+  - user_1
+  - repository
+  - repository_1
+  allowed: []
+  forbidden:
+  - no_validator
+  - no_userformatter
+  - no_userservice
+  - no_product
+  - no_cacheablerepository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

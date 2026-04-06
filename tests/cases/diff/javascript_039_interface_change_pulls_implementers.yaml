@@ -1,0 +1,205 @@
+name: javascript_039_interface_change_pulls_implementers
+repo:
+  initial_files:
+    interfaces.ts: |
+      export interface Repository<T> {
+          findById(id: string): Promise<T | null>;
+          save(entity: T): Promise<T>;
+      }
+    user_repo.ts: |
+      import { Repository } from './interfaces';
+
+      interface User { id: string; name: string; }
+
+      export class UserRepository implements Repository<User> {
+          async findById(id: string) {
+              return { id, name: 'Test' };
+          }
+          async save(entity: User) {
+              return entity;
+          }
+      }
+    product_repo.ts: |
+      import { Repository } from './interfaces';
+
+      interface Product { id: string; name: string; price: number; }
+
+      export class ProductRepository implements Repository<Product> {
+          private products: Product[] = [];
+
+          async findById(id: string) {
+              return this.products.find(p => p.id === id) ?? null;
+          }
+          async save(entity: Product) {
+              this.products.push(entity);
+              return entity;
+          }
+      }
+    repository-factory.ts: |
+      import { Repository } from './interfaces';
+      import { UserRepository } from './user_repo';
+
+      export function createRepository<T>(type: string): Repository<T> {
+          if (type === 'user') return new UserRepository() as unknown as Repository<T>;
+          throw new Error(`Unknown repository type: ${type}`);
+      }
+    cacheable-repository.ts: |
+      import { Repository } from './interfaces';
+
+      export class CacheableRepository<T> implements Repository<T> {
+          private cache = new Map<string, T>();
+
+          constructor(private delegate: Repository<T>) {}
+
+          async findById(id: string): Promise<T | null> {
+              if (this.cache.has(id)) return this.cache.get(id)!;
+              const result = await this.delegate.findById(id);
+              if (result) this.cache.set(id, result);
+              return result;
+          }
+
+          async save(entity: T): Promise<T> {
+              return this.delegate.save(entity);
+          }
+      }
+  changed_files:
+    interfaces.ts: |
+      export interface Repository<T> {
+          findById(id: string): Promise<T | null>;
+          findAll(): Promise<T[]>;
+          save(entity: T): Promise<T>;
+          delete(id: string): Promise<boolean>;
+      }
+    user_repo.ts: |
+      import { Repository } from './interfaces';
+
+      interface User { id: string; name: string; }
+
+      export class UserRepository implements Repository<User> {
+          async findById(id: string) {
+              return { id, name: 'Test' };
+          }
+          async save(entity: User) {
+              return entity;
+          }
+      }
+    product_repo.ts: |
+      import { Repository } from './interfaces';
+
+      interface Product { id: string; name: string; price: number; }
+
+      export class ProductRepository implements Repository<Product> {
+          private products: Product[] = [];
+
+          async findById(id: string) {
+              return this.products.find(p => p.id === id) ?? null;
+          }
+          async save(entity: Product) {
+              this.products.push(entity);
+              return entity;
+          }
+      }
+    repository-factory.ts: |
+      import { Repository } from './interfaces';
+      import { UserRepository } from './user_repo';
+
+      export function createRepository<T>(type: string): Repository<T> {
+          if (type === 'user') return new UserRepository() as unknown as Repository<T>;
+          throw new Error(`Unknown repository type: ${type}`);
+      }
+    cacheable-repository.ts: |
+      import { Repository } from './interfaces';
+
+      export class CacheableRepository<T> implements Repository<T> {
+          private cache = new Map<string, T>();
+
+          constructor(private delegate: Repository<T>) {}
+
+          async findById(id: string): Promise<T | null> {
+              if (this.cache.has(id)) return this.cache.get(id)!;
+              const result = await this.delegate.findById(id);
+              if (result) this.cache.set(id, result);
+              return result;
+          }
+
+          async save(entity: T): Promise<T> {
+              return this.delegate.save(entity);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: interfaces
+  selector:
+    path: interfaces.ts
+    anchor: interface Repository<T> {
+- id: interfaces_1
+  selector:
+    path: interfaces.ts
+    anchor: 'findAll(): Promise<T[]>'
+- id: interfaces_2
+  selector:
+    path: interfaces.ts
+    anchor: 'delete(id: string): Promise<boolean>'
+- id: user_repo
+  selector:
+    path: user_repo.ts
+    anchor: import { Repository } from './interfaces'
+- id: user_repo_1
+  selector:
+    path: user_repo.ts
+    anchor: class UserRepository implements Repository<User>
+- id: user_repo_2
+  selector:
+    path: user_repo.ts
+    anchor: 'async findById(id: string)'
+- id: user_repo_3
+  selector:
+    path: user_repo.ts
+    anchor: 'async save(entity: User)'
+- id: no_product_repo
+  selector:
+    path: product_repo.ts
+- id: no_repository_factory
+  selector:
+    path: repository-factory.ts
+- id: no_cacheable_repository
+  selector:
+    path: cacheable-repository.ts
+- id: no_global_0
+  selector:
+    anchor: ProductRepository
+- id: no_global_1
+  selector:
+    anchor: 'price: number'
+- id: no_global_2
+  selector:
+    anchor: createRepository
+- id: no_global_3
+  selector:
+    anchor: Unknown repository type
+- id: no_global_4
+  selector:
+    anchor: CacheableRepository
+- id: no_global_5
+  selector:
+    anchor: delegate
+oracle:
+  required:
+  - interfaces
+  - interfaces_1
+  - interfaces_2
+  - user_repo
+  - user_repo_1
+  - user_repo_2
+  - user_repo_3
+  allowed: []
+  forbidden:
+  - no_product_repo
+  - no_repository_factory
+  - no_cacheable_repository
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

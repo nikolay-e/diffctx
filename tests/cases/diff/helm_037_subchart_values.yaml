@@ -1,0 +1,48 @@
+name: helm_037_subchart_values
+repo:
+  initial_files:
+    charts/postgresql/values.yaml: |
+      auth:
+        username: postgres
+        password: ""
+        database: postgres
+    values.yaml: |
+      postgresql:
+        enabled: true
+    junk.py: |
+      garbage_marker_12345 = 1
+      unused_marker_67890 = 2
+  changed_files:
+    charts/postgresql/values.yaml: |
+      auth:
+        username: postgres
+        password: ""
+        database: postgres
+    values.yaml: |
+      postgresql:
+        enabled: true
+        auth:
+          username: myapp
+          database: myapp
+          existingSecret: db-secret
+    junk.py: |
+      garbage_marker_12345 = 1
+      unused_marker_67890 = 2
+  commit_message: Update files
+fragments:
+- id: values_file
+  selector:
+    path: values.yaml
+- id: req_global_0
+  selector:
+    anchor: 'username: postgres'
+- id: req_global_1
+  selector:
+    anchor: 'username: myapp'
+oracle:
+  required:
+  - values_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

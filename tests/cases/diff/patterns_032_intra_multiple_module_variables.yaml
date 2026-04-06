@@ -1,0 +1,141 @@
+name: patterns_032_intra_multiple_module_variables
+repo:
+  initial_files:
+    constants.py: |
+      APP_NAME = "MyApp"
+      VERSION = "1.0.0"
+      AUTHOR = "Developer"
+
+      _cache = {}
+
+      def get_app_info():
+          return f"{APP_NAME} v{VERSION} by {AUTHOR}"
+
+      def get_version():
+          return VERSION
+
+      def cache_get(key):
+          return _cache.get(key)
+
+      def cache_set(key, value):
+          _cache[key] = value
+    version_checker.py: |
+      def parse_version(version_str):
+          parts = version_str.split('.')
+          return tuple(int(p) for p in parts)
+
+      def is_compatible(current, required):
+          cur = parse_version(current)
+          req = parse_version(required)
+          return cur[0] == req[0] and cur >= req
+
+      def get_latest_version(versions):
+          return max(versions, key=parse_version)
+    changelog.py: |
+      CHANGELOG = {
+          "2.0.0": "Major rewrite with new API",
+          "1.1.0": "Added caching support",
+          "1.0.0": "Initial release",
+      }
+
+      def get_changes(version):
+          return CHANGELOG.get(version, "No changes recorded")
+
+      def list_versions():
+          return sorted(CHANGELOG.keys(), reverse=True)
+  changed_files:
+    constants.py: |
+      APP_NAME = "MyApp"
+      VERSION = "2.0.0"
+      AUTHOR = "Developer"
+
+      _cache = {}
+
+      def get_app_info():
+          return f"{APP_NAME} v{VERSION} by {AUTHOR}"
+
+      def get_version():
+          return VERSION
+
+      def cache_get(key):
+          return _cache.get(key)
+
+      def cache_set(key, value):
+          _cache[key] = value
+    version_checker.py: |
+      def parse_version(version_str):
+          parts = version_str.split('.')
+          return tuple(int(p) for p in parts)
+
+      def is_compatible(current, required):
+          cur = parse_version(current)
+          req = parse_version(required)
+          return cur[0] == req[0] and cur >= req
+
+      def get_latest_version(versions):
+          return max(versions, key=parse_version)
+    changelog.py: |
+      CHANGELOG = {
+          "2.0.0": "Major rewrite with new API",
+          "1.1.0": "Added caching support",
+          "1.0.0": "Initial release",
+      }
+
+      def get_changes(version):
+          return CHANGELOG.get(version, "No changes recorded")
+
+      def list_versions():
+          return sorted(CHANGELOG.keys(), reverse=True)
+  commit_message: Update files
+fragments:
+- id: constants
+  selector:
+    path: constants.py
+    anchor: VERSION = "2.0.0"
+- id: constants_1
+  selector:
+    path: constants.py
+    anchor: 'def get_version():'
+- id: constants_2
+  selector:
+    path: constants.py
+    anchor: 'def get_app_info():'
+- id: no_version_checker
+  selector:
+    path: version_checker.py
+- id: no_changelog
+  selector:
+    path: changelog.py
+- id: no_global_0
+  selector:
+    anchor: parse_version
+- id: no_global_1
+  selector:
+    anchor: is_compatible
+- id: no_global_2
+  selector:
+    anchor: get_latest_version
+- id: no_global_3
+  selector:
+    anchor: CHANGELOG
+- id: no_global_4
+  selector:
+    anchor: get_changes
+- id: no_global_5
+  selector:
+    anchor: list_versions
+oracle:
+  required:
+  - constants
+  - constants_1
+  - constants_2
+  allowed: []
+  forbidden:
+  - no_version_checker
+  - no_changelog
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

@@ -1,0 +1,159 @@
+name: comprehensive_010_monorepo_turborepo_depends_on
+repo:
+  initial_files:
+    turbo.json: |
+      {
+          "$schema": "https://turbo.build/schema.json",
+          "pipeline": {
+              "build": {
+                  "dependsOn": ["^build"],
+                  "outputs": ["dist/**"]
+              },
+              "test": {
+                  "dependsOn": ["build"]
+              }
+          }
+      }
+    packages/core/src/index.ts: |
+      export const VERSION = '1.0.0';
+
+      export function initialize(config: Record<string, unknown>) {
+          return { ...config, version: VERSION };
+      }
+
+      export function shutdown() {
+          return true;
+      }
+    packages/app/src/index.ts: |
+      import { VERSION, initialize } from '@myorg/core';
+
+      console.log(`App version: ${VERSION}`);
+
+      export function startApp() {
+          const config = initialize({ debug: false });
+          return config;
+      }
+    garbage_deploy_pipeline.ts: |
+      const GARBAGE_COMP_010_CANARY_WEIGHT_A = "percentage";
+      const GARBAGE_COMP_010_ROLLBACK_HOOK_B = "webhook";
+
+      class GarbageDeployPipeline {
+        static GARBAGE_COMP_010_APPROVAL_GATE_C = true;
+        deploy(): void {}
+      }
+    garbage_release_manager.ts: |
+      const GARBAGE_COMP_010_CHANGELOG_GEN_D = "conventional";
+      const GARBAGE_COMP_010_TAG_PATTERN_E = "semver";
+
+      class GarbageReleaseManager {
+        static GARBAGE_COMP_010_DRAFT_MODE_F = false;
+        release(): void {}
+      }
+  changed_files:
+    turbo.json: |
+      {
+          "$schema": "https://turbo.build/schema.json",
+          "pipeline": {
+              "build": {
+                  "dependsOn": ["^build"],
+                  "outputs": ["dist/**"],
+                  "env": ["NODE_ENV"]
+              },
+              "test": {
+                  "dependsOn": ["build"],
+                  "outputs": ["coverage/**"]
+              },
+              "lint": {
+                  "outputs": []
+              },
+              "typecheck": {
+                  "dependsOn": ["^build"],
+                  "outputs": []
+              },
+              "deploy": {
+                  "dependsOn": ["build", "test", "lint"],
+                  "outputs": []
+              }
+          }
+      }
+    packages/core/src/index.ts: |
+      export const VERSION = '1.0.0';
+
+      export function initialize(config: Record<string, unknown>) {
+          return { ...config, version: VERSION };
+      }
+
+      export function shutdown() {
+          return true;
+      }
+    packages/app/src/index.ts: |
+      import { VERSION, initialize } from '@myorg/core';
+
+      console.log(`App version: ${VERSION}`);
+
+      export function startApp() {
+          const config = initialize({ debug: false });
+          return config;
+      }
+    garbage_deploy_pipeline.ts: |
+      const GARBAGE_COMP_010_CANARY_WEIGHT_A = "percentage";
+      const GARBAGE_COMP_010_ROLLBACK_HOOK_B = "webhook";
+
+      class GarbageDeployPipeline {
+        static GARBAGE_COMP_010_APPROVAL_GATE_C = true;
+        deploy(): void {}
+      }
+    garbage_release_manager.ts: |
+      const GARBAGE_COMP_010_CHANGELOG_GEN_D = "conventional";
+      const GARBAGE_COMP_010_TAG_PATTERN_E = "semver";
+
+      class GarbageReleaseManager {
+        static GARBAGE_COMP_010_DRAFT_MODE_F = false;
+        release(): void {}
+      }
+  commit_message: Update files
+fragments:
+- id: turbo_file
+  selector:
+    path: turbo.json
+- id: req_global_0
+  selector:
+    anchor: '"outputs": ["dist/**"],'
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_COMP_010_APPROVAL_GATE_C
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_COMP_010_CANARY_WEIGHT_A
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_COMP_010_CHANGELOG_GEN_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_COMP_010_DRAFT_MODE_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_COMP_010_ROLLBACK_HOOK_B
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_COMP_010_TAG_PATTERN_E
+- id: no_global_6
+  selector:
+    anchor: garbage_deploy_pipeline.ts
+- id: no_global_7
+  selector:
+    anchor: garbage_release_manager.ts
+oracle:
+  required:
+  - turbo_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

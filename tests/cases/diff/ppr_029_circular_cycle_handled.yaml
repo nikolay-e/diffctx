@@ -1,0 +1,163 @@
+name: ppr_029_circular_cycle_handled
+repo:
+  initial_files:
+    cycle_a.py: |
+      from cycle_b import func_b
+
+      def func_a():
+          return func_b()
+    cycle_b.py: |
+      from cycle_c import func_c
+
+      def func_b():
+          return func_c()
+    cycle_c.py: |
+      from cycle_a import func_a
+
+      def func_c():
+          return func_a()
+    garbage_cycle_consumer.py: |
+      from cycle_b import func_b
+      GARBAGE_PPR029_CONSUMER_A = "consumer"
+      GARBAGE_PPR029_CONSUMER_B = True
+
+      def consume_cycle():
+          return func_b()
+
+      class CycleWatcher:
+          GARBAGE_PPR029_WATCHER_C = 99
+
+          def watch(self):
+              return func_b()
+    garbage_fake_cycle.py: |
+      GARBAGE_PPR029_FAKE_D = "fake_cycle"
+      GARBAGE_PPR029_FAKE_E = False
+
+      def func_a():
+          return func_z()
+
+      def func_z():
+          GARBAGE_PPR029_INNER_F = 42
+          return func_a()
+    garbage_cycle_util.py: |
+      GARBAGE_PPR029_UTIL_G = "cycle_util"
+      GARBAGE_PPR029_UTIL_H = 0
+
+      def cycle_reset():
+          return None
+
+      def cycle_validate():
+          return True
+  changed_files:
+    cycle_a.py: |
+      from cycle_b import func_b
+
+      def func_a():
+          return func_b() + 1
+    cycle_b.py: |
+      from cycle_c import func_c
+
+      def func_b():
+          return func_c()
+    cycle_c.py: |
+      from cycle_a import func_a
+
+      def func_c():
+          return func_a()
+    garbage_cycle_consumer.py: |
+      from cycle_b import func_b
+      GARBAGE_PPR029_CONSUMER_A = "consumer"
+      GARBAGE_PPR029_CONSUMER_B = True
+
+      def consume_cycle():
+          return func_b()
+
+      class CycleWatcher:
+          GARBAGE_PPR029_WATCHER_C = 99
+
+          def watch(self):
+              return func_b()
+    garbage_fake_cycle.py: |
+      GARBAGE_PPR029_FAKE_D = "fake_cycle"
+      GARBAGE_PPR029_FAKE_E = False
+
+      def func_a():
+          return func_z()
+
+      def func_z():
+          GARBAGE_PPR029_INNER_F = 42
+          return func_a()
+    garbage_cycle_util.py: |
+      GARBAGE_PPR029_UTIL_G = "cycle_util"
+      GARBAGE_PPR029_UTIL_H = 0
+
+      def cycle_reset():
+          return None
+
+      def cycle_validate():
+          return True
+  commit_message: Update files
+fragments:
+- id: cycle_a
+  selector:
+    path: cycle_a.py
+    anchor: 'def func_a():'
+- id: cycle_a_1
+  selector:
+    path: cycle_a.py
+    anchor: return func_b() + 1
+- id: cycle_a_2
+  selector:
+    path: cycle_a.py
+    anchor: from cycle_b import func_b
+- id: no_garbage_cycle_consumer
+  selector:
+    path: garbage_cycle_consumer.py
+- id: no_garbage_fake_cycle
+  selector:
+    path: garbage_fake_cycle.py
+- id: no_garbage_cycle_util
+  selector:
+    path: garbage_cycle_util.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR029_CONSUMER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR029_CONSUMER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR029_WATCHER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR029_FAKE_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR029_FAKE_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR029_INNER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR029_UTIL_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR029_UTIL_H
+oracle:
+  required:
+  - cycle_a
+  - cycle_a_1
+  - cycle_a_2
+  allowed: []
+  forbidden:
+  - no_garbage_cycle_consumer
+  - no_garbage_fake_cycle
+  - no_garbage_cycle_util
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

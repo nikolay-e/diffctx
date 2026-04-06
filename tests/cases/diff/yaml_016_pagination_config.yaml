@@ -1,0 +1,280 @@
+name: yaml_016_pagination_config
+repo:
+  initial_files:
+    config/api.yaml: |
+      pagination:
+        default_limit: 20
+        max_limit: 100
+    src/pagination.py: |
+      from typing import Any, Dict, Optional
+
+      class Paginator:
+          def __init__(self, default_limit: int = 20, max_limit: int = 100):
+              self.default_limit = default_limit
+              self.max_limit = max_limit
+
+          def paginate(self, query: Any, page: int, limit: Optional[int] = None) -> Any:
+              limit = min(limit or self.default_limit, self.max_limit)
+              offset = (page - 1) * limit
+              return query.offset(offset).limit(limit)
+
+          def get_page_info(self, total: int, page: int, limit: int) -> Dict:
+              pages = (total + limit - 1) // limit
+              return {
+                  "total": total,
+                  "page": page,
+                  "per_page": limit,
+                  "pages": pages,
+                  "has_next": page < pages,
+                  "has_prev": page > 1,
+              }
+    src/config_loader.py: |
+      import yaml
+      import os
+      from typing import Any, Dict
+
+      CONFIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'config')
+
+      def load_yaml(filename: str) -> Dict[str, Any]:
+          path = os.path.join(CONFIG_DIR, filename)
+          with open(path) as f:
+              return yaml.safe_load(f)
+
+      def load_api_config() -> Dict[str, Any]:
+          raw = load_yaml('api.yaml')
+          return {
+              'pagination': {
+                  'default_limit': raw.get('pagination', {}).get('default_limit', 20),
+                  'max_limit': raw.get('pagination', {}).get('max_limit', 100),
+              }
+          }
+
+      def load_search_config() -> Dict[str, Any]:
+          return load_yaml('search.yaml')
+    src/api/list_endpoint.py: |
+      from src.pagination import Paginator
+      from src.config_loader import load_api_config
+      from src.sorting import Sorter
+
+      class ListEndpoint:
+          def __init__(self):
+              config = load_api_config()
+              pagination_config = config['pagination']
+              self.paginator = Paginator(
+                  default_limit=pagination_config['default_limit'],
+                  max_limit=pagination_config['max_limit'],
+              )
+              self.sorter = Sorter()
+
+          def handle(self, query, page: int = 1, limit: int = None,
+                     sort_field: str = None, sort_dir: str = None):
+              sorted_query = self.sorter.apply(query, sort_field, sort_dir)
+              results = self.paginator.paginate(sorted_query, page, limit)
+              total = query.count()
+              page_info = self.paginator.get_page_info(total, page, limit or self.paginator.default_limit)
+              return {"data": results, "pagination": page_info}
+    tests/test_pagination.py: |
+      from src.pagination import Paginator
+
+      def test_paginate_default_limit():
+          paginator = Paginator()
+          # mock query object
+          class MockQuery:
+              def offset(self, n): self._offset = n; return self
+              def limit(self, n): self._limit = n; return self
+          q = MockQuery()
+          paginator.paginate(q, page=1)
+          assert q._offset == 0
+          assert q._limit == 20
+
+      def test_paginate_respects_max():
+          paginator = Paginator(default_limit=20, max_limit=100)
+          class MockQuery:
+              def offset(self, n): self._offset = n; return self
+              def limit(self, n): self._limit = n; return self
+          q = MockQuery()
+          paginator.paginate(q, page=1, limit=500)
+          assert q._limit == 100
+
+      def test_page_info():
+          paginator = Paginator()
+          info = paginator.get_page_info(total=95, page=2, limit=20)
+          assert info["pages"] == 5
+          assert info["has_next"] is True
+          assert info["has_prev"] is True
+
+      def test_page_info_last_page():
+          paginator = Paginator()
+          info = paginator.get_page_info(total=95, page=5, limit=20)
+          assert info["has_next"] is False
+    config/search.yaml: |
+      search:
+        max_query_length: 256
+        min_query_length: 2
+        fuzzy_matching: true
+        highlight: true
+        filters:
+          - field: status
+            type: enum
+            values: [active, inactive, pending]
+          - field: created_at
+            type: date_range
+    src/sorting.py: |
+      from enum import Enum
+      from typing import Any, Optional
+
+      class SortDirection(Enum):
+          ASC = "asc"
+          DESC = "desc"
+
+      class Sorter:
+          ALLOWED_FIELDS = {"name", "created_at", "updated_at", "price"}
+
+          def __init__(self, default_field: str = "created_at", default_dir: str = "desc"):
+              self.default_field = default_field
+              self.default_dir = SortDirection(default_dir)
+
+          def apply(self, query: Any, field: Optional[str] = None,
+                    direction: Optional[str] = None) -> Any:
+              field = field if field in self.ALLOWED_FIELDS else self.default_field
+              direction = SortDirection(direction) if direction else self.default_dir
+              return query.order_by(field, direction.value)
+    config/rate_limits.yaml: |
+      rate_limits:
+        default:
+          requests_per_minute: 60
+          burst: 10
+        endpoints:
+          /api/list:
+            requests_per_minute: 120
+            burst: 20
+          /api/search:
+            requests_per_minute: 30
+            burst: 5
+  changed_files:
+    config/api.yaml: |
+      pagination:
+        default_limit: 50
+        max_limit: 200
+        cursor_based: true
+  commit_message: Update files
+fragments:
+- id: pagination
+  selector:
+    path: src/pagination.py
+    anchor: query.offset(offset).limit(limit)
+- id: pagination_1
+  selector:
+    path: src/pagination.py
+    anchor: 'default_limit: int = 20, max_limit: int = 100'
+- id: pagination_2
+  selector:
+    path: src/pagination.py
+    anchor: '"has_next": page < pages'
+- id: no_config_loader
+  selector:
+    path: src/config_loader.py
+- id: no_list_endpoint
+  selector:
+    path: src/api/list_endpoint.py
+- id: no_test_pagination
+  selector:
+    path: tests/test_pagination.py
+- id: no_search
+  selector:
+    path: config/search.yaml
+- id: no_sorting
+  selector:
+    path: src/sorting.py
+- id: no_rate_limits
+  selector:
+    path: config/rate_limits.yaml
+- id: no_global_0
+  selector:
+    anchor: load_yaml
+- id: no_global_1
+  selector:
+    anchor: load_api_config
+- id: no_global_2
+  selector:
+    anchor: CONFIG_DIR
+- id: no_global_3
+  selector:
+    anchor: yaml.safe_load
+- id: no_global_4
+  selector:
+    anchor: ListEndpoint
+- id: no_global_5
+  selector:
+    anchor: sorted_query
+- id: no_global_6
+  selector:
+    anchor: pagination_config['default_limit']
+- id: no_global_7
+  selector:
+    anchor: test_paginate_default_limit
+- id: no_global_8
+  selector:
+    anchor: test_paginate_respects_max
+- id: no_global_9
+  selector:
+    anchor: test_page_info
+- id: no_global_10
+  selector:
+    anchor: MockQuery
+- id: no_global_11
+  selector:
+    anchor: fuzzy_matching
+- id: no_global_12
+  selector:
+    anchor: max_query_length
+- id: no_global_13
+  selector:
+    anchor: min_query_length
+- id: no_global_14
+  selector:
+    anchor: SortDirection
+- id: no_global_15
+  selector:
+    anchor: ALLOWED_FIELDS
+- id: no_global_16
+  selector:
+    anchor: Sorter
+- id: no_global_17
+  selector:
+    anchor: requests_per_minute
+- id: no_global_18
+  selector:
+    anchor: burst
+oracle:
+  required:
+  - pagination
+  - pagination_1
+  - pagination_2
+  allowed: []
+  forbidden:
+  - no_config_loader
+  - no_list_endpoint
+  - no_test_pagination
+  - no_search
+  - no_sorting
+  - no_rate_limits
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14
+  - no_global_15
+  - no_global_16
+  - no_global_17
+  - no_global_18

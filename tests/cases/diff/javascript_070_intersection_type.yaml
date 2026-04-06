@@ -1,0 +1,167 @@
+name: javascript_070_intersection_type
+repo:
+  initial_files:
+    types.ts: |
+      export type Named = { name: string };
+      export type Aged = { age: number };
+    person.ts: |
+      console.log('initial');
+    employee.ts: |
+      import { Named, Aged } from './types';
+
+      type Employee = Named & Aged & { role: string; department: string };
+
+      export function createEmployee(name: string, age: number, role: string, department: string): Employee {
+          return { name, age, role, department };
+      }
+    person-service.ts: |
+      import { Named, Aged } from './types';
+
+      type Person = Named & Aged;
+
+      const people: Person[] = [];
+
+      export function addPerson(name: string, age: number): Person {
+          const person: Person = { name, age };
+          people.push(person);
+          return person;
+      }
+
+      export function findByName(name: string): Person | undefined {
+          return people.find(p => p.name === name);
+      }
+    type-guards.ts: |
+      import { Named, Aged } from './types';
+
+      export function isNamed(value: unknown): value is Named {
+          return typeof value === 'object' && value !== null && 'name' in value;
+      }
+
+      export function isAged(value: unknown): value is Aged {
+          return typeof value === 'object' && value !== null && 'age' in value;
+      }
+  changed_files:
+    types.ts: |
+      export type Named = { name: string };
+      export type Aged = { age: number };
+    person.ts: |
+      import { Named, Aged } from './types';
+
+      type Person = Named & Aged;
+
+      function createPerson(name: string, age: number): Person {
+          return { name, age };
+      }
+    employee.ts: |
+      import { Named, Aged } from './types';
+
+      type Employee = Named & Aged & { role: string; department: string };
+
+      export function createEmployee(name: string, age: number, role: string, department: string): Employee {
+          return { name, age, role, department };
+      }
+    person-service.ts: |
+      import { Named, Aged } from './types';
+
+      type Person = Named & Aged;
+
+      const people: Person[] = [];
+
+      export function addPerson(name: string, age: number): Person {
+          const person: Person = { name, age };
+          people.push(person);
+          return person;
+      }
+
+      export function findByName(name: string): Person | undefined {
+          return people.find(p => p.name === name);
+      }
+    type-guards.ts: |
+      import { Named, Aged } from './types';
+
+      export function isNamed(value: unknown): value is Named {
+          return typeof value === 'object' && value !== null && 'name' in value;
+      }
+
+      export function isAged(value: unknown): value is Aged {
+          return typeof value === 'object' && value !== null && 'age' in value;
+      }
+  commit_message: Update files
+fragments:
+- id: person
+  selector:
+    path: person.ts
+    anchor: import { Named, Aged } from './types'
+- id: person_1
+  selector:
+    path: person.ts
+    anchor: type Person = Named & Aged
+- id: person_2
+  selector:
+    path: person.ts
+    anchor: return { name, age }
+- id: types
+  selector:
+    path: types.ts
+    anchor: 'type Named = { name: string }'
+- id: types_1
+  selector:
+    path: types.ts
+    anchor: 'type Aged = { age: number }'
+- id: no_employee
+  selector:
+    path: employee.ts
+- id: no_person_service
+  selector:
+    path: person-service.ts
+- id: no_type_guards
+  selector:
+    path: type-guards.ts
+- id: no_global_0
+  selector:
+    anchor: Employee
+- id: no_global_1
+  selector:
+    anchor: createEmployee
+- id: no_global_2
+  selector:
+    anchor: department
+- id: no_global_3
+  selector:
+    anchor: addPerson
+- id: no_global_4
+  selector:
+    anchor: findByName
+- id: no_global_5
+  selector:
+    anchor: isNamed
+- id: no_global_6
+  selector:
+    anchor: isAged
+- id: no_global_7
+  selector:
+    anchor: '''name'' in value'
+- id: no_global_8
+  selector:
+    anchor: '''age'' in value'
+oracle:
+  required:
+  - person
+  - person_1
+  - person_2
+  - types
+  - types_1
+  allowed: []
+  forbidden:
+  - no_employee
+  - no_person_service
+  - no_type_guards
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

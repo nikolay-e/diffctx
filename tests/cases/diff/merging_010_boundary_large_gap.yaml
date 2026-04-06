@@ -1,0 +1,54 @@
+name: merging_010_boundary_large_gap
+repo:
+  initial_files:
+    large_gap.py: |
+      def func1():
+          pass
+
+
+      # Many empty lines follow
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+
+
+      def func2():
+          pass
+  changed_files:
+    large_gap.py: |
+      def func1():
+          return 1
+
+
+      # Many empty lines follow
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+      #
+
+
+      def func2():
+          return 2
+  commit_message: Update files
+fragments:
+- id: large_gap_file
+  selector:
+    path: large_gap.py
+oracle:
+  required:
+  - large_gap_file
+  allowed: []
+  forbidden: []

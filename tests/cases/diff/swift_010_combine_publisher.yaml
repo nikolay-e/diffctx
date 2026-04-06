@@ -1,0 +1,138 @@
+name: swift_010_combine_publisher
+repo:
+  initial_files:
+    Sources/Services/SearchService.swift: |
+      import Combine
+
+      class SearchService {
+          func search(query: String) -> AnyPublisher<[String], Never> {
+              Just(["Result 1", "Result 2"])
+                  .eraseToAnyPublisher()
+          }
+      }
+    Sources/ViewModels/SearchViewModel.swift: |
+      import Combine
+
+      class SearchViewModel: ObservableObject {
+          @Published var searchText = ""
+      }
+    Sources/Services/AnalyticsService.swift: |
+      import Foundation
+
+      class AnalyticsService {
+          static let shared = AnalyticsService()
+
+          func track(event: String, properties: [String: String] = [:]) {
+              print("Track: \(event) \(properties)")
+          }
+
+          func identify(userId: String) {
+              print("Identify: \(userId)")
+          }
+      }
+    Sources/ViewModels/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var darkMode = false
+          @Published var fontSize: Double = 14.0
+
+          func resetToDefaults() {
+              darkMode = false
+              fontSize = 14.0
+          }
+      }
+  changed_files:
+    Sources/Services/SearchService.swift: |
+      import Combine
+
+      class SearchService {
+          func search(query: String) -> AnyPublisher<[String], Never> {
+              Just(["Result 1", "Result 2"])
+                  .eraseToAnyPublisher()
+          }
+      }
+    Sources/ViewModels/SearchViewModel.swift: |
+      import Combine
+
+      class SearchViewModel: ObservableObject {
+          @Published var searchText = ""
+          @Published var results: [String] = []
+
+          private let service = SearchService()
+          private var cancellables = Set<AnyCancellable>()
+
+          init() {
+              $searchText
+                  .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+                  .removeDuplicates()
+                  .flatMap { [weak self] query in
+                      self?.service.search(query: query) ?? Just([]).eraseToAnyPublisher()
+                  }
+                  .assign(to: &$results)
+          }
+      }
+    Sources/Services/AnalyticsService.swift: |
+      import Foundation
+
+      class AnalyticsService {
+          static let shared = AnalyticsService()
+
+          func track(event: String, properties: [String: String] = [:]) {
+              print("Track: \(event) \(properties)")
+          }
+
+          func identify(userId: String) {
+              print("Identify: \(userId)")
+          }
+      }
+    Sources/ViewModels/SettingsViewModel.swift: |
+      import Combine
+
+      class SettingsViewModel: ObservableObject {
+          @Published var darkMode = false
+          @Published var fontSize: Double = 14.0
+
+          func resetToDefaults() {
+              darkMode = false
+              fontSize = 14.0
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: searchviewmodel_file
+  selector:
+    path: Sources/ViewModels/SearchViewModel.swift
+- id: req_global_0
+  selector:
+    anchor: 'service.search(query: query)'
+- id: no_analyticsservice
+  selector:
+    path: Sources/Services/AnalyticsService.swift
+- id: no_settingsviewmodel
+  selector:
+    path: Sources/ViewModels/SettingsViewModel.swift
+- id: no_global_0
+  selector:
+    anchor: AnalyticsService
+- id: no_global_1
+  selector:
+    anchor: identify
+- id: no_global_2
+  selector:
+    anchor: SettingsViewModel
+- id: no_global_3
+  selector:
+    anchor: darkMode
+oracle:
+  required:
+  - searchviewmodel_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_analyticsservice
+  - no_settingsviewmodel
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

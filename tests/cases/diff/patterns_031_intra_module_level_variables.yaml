@@ -1,0 +1,148 @@
+name: patterns_031_intra_module_level_variables
+repo:
+  initial_files:
+    settings.py: |
+      DEBUG = True
+      LOG_LEVEL = "INFO"
+      DATABASE_URL = "sqlite:///app.db"
+
+      def get_log_level():
+          return LOG_LEVEL
+
+      def is_debug():
+          return DEBUG
+
+      def get_db_connection():
+          from sqlalchemy import create_engine
+          return create_engine(DATABASE_URL)
+
+      def configure_logging():
+          import logging
+          level = getattr(logging, LOG_LEVEL)
+          logging.basicConfig(level=level)
+    config.py: |
+      DEBUG = False
+      LOG_LEVEL = "WARNING"
+      SECRET_KEY = "changeme"
+
+      def get_config():
+          return {
+              'debug': DEBUG,
+              'log_level': LOG_LEVEL,
+              'secret': SECRET_KEY,
+          }
+
+      def is_production():
+          return not DEBUG
+    env_loader.py: |
+      import os
+
+      def load_env(path='.env'):
+          if not os.path.exists(path):
+              return {}
+          result = {}
+          with open(path) as f:
+              for line in f:
+                  key, _, value = line.strip().partition('=')
+                  result[key] = value
+          return result
+
+      def get_debug_flag():
+          return os.getenv('DEBUG', 'false').lower() == 'true'
+  changed_files:
+    settings.py: |
+      DEBUG = False
+      LOG_LEVEL = "INFO"
+      DATABASE_URL = "sqlite:///app.db"
+
+      def get_log_level():
+          return LOG_LEVEL
+
+      def is_debug():
+          return DEBUG
+
+      def get_db_connection():
+          from sqlalchemy import create_engine
+          return create_engine(DATABASE_URL)
+
+      def configure_logging():
+          import logging
+          level = getattr(logging, LOG_LEVEL)
+          logging.basicConfig(level=level)
+    config.py: |
+      DEBUG = False
+      LOG_LEVEL = "WARNING"
+      SECRET_KEY = "changeme"
+
+      def get_config():
+          return {
+              'debug': DEBUG,
+              'log_level': LOG_LEVEL,
+              'secret': SECRET_KEY,
+          }
+
+      def is_production():
+          return not DEBUG
+    env_loader.py: |
+      import os
+
+      def load_env(path='.env'):
+          if not os.path.exists(path):
+              return {}
+          result = {}
+          with open(path) as f:
+              for line in f:
+                  key, _, value = line.strip().partition('=')
+                  result[key] = value
+          return result
+
+      def get_debug_flag():
+          return os.getenv('DEBUG', 'false').lower() == 'true'
+  commit_message: Update files
+fragments:
+- id: settings
+  selector:
+    path: settings.py
+    anchor: DEBUG = False
+- id: settings_1
+  selector:
+    path: settings.py
+    anchor: 'def is_debug():'
+- id: no_config
+  selector:
+    path: config.py
+- id: no_env_loader
+  selector:
+    path: env_loader.py
+- id: no_global_0
+  selector:
+    anchor: SECRET_KEY
+- id: no_global_1
+  selector:
+    anchor: is_production
+- id: no_global_2
+  selector:
+    anchor: get_config
+- id: no_global_3
+  selector:
+    anchor: load_env
+- id: no_global_4
+  selector:
+    anchor: get_debug_flag
+- id: no_global_5
+  selector:
+    anchor: os.getenv
+oracle:
+  required:
+  - settings
+  - settings_1
+  allowed: []
+  forbidden:
+  - no_config
+  - no_env_loader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

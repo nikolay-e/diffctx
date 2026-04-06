@@ -1,0 +1,299 @@
+name: algorithm_001_fragment_class_decorator_included
+repo:
+  initial_files:
+    models/user.py: |
+      from dataclasses import dataclass, field
+      from typing import Optional, List
+      from datetime import datetime
+
+      @dataclass
+      class Address:
+          street: str
+          city: str
+          country: str
+          postal_code: str
+
+          def format(self) -> str:
+              return f"{self.street}, {self.city}, {self.postal_code}"
+
+      @dataclass
+      class User:
+          id: int
+          username: str
+          email: str
+          created_at: datetime = field(default_factory=datetime.now)
+          address: Optional[Address] = None
+          roles: List[str] = field(default_factory=list)
+
+          def is_admin(self) -> bool:
+              return "admin" in self.roles
+
+          def has_address(self) -> bool:
+              return self.address is not None
+    services/user_service.py: |
+      from models.user import User, Address
+
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def create_user(self, username: str, email: str) -> User:
+              user = User(
+                  id=self.repository.next_id(),
+                  username=username,
+                  email=email
+              )
+              self.repository.save(user)
+              return user
+
+          def add_role(self, user: User, role: str) -> None:
+              if role not in user.roles:
+                  user.roles.append(role)
+                  self.repository.save(user)
+
+          def set_address(self, user: User, address: Address) -> None:
+              user.address = address
+              self.repository.save(user)
+    garbage_display_config.py: |
+      GARBAGE_ALGO_001_DISPLAY_CONFIG_G = "display_settings"
+      GARBAGE_ALGO_001_THEME_MARKER_H = True
+
+      class DisplayConfig:
+          display_name = "Default Theme"
+          display_mode = "dark"
+          GARBAGE_ALGO_001_RENDER_MARKER_I = 42
+
+          def get_display_name(self) -> str:
+              return self.display_name
+
+          def set_theme(self, theme: str) -> None:
+              self.display_name = theme
+    garbage_user_export.py: |
+      from models.user import User
+      GARBAGE_ALGO_001_EXPORT_MARKER_J = "csv_export"
+      GARBAGE_ALGO_001_FORMAT_MARKER_K = "xlsx"
+
+      class UserExporter:
+          GARBAGE_ALGO_001_BATCH_MARKER_L = 1000
+
+          def export_users(self, users: list) -> bytes:
+              return b""
+
+          def schedule_export(self, cron: str) -> None:
+              pass
+    garbage_analytics.py: |
+      GARBAGE_ALGO_001_ANALYTICS_MARKER_A = "analytics"
+      GARBAGE_ALGO_001_TRACKER_MARKER_B = True
+
+      class AnalyticsTracker:
+          GARBAGE_ALGO_001_CLASS_MARKER_C = "tracker"
+
+          def track(self, event: str) -> None:
+              pass
+    garbage_notifications.py: |
+      GARBAGE_ALGO_001_NOTIFY_MARKER_D = "notify"
+      GARBAGE_ALGO_001_PUSH_MARKER_E = 42
+
+      class PushService:
+          GARBAGE_ALGO_001_PUSH_CLASS_F = True
+
+          def send(self, token: str, message: str) -> bool:
+              return True
+  changed_files:
+    models/user.py: |
+      from dataclasses import dataclass, field
+      from typing import Optional, List
+      from datetime import datetime
+
+      @dataclass
+      class Address:
+          street: str
+          city: str
+          country: str
+          postal_code: str
+
+          def format(self) -> str:
+              return f"{self.street}, {self.city}, {self.postal_code}"
+
+      @dataclass
+      class User:
+          id: int
+          username: str
+          email: str
+          display_name: Optional[str] = None
+          created_at: datetime = field(default_factory=datetime.now)
+          address: Optional[Address] = None
+          roles: List[str] = field(default_factory=list)
+
+          def is_admin(self) -> bool:
+              return "admin" in self.roles
+
+          def has_address(self) -> bool:
+              return self.address is not None
+
+          def get_display_name(self) -> str:
+              return self.display_name or self.username
+    services/user_service.py: |
+      from models.user import User, Address
+
+      class UserService:
+          def __init__(self, repository):
+              self.repository = repository
+
+          def create_user(self, username: str, email: str) -> User:
+              user = User(
+                  id=self.repository.next_id(),
+                  username=username,
+                  email=email
+              )
+              self.repository.save(user)
+              return user
+
+          def add_role(self, user: User, role: str) -> None:
+              if role not in user.roles:
+                  user.roles.append(role)
+                  self.repository.save(user)
+
+          def set_address(self, user: User, address: Address) -> None:
+              user.address = address
+              self.repository.save(user)
+    garbage_display_config.py: |
+      GARBAGE_ALGO_001_DISPLAY_CONFIG_G = "display_settings"
+      GARBAGE_ALGO_001_THEME_MARKER_H = True
+
+      class DisplayConfig:
+          display_name = "Default Theme"
+          display_mode = "dark"
+          GARBAGE_ALGO_001_RENDER_MARKER_I = 42
+
+          def get_display_name(self) -> str:
+              return self.display_name
+
+          def set_theme(self, theme: str) -> None:
+              self.display_name = theme
+    garbage_user_export.py: |
+      from models.user import User
+      GARBAGE_ALGO_001_EXPORT_MARKER_J = "csv_export"
+      GARBAGE_ALGO_001_FORMAT_MARKER_K = "xlsx"
+
+      class UserExporter:
+          GARBAGE_ALGO_001_BATCH_MARKER_L = 1000
+
+          def export_users(self, users: list) -> bytes:
+              return b""
+
+          def schedule_export(self, cron: str) -> None:
+              pass
+    garbage_analytics.py: |
+      GARBAGE_ALGO_001_ANALYTICS_MARKER_A = "analytics"
+      GARBAGE_ALGO_001_TRACKER_MARKER_B = True
+
+      class AnalyticsTracker:
+          GARBAGE_ALGO_001_CLASS_MARKER_C = "tracker"
+
+          def track(self, event: str) -> None:
+              pass
+    garbage_notifications.py: |
+      GARBAGE_ALGO_001_NOTIFY_MARKER_D = "notify"
+      GARBAGE_ALGO_001_PUSH_MARKER_E = 42
+
+      class PushService:
+          GARBAGE_ALGO_001_PUSH_CLASS_F = True
+
+          def send(self, token: str, message: str) -> bool:
+              return True
+  commit_message: Update files
+fragments:
+- id: user
+  selector:
+    path: models/user.py
+    anchor: 'def get_display_name(self) -> str:'
+- id: user_1
+  selector:
+    path: models/user.py
+    anchor: return self.display_name or self.username
+- id: user_2
+  selector:
+    path: models/user.py
+    anchor: 'display_name: Optional[str] = None'
+- id: user_3
+  selector:
+    path: models/user.py
+    anchor: 'class User:'
+- id: user_4
+  selector:
+    path: models/user.py
+    anchor: 'def is_admin(self) -> bool:'
+- id: no_garbage_analytics
+  selector:
+    path: garbage_analytics.py
+- id: no_garbage_notifications
+  selector:
+    path: garbage_notifications.py
+- id: no_garbage_display_config
+  selector:
+    path: garbage_display_config.py
+- id: no_garbage_user_export
+  selector:
+    path: garbage_user_export.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ALGO_001_ANALYTICS_MARKER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_ALGO_001_CLASS_MARKER_C
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_ALGO_001_NOTIFY_MARKER_D
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_ALGO_001_PUSH_CLASS_F
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_ALGO_001_PUSH_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_ALGO_001_TRACKER_MARKER_B
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_ALGO_001_DISPLAY_CONFIG_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_ALGO_001_THEME_MARKER_H
+- id: no_global_8
+  selector:
+    anchor: GARBAGE_ALGO_001_RENDER_MARKER_I
+- id: no_global_9
+  selector:
+    anchor: GARBAGE_ALGO_001_EXPORT_MARKER_J
+- id: no_global_10
+  selector:
+    anchor: GARBAGE_ALGO_001_FORMAT_MARKER_K
+- id: no_global_11
+  selector:
+    anchor: GARBAGE_ALGO_001_BATCH_MARKER_L
+oracle:
+  required:
+  - user
+  - user_1
+  - user_2
+  - user_3
+  - user_4
+  allowed: []
+  forbidden:
+  - no_garbage_analytics
+  - no_garbage_notifications
+  - no_garbage_display_config
+  - no_garbage_user_export
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

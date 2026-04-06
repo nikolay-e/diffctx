@@ -1,0 +1,102 @@
+name: ppr_010_graph_builds_call_edges
+repo:
+  initial_files:
+    calls.py: |
+      def caller():
+          callee()
+
+      def callee():
+          pass
+    dispatcher.py: |
+      def dispatch(event):
+          return handle(event)
+
+      def handle(event):
+          return f"handled: {event}"
+
+      def notify(event):
+          dispatch(event)
+    pipeline.py: |
+      def step_one(data):
+          return step_two(data)
+
+      def step_two(data):
+          return data + "_processed"
+
+      def run_pipeline(data):
+          return step_one(data)
+  changed_files:
+    calls.py: |
+      def caller():
+          callee()
+          return 1
+
+      def callee():
+          pass
+    dispatcher.py: |
+      def dispatch(event):
+          return handle(event)
+
+      def handle(event):
+          return f"handled: {event}"
+
+      def notify(event):
+          dispatch(event)
+    pipeline.py: |
+      def step_one(data):
+          return step_two(data)
+
+      def step_two(data):
+          return data + "_processed"
+
+      def run_pipeline(data):
+          return step_one(data)
+  commit_message: Update files
+fragments:
+- id: calls
+  selector:
+    path: calls.py
+    anchor: 'def caller():'
+- id: calls_1
+  selector:
+    path: calls.py
+    anchor: callee()
+- id: calls_2
+  selector:
+    path: calls.py
+    anchor: return 1
+- id: no_dispatcher
+  selector:
+    path: dispatcher.py
+- id: no_pipeline
+  selector:
+    path: pipeline.py
+- id: no_global_0
+  selector:
+    anchor: dispatch
+- id: no_global_1
+  selector:
+    anchor: handle
+- id: no_global_2
+  selector:
+    anchor: step_one
+- id: no_global_3
+  selector:
+    anchor: step_two
+- id: no_global_4
+  selector:
+    anchor: run_pipeline
+oracle:
+  required:
+  - calls
+  - calls_1
+  - calls_2
+  allowed: []
+  forbidden:
+  - no_dispatcher
+  - no_pipeline
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

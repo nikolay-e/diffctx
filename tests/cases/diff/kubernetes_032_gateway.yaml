@@ -1,0 +1,355 @@
+name: kubernetes_032_gateway
+repo:
+  initial_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-service
+        namespace: production
+        labels:
+          app: api-service
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-service
+        template:
+          metadata:
+            labels:
+              app: api-service
+              tier: backend
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/api-service:v1.5.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-service
+        namespace: production
+      spec:
+        selector:
+          app: api-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: https
+          port: 443
+          targetPort: 8443
+    k8s/base/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: api-service
+        namespace: production
+      spec:
+        hosts:
+        - api.example.com
+        - api-internal.example.com
+        gateways:
+        - api-gateway
+        http:
+        - route:
+          - destination:
+              host: api-service
+              port:
+                number: 80
+    k8s/base/gateway.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: Gateway
+      metadata:
+        name: api-gateway
+        namespace: production
+      spec:
+        selector:
+          istio: ingressgateway
+        servers:
+        - port:
+            number: 80
+            name: http
+            protocol: HTTP
+          hosts:
+          - api.example.com
+    k8s/base/peer-authentication.yaml: |
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: default
+        namespace: production
+      spec:
+        mtls:
+          mode: STRICT
+    k8s/mesh/envoy-ratelimit.yaml: |
+      apiVersion: networking.istio.io/v1alpha3
+      kind: EnvoyFilter
+      metadata:
+        name: ratelimit-filter
+        namespace: istio-system
+      spec:
+        workloadSelector:
+          labels:
+            istio: ingressgateway
+        configPatches:
+        - applyTo: HTTP_FILTER
+          match:
+            context: GATEWAY
+          patch:
+            operation: INSERT_BEFORE
+            value:
+              name: envoy.filters.http.ratelimit
+    k8s/mesh/istio-telemetry.yaml: |
+      apiVersion: telemetry.istio.io/v1alpha1
+      kind: Telemetry
+      metadata:
+        name: mesh-default
+        namespace: istio-system
+      spec:
+        accessLogging:
+        - providers:
+          - name: envoy
+        metrics:
+        - providers:
+          - name: prometheus
+  changed_files:
+    k8s/base/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-service
+        namespace: production
+        labels:
+          app: api-service
+          tier: backend
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-service
+        template:
+          metadata:
+            labels:
+              app: api-service
+              tier: backend
+            annotations:
+              sidecar.istio.io/inject: "true"
+          spec:
+            containers:
+            - name: api
+              image: registry.example.com/api-service:v1.5.0
+              ports:
+              - containerPort: 8080
+                name: http
+              - containerPort: 8443
+                name: https
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "500m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+    k8s/base/service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-service
+        namespace: production
+      spec:
+        selector:
+          app: api-service
+        ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+        - name: https
+          port: 443
+          targetPort: 8443
+    k8s/base/virtual-service.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: VirtualService
+      metadata:
+        name: api-service
+        namespace: production
+      spec:
+        hosts:
+        - api.example.com
+        - api-internal.example.com
+        gateways:
+        - api-gateway
+        http:
+        - route:
+          - destination:
+              host: api-service
+              port:
+                number: 80
+    k8s/base/gateway.yaml: |
+      apiVersion: networking.istio.io/v1beta1
+      kind: Gateway
+      metadata:
+        name: api-gateway
+        namespace: production
+        labels:
+          app: api-gateway
+      spec:
+        selector:
+          istio: ingressgateway
+        servers:
+        - port:
+            number: 443
+            name: https
+            protocol: HTTPS
+          tls:
+            mode: SIMPLE
+            credentialName: api-tls-cert
+            minProtocolVersion: TLSV1_2
+            cipherSuites:
+            - ECDHE-RSA-AES256-GCM-SHA384
+            - ECDHE-RSA-AES128-GCM-SHA256
+          hosts:
+          - api.example.com
+          - api-internal.example.com
+        - port:
+            number: 80
+            name: http
+            protocol: HTTP
+          tls:
+            httpsRedirect: true
+          hosts:
+          - api.example.com
+          - api-internal.example.com
+    k8s/base/peer-authentication.yaml: |
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: default
+        namespace: production
+      spec:
+        mtls:
+          mode: STRICT
+    k8s/mesh/envoy-ratelimit.yaml: |
+      apiVersion: networking.istio.io/v1alpha3
+      kind: EnvoyFilter
+      metadata:
+        name: ratelimit-filter
+        namespace: istio-system
+      spec:
+        workloadSelector:
+          labels:
+            istio: ingressgateway
+        configPatches:
+        - applyTo: HTTP_FILTER
+          match:
+            context: GATEWAY
+          patch:
+            operation: INSERT_BEFORE
+            value:
+              name: envoy.filters.http.ratelimit
+    k8s/mesh/istio-telemetry.yaml: |
+      apiVersion: telemetry.istio.io/v1alpha1
+      kind: Telemetry
+      metadata:
+        name: mesh-default
+        namespace: istio-system
+      spec:
+        accessLogging:
+        - providers:
+          - name: envoy
+        metrics:
+        - providers:
+          - name: prometheus
+  commit_message: Update files
+fragments:
+- id: gateway
+  selector:
+    path: k8s/base/gateway.yaml
+    anchor: 'credentialName: api-tls-cert'
+- id: gateway_1
+  selector:
+    path: k8s/base/gateway.yaml
+    anchor: 'httpsRedirect: true'
+- id: gateway_2
+  selector:
+    path: k8s/base/gateway.yaml
+    anchor: ECDHE-RSA-AES256-GCM-SHA384
+- id: gateway_3
+  selector:
+    path: k8s/base/gateway.yaml
+    anchor: api-internal.example.com
+- id: no_deployment
+  selector:
+    path: k8s/base/deployment.yaml
+- id: no_service
+  selector:
+    path: k8s/base/service.yaml
+- id: no_envoy_ratelimit
+  selector:
+    path: k8s/mesh/envoy-ratelimit.yaml
+- id: no_istio_telemetry
+  selector:
+    path: k8s/mesh/istio-telemetry.yaml
+- id: no_global_0
+  selector:
+    anchor: api-service:v1.5.0
+- id: no_global_1
+  selector:
+    anchor: sidecar.istio.io/inject
+- id: no_global_2
+  selector:
+    anchor: 'targetPort: 8080'
+- id: no_global_3
+  selector:
+    anchor: 'targetPort: 8443'
+- id: no_global_4
+  selector:
+    anchor: ratelimit-filter
+- id: no_global_5
+  selector:
+    anchor: envoy.filters.http.ratelimit
+- id: no_global_6
+  selector:
+    anchor: INSERT_BEFORE
+- id: no_global_7
+  selector:
+    anchor: mesh-default
+- id: no_global_8
+  selector:
+    anchor: accessLogging
+oracle:
+  required:
+  - gateway
+  - gateway_1
+  - gateway_2
+  - gateway_3
+  allowed: []
+  forbidden:
+  - no_deployment
+  - no_service
+  - no_envoy_ratelimit
+  - no_istio_telemetry
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

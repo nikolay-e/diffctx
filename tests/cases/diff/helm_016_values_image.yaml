@@ -1,0 +1,105 @@
+name: helm_016_values_image
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: image-app
+      description: Application with image configuration
+      type: application
+      version: 1.0.0
+    chart/values.yaml: |
+      replicaCount: 1
+      service:
+        type: ClusterIP
+        port: 80
+    chart/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: myapp:latest
+                ports:
+                  - containerPort: 8080
+    chart/Dockerfile: |
+      FROM python:3.11-slim
+      COPY . .
+      CMD ["python", "app.py"]
+    chart/templates/ambassador-mapping.yaml: |
+      apiVersion: getambassador.io/v3alpha1
+      kind: Mapping
+      metadata:
+      spec:
+    chart/docs/container-registry.md: |
+      # Container Registry Setup
+      ## Image Pull Secrets
+  changed_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: image-app
+      description: Application with image configuration
+      type: application
+      version: 1.0.0
+    chart/values.yaml: |
+      replicaCount: 1
+      image:
+        repository: myapp
+        tag: latest
+        pullPolicy: IfNotPresent
+      service:
+        type: ClusterIP
+        port: 80
+    chart/templates/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        template:
+          spec:
+            containers:
+              - name: {{ .Chart.Name }}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                imagePullPolicy: {{ .Values.image.pullPolicy }}
+                ports:
+                  - containerPort: 8080
+    chart/Dockerfile: |
+      FROM python:3.11-slim
+      COPY . .
+      CMD ["python", "app.py"]
+    chart/templates/ambassador-mapping.yaml: |
+      apiVersion: getambassador.io/v3alpha1
+      kind: Mapping
+      metadata:
+      spec:
+    chart/docs/container-registry.md: |
+      # Container Registry Setup
+      ## Image Pull Secrets
+  commit_message: Update files
+fragments:
+- id: deployment_file
+  selector:
+    path: chart/templates/deployment.yaml
+- id: values_file
+  selector:
+    path: chart/values.yaml
+- id: req_global_0
+  selector:
+    anchor: 'image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"'
+- id: req_global_1
+  selector:
+    anchor: 'repository: myapp'
+oracle:
+  required:
+  - deployment_file
+  - values_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

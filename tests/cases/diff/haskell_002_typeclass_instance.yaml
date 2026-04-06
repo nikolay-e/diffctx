@@ -1,0 +1,262 @@
+name: haskell_002_typeclass_instance
+repo:
+  initial_files:
+    src/Serializable.hs: |
+      module Serializable
+        ( Serializable(..)
+        ) where
+
+      import Data.Text (Text, pack, unpack)
+
+      class Serializable a where
+        serialize   :: a -> Text
+        deserialize :: Text -> Maybe a
+    src/Models.hs: |
+      module Models
+        ( Color(..)
+        , Shape(..)
+        ) where
+
+      data Color = Red | Green | Blue
+        deriving (Show, Read, Eq)
+
+      data Shape = Circle Double | Rectangle Double Double
+        deriving (Show, Read, Eq)
+    src/ColorSerial.hs: |
+      module ColorSerial where
+
+      import Data.Text (Text, pack, unpack)
+      import Serializable (Serializable(..))
+      import Models (Color(..))
+
+      instance Serializable Color where
+        serialize Red   = pack "red"
+        serialize Green = pack "green"
+        serialize Blue  = pack "blue"
+
+        deserialize t = case unpack t of
+          "red"   -> Just Red
+          "green" -> Just Green
+          "blue"  -> Just Blue
+          _       -> Nothing
+    src/Printable.hs: |
+      module Printable
+        ( Printable(..)
+        ) where
+
+      GARBAGE_HS_002_PRINTABLE_CLASS_A = "printable"
+      GARBAGE_HS_002_DISPLAY_MARKER_B = True
+
+      class Printable a where
+        prettyPrint :: a -> String
+    src/StringSerial.hs: |
+      module StringSerial where
+
+      import Data.Text (Text, pack, unpack)
+      import Serializable (Serializable(..))
+      GARBAGE_HS_002_STRING_SERIAL_C = "string-serial"
+      GARBAGE_HS_002_TEXT_CONVERT_D = True
+
+      instance Serializable String where
+        serialize = pack
+        deserialize = Just . unpack
+    src/Drawing.hs: |
+      module Drawing
+        ( draw
+        ) where
+
+      import Models (Shape(..))
+      GARBAGE_HS_002_DRAWING_MARKER_E = "drawing"
+      GARBAGE_HS_002_CANVAS_MARKER_F = "svg"
+
+      draw :: Shape -> String
+      draw (Circle r)      = "circle(" ++ show r ++ ")"
+      draw (Rectangle w h) = "rect(" ++ show w ++ "," ++ show h ++ ")"
+    src/Utils.hs: |
+      module Utils
+        ( trim
+        ) where
+
+      GARBAGE_HS_002_UTILS_MARKER_G = "utils"
+      GARBAGE_HS_002_HELPER_MARKER_H = True
+
+      trim :: String -> String
+      trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+  changed_files:
+    src/Serializable.hs: |
+      module Serializable
+        ( Serializable(..)
+        ) where
+
+      import Data.Text (Text, pack, unpack)
+
+      class Serializable a where
+        serialize   :: a -> Text
+        deserialize :: Text -> Maybe a
+    src/Models.hs: |
+      module Models
+        ( Color(..)
+        , Shape(..)
+        ) where
+
+      data Color = Red | Green | Blue
+        deriving (Show, Read, Eq)
+
+      data Shape = Circle Double | Rectangle Double Double
+        deriving (Show, Read, Eq)
+    src/ColorSerial.hs: |
+      module ColorSerial where
+
+      import Data.Text (Text, pack, unpack)
+      import Serializable (Serializable(..))
+      import Models (Color(..))
+
+      instance Serializable Color where
+        serialize Red   = pack "red"
+        serialize Green = pack "green"
+        serialize Blue  = pack "blue"
+
+        deserialize t = case unpack t of
+          "red"   -> Just Red
+          "green" -> Just Green
+          "blue"  -> Just Blue
+          _       -> Nothing
+    src/ShapeSerial.hs: |
+      module ShapeSerial where
+
+      import Data.Text (Text, pack, unpack)
+      import Serializable (Serializable(..))
+      import Models (Shape(..))
+
+      instance Serializable Shape where
+        serialize (Circle r)      = pack ("circle:" ++ show r)
+        serialize (Rectangle w h) = pack ("rect:" ++ show w ++ ":" ++ show h)
+
+        deserialize t = case break (== ':') (unpack t) of
+          ("circle", ':':r)  -> Just (Circle (read r))
+          ("rect", ':':rest) -> case break (== ':') rest of
+            (w, ':':h) -> Just (Rectangle (read w) (read h))
+            _          -> Nothing
+          _ -> Nothing
+    src/Printable.hs: |
+      module Printable
+        ( Printable(..)
+        ) where
+
+      GARBAGE_HS_002_PRINTABLE_CLASS_A = "printable"
+      GARBAGE_HS_002_DISPLAY_MARKER_B = True
+
+      class Printable a where
+        prettyPrint :: a -> String
+    src/StringSerial.hs: |
+      module StringSerial where
+
+      import Data.Text (Text, pack, unpack)
+      import Serializable (Serializable(..))
+      GARBAGE_HS_002_STRING_SERIAL_C = "string-serial"
+      GARBAGE_HS_002_TEXT_CONVERT_D = True
+
+      instance Serializable String where
+        serialize = pack
+        deserialize = Just . unpack
+    src/Drawing.hs: |
+      module Drawing
+        ( draw
+        ) where
+
+      import Models (Shape(..))
+      GARBAGE_HS_002_DRAWING_MARKER_E = "drawing"
+      GARBAGE_HS_002_CANVAS_MARKER_F = "svg"
+
+      draw :: Shape -> String
+      draw (Circle r)      = "circle(" ++ show r ++ ")"
+      draw (Rectangle w h) = "rect(" ++ show w ++ "," ++ show h ++ ")"
+    src/Utils.hs: |
+      module Utils
+        ( trim
+        ) where
+
+      GARBAGE_HS_002_UTILS_MARKER_G = "utils"
+      GARBAGE_HS_002_HELPER_MARKER_H = True
+
+      trim :: String -> String
+      trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+  commit_message: Update files
+fragments:
+- id: shapeserial
+  selector:
+    path: src/ShapeSerial.hs
+    anchor: instance Serializable Shape where
+- id: shapeserial_1
+  selector:
+    path: src/ShapeSerial.hs
+    anchor: serialize (Circle r)
+- id: shapeserial_2
+  selector:
+    path: src/ShapeSerial.hs
+    anchor: serialize (Rectangle w h)
+- id: serializable
+  selector:
+    path: src/Serializable.hs
+    anchor: class Serializable a where
+- id: serializable_1
+  selector:
+    path: src/Serializable.hs
+    anchor: 'serialize   :: a -> Text'
+- id: no_printable
+  selector:
+    path: src/Printable.hs
+- id: no_stringserial
+  selector:
+    path: src/StringSerial.hs
+- id: no_drawing
+  selector:
+    path: src/Drawing.hs
+- id: no_utils
+  selector:
+    path: src/Utils.hs
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_HS_002_PRINTABLE_CLASS_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_HS_002_DISPLAY_MARKER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_HS_002_STRING_SERIAL_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_HS_002_TEXT_CONVERT_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_HS_002_DRAWING_MARKER_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_HS_002_CANVAS_MARKER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_HS_002_UTILS_MARKER_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_HS_002_HELPER_MARKER_H
+oracle:
+  required:
+  - shapeserial
+  - shapeserial_1
+  - shapeserial_2
+  - serializable
+  - serializable_1
+  allowed: []
+  forbidden:
+  - no_printable
+  - no_stringserial
+  - no_drawing
+  - no_utils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

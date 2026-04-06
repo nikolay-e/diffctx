@@ -1,0 +1,213 @@
+name: scala_010_path_dependent_type
+repo:
+  initial_files:
+    Outer.scala: |
+      class Outer {
+        class Inner {
+          def greet: String = "Hello from Inner"
+          def identity: String = s"Inner of ${Outer.this.toString}"
+        }
+
+        type T = Inner
+
+        def createInner: Inner = new Inner
+
+        def createMany(count: Int): List[Inner] = {
+          (1 to count).map(_ => new Inner).toList
+        }
+      }
+    PathDependent.scala: |
+      class PathDependent {}
+    Container.scala: |
+      class Container[A](value: A) {
+        type Element = A
+
+        def get: Element = value
+
+        def map[B](f: A => B): Container[B] = new Container(f(value))
+
+        def flatMap[B](f: A => Container[B]): Container[B] = f(value)
+      }
+
+      object Container {
+        def of[A](value: A): Container[A] = new Container(value)
+        def empty[A](implicit ev: Null <:< A): Container[A] = new Container(null.asInstanceOf[A])
+      }
+    Wrapper.scala: |
+      class Wrapper(label: String) {
+        class Wrapped(content: String) {
+          def describe: String = s"$label: $content"
+          def unwrap: String = content
+        }
+
+        type W = Wrapped
+
+        def wrap(content: String): Wrapped = new Wrapped(content)
+
+        def wrapAll(items: List[String]): List[Wrapped] = items.map(wrap)
+      }
+    Factory.scala: |
+      trait Factory[T] {
+        def create(): T
+        def createMany(count: Int): List[T] = (1 to count).map(_ => create()).toList
+      }
+
+      class StringFactory extends Factory[String] {
+        def create(): String = java.util.UUID.randomUUID().toString
+      }
+
+      class IntFactory(start: Int) extends Factory[Int] {
+        private var counter = start
+        def create(): Int = { counter += 1; counter }
+      }
+    PathDependentTest.scala: |
+      class PathDependentTest {
+        def testProcessInner(): Unit = {
+          val pd = new PathDependent
+          val outer = new Outer
+          val inner: outer.T = outer.createInner
+          val result = pd.processInner(outer)(inner)
+          assert(result == "Hello from Inner")
+        }
+
+        def testCreateAndProcess(): Unit = {
+          val pd = new PathDependent
+          val result = pd.createAndProcess()
+          assert(result.nonEmpty)
+        }
+      }
+    TypeUtils.scala: |
+      import scala.reflect.ClassTag
+
+      object TypeUtils {
+        def typeName[T: ClassTag]: String = {
+          implicitly[ClassTag[T]].runtimeClass.getSimpleName
+        }
+
+        def isInstance[T: ClassTag](value: Any): Boolean = {
+          implicitly[ClassTag[T]].runtimeClass.isInstance(value)
+        }
+
+        def cast[T: ClassTag](value: Any): Option[T] = {
+          if (isInstance[T](value)) Some(value.asInstanceOf[T]) else None
+        }
+      }
+  changed_files:
+    PathDependent.scala: |
+      class PathDependent {
+        def processInner(outer: Outer)(inner: outer.Inner): String = {
+          inner.greet
+        }
+
+        def createAndProcess(): String = {
+          val outer = new Outer
+          val inner: outer.T = outer.createInner
+          processInner(outer)(inner)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: outer
+  selector:
+    path: Outer.scala
+    anchor: class Inner
+- id: outer_1
+  selector:
+    path: Outer.scala
+    anchor: 'def greet: String'
+- id: outer_2
+  selector:
+    path: Outer.scala
+    anchor: type T = Inner
+- id: outer_3
+  selector:
+    path: Outer.scala
+    anchor: 'def createInner: Inner'
+- id: no_container
+  selector:
+    path: Container.scala
+- id: no_wrapper
+  selector:
+    path: Wrapper.scala
+- id: no_factory
+  selector:
+    path: Factory.scala
+- id: no_pathdependenttest
+  selector:
+    path: PathDependentTest.scala
+- id: no_typeutils
+  selector:
+    path: TypeUtils.scala
+- id: no_global_0
+  selector:
+    anchor: class Container
+- id: no_global_1
+  selector:
+    anchor: type Element
+- id: no_global_2
+  selector:
+    anchor: flatMap
+- id: no_global_3
+  selector:
+    anchor: class Wrapper
+- id: no_global_4
+  selector:
+    anchor: class Wrapped
+- id: no_global_5
+  selector:
+    anchor: def describe
+- id: no_global_6
+  selector:
+    anchor: def unwrap
+- id: no_global_7
+  selector:
+    anchor: trait Factory
+- id: no_global_8
+  selector:
+    anchor: StringFactory
+- id: no_global_9
+  selector:
+    anchor: IntFactory
+- id: no_global_10
+  selector:
+    anchor: class PathDependentTest
+- id: no_global_11
+  selector:
+    anchor: testProcessInner
+- id: no_global_12
+  selector:
+    anchor: object TypeUtils
+- id: no_global_13
+  selector:
+    anchor: typeName
+- id: no_global_14
+  selector:
+    anchor: ClassTag
+oracle:
+  required:
+  - outer
+  - outer_1
+  - outer_2
+  - outer_3
+  allowed: []
+  forbidden:
+  - no_container
+  - no_wrapper
+  - no_factory
+  - no_pathdependenttest
+  - no_typeutils
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12
+  - no_global_13
+  - no_global_14

@@ -1,0 +1,128 @@
+name: csharp_010_generic_constraints
+repo:
+  initial_files:
+    Services/Factory.cs: |
+      namespace MyApp.Services;
+
+      public class Factory
+      {
+          public static T Create<T>() where T : class, new()
+          {
+              return new T();
+          }
+
+          public static T CreateWithInit<T>(Action<T> initializer) where T : class, new()
+          {
+              var instance = new T();
+              initializer(instance);
+              return instance;
+          }
+      }
+    Program.cs: |
+      using System;
+
+      class Program
+      {
+          static void Main() { }
+      }
+    Unrelated/EncryptionHelper.cs: |
+      namespace MyApp.Unrelated;
+
+      public class EncryptionHelper
+      {
+          private const string GARBAGE_CS_010_ENCRYPTION_A = "encryption_helper_marker";
+
+          public string Encrypt(string data) => GARBAGE_CS_010_ENCRYPTION_A + data;
+      }
+    Unrelated/CompressionHelper.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CompressionHelper
+      {
+          public const string GARBAGE_CS_010_COMPRESSION_B = "compression_helper_marker";
+
+          public byte[] Compress(byte[] data) => data;
+      }
+  changed_files:
+    Services/Factory.cs: |
+      namespace MyApp.Services;
+
+      public class Factory
+      {
+          public static T Create<T>() where T : class, new()
+          {
+              return new T();
+          }
+
+          public static T CreateWithInit<T>(Action<T> initializer) where T : class, new()
+          {
+              var instance = new T();
+              initializer(instance);
+              return instance;
+          }
+      }
+    Program.cs: |
+      using System;
+      using MyApp.Services;
+      using MyApp.Models;
+
+      class Program
+      {
+          static void Main()
+          {
+              var user = Factory.Create<User>();
+              var initializedUser = Factory.CreateWithInit<User>(u => u.Name = "John");
+          }
+      }
+    Unrelated/EncryptionHelper.cs: |
+      namespace MyApp.Unrelated;
+
+      public class EncryptionHelper
+      {
+          private const string GARBAGE_CS_010_ENCRYPTION_A = "encryption_helper_marker";
+
+          public string Encrypt(string data) => GARBAGE_CS_010_ENCRYPTION_A + data;
+      }
+    Unrelated/CompressionHelper.cs: |
+      namespace MyApp.Unrelated;
+
+      public class CompressionHelper
+      {
+          public const string GARBAGE_CS_010_COMPRESSION_B = "compression_helper_marker";
+
+          public byte[] Compress(byte[] data) => data;
+      }
+  commit_message: Update files
+fragments:
+- id: program_file
+  selector:
+    path: Program.cs
+- id: req_global_0
+  selector:
+    anchor: using MyApp.Services;
+- id: req_global_1
+  selector:
+    anchor: static void Main()
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_CS_010_COMPRESSION_B
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_CS_010_ENCRYPTION_A
+- id: no_global_2
+  selector:
+    anchor: CompressionHelper.cs
+- id: no_global_3
+  selector:
+    anchor: EncryptionHelper.cs
+oracle:
+  required:
+  - program_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

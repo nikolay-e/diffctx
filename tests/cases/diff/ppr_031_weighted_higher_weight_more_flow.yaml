@@ -1,0 +1,177 @@
+name: ppr_031_weighted_higher_weight_more_flow
+repo:
+  initial_files:
+    source.py: |
+      from high_weight import high_func
+      from low_weight import low_func
+
+      def source_func():
+          high_func()
+          high_func()
+          high_func()
+          high_func()
+          high_func()
+          low_func()
+    high_weight.py: |
+      def high_func():
+          return "high"
+    low_weight.py: |
+      def low_func():
+          return "low"
+    garbage_weight_consumer.py: |
+      from high_weight import high_func
+      from low_weight import low_func
+      GARBAGE_PPR031_CONSUMER_A = "weight_consumer"
+      GARBAGE_PPR031_CONSUMER_B = True
+
+      def weight_consumer():
+          high_func()
+          low_func()
+
+      class WeightAnalyzer:
+          GARBAGE_PPR031_ANALYZER_C = 99
+
+          def analyze(self):
+              return high_func()
+    garbage_source_mirror.py: |
+      GARBAGE_PPR031_MIRROR_D = "source_mirror"
+      GARBAGE_PPR031_MIRROR_E = False
+
+      def source_func():
+          return "unrelated_source"
+
+      def source_helper():
+          GARBAGE_PPR031_HELPER_F = 42
+          return source_func()
+    garbage_modified_output.py: |
+      GARBAGE_PPR031_OUTPUT_G = "modified_output"
+      GARBAGE_PPR031_OUTPUT_H = 0
+
+      def get_modified():
+          return "modified"
+
+      def apply_modification():
+          return "modified"
+  changed_files:
+    source.py: |
+      from high_weight import high_func
+      from low_weight import low_func
+
+      def source_func():
+          high_func()
+          high_func()
+          high_func()
+          high_func()
+          high_func()
+          low_func()
+          return "modified"
+    high_weight.py: |
+      def high_func():
+          return "high"
+    low_weight.py: |
+      def low_func():
+          return "low"
+    garbage_weight_consumer.py: |
+      from high_weight import high_func
+      from low_weight import low_func
+      GARBAGE_PPR031_CONSUMER_A = "weight_consumer"
+      GARBAGE_PPR031_CONSUMER_B = True
+
+      def weight_consumer():
+          high_func()
+          low_func()
+
+      class WeightAnalyzer:
+          GARBAGE_PPR031_ANALYZER_C = 99
+
+          def analyze(self):
+              return high_func()
+    garbage_source_mirror.py: |
+      GARBAGE_PPR031_MIRROR_D = "source_mirror"
+      GARBAGE_PPR031_MIRROR_E = False
+
+      def source_func():
+          return "unrelated_source"
+
+      def source_helper():
+          GARBAGE_PPR031_HELPER_F = 42
+          return source_func()
+    garbage_modified_output.py: |
+      GARBAGE_PPR031_OUTPUT_G = "modified_output"
+      GARBAGE_PPR031_OUTPUT_H = 0
+
+      def get_modified():
+          return "modified"
+
+      def apply_modification():
+          return "modified"
+  commit_message: Update files
+fragments:
+- id: source
+  selector:
+    path: source.py
+    anchor: 'def source_func():'
+- id: source_1
+  selector:
+    path: source.py
+    anchor: return "modified"
+- id: source_2
+  selector:
+    path: source.py
+    anchor: high_func()
+- id: high_weight
+  selector:
+    path: high_weight.py
+    anchor: 'def high_func():'
+- id: no_garbage_weight_consumer
+  selector:
+    path: garbage_weight_consumer.py
+- id: no_garbage_source_mirror
+  selector:
+    path: garbage_source_mirror.py
+- id: no_garbage_modified_output
+  selector:
+    path: garbage_modified_output.py
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_PPR031_CONSUMER_A
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_PPR031_CONSUMER_B
+- id: no_global_2
+  selector:
+    anchor: GARBAGE_PPR031_ANALYZER_C
+- id: no_global_3
+  selector:
+    anchor: GARBAGE_PPR031_MIRROR_D
+- id: no_global_4
+  selector:
+    anchor: GARBAGE_PPR031_MIRROR_E
+- id: no_global_5
+  selector:
+    anchor: GARBAGE_PPR031_HELPER_F
+- id: no_global_6
+  selector:
+    anchor: GARBAGE_PPR031_OUTPUT_G
+- id: no_global_7
+  selector:
+    anchor: GARBAGE_PPR031_OUTPUT_H
+oracle:
+  required:
+  - source
+  - source_1
+  - source_2
+  - high_weight
+  allowed: []
+  forbidden:
+  - no_garbage_weight_consumer
+  - no_garbage_source_mirror
+  - no_garbage_modified_output
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

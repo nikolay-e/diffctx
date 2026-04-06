@@ -1,0 +1,156 @@
+name: docker_029_label
+repo:
+  initial_files:
+    src/main.py: |
+      import os
+      VERSION = os.environ.get('APP_VERSION', 'unknown')
+      BUILD_DATE = os.environ.get('BUILD_DATE', 'unknown')
+
+      def get_version_info():
+          return {
+              'version': VERSION,
+              'build_date': BUILD_DATE
+          }
+    requirements.txt: |
+      flask==2.3.0
+    Dockerfile: |
+      FROM python:3.11-slim
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install -r requirements.txt
+      COPY src/ ./src/
+      CMD ["python", "src/main.py"]
+    scripts/build_info.sh: |
+      #!/bin/bash
+      echo "Build date: $(date)"
+      echo "Git SHA: $(git rev-parse HEAD)"
+      echo "Version: $(cat VERSION)"
+    .github/workflows/release.yml: |
+      name: Release
+      on:
+        push:
+          tags: ['v*']
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Build
+              run: docker build --build-arg VERSION=${GITHUB_REF_NAME} .
+    changelog/CHANGELOG.md: |
+      # Changelog
+      ## v1.0.0 - Initial Release
+      - Flask application
+      - Docker support
+  changed_files:
+    src/main.py: |
+      import os
+      VERSION = os.environ.get('APP_VERSION', 'unknown')
+      BUILD_DATE = os.environ.get('BUILD_DATE', 'unknown')
+
+      def get_version_info():
+          return {
+              'version': VERSION,
+              'build_date': BUILD_DATE
+          }
+    requirements.txt: |
+      flask==2.3.0
+    Dockerfile: |
+      FROM python:3.12-slim-bookworm AS base
+
+      # Build arguments for labels
+      ARG VERSION=0.0.0
+      ARG GIT_SHA=unknown
+      ARG BUILD_DATE
+      ARG VCS_URL=https://github.com/org/repo
+
+      # OCI Image Format labels (standard)
+      LABEL org.opencontainers.image.title="My Application" \
+            org.opencontainers.image.description="Production-ready Python application" \
+            org.opencontainers.image.version="${VERSION}" \
+            org.opencontainers.image.revision="${GIT_SHA}" \
+            org.opencontainers.image.created="${BUILD_DATE}" \
+            org.opencontainers.image.source="${VCS_URL}" \
+            org.opencontainers.image.url="${VCS_URL}" \
+            org.opencontainers.image.documentation="${VCS_URL}/blob/main/README.md" \
+            org.opencontainers.image.vendor="My Organization" \
+            org.opencontainers.image.licenses="MIT"
+
+      # Custom application labels
+      LABEL com.myorg.app.component="api" \
+            com.myorg.app.team="platform" \
+            com.myorg.app.tier="backend"
+
+      ENV PYTHONDONTWRITEBYTECODE=1
+      ENV PYTHONUNBUFFERED=1
+
+      FROM base AS dependencies
+      WORKDIR /app
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      FROM base AS production
+      WORKDIR /app
+
+      COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+      COPY --from=dependencies /usr/local/bin /usr/local/bin
+      COPY src/ ./src/
+
+      RUN useradd --create-home appuser
+      USER appuser
+
+      CMD ["python", "src/main.py"]
+    scripts/build_info.sh: |
+      #!/bin/bash
+      echo "Build date: $(date)"
+      echo "Git SHA: $(git rev-parse HEAD)"
+      echo "Version: $(cat VERSION)"
+    .github/workflows/release.yml: |
+      name: Release
+      on:
+        push:
+          tags: ['v*']
+      jobs:
+        release:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: Build
+              run: docker build --build-arg VERSION=${GITHUB_REF_NAME} .
+    changelog/CHANGELOG.md: |
+      # Changelog
+      ## v1.0.0 - Initial Release
+      - Flask application
+      - Docker support
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: src/main.py
+    anchor: VERSION = os.environ.get('APP_VERSION', 'unknown')
+- id: main_1
+  selector:
+    path: src/main.py
+    anchor: BUILD_DATE = os.environ.get('BUILD_DATE', 'unknown')
+- id: dockerfile_file
+  selector:
+    path: Dockerfile
+- id: no_build_info
+  selector:
+    path: scripts/build_info.sh
+- id: no_release
+  selector:
+    path: .github/workflows/release.yml
+- id: no_changelog
+  selector:
+    path: changelog/CHANGELOG.md
+oracle:
+  required:
+  - main
+  - main_1
+  - dockerfile_file
+  allowed: []
+  forbidden:
+  - no_build_info
+  - no_release
+  - no_changelog

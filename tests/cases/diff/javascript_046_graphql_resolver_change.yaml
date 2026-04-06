@@ -1,0 +1,200 @@
+name: javascript_046_graphql_resolver_change
+repo:
+  initial_files:
+    resolvers.ts: |
+      export const resolvers = {
+          Query: {
+              user: (_: any, { id }: { id: string }) => ({ id, name: 'Test' }),
+          },
+      };
+    schema.ts: |
+      import { resolvers } from './resolvers';
+
+      export const typeDefs = `
+          type User {
+              id: ID!
+              name: String!
+          }
+
+          type Query {
+              user(id: ID!): User
+          }
+      `;
+
+      export { resolvers };
+    post-resolvers.ts: |
+      export const postResolvers = {
+          Query: {
+              post: (_: any, { id }: { id: string }) => ({ id, title: 'Test Post', content: 'Content' }),
+              posts: () => [{ id: '1', title: 'Post 1', content: 'Content 1' }],
+          },
+          Mutation: {
+              createPost: (_: any, { title, content }: { title: string; content: string }) =>
+                  ({ id: Date.now().toString(), title, content }),
+          },
+      };
+    resolver-context.ts: |
+      export interface ResolverContext {
+          userId: string | null;
+          db: {
+              users: Map<string, { id: string; name: string }>;
+              posts: Map<string, { id: string; title: string }>;
+          };
+      }
+
+      export function createContext(token?: string): ResolverContext {
+          return {
+              userId: token ? 'user-from-token' : null,
+              db: { users: new Map(), posts: new Map() },
+          };
+      }
+    resolver.test.ts: |
+      import { resolvers } from './resolvers';
+
+      describe('user resolver', () => {
+          it('returns user by id', () => {
+              const result = resolvers.Query.user(null, { id: '123' });
+              expect(result).toEqual({ id: '123', name: 'Test' });
+          });
+      });
+  changed_files:
+    resolvers.ts: |
+      export const resolvers = {
+          Query: {
+              user: (_: any, { id }: { id: string }) => ({ id, name: 'Test' }),
+              users: () => [{ id: '1', name: 'User 1' }, { id: '2', name: 'User 2' }],
+          },
+          Mutation: {
+              createUser: (_: any, { name }: { name: string }) => ({ id: Date.now().toString(), name }),
+          },
+      };
+    schema.ts: |
+      import { resolvers } from './resolvers';
+
+      export const typeDefs = `
+          type User {
+              id: ID!
+              name: String!
+          }
+
+          type Query {
+              user(id: ID!): User
+          }
+      `;
+
+      export { resolvers };
+    post-resolvers.ts: |
+      export const postResolvers = {
+          Query: {
+              post: (_: any, { id }: { id: string }) => ({ id, title: 'Test Post', content: 'Content' }),
+              posts: () => [{ id: '1', title: 'Post 1', content: 'Content 1' }],
+          },
+          Mutation: {
+              createPost: (_: any, { title, content }: { title: string; content: string }) =>
+                  ({ id: Date.now().toString(), title, content }),
+          },
+      };
+    resolver-context.ts: |
+      export interface ResolverContext {
+          userId: string | null;
+          db: {
+              users: Map<string, { id: string; name: string }>;
+              posts: Map<string, { id: string; title: string }>;
+          };
+      }
+
+      export function createContext(token?: string): ResolverContext {
+          return {
+              userId: token ? 'user-from-token' : null,
+              db: { users: new Map(), posts: new Map() },
+          };
+      }
+    resolver.test.ts: |
+      import { resolvers } from './resolvers';
+
+      describe('user resolver', () => {
+          it('returns user by id', () => {
+              const result = resolvers.Query.user(null, { id: '123' });
+              expect(result).toEqual({ id: '123', name: 'Test' });
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: resolvers
+  selector:
+    path: resolvers.ts
+    anchor: 'users: ()'
+- id: resolvers_1
+  selector:
+    path: resolvers.ts
+    anchor: 'createUser:'
+- id: schema
+  selector:
+    path: schema.ts
+    anchor: import { resolvers } from './resolvers'
+- id: schema_1
+  selector:
+    path: schema.ts
+    anchor: type Query {
+- id: schema_2
+  selector:
+    path: schema.ts
+    anchor: 'user(id: ID!): User'
+- id: schema_3
+  selector:
+    path: schema.ts
+    anchor: export { resolvers }
+- id: no_post_resolvers
+  selector:
+    path: post-resolvers.ts
+- id: no_resolver_context
+  selector:
+    path: resolver-context.ts
+- id: no_resolver_test
+  selector:
+    path: resolver.test.ts
+- id: no_global_0
+  selector:
+    anchor: postResolvers
+- id: no_global_1
+  selector:
+    anchor: createPost
+- id: no_global_2
+  selector:
+    anchor: Test Post
+- id: no_global_3
+  selector:
+    anchor: ResolverContext
+- id: no_global_4
+  selector:
+    anchor: createContext
+- id: no_global_5
+  selector:
+    anchor: user-from-token
+- id: no_global_6
+  selector:
+    anchor: returns user by id
+- id: no_global_7
+  selector:
+    anchor: resolvers.Query.user
+oracle:
+  required:
+  - resolvers
+  - resolvers_1
+  - schema
+  - schema_1
+  - schema_2
+  - schema_3
+  allowed: []
+  forbidden:
+  - no_post_resolvers
+  - no_resolver_context
+  - no_resolver_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

@@ -1,0 +1,102 @@
+name: fragments_021_single_line_env_change
+repo:
+  initial_files:
+    app.py: |
+      import os
+      from pathlib import Path
+
+      DEBUG = os.getenv("DEBUG", False)
+      LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+      def main():
+          if DEBUG:
+              print("Debug mode")
+
+      def unrelated_function_080():
+
+      class UnrelatedClass080:
+
+          def method_a(self):
+
+      def another_unrelated_080():
+    .env: |
+      DEBUG=false
+      LOG_LEVEL=INFO
+    garbage_080.py: |
+      import os
+
+      GARBAGE_VAR = os.getenv("GARBAGE_FRAG_garbvar080")
+
+      def garbage_function_080():
+          return "GARBAGE_FRAG_garbfunc080"
+
+      class Garbage080:
+          VALUE = "GARBAGE_FRAG_garbclass080"
+    garbage_080.env: |
+      GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+      ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
+  changed_files:
+    app.py: |
+      import os
+      from pathlib import Path
+
+      DEBUG = os.getenv("DEBUG", False)
+      LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+      def main():
+          if DEBUG:
+              print("Debug mode")
+
+      def unrelated_function_080():
+
+      class UnrelatedClass080:
+
+          def method_a(self):
+
+      def another_unrelated_080():
+    .env: |
+      DEBUG=true
+      LOG_LEVEL=INFO
+    garbage_080.py: |
+      import os
+
+      GARBAGE_VAR = os.getenv("GARBAGE_FRAG_garbvar080")
+
+      def garbage_function_080():
+          return "GARBAGE_FRAG_garbfunc080"
+
+      class Garbage080:
+          VALUE = "GARBAGE_FRAG_garbclass080"
+    garbage_080.env: |
+      GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+      ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
+  commit_message: Update files
+fragments:
+- id: env_file
+  selector:
+    path: .env
+- id: req_global_0
+  selector:
+    anchor: DEBUG=true
+- id: no_global_0
+  selector:
+    anchor: GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+- id: no_global_1
+  selector:
+    anchor: GARBAGE_VAR
+- id: no_global_2
+  selector:
+    anchor: garbage_080.env
+- id: no_global_3
+  selector:
+    anchor: garbage_080.py
+oracle:
+  required:
+  - env_file
+  - req_global_0
+  allowed: []
+  forbidden:
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

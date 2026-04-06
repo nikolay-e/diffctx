@@ -1,0 +1,175 @@
+name: jvm_and_compiled_041_java_singleton_pattern
+repo:
+  initial_files:
+    src/main/java/com/example/Config.java: |
+      package com.example;
+
+      public class Config {
+          private String value;
+
+          public Config() {
+              this.value = "default";
+          }
+
+          public String getValue() {
+              return value;
+          }
+      }
+    src/main/java/com/example/DatabaseConfig.java: |
+      package com.example;
+
+      public class DatabaseConfig {
+          private String url;
+          private String username;
+          private int poolSize;
+
+          public DatabaseConfig(String url, String username, int poolSize) {
+              this.url = url;
+              this.username = username;
+              this.poolSize = poolSize;
+          }
+
+          public String getUrl() { return url; }
+          public String getUsername() { return username; }
+          public int getPoolSize() { return poolSize; }
+      }
+    src/main/java/com/example/PropertyLoader.java: |
+      package com.example;
+
+      import java.io.InputStream;
+      import java.util.Properties;
+
+      public class PropertyLoader {
+          private final Properties properties = new Properties();
+
+          public void load(String filename) {
+              try (InputStream is = getClass().getClassLoader().getResourceAsStream(filename)) {
+                  if (is != null) {
+                      properties.load(is);
+                  }
+              } catch (Exception e) {
+                  throw new RuntimeException("Failed to load properties", e);
+              }
+          }
+
+          public String get(String key) {
+              return properties.getProperty(key);
+          }
+      }
+  changed_files:
+    src/main/java/com/example/Config.java: |
+      package com.example;
+
+      public class Config {
+          private static volatile Config instance;
+          private final String value;
+
+          private Config() {
+              this.value = System.getenv().getOrDefault("CONFIG", "default");
+          }
+
+          public static Config getInstance() {
+              if (instance == null) {
+                  synchronized (Config.class) {
+                      if (instance == null) {
+                          instance = new Config();
+                      }
+                  }
+              }
+              return instance;
+          }
+
+          public String getValue() {
+              return value;
+          }
+      }
+    src/main/java/com/example/AppContext.java: |
+      package com.example;
+
+      public class AppContext {
+          public void initialize() {
+              Config config = Config.getInstance();
+              System.out.println("Config: " + config.getValue());
+          }
+      }
+    src/main/java/com/example/DatabaseConfig.java: |
+      package com.example;
+
+      public class DatabaseConfig {
+          private String url;
+          private String username;
+          private int poolSize;
+
+          public DatabaseConfig(String url, String username, int poolSize) {
+              this.url = url;
+              this.username = username;
+              this.poolSize = poolSize;
+          }
+
+          public String getUrl() { return url; }
+          public String getUsername() { return username; }
+          public int getPoolSize() { return poolSize; }
+      }
+    src/main/java/com/example/PropertyLoader.java: |
+      package com.example;
+
+      import java.io.InputStream;
+      import java.util.Properties;
+
+      public class PropertyLoader {
+          private final Properties properties = new Properties();
+
+          public void load(String filename) {
+              try (InputStream is = getClass().getClassLoader().getResourceAsStream(filename)) {
+                  if (is != null) {
+                      properties.load(is);
+                  }
+              } catch (Exception e) {
+                  throw new RuntimeException("Failed to load properties", e);
+              }
+          }
+
+          public String get(String key) {
+              return properties.getProperty(key);
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: appcontext
+  selector:
+    path: src/main/java/com/example/AppContext.java
+    anchor: public class AppContext {
+- id: config
+  selector:
+    path: src/main/java/com/example/Config.java
+    anchor: private static volatile Config instance;
+- id: no_databaseconfig
+  selector:
+    path: src/main/java/com/example/DatabaseConfig.java
+- id: no_propertyloader
+  selector:
+    path: src/main/java/com/example/PropertyLoader.java
+- id: no_global_0
+  selector:
+    anchor: DatabaseConfig
+- id: no_global_1
+  selector:
+    anchor: getPoolSize
+- id: no_global_2
+  selector:
+    anchor: PropertyLoader
+- id: no_global_3
+  selector:
+    anchor: getResourceAsStream
+oracle:
+  required:
+  - appcontext
+  - config
+  allowed: []
+  forbidden:
+  - no_databaseconfig
+  - no_propertyloader
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3

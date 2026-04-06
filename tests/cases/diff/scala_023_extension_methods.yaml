@@ -1,0 +1,187 @@
+name: scala_023_extension_methods
+repo:
+  initial_files:
+    IntExtensions.scala: |
+      object IntExtensions {
+        extension (n: Int) {
+          def squared: Int = n * n
+          def isEven: Boolean = n % 2 == 0
+          def times(f: => Unit): Unit = (1 to n).foreach(_ => f)
+          def isPositive: Boolean = n > 0
+          def factorial: BigInt = (1 to n).foldLeft(BigInt(1))(_ * _)
+        }
+      }
+    Calculator.scala: |
+      class Calculator {}
+    StringExtensions.scala: |
+      object StringExtensions {
+        extension (s: String) {
+          def toSlug: String = s.toLowerCase.replaceAll("\\s+", "-")
+          def words: List[String] = s.split("\\s+").toList
+          def truncate(maxLen: Int): String =
+            if (s.length <= maxLen) s else s.take(maxLen - 3) + "..."
+          def reversed: String = s.reverse
+        }
+      }
+    DoubleExtensions.scala: |
+      object DoubleExtensions {
+        extension (d: Double) {
+          def squared: Double = d * d
+          def rounded(places: Int): Double = {
+            val factor = math.pow(10, places)
+            (d * factor).round / factor
+          }
+          def isPositive: Boolean = d > 0.0
+          def percent: String = f"${d * 100}%.1f%%"
+        }
+      }
+    MathUtils.scala: |
+      object MathUtils {
+        def square(n: Int): Int = n * n
+
+        def factorial(n: Int): BigInt = {
+          if (n <= 1) BigInt(1) else BigInt(n) * factorial(n - 1)
+        }
+
+        def gcd(a: Int, b: Int): Int = {
+          if (b == 0) a else gcd(b, a % b)
+        }
+
+        def isPrime(n: Int): Boolean = {
+          if (n < 2) false
+          else (2 to math.sqrt(n).toInt).forall(n % _ != 0)
+        }
+      }
+    NumberFormatter.scala: |
+      object NumberFormatter {
+        def format(n: Int): String = f"$n%,d"
+        def formatPercent(n: Double): String = f"${n * 100}%.1f%%"
+        def formatCurrency(amount: Double, symbol: String = "$"): String =
+          f"$symbol$amount%.2f"
+        def padLeft(n: Int, width: Int): String = f"$n%${width}d"
+      }
+    CalculatorTest.scala: |
+      import org.scalatest.flatspec.AnyFlatSpec
+      import org.scalatest.matchers.should.Matchers
+
+      class CalculatorTest extends AnyFlatSpec with Matchers {
+        val calc = new Calculator
+
+        "squareSum" should "sum squares" in {
+          calc.squareSum(List(2, 3, 4)) should be(29)
+        }
+
+        "countEven" should "count even numbers" in {
+          calc.countEven(List(1, 2, 3, 4, 5)) should be(2)
+        }
+      }
+  changed_files:
+    Calculator.scala: |
+      import IntExtensions._
+
+      class Calculator {
+        def squareSum(nums: List[Int]): Int = {
+          nums.map(_.squared).sum
+        }
+
+        def countEven(nums: List[Int]): Int = {
+          nums.count(_.isEven)
+        }
+
+        def repeatAction(n: Int, action: => Unit): Unit = {
+          n.times(action)
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: intextensions
+  selector:
+    path: IntExtensions.scala
+    anchor: 'def squared: Int = n * n'
+- id: intextensions_1
+  selector:
+    path: IntExtensions.scala
+    anchor: 'def isEven: Boolean = n % 2 == 0'
+- id: intextensions_2
+  selector:
+    path: IntExtensions.scala
+    anchor: 'def times(f: => Unit): Unit'
+- id: no_stringextensions
+  selector:
+    path: StringExtensions.scala
+- id: no_doubleextensions
+  selector:
+    path: DoubleExtensions.scala
+- id: no_mathutils
+  selector:
+    path: MathUtils.scala
+- id: no_numberformatter
+  selector:
+    path: NumberFormatter.scala
+- id: no_calculatortest
+  selector:
+    path: CalculatorTest.scala
+- id: no_global_0
+  selector:
+    anchor: object StringExtensions
+- id: no_global_1
+  selector:
+    anchor: toSlug
+- id: no_global_2
+  selector:
+    anchor: def words
+- id: no_global_3
+  selector:
+    anchor: object DoubleExtensions
+- id: no_global_4
+  selector:
+    anchor: def rounded
+- id: no_global_5
+  selector:
+    anchor: def percent
+- id: no_global_6
+  selector:
+    anchor: object MathUtils
+- id: no_global_7
+  selector:
+    anchor: def square
+- id: no_global_8
+  selector:
+    anchor: isPrime
+- id: no_global_9
+  selector:
+    anchor: object NumberFormatter
+- id: no_global_10
+  selector:
+    anchor: formatCurrency
+- id: no_global_11
+  selector:
+    anchor: class CalculatorTest
+- id: no_global_12
+  selector:
+    anchor: sum squares
+oracle:
+  required:
+  - intextensions
+  - intextensions_1
+  - intextensions_2
+  allowed: []
+  forbidden:
+  - no_stringextensions
+  - no_doubleextensions
+  - no_mathutils
+  - no_numberformatter
+  - no_calculatortest
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

@@ -1,0 +1,204 @@
+name: rust_030_include_str
+repo:
+  initial_files:
+    data/config.json: |
+      {"name": "app", "version": "1.0"}
+    src/lib.rs: |
+      pub mod config;
+      pub mod env;
+      pub mod feature_flags;
+    src/config.rs: |
+      const CONFIG_JSON: &str = include_str!("../data/config.json");
+
+      pub fn get_config() -> serde_json::Value {
+          serde_json::from_str(CONFIG_JSON).unwrap()
+      }
+
+      pub fn get_app_name() -> String {
+          let config = get_config();
+          config["name"].as_str().unwrap_or("unknown").to_string()
+      }
+
+      pub fn get_version() -> String {
+          let config = get_config();
+          config["version"].as_str().unwrap_or("0.0.0").to_string()
+      }
+    src/env.rs: |
+      use std::env;
+
+      pub struct EnvConfig {
+          pub port: u16,
+          pub log_level: String,
+          pub debug_mode: bool,
+      }
+
+      impl EnvConfig {
+          pub fn from_env() -> Self {
+              Self {
+                  port: env::var("PORT")
+                      .ok()
+                      .and_then(|p| p.parse().ok())
+                      .unwrap_or(8080),
+                  log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+                  debug_mode: env::var("DEBUG").is_ok(),
+              }
+          }
+
+          pub fn is_production(&self) -> bool {
+              self.log_level == "error" && !self.debug_mode
+          }
+      }
+    src/feature_flags.rs: |
+      pub struct FeatureSet {
+          enabled: Vec<String>,
+      }
+
+      impl FeatureSet {
+          pub fn new() -> Self {
+              let mut enabled = Vec::new();
+              #[cfg(feature = "auth")]
+              enabled.push("auth".to_string());
+              #[cfg(feature = "api")]
+              enabled.push("api".to_string());
+              Self { enabled }
+          }
+
+          pub fn is_enabled(&self, feature: &str) -> bool {
+              self.enabled.iter().any(|f| f == feature)
+          }
+
+          pub fn list_features(&self) -> &[String] {
+              &self.enabled
+          }
+      }
+  changed_files:
+    data/config.json: |
+      {"name": "app", "version": "2.0", "features": ["auth", "api"]}
+    src/lib.rs: |
+      pub mod config;
+      pub mod env;
+      pub mod feature_flags;
+    src/config.rs: |
+      const CONFIG_JSON: &str = include_str!("../data/config.json");
+
+      pub fn get_config() -> serde_json::Value {
+          serde_json::from_str(CONFIG_JSON).unwrap()
+      }
+
+      pub fn get_app_name() -> String {
+          let config = get_config();
+          config["name"].as_str().unwrap_or("unknown").to_string()
+      }
+
+      pub fn get_version() -> String {
+          let config = get_config();
+          config["version"].as_str().unwrap_or("0.0.0").to_string()
+      }
+
+      pub fn get_features() -> Vec<String> {
+          let config = get_config();
+          config["features"]
+              .as_array()
+              .map(|arr| {
+                  arr.iter()
+                      .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                      .collect()
+              })
+              .unwrap_or_default()
+      }
+    src/env.rs: |
+      use std::env;
+
+      pub struct EnvConfig {
+          pub port: u16,
+          pub log_level: String,
+          pub debug_mode: bool,
+      }
+
+      impl EnvConfig {
+          pub fn from_env() -> Self {
+              Self {
+                  port: env::var("PORT")
+                      .ok()
+                      .and_then(|p| p.parse().ok())
+                      .unwrap_or(8080),
+                  log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+                  debug_mode: env::var("DEBUG").is_ok(),
+              }
+          }
+
+          pub fn is_production(&self) -> bool {
+              self.log_level == "error" && !self.debug_mode
+          }
+      }
+    src/feature_flags.rs: |
+      pub struct FeatureSet {
+          enabled: Vec<String>,
+      }
+
+      impl FeatureSet {
+          pub fn new() -> Self {
+              let mut enabled = Vec::new();
+              #[cfg(feature = "auth")]
+              enabled.push("auth".to_string());
+              #[cfg(feature = "api")]
+              enabled.push("api".to_string());
+              Self { enabled }
+          }
+
+          pub fn is_enabled(&self, feature: &str) -> bool {
+              self.enabled.iter().any(|f| f == feature)
+          }
+
+          pub fn list_features(&self) -> &[String] {
+              &self.enabled
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: config
+  selector:
+    path: src/config.rs
+    anchor: pub fn get_features() -> Vec<String> {
+- id: config_1
+  selector:
+    path: src/config.rs
+    anchor: include_str!("../data/config.json")
+- id: no_env
+  selector:
+    path: src/env.rs
+- id: no_feature_flags
+  selector:
+    path: src/feature_flags.rs
+- id: no_global_0
+  selector:
+    anchor: EnvConfig
+- id: no_global_1
+  selector:
+    anchor: from_env
+- id: no_global_2
+  selector:
+    anchor: LOG_LEVEL
+- id: no_global_3
+  selector:
+    anchor: FeatureSet
+- id: no_global_4
+  selector:
+    anchor: is_enabled
+- id: no_global_5
+  selector:
+    anchor: list_features
+oracle:
+  required:
+  - config
+  - config_1
+  allowed: []
+  forbidden:
+  - no_env
+  - no_feature_flags
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

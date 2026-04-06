@@ -1,0 +1,257 @@
+name: javascript_extended_027_component_with_props
+repo:
+  initial_files:
+    src/App.tsx: |
+      export function App() {
+          return (
+              <div className="app">
+                  <h1>My Application</h1>
+              </div>
+          );
+      }
+    src/components/Card.tsx: |
+      import React from 'react';
+
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    src/components/Button.tsx: |
+      import React from 'react';
+
+      interface ButtonProps {
+          label: string;
+          onClick: () => void;
+          variant?: 'primary' | 'secondary' | 'danger';
+          disabled?: boolean;
+      }
+
+      export function Button({ label, onClick, variant = 'primary', disabled = false }: ButtonProps) {
+          return (
+              <button
+                  className={`btn btn-${variant}`}
+                  onClick={onClick}
+                  disabled={disabled}
+              >
+                  {label}
+              </button>
+          );
+      }
+    src/components/Modal.tsx: |
+      import React from 'react';
+
+      interface ModalProps {
+          isOpen: boolean;
+          onClose: () => void;
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+          if (!isOpen) return null;
+          return (
+              <div className="modal-overlay" onClick={onClose}>
+                  <div className="modal-content" onClick={e => e.stopPropagation()}>
+                      <h2>{title}</h2>
+                      {children}
+                      <button onClick={onClose}>Close</button>
+                  </div>
+              </div>
+          );
+      }
+    src/styles/theme.ts: |
+      export const colors = {
+          primary: '#3b82f6',
+          secondary: '#64748b',
+          danger: '#ef4444',
+          background: '#ffffff',
+          text: '#1e293b',
+      };
+
+      export const spacing = {
+          xs: '4px',
+          sm: '8px',
+          md: '16px',
+          lg: '24px',
+          xl: '32px',
+      };
+
+      export const breakpoints = {
+          mobile: '640px',
+          tablet: '768px',
+          desktop: '1024px',
+      };
+  changed_files:
+    src/App.tsx: |
+      import { Card } from './components/Card';
+
+      export function App() {
+          return (
+              <div className="app">
+                  <h1>My Application</h1>
+                  <Card title="Welcome">
+                      <p>Hello World</p>
+                  </Card>
+              </div>
+          );
+      }
+    src/components/Card.tsx: |
+      import React from 'react';
+
+      interface CardProps {
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Card({ title, children }: CardProps) {
+          return (
+              <div className="card">
+                  <h2>{title}</h2>
+                  {children}
+              </div>
+          );
+      }
+    src/components/Button.tsx: |
+      import React from 'react';
+
+      interface ButtonProps {
+          label: string;
+          onClick: () => void;
+          variant?: 'primary' | 'secondary' | 'danger';
+          disabled?: boolean;
+      }
+
+      export function Button({ label, onClick, variant = 'primary', disabled = false }: ButtonProps) {
+          return (
+              <button
+                  className={`btn btn-${variant}`}
+                  onClick={onClick}
+                  disabled={disabled}
+              >
+                  {label}
+              </button>
+          );
+      }
+    src/components/Modal.tsx: |
+      import React from 'react';
+
+      interface ModalProps {
+          isOpen: boolean;
+          onClose: () => void;
+          title: string;
+          children: React.ReactNode;
+      }
+
+      export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+          if (!isOpen) return null;
+          return (
+              <div className="modal-overlay" onClick={onClose}>
+                  <div className="modal-content" onClick={e => e.stopPropagation()}>
+                      <h2>{title}</h2>
+                      {children}
+                      <button onClick={onClose}>Close</button>
+                  </div>
+              </div>
+          );
+      }
+    src/styles/theme.ts: |
+      export const colors = {
+          primary: '#3b82f6',
+          secondary: '#64748b',
+          danger: '#ef4444',
+          background: '#ffffff',
+          text: '#1e293b',
+      };
+
+      export const spacing = {
+          xs: '4px',
+          sm: '8px',
+          md: '16px',
+          lg: '24px',
+          xl: '32px',
+      };
+
+      export const breakpoints = {
+          mobile: '640px',
+          tablet: '768px',
+          desktop: '1024px',
+      };
+  commit_message: Update files
+fragments:
+- id: card
+  selector:
+    path: src/components/Card.tsx
+    anchor: CardProps
+- id: card_1
+  selector:
+    path: src/components/Card.tsx
+    anchor: 'title: string'
+- id: card_2
+  selector:
+    path: src/components/Card.tsx
+    anchor: 'children: React.ReactNode'
+- id: card_3
+  selector:
+    path: src/components/Card.tsx
+    anchor: Card({ title, children }
+- id: no_button
+  selector:
+    path: src/components/Button.tsx
+- id: no_modal
+  selector:
+    path: src/components/Modal.tsx
+- id: no_theme
+  selector:
+    path: src/styles/theme.ts
+- id: no_global_0
+  selector:
+    anchor: ButtonProps
+- id: no_global_1
+  selector:
+    anchor: btn btn-
+- id: no_global_2
+  selector:
+    anchor: variant
+- id: no_global_3
+  selector:
+    anchor: ModalProps
+- id: no_global_4
+  selector:
+    anchor: modal-overlay
+- id: no_global_5
+  selector:
+    anchor: modal-content
+- id: no_global_6
+  selector:
+    anchor: 'primary: ''#3b82f6'''
+- id: no_global_7
+  selector:
+    anchor: breakpoints
+oracle:
+  required:
+  - card
+  - card_1
+  - card_2
+  - card_3
+  allowed: []
+  forbidden:
+  - no_button
+  - no_modal
+  - no_theme
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7

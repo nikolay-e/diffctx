@@ -1,0 +1,214 @@
+name: javascript_extended_018_promise_chain_change
+repo:
+  initial_files:
+    src/api.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+      }
+
+      export function fetchData(): Promise<{ data: string }> {
+          return fetch('/api/data').then(res => res.json());
+      }
+
+      export function fetchConfig(): Promise<Record<string, string>> {
+          return fetch('/api/config').then(res => res.json());
+      }
+
+      export function handleApiError(error: Error): never {
+          console.error('API Error:', error.message);
+          throw error;
+      }
+    src/consumer.ts: |
+      import { fetchData, fetchConfig } from './api';
+
+      export async function loadDashboard() {
+          const data = await fetchData();
+          const config = await fetchConfig();
+          return { data: data.data, config };
+      }
+    src/utils/retry.ts: |
+      interface RetryOptions {
+          maxAttempts: number;
+          delayMs: number;
+          backoffFactor: number;
+      }
+
+      const DEFAULT_RETRY: RetryOptions = { maxAttempts: 3, delayMs: 500, backoffFactor: 2 };
+
+      export async function withRetry<T>(
+          fn: () => Promise<T>,
+          options: RetryOptions = DEFAULT_RETRY
+      ): Promise<T> {
+          let lastError: Error | undefined;
+          for (let attempt = 0; attempt < options.maxAttempts; attempt++) {
+              try {
+                  return await fn();
+              } catch (err) {
+                  lastError = err as Error;
+                  await new Promise(r => setTimeout(r, options.delayMs * Math.pow(options.backoffFactor, attempt)));
+              }
+          }
+          throw lastError;
+      }
+    src/utils/cache.ts: |
+      interface CacheEntry<T> {
+          value: T;
+          expiresAt: number;
+      }
+
+      export class ResponseCache {
+          private store = new Map<string, CacheEntry<unknown>>();
+
+          get<T>(key: string): T | undefined {
+              const entry = this.store.get(key);
+              if (!entry || entry.expiresAt < Date.now()) {
+                  this.store.delete(key);
+                  return undefined;
+              }
+              return entry.value as T;
+          }
+
+          set<T>(key: string, value: T, ttlMs: number): void {
+              this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+          }
+
+          clear(): void {
+              this.store.clear();
+          }
+      }
+  changed_files:
+    src/api.ts: |
+      export interface ApiResponse<T> {
+          data: T;
+          status: number;
+      }
+
+      export function fetchData(): Promise<{ data: string; metadata: { timestamp: number } }> {
+          return fetch('/api/data')
+              .then(res => {
+                  if (!res.ok) {
+                      throw new Error(`HTTP ${res.status}`);
+                  }
+                  return res.json();
+              })
+              .then(data => ({
+                  ...data,
+                  metadata: { timestamp: Date.now() },
+              }));
+      }
+
+      export function fetchConfig(): Promise<Record<string, string>> {
+          return fetch('/api/config').then(res => res.json());
+      }
+
+      export function handleApiError(error: Error): never {
+          console.error('API Error:', error.message);
+          throw error;
+      }
+    src/consumer.ts: |
+      import { fetchData, fetchConfig } from './api';
+
+      export async function loadDashboard() {
+          const data = await fetchData();
+          const config = await fetchConfig();
+          return { data: data.data, config };
+      }
+    src/utils/retry.ts: |
+      interface RetryOptions {
+          maxAttempts: number;
+          delayMs: number;
+          backoffFactor: number;
+      }
+
+      const DEFAULT_RETRY: RetryOptions = { maxAttempts: 3, delayMs: 500, backoffFactor: 2 };
+
+      export async function withRetry<T>(
+          fn: () => Promise<T>,
+          options: RetryOptions = DEFAULT_RETRY
+      ): Promise<T> {
+          let lastError: Error | undefined;
+          for (let attempt = 0; attempt < options.maxAttempts; attempt++) {
+              try {
+                  return await fn();
+              } catch (err) {
+                  lastError = err as Error;
+                  await new Promise(r => setTimeout(r, options.delayMs * Math.pow(options.backoffFactor, attempt)));
+              }
+          }
+          throw lastError;
+      }
+    src/utils/cache.ts: |
+      interface CacheEntry<T> {
+          value: T;
+          expiresAt: number;
+      }
+
+      export class ResponseCache {
+          private store = new Map<string, CacheEntry<unknown>>();
+
+          get<T>(key: string): T | undefined {
+              const entry = this.store.get(key);
+              if (!entry || entry.expiresAt < Date.now()) {
+                  this.store.delete(key);
+                  return undefined;
+              }
+              return entry.value as T;
+          }
+
+          set<T>(key: string, value: T, ttlMs: number): void {
+              this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+          }
+
+          clear(): void {
+              this.store.clear();
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: consumer
+  selector:
+    path: src/consumer.ts
+    anchor: loadDashboard
+- id: consumer_1
+  selector:
+    path: src/consumer.ts
+    anchor: fetchData
+- id: no_retry
+  selector:
+    path: src/utils/retry.ts
+- id: no_cache
+  selector:
+    path: src/utils/cache.ts
+- id: no_global_0
+  selector:
+    anchor: withRetry
+- id: no_global_1
+  selector:
+    anchor: RetryOptions
+- id: no_global_2
+  selector:
+    anchor: backoffFactor
+- id: no_global_3
+  selector:
+    anchor: ResponseCache
+- id: no_global_4
+  selector:
+    anchor: CacheEntry
+- id: no_global_5
+  selector:
+    anchor: ttlMs
+oracle:
+  required:
+  - consumer
+  - consumer_1
+  allowed: []
+  forbidden:
+  - no_retry
+  - no_cache
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

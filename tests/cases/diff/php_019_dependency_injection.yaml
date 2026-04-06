@@ -1,0 +1,393 @@
+name: php_019_dependency_injection
+repo:
+  initial_files:
+    UserRepository.php: |
+      <?php
+      class UserRepository {
+          private array $store = [];
+
+          public function find(int $id): array {
+              return $this->store[$id] ?? ['id' => $id, 'name' => 'User'];
+          }
+
+          public function save(array $data): bool {
+              $this->store[] = $data;
+              return true;
+          }
+
+          public function delete(int $id): bool {
+              if (isset($this->store[$id])) {
+                  unset($this->store[$id]);
+                  return true;
+              }
+              return false;
+          }
+
+          public function findAll(): array {
+              return $this->store;
+          }
+      }
+    UserService.php: |
+      <?php
+      class UserService {}
+    ProductRepository.php: |
+      <?php
+      class ProductRepository {
+          private array $products = [];
+
+          public function find(int $id): array {
+              return $this->products[$id] ?? ['id' => $id, 'name' => 'Product'];
+          }
+
+          public function save(array $data): bool {
+              $this->products[] = $data;
+              return true;
+          }
+
+          public function findByCategory(string $category): array {
+              return array_filter($this->products, fn($p) => ($p['category'] ?? '') === $category);
+          }
+
+          public function count(): int {
+              return count($this->products);
+          }
+      }
+    UserLogger.php: |
+      <?php
+      class UserLogger {
+          private string $logPath;
+
+          public function __construct(string $logPath) {
+              $this->logPath = $logPath;
+          }
+
+          public function logAction(int $userId, string $action): void {
+              $entry = sprintf("[%s] User %d: %s", date('c'), $userId, $action);
+          }
+
+          public function getUser(int $id): string {
+              return "user_{$id}";
+          }
+
+          public function getLogPath(): string {
+              return $this->logPath;
+          }
+      }
+    UserValidator.php: |
+      <?php
+      class UserValidator {
+          private array $rules = [];
+
+          public function validate(array $data): bool {
+              if (empty($data['name']) || !is_string($data['name'])) {
+                  return false;
+              }
+              if (isset($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                  return false;
+              }
+              return true;
+          }
+
+          public function addRule(string $field, callable $rule): void {
+              $this->rules[$field] = $rule;
+          }
+
+          public function getErrors(array $data): array {
+              $errors = [];
+              foreach ($this->rules as $field => $rule) {
+                  if (!$rule($data[$field] ?? null)) {
+                      $errors[] = "Validation failed for: {$field}";
+                  }
+              }
+              return $errors;
+          }
+      }
+    OrderRepository.php: |
+      <?php
+      class OrderRepository {
+          private array $orders = [];
+
+          public function find(int $id): array {
+              return $this->orders[$id] ?? ['id' => $id, 'status' => 'pending'];
+          }
+
+          public function save(array $data): bool {
+              $this->orders[] = $data;
+              return true;
+          }
+
+          public function findByUser(int $userId): array {
+              return array_filter($this->orders, fn($o) => ($o['user_id'] ?? 0) === $userId);
+          }
+      }
+    UserFactory.php: |
+      <?php
+      class UserFactory {
+          private static int $nextId = 1;
+
+          public static function create(string $name, string $email = ''): array {
+              return [
+                  'id' => self::$nextId++,
+                  'name' => $name,
+                  'email' => $email,
+                  'created_at' => date('c'),
+              ];
+          }
+
+          public static function createAdmin(string $name): array {
+              $user = self::create($name);
+              $user['role'] = 'admin';
+              return $user;
+          }
+      }
+  changed_files:
+    UserRepository.php: |
+      <?php
+      class UserRepository {
+          private array $store = [];
+
+          public function find(int $id): array {
+              return $this->store[$id] ?? ['id' => $id, 'name' => 'User'];
+          }
+
+          public function save(array $data): bool {
+              $this->store[] = $data;
+              return true;
+          }
+
+          public function delete(int $id): bool {
+              if (isset($this->store[$id])) {
+                  unset($this->store[$id]);
+                  return true;
+              }
+              return false;
+          }
+
+          public function findAll(): array {
+              return $this->store;
+          }
+      }
+    UserService.php: |
+      <?php
+      require_once 'UserRepository.php';
+
+      class UserService {
+          public function __construct(private UserRepository $repo) {}
+
+          public function getUser(int $id): array {
+              return $this->repo->find($id);
+          }
+
+          public function createUser(array $data): bool {
+              return $this->repo->save($data);
+          }
+      }
+    ProductRepository.php: |
+      <?php
+      class ProductRepository {
+          private array $products = [];
+
+          public function find(int $id): array {
+              return $this->products[$id] ?? ['id' => $id, 'name' => 'Product'];
+          }
+
+          public function save(array $data): bool {
+              $this->products[] = $data;
+              return true;
+          }
+
+          public function findByCategory(string $category): array {
+              return array_filter($this->products, fn($p) => ($p['category'] ?? '') === $category);
+          }
+
+          public function count(): int {
+              return count($this->products);
+          }
+      }
+    UserLogger.php: |
+      <?php
+      class UserLogger {
+          private string $logPath;
+
+          public function __construct(string $logPath) {
+              $this->logPath = $logPath;
+          }
+
+          public function logAction(int $userId, string $action): void {
+              $entry = sprintf("[%s] User %d: %s", date('c'), $userId, $action);
+          }
+
+          public function getUser(int $id): string {
+              return "user_{$id}";
+          }
+
+          public function getLogPath(): string {
+              return $this->logPath;
+          }
+      }
+    UserValidator.php: |
+      <?php
+      class UserValidator {
+          private array $rules = [];
+
+          public function validate(array $data): bool {
+              if (empty($data['name']) || !is_string($data['name'])) {
+                  return false;
+              }
+              if (isset($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                  return false;
+              }
+              return true;
+          }
+
+          public function addRule(string $field, callable $rule): void {
+              $this->rules[$field] = $rule;
+          }
+
+          public function getErrors(array $data): array {
+              $errors = [];
+              foreach ($this->rules as $field => $rule) {
+                  if (!$rule($data[$field] ?? null)) {
+                      $errors[] = "Validation failed for: {$field}";
+                  }
+              }
+              return $errors;
+          }
+      }
+    OrderRepository.php: |
+      <?php
+      class OrderRepository {
+          private array $orders = [];
+
+          public function find(int $id): array {
+              return $this->orders[$id] ?? ['id' => $id, 'status' => 'pending'];
+          }
+
+          public function save(array $data): bool {
+              $this->orders[] = $data;
+              return true;
+          }
+
+          public function findByUser(int $userId): array {
+              return array_filter($this->orders, fn($o) => ($o['user_id'] ?? 0) === $userId);
+          }
+      }
+    UserFactory.php: |
+      <?php
+      class UserFactory {
+          private static int $nextId = 1;
+
+          public static function create(string $name, string $email = ''): array {
+              return [
+                  'id' => self::$nextId++,
+                  'name' => $name,
+                  'email' => $email,
+                  'created_at' => date('c'),
+              ];
+          }
+
+          public static function createAdmin(string $name): array {
+              $user = self::create($name);
+              $user['role'] = 'admin';
+              return $user;
+          }
+      }
+  commit_message: Update files
+fragments:
+- id: userservice
+  selector:
+    path: UserService.php
+    anchor: UserRepository $repo
+- id: userservice_1
+  selector:
+    path: UserService.php
+    anchor: $this->repo->find($id)
+- id: userservice_2
+  selector:
+    path: UserService.php
+    anchor: $this->repo->save($data)
+- id: userrepository
+  selector:
+    path: UserRepository.php
+    anchor: 'public function find(int $id): array'
+- id: userrepository_1
+  selector:
+    path: UserRepository.php
+    anchor: 'public function save(array $data): bool'
+- id: no_productrepository
+  selector:
+    path: ProductRepository.php
+- id: no_userlogger
+  selector:
+    path: UserLogger.php
+- id: no_uservalidator
+  selector:
+    path: UserValidator.php
+- id: no_orderrepository
+  selector:
+    path: OrderRepository.php
+- id: no_userfactory
+  selector:
+    path: UserFactory.php
+- id: no_global_0
+  selector:
+    anchor: class ProductRepository
+- id: no_global_1
+  selector:
+    anchor: findByCategory
+- id: no_global_2
+  selector:
+    anchor: class UserLogger
+- id: no_global_3
+  selector:
+    anchor: logAction
+- id: no_global_4
+  selector:
+    anchor: getLogPath
+- id: no_global_5
+  selector:
+    anchor: class UserValidator
+- id: no_global_6
+  selector:
+    anchor: addRule
+- id: no_global_7
+  selector:
+    anchor: getErrors
+- id: no_global_8
+  selector:
+    anchor: class OrderRepository
+- id: no_global_9
+  selector:
+    anchor: findByUser
+- id: no_global_10
+  selector:
+    anchor: class UserFactory
+- id: no_global_11
+  selector:
+    anchor: createAdmin
+oracle:
+  required:
+  - userservice
+  - userservice_1
+  - userservice_2
+  - userrepository
+  - userrepository_1
+  allowed: []
+  forbidden:
+  - no_productrepository
+  - no_userlogger
+  - no_uservalidator
+  - no_orderrepository
+  - no_userfactory
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11

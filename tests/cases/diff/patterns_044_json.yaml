@@ -1,0 +1,267 @@
+name: patterns_044_json
+repo:
+  initial_files:
+    src/serializers.py: |
+      import json
+      from dataclasses import dataclass, asdict
+      from typing import Any
+
+      @dataclass
+      class User:
+          id: int
+          name: str
+          email: str
+          active: bool = True
+
+      @dataclass
+      class Order:
+          id: int
+          user_id: int
+          items: list
+          total: float
+
+      class JsonSerializer:
+          @staticmethod
+          def serialize_user(user: User) -> str:
+              data = asdict(user)
+              data["type"] = "user"
+              return json.dumps(data, indent=2, sort_keys=True)
+
+          @staticmethod
+          def serialize_order(order: Order) -> str:
+              data = asdict(order)
+              data["type"] = "order"
+              data["item_count"] = len(order.items)
+              return json.dumps(data, indent=2, sort_keys=True)
+
+          @staticmethod
+          def serialize_batch(items: list[Any]) -> str:
+              result = []
+              for item in items:
+                  if isinstance(item, User):
+                      result.append({"type": "user", **asdict(item)})
+                  elif isinstance(item, Order):
+                      result.append({"type": "order", **asdict(item)})
+              return json.dumps({"batch": result, "count": len(result)}, indent=2)
+    tests/test_serializers.py: |
+      from src.serializers import User, JsonSerializer
+
+      def test_serialize_user():
+          user = User(id=1, name="Test", email="test@example.com")
+          result = JsonSerializer.serialize_user(user)
+          assert "test@example.com" in result
+    src/csv_serializer.py: |
+      import csv
+      import io
+      from dataclasses import asdict
+
+      class CsvSerializer:
+          @staticmethod
+          def serialize_users(users) -> str:
+              if not users:
+                  return ""
+              output = io.StringIO()
+              writer = csv.DictWriter(output, fieldnames=["id", "name", "email", "active"])
+              writer.writeheader()
+              for user in users:
+                  writer.writerow(asdict(user))
+              return output.getvalue()
+
+          @staticmethod
+          def serialize_orders(orders) -> str:
+              output = io.StringIO()
+              writer = csv.DictWriter(output, fieldnames=["id", "user_id", "total"])
+              writer.writeheader()
+              for order in orders:
+                  row = {"id": order.id, "user_id": order.user_id, "total": order.total}
+                  writer.writerow(row)
+              return output.getvalue()
+    tests/test_csv_serializer.py: |
+      from src.serializers import User, Order
+      from src.csv_serializer import CsvSerializer
+
+      def test_serialize_users_csv():
+          users = [User(id=1, name="Alice", email="alice@test.com")]
+          result = CsvSerializer.serialize_users(users)
+          assert "Alice" in result
+          assert "alice@test.com" in result
+  changed_files:
+    src/serializers.py: |
+      import json
+      from dataclasses import dataclass, asdict
+      from typing import Any
+
+      @dataclass
+      class User:
+          id: int
+          name: str
+          email: str
+          active: bool = True
+
+      @dataclass
+      class Order:
+          id: int
+          user_id: int
+          items: list
+          total: float
+
+      class JsonSerializer:
+          @staticmethod
+          def serialize_user(user: User) -> str:
+              data = asdict(user)
+              data["type"] = "user"
+              return json.dumps(data, indent=2, sort_keys=True)
+
+          @staticmethod
+          def serialize_order(order: Order) -> str:
+              data = asdict(order)
+              data["type"] = "order"
+              data["item_count"] = len(order.items)
+              return json.dumps(data, indent=2, sort_keys=True)
+
+          @staticmethod
+          def serialize_batch(items: list[Any]) -> str:
+              result = []
+              for item in items:
+                  if isinstance(item, User):
+                      result.append({"type": "user", **asdict(item)})
+                  elif isinstance(item, Order):
+                      result.append({"type": "order", **asdict(item)})
+              return json.dumps({"batch": result, "count": len(result)}, indent=2)
+    tests/test_serializers.py: |
+      import json
+      from src.serializers import User, Order, JsonSerializer
+
+      def test_serialize_user():
+          user = User(id=1, name="Test", email="test@example.com")
+          result = JsonSerializer.serialize_user(user)
+          assert "test@example.com" in result
+
+      def test_serialize_user_snapshot():
+          user = User(id=42, name="John Doe", email="john@example.com", active=True)
+          result = JsonSerializer.serialize_user(user)
+          parsed = json.loads(result)
+
+          expected = {
+              "active": True,
+              "email": "john@example.com",
+              "id": 42,
+              "name": "John Doe",
+              "type": "user"
+          }
+          assert parsed == expected
+
+      def test_serialize_order_snapshot():
+          order = Order(
+              id=100,
+              user_id=42,
+              items=["item1", "item2", "item3"],
+              total=299.99
+          )
+          result = JsonSerializer.serialize_order(order)
+          parsed = json.loads(result)
+
+          assert parsed["id"] == 100
+          assert parsed["item_count"] == 3
+          assert parsed["type"] == "order"
+          assert parsed["total"] == 299.99
+
+      def test_serialize_batch_snapshot():
+          user = User(id=1, name="Alice", email="alice@example.com")
+          order = Order(id=10, user_id=1, items=["x"], total=50.0)
+          result = JsonSerializer.serialize_batch([user, order])
+          parsed = json.loads(result)
+
+          assert parsed["count"] == 2
+          assert len(parsed["batch"]) == 2
+          assert parsed["batch"][0]["type"] == "user"
+          assert parsed["batch"][1]["type"] == "order"
+    src/csv_serializer.py: |
+      import csv
+      import io
+      from dataclasses import asdict
+
+      class CsvSerializer:
+          @staticmethod
+          def serialize_users(users) -> str:
+              if not users:
+                  return ""
+              output = io.StringIO()
+              writer = csv.DictWriter(output, fieldnames=["id", "name", "email", "active"])
+              writer.writeheader()
+              for user in users:
+                  writer.writerow(asdict(user))
+              return output.getvalue()
+
+          @staticmethod
+          def serialize_orders(orders) -> str:
+              output = io.StringIO()
+              writer = csv.DictWriter(output, fieldnames=["id", "user_id", "total"])
+              writer.writeheader()
+              for order in orders:
+                  row = {"id": order.id, "user_id": order.user_id, "total": order.total}
+                  writer.writerow(row)
+              return output.getvalue()
+    tests/test_csv_serializer.py: |
+      from src.serializers import User, Order
+      from src.csv_serializer import CsvSerializer
+
+      def test_serialize_users_csv():
+          users = [User(id=1, name="Alice", email="alice@test.com")]
+          result = CsvSerializer.serialize_users(users)
+          assert "Alice" in result
+          assert "alice@test.com" in result
+  commit_message: Update files
+fragments:
+- id: test_serializers
+  selector:
+    path: tests/test_serializers.py
+    anchor: from src.serializers import User, Order, JsonSerializer
+- id: test_serializers_1
+  selector:
+    path: tests/test_serializers.py
+    anchor: 'def test_serialize_user_snapshot():'
+- id: serializers
+  selector:
+    path: src/serializers.py
+    anchor: data["type"] = "user"
+- id: serializers_1
+  selector:
+    path: src/serializers.py
+    anchor: data["item_count"] = len(order.items)
+- id: no_csv_serializer
+  selector:
+    path: src/csv_serializer.py
+- id: no_test_csv_serializer
+  selector:
+    path: tests/test_csv_serializer.py
+- id: no_global_0
+  selector:
+    anchor: class CsvSerializer
+- id: no_global_1
+  selector:
+    anchor: csv.DictWriter
+- id: no_global_2
+  selector:
+    anchor: io.StringIO
+- id: no_global_3
+  selector:
+    anchor: test_serialize_users_csv
+- id: no_global_4
+  selector:
+    anchor: serialize_users
+oracle:
+  required:
+  - test_serializers
+  - test_serializers_1
+  - serializers
+  - serializers_1
+  allowed: []
+  forbidden:
+  - no_csv_serializer
+  - no_test_csv_serializer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4

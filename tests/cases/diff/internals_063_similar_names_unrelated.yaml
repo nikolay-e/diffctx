@@ -1,0 +1,187 @@
+name: internals_063_similar_names_unrelated
+repo:
+  initial_files:
+    src/shopping/cart_manager.py: |
+      def add_item_to_cart(cart_id: int, item_id: int) -> dict:
+          return {"cart_id": cart_id, "item_id": item_id}
+
+      def remove_item_from_cart(cart_id: int, item_id: int) -> bool:
+          return True
+    external/weather/forecast_api.py: |
+      WEATHER_API_MARKER_XYZ111 = "weather"
+
+      def fetch_temperature(city_name: str) -> float:
+          FETCH_TEMP_MARKER_ABC222 = True
+          return 20.5
+
+      def fetch_humidity(city_name: str) -> int:
+          FETCH_HUMID_MARKER_DEF333 = True
+          return 65
+
+      class WeatherDataParser:
+          PARSER_MARKER_GHI444 = "parser"
+
+          def parse_response(self, data: dict) -> dict:
+              return data
+    external/stocks/market_tracker.py: |
+      STOCKS_TRACKER_MARKER_JKL555 = "stocks"
+
+      def get_stock_price(symbol: str) -> float:
+          STOCK_PRICE_MARKER_MNO666 = True
+          return 150.0
+
+      def get_market_cap(symbol: str) -> int:
+          MARKET_CAP_MARKER_PQR777 = True
+          return 1000000
+
+      class StockAnalyzer:
+          ANALYZER_MARKER_STU888 = "analyzer"
+
+          def analyze(self, symbol: str) -> dict:
+              return {"symbol": symbol}
+    tools/logging/audit_recorder.py: |
+      AUDIT_RECORDER_MARKER_VWX999 = "audit"
+
+      def record_action(action_type: str) -> str:
+          RECORD_ACTION_MARKER_YZA000 = True
+          return f"recorded_{action_type}"
+
+      def retrieve_log(log_id: int) -> dict:
+          RETRIEVE_LOG_MARKER_BCD111 = True
+          return {"log_id": log_id}
+  changed_files:
+    src/shopping/cart_manager.py: |
+      def add_item_to_cart(cart_id: int, item_id: int) -> dict:
+          if cart_id <= 0 or item_id <= 0:
+              raise ValueError("Invalid cart or item id")
+          return {"cart_id": cart_id, "item_id": item_id, "added": True}
+
+      def remove_item_from_cart(cart_id: int, item_id: int) -> bool:
+          if cart_id <= 0 or item_id <= 0:
+              raise ValueError("Invalid cart or item id")
+          return True
+
+      def get_cart_total(cart_id: int) -> float:
+          return 0.0
+    external/weather/forecast_api.py: |
+      WEATHER_API_MARKER_XYZ111 = "weather"
+
+      def fetch_temperature(city_name: str) -> float:
+          FETCH_TEMP_MARKER_ABC222 = True
+          return 20.5
+
+      def fetch_humidity(city_name: str) -> int:
+          FETCH_HUMID_MARKER_DEF333 = True
+          return 65
+
+      class WeatherDataParser:
+          PARSER_MARKER_GHI444 = "parser"
+
+          def parse_response(self, data: dict) -> dict:
+              return data
+    external/stocks/market_tracker.py: |
+      STOCKS_TRACKER_MARKER_JKL555 = "stocks"
+
+      def get_stock_price(symbol: str) -> float:
+          STOCK_PRICE_MARKER_MNO666 = True
+          return 150.0
+
+      def get_market_cap(symbol: str) -> int:
+          MARKET_CAP_MARKER_PQR777 = True
+          return 1000000
+
+      class StockAnalyzer:
+          ANALYZER_MARKER_STU888 = "analyzer"
+
+          def analyze(self, symbol: str) -> dict:
+              return {"symbol": symbol}
+    tools/logging/audit_recorder.py: |
+      AUDIT_RECORDER_MARKER_VWX999 = "audit"
+
+      def record_action(action_type: str) -> str:
+          RECORD_ACTION_MARKER_YZA000 = True
+          return f"recorded_{action_type}"
+
+      def retrieve_log(log_id: int) -> dict:
+          RETRIEVE_LOG_MARKER_BCD111 = True
+          return {"log_id": log_id}
+  commit_message: Update files
+fragments:
+- id: cart_manager
+  selector:
+    path: src/shopping/cart_manager.py
+    anchor: 'if cart_id <= 0 or item_id <= 0:'
+- id: cart_manager_1
+  selector:
+    path: src/shopping/cart_manager.py
+    anchor: 'def get_cart_total(cart_id: int) -> float:'
+- id: no_forecast_api
+  selector:
+    path: external/weather/forecast_api.py
+- id: no_market_tracker
+  selector:
+    path: external/stocks/market_tracker.py
+- id: no_audit_recorder
+  selector:
+    path: tools/logging/audit_recorder.py
+- id: no_global_0
+  selector:
+    anchor: WEATHER_API_MARKER_XYZ111
+- id: no_global_1
+  selector:
+    anchor: FETCH_TEMP_MARKER_ABC222
+- id: no_global_2
+  selector:
+    anchor: FETCH_HUMID_MARKER_DEF333
+- id: no_global_3
+  selector:
+    anchor: PARSER_MARKER_GHI444
+- id: no_global_4
+  selector:
+    anchor: WeatherDataParser
+- id: no_global_5
+  selector:
+    anchor: STOCKS_TRACKER_MARKER_JKL555
+- id: no_global_6
+  selector:
+    anchor: STOCK_PRICE_MARKER_MNO666
+- id: no_global_7
+  selector:
+    anchor: MARKET_CAP_MARKER_PQR777
+- id: no_global_8
+  selector:
+    anchor: ANALYZER_MARKER_STU888
+- id: no_global_9
+  selector:
+    anchor: StockAnalyzer
+- id: no_global_10
+  selector:
+    anchor: AUDIT_RECORDER_MARKER_VWX999
+- id: no_global_11
+  selector:
+    anchor: RECORD_ACTION_MARKER_YZA000
+- id: no_global_12
+  selector:
+    anchor: RETRIEVE_LOG_MARKER_BCD111
+oracle:
+  required:
+  - cart_manager
+  - cart_manager_1
+  allowed: []
+  forbidden:
+  - no_forecast_api
+  - no_market_tracker
+  - no_audit_recorder
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8
+  - no_global_9
+  - no_global_10
+  - no_global_11
+  - no_global_12

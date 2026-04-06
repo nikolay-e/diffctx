@@ -1,0 +1,40 @@
+name: internals_043_core_hunk_expansion
+repo:
+  initial_files:
+    core.py: |
+      def caller_function():
+          pass
+    helper.py: |
+      def helper_function():
+          pass
+  changed_files:
+    core.py: |
+      from helper import helper_function
+
+      def caller_function():
+          helper_function()
+    helper.py: |
+      def helper_function():
+          return "helping"
+  commit_message: Update files
+fragments:
+- id: core_file
+  selector:
+    path: core.py
+- id: helper_file
+  selector:
+    path: helper.py
+- id: req_global_0
+  selector:
+    anchor: from helper import helper_function
+- id: req_global_1
+  selector:
+    anchor: helper_function()
+oracle:
+  required:
+  - core_file
+  - helper_file
+  - req_global_0
+  - req_global_1
+  allowed: []
+  forbidden: []

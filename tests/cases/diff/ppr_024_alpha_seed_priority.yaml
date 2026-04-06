@@ -1,0 +1,134 @@
+name: ppr_024_alpha_seed_priority
+repo:
+  initial_files:
+    seed.py: |
+      COMMON_VALUE = 1
+
+      def seed_func():
+          return COMMON_VALUE
+    far.py: |
+      COMMON_VALUE = 2
+
+      def far_func():
+          return COMMON_VALUE
+    global_registry.py: |
+      GLOBAL_SETTING = 999
+
+      def compute_global():
+          return GLOBAL_SETTING
+
+      class GlobalRegistry:
+          def lookup(self):
+              return compute_global()
+    config_provider.py: |
+      CONFIG_VALUE = 42
+
+      def config_func():
+          return CONFIG_VALUE
+
+      class ConfigProvider:
+          def provide(self):
+              return config_func()
+    network_client.py: |
+      NET_HOST = "0.0.0.0"
+      NET_PORT = 8080
+
+      class NetworkClient:
+          def connect(self, host: str):
+              pass
+  changed_files:
+    seed.py: |
+      COMMON_VALUE = 1
+
+      def seed_func():
+          return COMMON_VALUE + 100
+    far.py: |
+      COMMON_VALUE = 2
+
+      def far_func():
+          return COMMON_VALUE
+    global_registry.py: |
+      GLOBAL_SETTING = 999
+
+      def compute_global():
+          return GLOBAL_SETTING
+
+      class GlobalRegistry:
+          def lookup(self):
+              return compute_global()
+    config_provider.py: |
+      CONFIG_VALUE = 42
+
+      def config_func():
+          return CONFIG_VALUE
+
+      class ConfigProvider:
+          def provide(self):
+              return config_func()
+    network_client.py: |
+      NET_HOST = "0.0.0.0"
+      NET_PORT = 8080
+
+      class NetworkClient:
+          def connect(self, host: str):
+              pass
+  commit_message: Update files
+fragments:
+- id: seed
+  selector:
+    path: seed.py
+    anchor: 'def seed_func():'
+- id: seed_1
+  selector:
+    path: seed.py
+    anchor: return COMMON_VALUE + 100
+- id: req_pattern_0
+  selector:
+    anchor: seed_func
+- id: req_pattern_1
+  selector:
+    anchor: COMMON_VALUE + 100
+- id: no_global_registry
+  selector:
+    path: global_registry.py
+- id: no_config_provider
+  selector:
+    path: config_provider.py
+- id: no_network_client
+  selector:
+    path: network_client.py
+- id: no_global_0
+  selector:
+    anchor: GlobalRegistry
+- id: no_global_1
+  selector:
+    anchor: compute_global
+- id: no_global_2
+  selector:
+    anchor: ConfigProvider
+- id: no_global_3
+  selector:
+    anchor: config_func
+- id: no_global_4
+  selector:
+    anchor: NetworkClient
+- id: no_global_5
+  selector:
+    anchor: NET_HOST
+oracle:
+  required:
+  - seed
+  - seed_1
+  - req_pattern_0
+  - req_pattern_1
+  allowed: []
+  forbidden:
+  - no_global_registry
+  - no_config_provider
+  - no_network_client
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

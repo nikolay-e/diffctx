@@ -1,0 +1,219 @@
+name: javascript_033_template_tag_function
+repo:
+  initial_files:
+    tags.ts: |
+      export function sql(strings: TemplateStringsArray, ...values: any[]) {
+          let result = '';
+          strings.forEach((str, i) => {
+              result += str + (values[i] !== undefined ? `$${i + 1}` : '');
+          });
+          return { text: result, values };
+      }
+
+      export function html(strings: TemplateStringsArray, ...values: any[]) {
+          return strings.reduce((acc, str, i) =>
+              acc + str + (values[i] !== undefined ? String(values[i]).replace(/</g, '&lt;') : ''), '');
+      }
+    query.ts: |
+      console.log('initial');
+    html-tag.ts: |
+      export function safeHtml(strings: TemplateStringsArray, ...values: any[]): string {
+          return strings.reduce((result, str, i) => {
+              const val = values[i] !== undefined ? escapeHtml(String(values[i])) : '';
+              return result + str + val;
+          }, '');
+      }
+
+      function escapeHtml(text: string): string {
+          return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+    query-builder.ts: |
+      export class QueryBuilder {
+          private parts: string[] = [];
+          private params: unknown[] = [];
+
+          select(...columns: string[]): this {
+              this.parts.push(`SELECT ${columns.join(', ')}`);
+              return this;
+          }
+
+          from(table: string): this {
+              this.parts.push(`FROM ${table}`);
+              return this;
+          }
+
+          where(condition: string, value: unknown): this {
+              this.params.push(value);
+              this.parts.push(`WHERE ${condition} = $${this.params.length}`);
+              return this;
+          }
+
+          build(): { text: string; values: unknown[] } {
+              return { text: this.parts.join(' '), values: this.params };
+          }
+      }
+    query.test.ts: |
+      import { sql } from './tags';
+
+      describe('sql template tag', () => {
+          it('produces parameterized query', () => {
+              const result = sql`SELECT * FROM users WHERE id = ${'user-1'}`;
+              expect(result.text).toBe('SELECT * FROM users WHERE id = $1');
+              expect(result.values).toEqual(['user-1']);
+          });
+
+          it('handles multiple parameters', () => {
+              const result = sql`SELECT * FROM users WHERE name = ${'Alice'} AND age > ${25}`;
+              expect(result.text).toContain('$1');
+              expect(result.text).toContain('$2');
+          });
+      });
+  changed_files:
+    tags.ts: |
+      export function sql(strings: TemplateStringsArray, ...values: any[]) {
+          let result = '';
+          strings.forEach((str, i) => {
+              result += str + (values[i] !== undefined ? `$${i + 1}` : '');
+          });
+          return { text: result, values };
+      }
+
+      export function html(strings: TemplateStringsArray, ...values: any[]) {
+          return strings.reduce((acc, str, i) =>
+              acc + str + (values[i] !== undefined ? String(values[i]).replace(/</g, '&lt;') : ''), '');
+      }
+    query.ts: |
+      import { sql } from './tags';
+
+      function buildQuery(userId: string) {
+          const query = sql`SELECT * FROM users WHERE id = ${userId}`;
+          return query;
+      }
+
+      console.log(buildQuery('123'));
+    html-tag.ts: |
+      export function safeHtml(strings: TemplateStringsArray, ...values: any[]): string {
+          return strings.reduce((result, str, i) => {
+              const val = values[i] !== undefined ? escapeHtml(String(values[i])) : '';
+              return result + str + val;
+          }, '');
+      }
+
+      function escapeHtml(text: string): string {
+          return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+    query-builder.ts: |
+      export class QueryBuilder {
+          private parts: string[] = [];
+          private params: unknown[] = [];
+
+          select(...columns: string[]): this {
+              this.parts.push(`SELECT ${columns.join(', ')}`);
+              return this;
+          }
+
+          from(table: string): this {
+              this.parts.push(`FROM ${table}`);
+              return this;
+          }
+
+          where(condition: string, value: unknown): this {
+              this.params.push(value);
+              this.parts.push(`WHERE ${condition} = $${this.params.length}`);
+              return this;
+          }
+
+          build(): { text: string; values: unknown[] } {
+              return { text: this.parts.join(' '), values: this.params };
+          }
+      }
+    query.test.ts: |
+      import { sql } from './tags';
+
+      describe('sql template tag', () => {
+          it('produces parameterized query', () => {
+              const result = sql`SELECT * FROM users WHERE id = ${'user-1'}`;
+              expect(result.text).toBe('SELECT * FROM users WHERE id = $1');
+              expect(result.values).toEqual(['user-1']);
+          });
+
+          it('handles multiple parameters', () => {
+              const result = sql`SELECT * FROM users WHERE name = ${'Alice'} AND age > ${25}`;
+              expect(result.text).toContain('$1');
+              expect(result.text).toContain('$2');
+          });
+      });
+  commit_message: Update files
+fragments:
+- id: query
+  selector:
+    path: query.ts
+    anchor: import { sql } from './tags'
+- id: query_1
+  selector:
+    path: query.ts
+    anchor: sql`SELECT * FROM users WHERE id = ${userId}`
+- id: tags
+  selector:
+    path: tags.ts
+    anchor: 'function sql(strings: TemplateStringsArray'
+- id: tags_1
+  selector:
+    path: tags.ts
+    anchor: 'return { text: result, values }'
+- id: no_html_tag
+  selector:
+    path: html-tag.ts
+- id: no_query_builder
+  selector:
+    path: query-builder.ts
+- id: no_query_test
+  selector:
+    path: query.test.ts
+- id: no_global_0
+  selector:
+    anchor: safeHtml
+- id: no_global_1
+  selector:
+    anchor: escapeHtml
+- id: no_global_2
+  selector:
+    anchor: '&amp;'
+- id: no_global_3
+  selector:
+    anchor: QueryBuilder
+- id: no_global_4
+  selector:
+    anchor: .select(
+- id: no_global_5
+  selector:
+    anchor: .from(
+- id: no_global_6
+  selector:
+    anchor: .where(
+- id: no_global_7
+  selector:
+    anchor: produces parameterized query
+- id: no_global_8
+  selector:
+    anchor: handles multiple parameters
+oracle:
+  required:
+  - query
+  - query_1
+  - tags
+  - tags_1
+  allowed: []
+  forbidden:
+  - no_html_tag
+  - no_query_builder
+  - no_query_test
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
+  - no_global_7
+  - no_global_8

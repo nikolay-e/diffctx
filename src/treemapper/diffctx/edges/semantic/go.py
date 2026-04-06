@@ -10,7 +10,7 @@ from ..base import EdgeBuilder, EdgeDict
 
 _GO_IMPORT_SINGLE_RE = re.compile(r'^\s*import\s+"([^"]+)"', re.MULTILINE)
 _GO_IMPORT_BLOCK_RE = re.compile(r"import\s*\((.*?)\)", re.DOTALL)
-_GO_IMPORT_LINE_RE = re.compile(r'^\s*(?:\w+\s+)?"([^"]+)"', re.MULTILINE)
+_GO_IMPORT_LINE_RE = re.compile(r'^\s*(?:(?:\w+|\.)\s+)?"([^"]+)"', re.MULTILINE)
 
 _GO_FUNC_RE = re.compile(r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(", re.MULTILINE)
 _GO_TYPE_RE = re.compile(r"^type\s+(\w+)\s+", re.MULTILINE)
@@ -324,7 +324,7 @@ class GoEdgeBuilder(EdgeBuilder):
         edges: EdgeDict,
     ) -> None:
         for path_str, frag_ids in path_to_frags.items():
-            if f"/{path_str}" in imp or imp == path_str or imp.endswith(f"/{path_str}"):
+            if imp == path_str or imp.endswith(f"/{path_str}") or f"/{path_str}/" in imp:
                 self.add_edges_from_ids(gf_id, frag_ids, self.import_weight, edges)
 
     def _link_refs(

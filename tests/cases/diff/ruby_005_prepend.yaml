@@ -1,0 +1,199 @@
+name: ruby_005_prepend
+repo:
+  initial_files:
+    lib/wrapper.rb: |
+      module Wrapper
+        def process(data)
+          start_time = Time.now
+          puts "Before processing: #{data.inspect}"
+          result = super
+          elapsed = Time.now - start_time
+          puts "After processing (#{elapsed.round(3)}s): #{result.inspect}"
+          result
+        end
+
+        def validate(input)
+          puts "Validating input..."
+          result = super
+          puts "Validation complete: #{result}"
+          result
+        end
+      end
+    lib/handler.rb: |
+      class Handler
+        def process(data)
+          data.upcase
+        end
+
+        def validate(input)
+          !input.nil? && !input.empty?
+        end
+      end
+    lib/benchmarker.rb: |
+      class Benchmarker
+        def initialize(label)
+          @label = label
+          @runs = []
+        end
+
+        def measure
+          start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          result = yield
+          elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+          @runs << elapsed
+          result
+        end
+
+        def average_time
+          return 0 if @runs.empty?
+          @runs.sum / @runs.size
+        end
+
+        def report
+          "#{@label}: avg=#{average_time.round(4)}s runs=#{@runs.size}"
+        end
+      end
+    lib/input_sanitizer.rb: |
+      class InputSanitizer
+        DANGEROUS_CHARS = ['<', '>', '&', '"', "'"].freeze
+
+        def sanitize(input)
+          return "" if input.nil?
+          result = input.to_s.dup
+          DANGEROUS_CHARS.each { |char| result.gsub!(char, '') }
+          result.strip
+        end
+
+        def sanitize_hash(hash)
+          hash.transform_values { |v| v.is_a?(String) ? sanitize(v) : v }
+        end
+      end
+  changed_files:
+    lib/wrapper.rb: |
+      module Wrapper
+        def process(data)
+          start_time = Time.now
+          puts "Before processing: #{data.inspect}"
+          result = super
+          elapsed = Time.now - start_time
+          puts "After processing (#{elapsed.round(3)}s): #{result.inspect}"
+          result
+        end
+
+        def validate(input)
+          puts "Validating input..."
+          result = super
+          puts "Validation complete: #{result}"
+          result
+        end
+      end
+    lib/handler.rb: |
+      require_relative 'wrapper'
+
+      class Handler
+        prepend Wrapper
+
+        def process(data)
+          data.upcase
+        end
+
+        def validate(input)
+          !input.nil? && !input.empty?
+        end
+      end
+
+      handler = Handler.new
+      handler.process("hello world")
+      handler.validate("test input")
+    lib/benchmarker.rb: |
+      class Benchmarker
+        def initialize(label)
+          @label = label
+          @runs = []
+        end
+
+        def measure
+          start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          result = yield
+          elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+          @runs << elapsed
+          result
+        end
+
+        def average_time
+          return 0 if @runs.empty?
+          @runs.sum / @runs.size
+        end
+
+        def report
+          "#{@label}: avg=#{average_time.round(4)}s runs=#{@runs.size}"
+        end
+      end
+    lib/input_sanitizer.rb: |
+      class InputSanitizer
+        DANGEROUS_CHARS = ['<', '>', '&', '"', "'"].freeze
+
+        def sanitize(input)
+          return "" if input.nil?
+          result = input.to_s.dup
+          DANGEROUS_CHARS.each { |char| result.gsub!(char, '') }
+          result.strip
+        end
+
+        def sanitize_hash(hash)
+          hash.transform_values { |v| v.is_a?(String) ? sanitize(v) : v }
+        end
+      end
+  commit_message: Update files
+fragments:
+- id: handler
+  selector:
+    path: lib/handler.rb
+    anchor: prepend Wrapper
+- id: wrapper
+  selector:
+    path: lib/wrapper.rb
+    anchor: def process(data)
+- id: wrapper_1
+  selector:
+    path: lib/wrapper.rb
+    anchor: result = super
+- id: no_benchmarker
+  selector:
+    path: lib/benchmarker.rb
+- id: no_input_sanitizer
+  selector:
+    path: lib/input_sanitizer.rb
+- id: no_global_0
+  selector:
+    anchor: Benchmarker
+- id: no_global_1
+  selector:
+    anchor: clock_gettime
+- id: no_global_2
+  selector:
+    anchor: average_time
+- id: no_global_3
+  selector:
+    anchor: InputSanitizer
+- id: no_global_4
+  selector:
+    anchor: DANGEROUS_CHARS
+- id: no_global_5
+  selector:
+    anchor: sanitize_hash
+oracle:
+  required:
+  - handler
+  - wrapper
+  - wrapper_1
+  allowed: []
+  forbidden:
+  - no_benchmarker
+  - no_input_sanitizer
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5

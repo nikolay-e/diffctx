@@ -1,0 +1,114 @@
+name: terraform_066_lookup_function
+repo:
+  initial_files:
+    main.tf: |
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+
+      locals {
+        instance_types = {
+          dev     = "t3.micro"
+          staging = "t3.small"
+          prod    = "t3.large"
+        }
+      }
+
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = lookup(local.instance_types, var.environment, "t3.micro")
+        tags = {
+          Name = "app-${var.environment}"
+        }
+      }
+    monitoring/instances.tf: |
+      resource "aws_instance" "monitoring" {
+        ami           = "ami-99887766"
+        instance_type = lookup(local.monitoring_types, var.environment, "t3.micro")
+        tags = {
+          Name = "monitoring-${var.environment}"
+        }
+      }
+    certificates/acm.tf: |
+      resource "aws_acm_certificate" "main" {
+        domain_name       = "example.com"
+        validation_method = "DNS"
+      }
+  changed_files:
+    main.tf: |
+      variable "environment" {
+        type    = string
+        default = "dev"
+      }
+
+      locals {
+        instance_types = {
+          dev     = "t3.micro"
+          staging = "t3.small"
+          prod    = "t3.xlarge"
+        }
+
+        volume_sizes = {
+          dev     = 20
+          staging = 50
+          prod    = 100
+        }
+      }
+
+      resource "aws_instance" "app" {
+        ami           = "ami-12345678"
+        instance_type = lookup(local.instance_types, var.environment, "t3.micro")
+        root_block_device {
+          volume_size = lookup(local.volume_sizes, var.environment, 20)
+        }
+        tags = {
+          Name = "app-${var.environment}"
+        }
+      }
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: main.tf
+    anchor: prod    = "t3.xlarge"
+- id: main_1
+  selector:
+    path: main.tf
+    anchor: volume_sizes = {
+- id: main_2
+  selector:
+    path: main.tf
+    anchor: lookup(local.volume_sizes, var.environment, 20)
+- id: main_3
+  selector:
+    path: main.tf
+    anchor: resource "aws_instance" "app"
+- id: no_instances
+  selector:
+    path: monitoring/instances.tf
+- id: no_acm
+  selector:
+    path: certificates/acm.tf
+- id: no_global_0
+  selector:
+    anchor: monitoring_types
+- id: no_global_1
+  selector:
+    anchor: monitoring-${var.environment}
+- id: no_global_2
+  selector:
+    anchor: aws_acm_certificate
+oracle:
+  required:
+  - main
+  - main_1
+  - main_2
+  - main_3
+  allowed: []
+  forbidden:
+  - no_instances
+  - no_acm
+  - no_global_0
+  - no_global_1
+  - no_global_2

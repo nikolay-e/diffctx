@@ -1,0 +1,177 @@
+name: javascript_075_required_type
+repo:
+  initial_files:
+    options.ts: |
+      export interface Options {
+          name?: string;
+          value?: number;
+          enabled?: boolean;
+      }
+    validator.ts: |
+      console.log('initial');
+    options-defaults.ts: |
+      import { Options } from './options';
+
+      export const DEFAULT_OPTIONS: Required<Options> = {
+          name: 'default',
+          value: 0,
+          enabled: true,
+      };
+
+      export function applyDefaults(partial: Options): Required<Options> {
+          return { ...DEFAULT_OPTIONS, ...partial };
+      }
+    options-merger.ts: |
+      import { Options } from './options';
+
+      export function mergeOptions(base: Options, overrides: Partial<Options>): Options {
+          return { ...base, ...overrides };
+      }
+
+      export function hasAllFields(options: Options): boolean {
+          return options.name !== undefined && options.value !== undefined && options.enabled !== undefined;
+      }
+    config-validator.ts: |
+      interface Config {
+          host: string;
+          port: number;
+          ssl: boolean;
+      }
+
+      export function validateConfig(config: Config): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!config.host || config.host.length < 1) errors.push('host required');
+          if (config.port < 1 || config.port > 65535) errors.push('invalid port');
+          return { valid: errors.length === 0, errors };
+      }
+  changed_files:
+    options.ts: |
+      export interface Options {
+          name?: string;
+          value?: number;
+          enabled?: boolean;
+      }
+    validator.ts: |
+      import { Options } from './options';
+
+      type StrictOptions = Required<Options>;
+
+      function validate(options: StrictOptions): boolean {
+          return options.name.length > 0 && options.value >= 0 && typeof options.enabled === 'boolean';
+      }
+    options-defaults.ts: |
+      import { Options } from './options';
+
+      export const DEFAULT_OPTIONS: Required<Options> = {
+          name: 'default',
+          value: 0,
+          enabled: true,
+      };
+
+      export function applyDefaults(partial: Options): Required<Options> {
+          return { ...DEFAULT_OPTIONS, ...partial };
+      }
+    options-merger.ts: |
+      import { Options } from './options';
+
+      export function mergeOptions(base: Options, overrides: Partial<Options>): Options {
+          return { ...base, ...overrides };
+      }
+
+      export function hasAllFields(options: Options): boolean {
+          return options.name !== undefined && options.value !== undefined && options.enabled !== undefined;
+      }
+    config-validator.ts: |
+      interface Config {
+          host: string;
+          port: number;
+          ssl: boolean;
+      }
+
+      export function validateConfig(config: Config): { valid: boolean; errors: string[] } {
+          const errors: string[] = [];
+          if (!config.host || config.host.length < 1) errors.push('host required');
+          if (config.port < 1 || config.port > 65535) errors.push('invalid port');
+          return { valid: errors.length === 0, errors };
+      }
+  commit_message: Update files
+fragments:
+- id: validator
+  selector:
+    path: validator.ts
+    anchor: import { Options } from './options'
+- id: validator_1
+  selector:
+    path: validator.ts
+    anchor: type StrictOptions = Required<Options>
+- id: validator_2
+  selector:
+    path: validator.ts
+    anchor: options.name.length > 0
+- id: options
+  selector:
+    path: options.ts
+    anchor: interface Options {
+- id: options_1
+  selector:
+    path: options.ts
+    anchor: 'name?: string'
+- id: options_2
+  selector:
+    path: options.ts
+    anchor: 'value?: number'
+- id: options_3
+  selector:
+    path: options.ts
+    anchor: 'enabled?: boolean'
+- id: no_options_defaults
+  selector:
+    path: options-defaults.ts
+- id: no_options_merger
+  selector:
+    path: options-merger.ts
+- id: no_config_validator
+  selector:
+    path: config-validator.ts
+- id: no_global_0
+  selector:
+    anchor: DEFAULT_OPTIONS
+- id: no_global_1
+  selector:
+    anchor: applyDefaults
+- id: no_global_2
+  selector:
+    anchor: mergeOptions
+- id: no_global_3
+  selector:
+    anchor: hasAllFields
+- id: no_global_4
+  selector:
+    anchor: validateConfig
+- id: no_global_5
+  selector:
+    anchor: host required
+- id: no_global_6
+  selector:
+    anchor: invalid port
+oracle:
+  required:
+  - validator
+  - validator_1
+  - validator_2
+  - options
+  - options_1
+  - options_2
+  - options_3
+  allowed: []
+  forbidden:
+  - no_options_defaults
+  - no_options_merger
+  - no_config_validator
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6
