@@ -184,20 +184,20 @@ repo:
           result = gen.generate_summary(items)
           assert result["subtotal"] == 100
           assert result["tax"] == 10.0
-  commit_message: Update files
+  commit_message: "Add snapshot tests for report summary and HTML generation"
 fragments:
 - id: test_report_generator
   selector:
     path: tests/test_report_generator.py
-    anchor: 'def test_generate_summary_snapshot():'
+    anchor: "def test_generate_summary_snapshot():"
 - id: test_report_generator_1
   selector:
     path: tests/test_report_generator.py
-    anchor: 'def test_generate_html_snapshot():'
+    anchor: "def test_generate_html_snapshot():"
 - id: report_generator
   selector:
     path: src/report_generator.py
-    anchor: 'def generate_summary(self, data: list[dict]) -> dict:'
+    anchor: "def generate_summary(self, data: list[dict]) -> dict:"
 - id: no_invoice_generator
   selector:
     path: src/invoice_generator.py

@@ -154,35 +154,47 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: api_file
+- id: api_client_interface
   selector:
     path: src/api.ts
-- id: req_global_0
+    anchor: interface ApiClient
+- id: api_post_method
   selector:
-    anchor: 'post(url: string, data: unknown): Promise<Response>;'
-- id: req_global_1
+    path: src/api.ts
+    anchor: "post(url: string, data: unknown): Promise<Response>"
+- id: api_default_export
   selector:
-    anchor: '(url: string) => fetch(baseUrl + url)'
-- id: no_global_0
+    path: src/api.ts
+    anchor: "export default function apiClient(baseUrl = '')"
+- id: service_imports_client
   selector:
+    path: src/service.ts
+    anchor: import client from './api'
+- id: service_get_data
+  selector:
+    path: src/service.ts
+    anchor: getData
+- id: feature_flags_service
+  selector:
+    path: src/unrelated/featureFlags.ts
     anchor: FeatureFlagService
-- id: no_global_1
+- id: rate_limiter
   selector:
-    anchor: evaluateFlags
-- id: no_global_2
-  selector:
+    path: src/unrelated/rateLimit.ts
     anchor: RateLimiter
-- id: no_global_3
+- id: create_headers_unused
   selector:
-    anchor: resetLimits
+    path: src/api.ts
+    anchor: createHeaders
 oracle:
   required:
-  - api_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - api_client_interface
+  - api_post_method
+  - api_default_export
+  - service_imports_client
+  allowed:
+  - service_get_data
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - feature_flags_service
+  - rate_limiter
+  - create_headers_unused

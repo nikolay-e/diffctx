@@ -70,30 +70,51 @@ repo:
           config = get_cors_config()
           origins = config["allowedOrigins"]
           return {"origins": origins, "credentials": config["allowCredentials"]}
-    unrelated/file_uploader.py: |
-      # GARBAGE_CFG_004_MARKER_A
-      GARBAGE_CFG_004_UPLOAD_B = "unrelated-upload-config"
+    uploads/handler.py: |
+      import os
+      from typing import BinaryIO
 
-      def upload_file(filename: str, content: bytes) -> str:
-          return f"uploaded/{filename}"
 
-      def validate_file_size(content: bytes, max_mb: int = 10) -> bool:
+      ALLOWED_EXTENSIONS = {".jpg", ".png", ".gif", ".pdf", ".docx"}
+      MAX_FILE_SIZE_MB = 10
+
+
+      def upload_file(filename: str, content: BinaryIO, upload_dir: str = "uploads") -> str:
+          ext = os.path.splitext(filename)[1].lower()
+          if ext not in ALLOWED_EXTENSIONS:
+              raise ValueError(f"Extension {ext} not allowed")
+          return os.path.join(upload_dir, filename)
+
+
+      def validate_file_size(content: bytes, max_mb: int = MAX_FILE_SIZE_MB) -> bool:
           return len(content) <= max_mb * 1024 * 1024
+    scheduler/tasks.py: |
+      from datetime import datetime, timedelta
+      from typing import Callable, Optional
 
-      GARBAGE_CFG_004_STORAGE_C = "unused-storage-backend"
-    unrelated/scheduler.py: |
-      # GARBAGE_CFG_004_MARKER_D
-      GARBAGE_CFG_004_SCHEDULE_E = "unrelated-scheduler-config"
 
       class TaskScheduler:
           def __init__(self):
-              self.tasks = []
+              self.tasks: list[dict] = []
 
-          def add_task(self, name: str, interval_seconds: int):
-              self.tasks.append({"name": name, "interval": interval_seconds})
+          def add_task(self, name: str, interval_seconds: int, handler: Optional[Callable] = None):
+              self.tasks.append({
+                  "name": name,
+                  "interval": interval_seconds,
+                  "handler": handler,
+                  "last_run": None,
+              })
 
-          def run_pending(self):
-              return [t["name"] for t in self.tasks]
+          def run_pending(self) -> list[str]:
+              now = datetime.utcnow()
+              executed = []
+              for task in self.tasks:
+                  if task["last_run"] is None or (now - task["last_run"]).total_seconds() >= task["interval"]:
+                      if task["handler"]:
+                          task["handler"]()
+                      task["last_run"] = now
+                      executed.append(task["name"])
+              return executed
   changed_files:
     settings.json: |
       {
@@ -164,73 +185,102 @@ repo:
           config = get_cors_config()
           origins = config["allowedOrigins"]
           return {"origins": origins, "credentials": config["allowCredentials"]}
-    unrelated/file_uploader.py: |
-      # GARBAGE_CFG_004_MARKER_A
-      GARBAGE_CFG_004_UPLOAD_B = "unrelated-upload-config"
+    uploads/handler.py: |
+      import os
+      from typing import BinaryIO
 
-      def upload_file(filename: str, content: bytes) -> str:
-          return f"uploaded/{filename}"
 
-      def validate_file_size(content: bytes, max_mb: int = 10) -> bool:
+      ALLOWED_EXTENSIONS = {".jpg", ".png", ".gif", ".pdf", ".docx"}
+      MAX_FILE_SIZE_MB = 10
+
+
+      def upload_file(filename: str, content: BinaryIO, upload_dir: str = "uploads") -> str:
+          ext = os.path.splitext(filename)[1].lower()
+          if ext not in ALLOWED_EXTENSIONS:
+              raise ValueError(f"Extension {ext} not allowed")
+          return os.path.join(upload_dir, filename)
+
+
+      def validate_file_size(content: bytes, max_mb: int = MAX_FILE_SIZE_MB) -> bool:
           return len(content) <= max_mb * 1024 * 1024
+    scheduler/tasks.py: |
+      from datetime import datetime, timedelta
+      from typing import Callable, Optional
 
-      GARBAGE_CFG_004_STORAGE_C = "unused-storage-backend"
-    unrelated/scheduler.py: |
-      # GARBAGE_CFG_004_MARKER_D
-      GARBAGE_CFG_004_SCHEDULE_E = "unrelated-scheduler-config"
 
       class TaskScheduler:
           def __init__(self):
-              self.tasks = []
+              self.tasks: list[dict] = []
 
-          def add_task(self, name: str, interval_seconds: int):
-              self.tasks.append({"name": name, "interval": interval_seconds})
+          def add_task(self, name: str, interval_seconds: int, handler: Optional[Callable] = None):
+              self.tasks.append({
+                  "name": name,
+                  "interval": interval_seconds,
+                  "handler": handler,
+                  "last_run": None,
+              })
 
-          def run_pending(self):
-              return [t["name"] for t in self.tasks]
+          def run_pending(self) -> list[str]:
+              now = datetime.utcnow()
+              executed = []
+              for task in self.tasks:
+                  if task["last_run"] is None or (now - task["last_run"]).total_seconds() >= task["interval"]:
+                      if task["handler"]:
+                          task["handler"]()
+                      task["last_run"] = now
+                      executed.append(task["name"])
+              return executed
   commit_message: Update files
 fragments:
 - id: settings_file
   selector:
     path: settings.json
-- id: req_global_0
+- id: max_connections_bumped
   selector:
-    anchor: '"maxConnections": 200,'
-- id: req_global_1
+    anchor: '"maxConnections": 200'
+- id: admin_origin_added
   selector:
-    anchor: '"allowedOrigins": ["https://app.example.com", "https://admin.example.com"],'
-- id: no_global_0
+    anchor: admin.example.com
+- id: server_config_reader
   selector:
-    anchor: GARBAGE_CFG_004_MARKER_A
-- id: no_global_1
+    path: server.py
+    anchor: 'server["maxConnections"]'
+- id: cors_config_reader
   selector:
-    anchor: GARBAGE_CFG_004_MARKER_D
-- id: no_global_2
+    path: server.py
+    anchor: 'settings["cors"]'
+- id: rate_limit_middleware
   selector:
-    anchor: GARBAGE_CFG_004_SCHEDULE_E
-- id: no_global_3
+    path: middleware.py
+    anchor: 'config["maxRequests"]'
+- id: cors_middleware
   selector:
-    anchor: GARBAGE_CFG_004_STORAGE_C
-- id: no_global_4
+    path: middleware.py
+    anchor: 'config["allowedOrigins"]'
+- id: no_uploads
   selector:
-    anchor: GARBAGE_CFG_004_UPLOAD_B
-- id: no_global_5
+    path: uploads/handler.py
+- id: no_scheduler
   selector:
-    anchor: file_uploader.py
-- id: no_global_6
+    path: scheduler/tasks.py
+- id: no_upload_file
   selector:
-    anchor: scheduler.py
+    anchor: ALLOWED_EXTENSIONS
+- id: no_task_scheduler
+  selector:
+    anchor: TaskScheduler
 oracle:
   required:
   - settings_file
-  - req_global_0
-  - req_global_1
+  - max_connections_bumped
+  - admin_origin_added
+  - server_config_reader
+  - cors_config_reader
+  - rate_limit_middleware
+  - cors_middleware
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_uploads
+  - no_scheduler
+  - no_upload_file
+  - no_task_scheduler

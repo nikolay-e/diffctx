@@ -32,11 +32,8 @@ repo:
               print(f"Creating profile for {instance.name}")
     inventory/product.py: |
       from django.db import models
-      GARBAGE_DEP_027_PRODUCT_MODEL_A = "product_model"
-      GARBAGE_DEP_027_PRODUCT_STOCK_B = True
 
       class Product(models.Model):
-          GARBAGE_DEP_027_PRODUCT_CLASS_C = "different_model"
           title = models.CharField(max_length=200)
           sku = models.CharField(max_length=50, unique=True)
           price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -44,16 +41,18 @@ repo:
 
           class Meta:
               app_label = 'inventory'
+
+          def is_in_stock(self) -> bool:
+              return True
     signals/order_signals.py: |
       from django.db.models.signals import post_save
       from django.dispatch import receiver
-      GARBAGE_DEP_027_ORDER_SIG_MOD_G = "order_signal_sibling"
-      GARBAGE_DEP_027_ORDER_SIG_TYPE_H = "fulfillment"
-
-      GARBAGE_DEP_027_ORDER_SIG_CLASS_I = True
 
       def handle_order_save(sender, instance, **kwargs):
           print(f"Order saved: {instance}")
+
+      def handle_order_cancel(sender, instance, **kwargs):
+          print(f"Order cancelled: {instance}")
   changed_files:
     models/user.py: |
       from django.db import models
@@ -95,11 +94,8 @@ repo:
               print(f"Creating profile for {instance.name}")
     inventory/product.py: |
       from django.db import models
-      GARBAGE_DEP_027_PRODUCT_MODEL_A = "product_model"
-      GARBAGE_DEP_027_PRODUCT_STOCK_B = True
 
       class Product(models.Model):
-          GARBAGE_DEP_027_PRODUCT_CLASS_C = "different_model"
           title = models.CharField(max_length=200)
           sku = models.CharField(max_length=50, unique=True)
           price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -107,71 +103,57 @@ repo:
 
           class Meta:
               app_label = 'inventory'
+
+          def is_in_stock(self) -> bool:
+              return True
     signals/order_signals.py: |
       from django.db.models.signals import post_save
       from django.dispatch import receiver
-      GARBAGE_DEP_027_ORDER_SIG_MOD_G = "order_signal_sibling"
-      GARBAGE_DEP_027_ORDER_SIG_TYPE_H = "fulfillment"
-
-      GARBAGE_DEP_027_ORDER_SIG_CLASS_I = True
 
       def handle_order_save(sender, instance, **kwargs):
           print(f"Order saved: {instance}")
+
+      def handle_order_cancel(sender, instance, **kwargs):
+          print(f"Order cancelled: {instance}")
   commit_message: Update files
 fragments:
-- id: user
+- id: user_updated_at_field
   selector:
     path: models/user.py
     anchor: updated_at = models.DateTimeField(auto_now=True)
-- id: user_1
+- id: user_is_verified_field
   selector:
     path: models/user.py
     anchor: is_verified = models.BooleanField(default=False)
-- id: user_2
+- id: user_class_def
   selector:
     path: models/user.py
-    anchor: 'class User(models.Model):'
-- id: user_signals
+    anchor: "class User(models.Model):"
+- id: user_signals_receiver
   selector:
     path: signals/user_signals.py
-    anchor: '@receiver(post_save, sender=User)'
+    anchor: "@receiver(post_save, sender=User)"
 - id: no_product
   selector:
     path: inventory/product.py
 - id: no_order_signals
   selector:
     path: signals/order_signals.py
-- id: no_global_0
+- id: no_product_class
   selector:
-    anchor: GARBAGE_DEP_027_PRODUCT_MODEL_A
-- id: no_global_1
+    anchor: "class Product(models.Model):"
+- id: no_order_cancel
   selector:
-    anchor: GARBAGE_DEP_027_PRODUCT_STOCK_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_DEP_027_PRODUCT_CLASS_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP_027_ORDER_SIG_MOD_G
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP_027_ORDER_SIG_TYPE_H
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP_027_ORDER_SIG_CLASS_I
+    anchor: handle_order_cancel
 oracle:
   required:
-  - user
-  - user_1
-  - user_2
-  - user_signals
+  - user_updated_at_field
+  - user_is_verified_field
+  - user_class_def
+  - user_signals_receiver
   allowed: []
   forbidden:
   - no_product
   - no_order_signals
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_product_class
+  - no_order_cancel

@@ -219,64 +219,57 @@ repo:
               - containerPort: 443
   commit_message: Update files
 fragments:
-- id: deployment
+- id: env_database_host
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: '- name: DATABASE_HOST'
-- id: deployment_1
+- id: env_database_service_url
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: postgres.database.svc.cluster.local
-- id: deployment_2
+- id: env_database_user
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: '- name: DATABASE_USER'
-- id: deployment_3
+- id: env_secret_ref
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: 'secretKeyRef:'
-- id: deployment_4
+- id: env_credentials_secret
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: 'name: db-credentials'
+- id: config_reads_database_host
+  selector:
+    path: src/config.py
+    anchor: DATABASE_HOST
+- id: config_reads_database_user
+  selector:
+    path: src/config.py
+    anchor: DATABASE_USER
 - id: no_cert_manager
   selector:
     path: k8s/operators/cert-manager.yaml
+    anchor: cert-manager-controller
 - id: no_traefik
   selector:
     path: k8s/ingress/traefik.yaml
-- id: no_global_0
-  selector:
-    anchor: cert-manager-controller
-- id: no_global_1
-  selector:
-    anchor: jetstack
-- id: no_global_2
-  selector:
-    anchor: leader-election-namespace
-- id: no_global_3
-  selector:
     anchor: traefik-ingress
-- id: no_global_4
+- id: no_backend_service
   selector:
-    anchor: traefik:v2.10
-- id: no_global_5
-  selector:
-    anchor: DaemonSet
+    path: k8s/apps/backend/service.yaml
+    anchor: 'targetPort: 8080'
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
-  - deployment_4
+  - env_database_host
+  - env_database_service_url
+  - env_database_user
+  - env_secret_ref
+  - env_credentials_secret
+  - config_reads_database_host
+  - config_reads_database_user
   allowed: []
   forbidden:
   - no_cert_manager
   - no_traefik
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_backend_service

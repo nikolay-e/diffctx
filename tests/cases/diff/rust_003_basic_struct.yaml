@@ -68,6 +68,8 @@ repo:
           }
       }
     src/transform.rs: |
+      use crate::models::Point;
+
       pub struct AffineTransform {
           matrix: [[f64; 3]; 3],
       }
@@ -95,6 +97,12 @@ repo:
               t.matrix[0][0] = sx;
               t.matrix[1][1] = sy;
               t
+          }
+
+          pub fn apply(&self, point: &Point) -> Point {
+              let x = self.matrix[0][0] * point.x + self.matrix[0][1] * point.y + self.matrix[0][2];
+              let y = self.matrix[1][0] * point.x + self.matrix[1][1] * point.y + self.matrix[1][2];
+              Point::new(x, y)
           }
       }
   changed_files:
@@ -191,6 +199,8 @@ repo:
           }
       }
     src/transform.rs: |
+      use crate::models::Point;
+
       pub struct AffineTransform {
           matrix: [[f64; 3]; 3],
       }
@@ -219,46 +229,48 @@ repo:
               t.matrix[1][1] = sy;
               t
           }
+
+          pub fn apply(&self, point: &Point) -> Point {
+              let x = self.matrix[0][0] * point.x + self.matrix[0][1] * point.y + self.matrix[0][2];
+              let y = self.matrix[1][0] * point.x + self.matrix[1][1] * point.y + self.matrix[1][2];
+              Point::new(x, y)
+          }
       }
   commit_message: Update files
 fragments:
 - id: models_file
   selector:
     path: src/models.rs
-- id: req_global_0
+- id: point_new_3arg
   selector:
     anchor: 'pub fn new(x: f64, y: f64, z: f64) -> Self {'
-- id: req_global_1
+- id: distance_with_z
   selector:
     anchor: let dz = self.z - other.z;
-- id: no_color
-  selector:
-    path: src/color.rs
-- id: no_transform
+- id: transform_calls_point_new
   selector:
     path: src/transform.rs
-- id: no_global_0
+    anchor: Point::new(x, y)
+- id: transform_imports_point
   selector:
-    anchor: AffineTransform
-- id: no_global_1
+    path: src/transform.rs
+    anchor: use crate::models::Point
+- id: no_color_struct
   selector:
-    anchor: to_hex
-- id: no_global_2
+    path: src/color.rs
+    anchor: pub struct Color
+- id: no_color_to_hex
   selector:
-    anchor: color.rs
-- id: no_global_3
-  selector:
-    anchor: transform.rs
+    path: src/color.rs
+    anchor: fn to_hex
 oracle:
   required:
   - models_file
-  - req_global_0
-  - req_global_1
+  - point_new_3arg
+  - distance_with_z
+  - transform_calls_point_new
+  - transform_imports_point
   allowed: []
   forbidden:
-  - no_color
-  - no_transform
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_color_struct
+  - no_color_to_hex

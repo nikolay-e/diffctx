@@ -21,22 +21,44 @@ repo:
 
       def test_another():
           pass
-    garbage_fixture_factory.py: |
-      GARBAGE_COMP_019_FAKER_LOCALE_A = "en_US"
-      GARBAGE_COMP_019_SEED_VALUE_B = "deterministic"
+    src/fixture_factory.py: |
+      import random
+      import string
+      from typing import Dict
 
-      class GarbageFixtureFactory:
-          GARBAGE_COMP_019_LAZY_BUILD_C = True
-          def create(self):
-              pass
-    garbage_snapshot_manager.py: |
-      GARBAGE_COMP_019_DIFF_FORMAT_D = "unified"
-      GARBAGE_COMP_019_UPDATE_FLAG_E = "interactive"
+      class FixtureFactory:
+          def __init__(self, seed: int = 42):
+              self.rng = random.Random(seed)
 
-      class GarbageSnapshotManager:
-          GARBAGE_COMP_019_PRUNE_STALE_F = False
-          def snapshot(self):
-              pass
+          def random_string(self, length: int = 10) -> str:
+              return ''.join(self.rng.choices(string.ascii_lowercase, k=length))
+
+          def random_email(self) -> str:
+              name = self.random_string(8)
+              domain = self.random_string(5)
+              return f"{name}@{domain}.com"
+
+          def random_dict(self, keys: int = 3) -> Dict[str, str]:
+              return {self.random_string(5): self.random_string(8) for _ in range(keys)}
+    src/snapshot_manager.py: |
+      import json
+      from pathlib import Path
+
+      class SnapshotManager:
+          def __init__(self, snapshot_dir: str = "snapshots"):
+              self.snapshot_dir = Path(snapshot_dir)
+
+          def save(self, name: str, data: dict) -> None:
+              path = self.snapshot_dir / f"{name}.json"
+              path.write_text(json.dumps(data, indent=2))
+
+          def load(self, name: str) -> dict:
+              path = self.snapshot_dir / f"{name}.json"
+              return json.loads(path.read_text())
+
+          def compare(self, name: str, data: dict) -> bool:
+              existing = self.load(name)
+              return existing == data
   changed_files:
     src/models.py: |
       class User:
@@ -72,65 +94,85 @@ repo:
 
       def test_to_dict(sample_user):
           assert sample_user.to_dict() == {"name": "Alice", "email": "alice@example.com"}
-    garbage_fixture_factory.py: |
-      GARBAGE_COMP_019_FAKER_LOCALE_A = "en_US"
-      GARBAGE_COMP_019_SEED_VALUE_B = "deterministic"
+    src/fixture_factory.py: |
+      import random
+      import string
+      from typing import Dict
 
-      class GarbageFixtureFactory:
-          GARBAGE_COMP_019_LAZY_BUILD_C = True
-          def create(self):
-              pass
-    garbage_snapshot_manager.py: |
-      GARBAGE_COMP_019_DIFF_FORMAT_D = "unified"
-      GARBAGE_COMP_019_UPDATE_FLAG_E = "interactive"
+      class FixtureFactory:
+          def __init__(self, seed: int = 42):
+              self.rng = random.Random(seed)
 
-      class GarbageSnapshotManager:
-          GARBAGE_COMP_019_PRUNE_STALE_F = False
-          def snapshot(self):
-              pass
+          def random_string(self, length: int = 10) -> str:
+              return ''.join(self.rng.choices(string.ascii_lowercase, k=length))
+
+          def random_email(self) -> str:
+              name = self.random_string(8)
+              domain = self.random_string(5)
+              return f"{name}@{domain}.com"
+
+          def random_dict(self, keys: int = 3) -> Dict[str, str]:
+              return {self.random_string(5): self.random_string(8) for _ in range(keys)}
+    src/snapshot_manager.py: |
+      import json
+      from pathlib import Path
+
+      class SnapshotManager:
+          def __init__(self, snapshot_dir: str = "snapshots"):
+              self.snapshot_dir = Path(snapshot_dir)
+
+          def save(self, name: str, data: dict) -> None:
+              path = self.snapshot_dir / f"{name}.json"
+              path.write_text(json.dumps(data, indent=2))
+
+          def load(self, name: str) -> dict:
+              path = self.snapshot_dir / f"{name}.json"
+              return json.loads(path.read_text())
+
+          def compare(self, name: str, data: dict) -> bool:
+              existing = self.load(name)
+              return existing == data
   commit_message: Update files
 fragments:
-- id: test_models_file
+- id: test_models_changed
   selector:
     path: tests/test_models.py
-- id: req_global_0
+- id: test_imports_user
   selector:
-    anchor: '@pytest.fixture'
-- id: no_global_0
+    anchor: from src.models import User
+- id: test_fixture_decorator
   selector:
-    anchor: GARBAGE_COMP_019_DIFF_FORMAT_D
-- id: no_global_1
+    anchor: "@pytest.fixture"
+- id: user_class_def
   selector:
-    anchor: GARBAGE_COMP_019_FAKER_LOCALE_A
-- id: no_global_2
+    path: src/models.py
+    anchor: "class User:"
+- id: user_display_name
   selector:
-    anchor: GARBAGE_COMP_019_LAZY_BUILD_C
-- id: no_global_3
+    path: src/models.py
+    anchor: def display_name(self)
+- id: no_fixture_factory
   selector:
-    anchor: GARBAGE_COMP_019_PRUNE_STALE_F
-- id: no_global_4
+    path: src/fixture_factory.py
+- id: no_snapshot_manager
   selector:
-    anchor: GARBAGE_COMP_019_SEED_VALUE_B
-- id: no_global_5
+    path: src/snapshot_manager.py
+- id: no_fixture_factory_class
   selector:
-    anchor: GARBAGE_COMP_019_UPDATE_FLAG_E
-- id: no_global_6
+    anchor: FixtureFactory
+- id: no_snapshot_class
   selector:
-    anchor: garbage_fixture_factory.py
-- id: no_global_7
-  selector:
-    anchor: garbage_snapshot_manager.py
+    anchor: SnapshotManager
 oracle:
   required:
-  - test_models_file
-  - req_global_0
+  - test_models_changed
+  - test_imports_user
+  - test_fixture_decorator
+  - user_class_def
+  - user_display_name
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_fixture_factory
+  - no_snapshot_manager
+  - no_fixture_factory_class
+  - no_snapshot_class

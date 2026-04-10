@@ -19,19 +19,16 @@ repo:
       public class PaymentRequest {
           private final String customerId;
           private final BigDecimal amount;
-          private final String currency;
           private final PaymentMethod method;
 
-          public PaymentRequest(String customerId, BigDecimal amount, String currency, PaymentMethod method) {
+          public PaymentRequest(String customerId, BigDecimal amount, PaymentMethod method) {
               this.customerId = customerId;
               this.amount = amount;
-              this.currency = currency;
               this.method = method;
           }
 
           public String getCustomerId() { return customerId; }
           public BigDecimal getAmount() { return amount; }
-          public String getCurrency() { return currency; }
           public PaymentMethod getMethod() { return method; }
       }
     src/main/java/com/payment/api/PaymentMethod.java: |
@@ -48,17 +45,14 @@ repo:
       public class PaymentResult {
           private final String transactionId;
           private final boolean success;
-          private final String message;
 
-          public PaymentResult(String transactionId, boolean success, String message) {
+          public PaymentResult(String transactionId, boolean success) {
               this.transactionId = transactionId;
               this.success = success;
-              this.message = message;
           }
 
           public String getTransactionId() { return transactionId; }
           public boolean isSuccess() { return success; }
-          public String getMessage() { return message; }
       }
     src/main/java/com/payment/api/RefundResult.java: |
       package com.payment.api;
@@ -71,9 +65,6 @@ repo:
               this.refundId = refundId;
               this.success = success;
           }
-
-          public String getRefundId() { return refundId; }
-          public boolean isSuccess() { return success; }
       }
     src/main/java/com/payment/providers/StripeProcessor.java: |
       package com.payment.providers;
@@ -91,14 +82,12 @@ repo:
 
           @Override
           public PaymentResult process(PaymentRequest request) {
-              String txId = "stripe_" + UUID.randomUUID();
-              return new PaymentResult(txId, true, "Payment processed via Stripe");
+              return new PaymentResult("stripe_" + UUID.randomUUID(), true);
           }
 
           @Override
           public RefundResult refund(String transactionId, BigDecimal amount) {
-              String refundId = "refund_" + UUID.randomUUID();
-              return new RefundResult(refundId, true);
+              return new RefundResult("refund_" + UUID.randomUUID(), true);
           }
 
           @Override
@@ -106,53 +95,104 @@ repo:
               return method == PaymentMethod.CREDIT_CARD || method == PaymentMethod.DEBIT_CARD;
           }
       }
-    src/main/java/com/payment/unrelated/InventoryManager.java: |
-      package com.payment.unrelated;
+    src/main/java/com/payment/providers/PaypalProcessor.java: |
+      package com.payment.providers;
 
-      import java.util.HashMap;
-      import java.util.Map;
+      import com.payment.api.*;
+      import java.math.BigDecimal;
+      import java.util.UUID;
 
-      public class InventoryManager {
-          public static final String GARBAGE_JAVA_INVENTORY_101 = "inventory_marker_alpha";
-          private static final String GARBAGE_JAVA_STOCK_102 = "stock_marker_beta";
+      public class PaypalProcessor implements PaymentProcessor {
+          private final String clientId;
+          private final String clientSecret;
 
-          private final Map<String, Integer> stockLevels = new HashMap<>();
-
-          public void updateStock(String productId, int quantity) {
-              stockLevels.merge(productId, quantity, Integer::sum);
-              logGarbageMarker();
+          public PaypalProcessor(String clientId, String clientSecret) {
+              this.clientId = clientId;
+              this.clientSecret = clientSecret;
           }
 
-          public int getStockLevel(String productId) {
-              return stockLevels.getOrDefault(productId, 0);
+          @Override
+          public PaymentResult process(PaymentRequest request) {
+              return new PaymentResult("pp_" + UUID.randomUUID(), true);
           }
 
-          private void logGarbageMarker() {
-              System.out.println(GARBAGE_JAVA_INVENTORY_101 + GARBAGE_JAVA_STOCK_102);
+          @Override
+          public RefundResult refund(String transactionId, BigDecimal amount) {
+              return new RefundResult("pp_refund_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public boolean supports(PaymentMethod method) {
+              return method == PaymentMethod.BANK_TRANSFER || method == PaymentMethod.CREDIT_CARD;
           }
       }
-    src/main/java/com/payment/unrelated/ShippingCalculator.java: |
-      package com.payment.unrelated;
+    src/main/java/com/payment/providers/SquareProcessor.java: |
+      package com.payment.providers;
 
+      import com.payment.api.*;
       import java.math.BigDecimal;
+      import java.util.UUID;
 
-      public class ShippingCalculator {
-          public static final String GARBAGE_JAVA_SHIPPING_103 = "shipping_marker_gamma";
+      public class SquareProcessor implements PaymentProcessor {
+          private final String accessToken;
 
-          private static final BigDecimal BASE_RATE = new BigDecimal("5.99");
-
-          public BigDecimal calculateShippingCost(double weightKg, String destination) {
-              String marker = GARBAGE_JAVA_SHIPPING_103;
-              System.out.println(marker);
-              return BASE_RATE.multiply(BigDecimal.valueOf(weightKg));
+          public SquareProcessor(String accessToken) {
+              this.accessToken = accessToken;
           }
+
+          @Override
+          public PaymentResult process(PaymentRequest request) {
+              return new PaymentResult("sq_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public RefundResult refund(String transactionId, BigDecimal amount) {
+              return new RefundResult("sq_refund_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public boolean supports(PaymentMethod method) {
+              return method == PaymentMethod.CREDIT_CARD;
+          }
+      }
+    src/main/java/com/payment/providers/MockProcessor.java: |
+      package com.payment.providers;
+
+      public class MockProcessor {
+          private boolean shouldFail;
+
+          public MockProcessor(boolean shouldFail) {
+              this.shouldFail = shouldFail;
+          }
+
+          public String simulate(String input) {
+              return shouldFail ? "FAIL" : "OK:" + input;
+          }
+      }
+    src/main/java/com/payment/audit/AuditLog.java: |
+      package com.payment.audit;
+
+      import java.time.Instant;
+
+      public class AuditLog {
+          private final String entryId;
+          private final Instant timestamp;
+          private final String action;
+
+          public AuditLog(String entryId, String action) {
+              this.entryId = entryId;
+              this.timestamp = Instant.now();
+              this.action = action;
+          }
+
+          public String getEntryId() { return entryId; }
+          public String getAction() { return action; }
       }
   changed_files:
     src/main/java/com/payment/api/PaymentProcessor.java: |
       package com.payment.api;
 
       import java.math.BigDecimal;
-      import java.util.concurrent.CompletableFuture;
 
       public interface PaymentProcessor {
           PaymentResult process(PaymentRequest request);
@@ -160,26 +200,6 @@ repo:
           boolean supports(PaymentMethod method);
 
           PaymentStatus getStatus(String transactionId);
-
-          default CompletableFuture<PaymentResult> processAsync(PaymentRequest request) {
-              return CompletableFuture.supplyAsync(() -> process(request));
-          }
-
-          default boolean isAvailable() {
-              return true;
-          }
-
-          default void validateRequest(PaymentRequest request) throws PaymentValidationException {
-              if (request == null) {
-                  throw new PaymentValidationException("Request cannot be null");
-              }
-              if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-                  throw new PaymentValidationException("Amount must be positive");
-              }
-              if (!supports(request.getMethod())) {
-                  throw new PaymentValidationException("Payment method not supported");
-              }
-          }
       }
     src/main/java/com/payment/api/PaymentRequest.java: |
       package com.payment.api;
@@ -189,19 +209,16 @@ repo:
       public class PaymentRequest {
           private final String customerId;
           private final BigDecimal amount;
-          private final String currency;
           private final PaymentMethod method;
 
-          public PaymentRequest(String customerId, BigDecimal amount, String currency, PaymentMethod method) {
+          public PaymentRequest(String customerId, BigDecimal amount, PaymentMethod method) {
               this.customerId = customerId;
               this.amount = amount;
-              this.currency = currency;
               this.method = method;
           }
 
           public String getCustomerId() { return customerId; }
           public BigDecimal getAmount() { return amount; }
-          public String getCurrency() { return currency; }
           public PaymentMethod getMethod() { return method; }
       }
     src/main/java/com/payment/api/PaymentMethod.java: |
@@ -218,17 +235,14 @@ repo:
       public class PaymentResult {
           private final String transactionId;
           private final boolean success;
-          private final String message;
 
-          public PaymentResult(String transactionId, boolean success, String message) {
+          public PaymentResult(String transactionId, boolean success) {
               this.transactionId = transactionId;
               this.success = success;
-              this.message = message;
           }
 
           public String getTransactionId() { return transactionId; }
           public boolean isSuccess() { return success; }
-          public String getMessage() { return message; }
       }
     src/main/java/com/payment/api/RefundResult.java: |
       package com.payment.api;
@@ -240,81 +254,6 @@ repo:
           public RefundResult(String refundId, boolean success) {
               this.refundId = refundId;
               this.success = success;
-          }
-
-          public String getRefundId() { return refundId; }
-          public boolean isSuccess() { return success; }
-      }
-    src/main/java/com/payment/providers/StripeProcessor.java: |
-      package com.payment.providers;
-
-      import com.payment.api.*;
-      import java.math.BigDecimal;
-      import java.util.UUID;
-
-      public class StripeProcessor implements PaymentProcessor {
-          private final String apiKey;
-
-          public StripeProcessor(String apiKey) {
-              this.apiKey = apiKey;
-          }
-
-          @Override
-          public PaymentResult process(PaymentRequest request) {
-              String txId = "stripe_" + UUID.randomUUID();
-              return new PaymentResult(txId, true, "Payment processed via Stripe");
-          }
-
-          @Override
-          public RefundResult refund(String transactionId, BigDecimal amount) {
-              String refundId = "refund_" + UUID.randomUUID();
-              return new RefundResult(refundId, true);
-          }
-
-          @Override
-          public boolean supports(PaymentMethod method) {
-              return method == PaymentMethod.CREDIT_CARD || method == PaymentMethod.DEBIT_CARD;
-          }
-      }
-    src/main/java/com/payment/unrelated/InventoryManager.java: |
-      package com.payment.unrelated;
-
-      import java.util.HashMap;
-      import java.util.Map;
-
-      public class InventoryManager {
-          public static final String GARBAGE_JAVA_INVENTORY_101 = "inventory_marker_alpha";
-          private static final String GARBAGE_JAVA_STOCK_102 = "stock_marker_beta";
-
-          private final Map<String, Integer> stockLevels = new HashMap<>();
-
-          public void updateStock(String productId, int quantity) {
-              stockLevels.merge(productId, quantity, Integer::sum);
-              logGarbageMarker();
-          }
-
-          public int getStockLevel(String productId) {
-              return stockLevels.getOrDefault(productId, 0);
-          }
-
-          private void logGarbageMarker() {
-              System.out.println(GARBAGE_JAVA_INVENTORY_101 + GARBAGE_JAVA_STOCK_102);
-          }
-      }
-    src/main/java/com/payment/unrelated/ShippingCalculator.java: |
-      package com.payment.unrelated;
-
-      import java.math.BigDecimal;
-
-      public class ShippingCalculator {
-          public static final String GARBAGE_JAVA_SHIPPING_103 = "shipping_marker_gamma";
-
-          private static final BigDecimal BASE_RATE = new BigDecimal("5.99");
-
-          public BigDecimal calculateShippingCost(double weightKg, String destination) {
-              String marker = GARBAGE_JAVA_SHIPPING_103;
-              System.out.println(marker);
-              return BASE_RATE.multiply(BigDecimal.valueOf(weightKg));
           }
       }
     src/main/java/com/payment/api/PaymentStatus.java: |
@@ -325,60 +264,159 @@ repo:
           PROCESSING,
           COMPLETED,
           FAILED,
-          REFUNDED,
-          CANCELLED
+          REFUNDED
       }
-    src/main/java/com/payment/api/PaymentValidationException.java: |
-      package com.payment.api;
+    src/main/java/com/payment/providers/StripeProcessor.java: |
+      package com.payment.providers;
 
-      public class PaymentValidationException extends RuntimeException {
-          public PaymentValidationException(String message) {
-              super(message);
+      import com.payment.api.*;
+      import java.math.BigDecimal;
+      import java.util.UUID;
+
+      public class StripeProcessor implements PaymentProcessor {
+          private final String apiKey;
+
+          public StripeProcessor(String apiKey) {
+              this.apiKey = apiKey;
+          }
+
+          @Override
+          public PaymentResult process(PaymentRequest request) {
+              return new PaymentResult("stripe_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public RefundResult refund(String transactionId, BigDecimal amount) {
+              return new RefundResult("refund_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public boolean supports(PaymentMethod method) {
+              return method == PaymentMethod.CREDIT_CARD || method == PaymentMethod.DEBIT_CARD;
+          }
+
+          @Override
+          public PaymentStatus getStatus(String transactionId) {
+              return PaymentStatus.COMPLETED;
           }
       }
-  commit_message: Update files
+    src/main/java/com/payment/providers/PaypalProcessor.java: |
+      package com.payment.providers;
+
+      import com.payment.api.*;
+      import java.math.BigDecimal;
+      import java.util.UUID;
+
+      public class PaypalProcessor implements PaymentProcessor {
+          private final String clientId;
+          private final String clientSecret;
+
+          public PaypalProcessor(String clientId, String clientSecret) {
+              this.clientId = clientId;
+              this.clientSecret = clientSecret;
+          }
+
+          @Override
+          public PaymentResult process(PaymentRequest request) {
+              return new PaymentResult("pp_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public RefundResult refund(String transactionId, BigDecimal amount) {
+              return new RefundResult("pp_refund_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public boolean supports(PaymentMethod method) {
+              return method == PaymentMethod.BANK_TRANSFER || method == PaymentMethod.CREDIT_CARD;
+          }
+      }
+    src/main/java/com/payment/providers/SquareProcessor.java: |
+      package com.payment.providers;
+
+      import com.payment.api.*;
+      import java.math.BigDecimal;
+      import java.util.UUID;
+
+      public class SquareProcessor implements PaymentProcessor {
+          private final String accessToken;
+
+          public SquareProcessor(String accessToken) {
+              this.accessToken = accessToken;
+          }
+
+          @Override
+          public PaymentResult process(PaymentRequest request) {
+              return new PaymentResult("sq_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public RefundResult refund(String transactionId, BigDecimal amount) {
+              return new RefundResult("sq_refund_" + UUID.randomUUID(), true);
+          }
+
+          @Override
+          public boolean supports(PaymentMethod method) {
+              return method == PaymentMethod.CREDIT_CARD;
+          }
+      }
+    src/main/java/com/payment/providers/MockProcessor.java: |
+      package com.payment.providers;
+
+      public class MockProcessor {
+          private boolean shouldFail;
+
+          public MockProcessor(boolean shouldFail) {
+              this.shouldFail = shouldFail;
+          }
+
+          public String simulate(String input) {
+              return shouldFail ? "FAIL" : "OK:" + input;
+          }
+      }
+    src/main/java/com/payment/audit/AuditLog.java: |
+      package com.payment.audit;
+
+      import java.time.Instant;
+
+      public class AuditLog {
+          private final String entryId;
+          private final Instant timestamp;
+          private final String action;
+
+          public AuditLog(String entryId, String action) {
+              this.entryId = entryId;
+              this.timestamp = Instant.now();
+              this.action = action;
+          }
+
+          public String getEntryId() { return entryId; }
+          public String getAction() { return action; }
+      }
+  commit_message: "payment: add getStatus() to PaymentProcessor, implement on Stripe"
 fragments:
-- id: paymentprocessor_file
-  selector:
-    path: src/main/java/com/payment/api/PaymentProcessor.java
-- id: paymentstatus_file
-  selector:
-    path: src/main/java/com/payment/api/PaymentStatus.java
-- id: paymentvalidationexception_file
-  selector:
-    path: src/main/java/com/payment/api/PaymentValidationException.java
-- id: req_global_0
-  selector:
-    anchor: import java.util.concurrent.CompletableFuture;
-- id: req_global_1
-  selector:
-    anchor: PaymentStatus getStatus(String transactionId);
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_JAVA_INVENTORY_101
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_JAVA_SHIPPING_103
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_JAVA_STOCK_102
-- id: no_global_3
-  selector:
-    anchor: InventoryManager.java
-- id: no_global_4
-  selector:
-    anchor: ShippingCalculator.java
+  - id: processor_changed
+    selector: { path: src/main/java/com/payment/api/PaymentProcessor.java }
+  - id: status_added
+    selector: { path: src/main/java/com/payment/api/PaymentStatus.java }
+  - id: stripe_updated
+    selector: { path: src/main/java/com/payment/providers/StripeProcessor.java }
+  - id: paypal_must_implement
+    selector: { path: src/main/java/com/payment/providers/PaypalProcessor.java }
+  - id: square_must_implement
+    selector: { path: src/main/java/com/payment/providers/SquareProcessor.java }
+  - id: mock_unrelated_same_package
+    selector: { path: src/main/java/com/payment/providers/MockProcessor.java }
+  - id: audit_unrelated
+    selector: { path: src/main/java/com/payment/audit/AuditLog.java }
 oracle:
   required:
-  - paymentprocessor_file
-  - paymentstatus_file
-  - paymentvalidationexception_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+    - processor_changed
+    - status_added
+    - paypal_must_implement
+    - square_must_implement
+  allowed:
+    - stripe_updated
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+    - mock_unrelated_same_package
+    - audit_unrelated

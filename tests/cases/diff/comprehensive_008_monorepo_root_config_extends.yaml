@@ -34,22 +34,47 @@ repo:
           },
           "include": ["src/**/*"]
       }
-    garbage_webpack_analyzer.ts: |
-      const GARBAGE_COMP_008_BUNDLE_STAT_A = "treeshake";
-      const GARBAGE_COMP_008_CHUNK_SPLIT_B = "vendors";
+    tools/webpack-analyzer.ts: |
+      import * as fs from 'fs';
 
-      class GarbageWebpackAnalyzer {
-        static GARBAGE_COMP_008_SOURCE_MAP_C = true;
-        analyze(): void {}
+      interface BundleStats {
+        totalSize: number;
+        chunkCount: number;
+        entryPoints: string[];
       }
-    garbage_rollup_plugin.ts: |
-      const GARBAGE_COMP_008_PLUGIN_ORDER_D = "pre";
-      const GARBAGE_COMP_008_EXTERNAL_DEP_E = "peer";
 
-      class GarbageRollupPlugin {
-        static GARBAGE_COMP_008_MINIFY_FLAG_F = false;
-        transform(): void {}
+      function analyzeBuild(statsPath: string): BundleStats {
+        const raw = fs.readFileSync(statsPath, 'utf-8');
+        const data = JSON.parse(raw);
+        return {
+          totalSize: data.assets.reduce((sum: number, a: any) => sum + a.size, 0),
+          chunkCount: data.chunks.length,
+          entryPoints: Object.keys(data.entrypoints),
+        };
       }
+
+      export { analyzeBuild, BundleStats };
+    tools/rollup-plugin.ts: |
+      interface PluginOptions {
+        minify: boolean;
+        sourcemap: boolean;
+        external: string[];
+      }
+
+      function createPlugin(options: PluginOptions) {
+        return {
+          name: 'custom-rollup-plugin',
+          resolveId(source: string) {
+            if (options.external.includes(source)) return false;
+            return null;
+          },
+          transform(code: string) {
+            return options.minify ? code.replace(/\s+/g, ' ') : code;
+          },
+        };
+      }
+
+      export { createPlugin, PluginOptions };
   changed_files:
     tsconfig.base.json: |
       {
@@ -90,65 +115,84 @@ repo:
           },
           "include": ["src/**/*"]
       }
-    garbage_webpack_analyzer.ts: |
-      const GARBAGE_COMP_008_BUNDLE_STAT_A = "treeshake";
-      const GARBAGE_COMP_008_CHUNK_SPLIT_B = "vendors";
+    tools/webpack-analyzer.ts: |
+      import * as fs from 'fs';
 
-      class GarbageWebpackAnalyzer {
-        static GARBAGE_COMP_008_SOURCE_MAP_C = true;
-        analyze(): void {}
+      interface BundleStats {
+        totalSize: number;
+        chunkCount: number;
+        entryPoints: string[];
       }
-    garbage_rollup_plugin.ts: |
-      const GARBAGE_COMP_008_PLUGIN_ORDER_D = "pre";
-      const GARBAGE_COMP_008_EXTERNAL_DEP_E = "peer";
 
-      class GarbageRollupPlugin {
-        static GARBAGE_COMP_008_MINIFY_FLAG_F = false;
-        transform(): void {}
+      function analyzeBuild(statsPath: string): BundleStats {
+        const raw = fs.readFileSync(statsPath, 'utf-8');
+        const data = JSON.parse(raw);
+        return {
+          totalSize: data.assets.reduce((sum: number, a: any) => sum + a.size, 0),
+          chunkCount: data.chunks.length,
+          entryPoints: Object.keys(data.entrypoints),
+        };
       }
+
+      export { analyzeBuild, BundleStats };
+    tools/rollup-plugin.ts: |
+      interface PluginOptions {
+        minify: boolean;
+        sourcemap: boolean;
+        external: string[];
+      }
+
+      function createPlugin(options: PluginOptions) {
+        return {
+          name: 'custom-rollup-plugin',
+          resolveId(source: string) {
+            if (options.external.includes(source)) return false;
+            return null;
+          },
+          transform(code: string) {
+            return options.minify ? code.replace(/\s+/g, ' ') : code;
+          },
+        };
+      }
+
+      export { createPlugin, PluginOptions };
   commit_message: Update files
 fragments:
-- id: tsconfig_base_file
+- id: tsconfig_base_changed
   selector:
     path: tsconfig.base.json
-- id: req_global_0
+- id: tsconfig_base_target_upgrade
   selector:
     anchor: '"target": "ES2022",'
-- id: no_global_0
+- id: core_extends_base
   selector:
-    anchor: GARBAGE_COMP_008_BUNDLE_STAT_A
-- id: no_global_1
+    path: packages/core/tsconfig.json
+    anchor: '"extends": "../../tsconfig.base.json"'
+- id: web_extends_base
   selector:
-    anchor: GARBAGE_COMP_008_CHUNK_SPLIT_B
-- id: no_global_2
+    path: packages/web/tsconfig.json
+    anchor: '"extends": "../../tsconfig.base.json"'
+- id: no_webpack_analyzer
   selector:
-    anchor: GARBAGE_COMP_008_EXTERNAL_DEP_E
-- id: no_global_3
+    path: tools/webpack-analyzer.ts
+- id: no_rollup_plugin
   selector:
-    anchor: GARBAGE_COMP_008_MINIFY_FLAG_F
-- id: no_global_4
+    path: tools/rollup-plugin.ts
+- id: no_bundle_stats
   selector:
-    anchor: GARBAGE_COMP_008_PLUGIN_ORDER_D
-- id: no_global_5
+    anchor: BundleStats
+- id: no_create_plugin
   selector:
-    anchor: GARBAGE_COMP_008_SOURCE_MAP_C
-- id: no_global_6
-  selector:
-    anchor: garbage_rollup_plugin.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_webpack_analyzer.ts
+    anchor: createPlugin
 oracle:
   required:
-  - tsconfig_base_file
-  - req_global_0
+  - tsconfig_base_changed
+  - tsconfig_base_target_upgrade
+  - core_extends_base
+  - web_extends_base
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_webpack_analyzer
+  - no_rollup_plugin
+  - no_bundle_stats
+  - no_create_plugin

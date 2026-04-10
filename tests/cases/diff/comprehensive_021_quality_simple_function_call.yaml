@@ -22,22 +22,40 @@ repo:
 
       def summarize(results):
           return len(results)
-    garbage_lazy_evaluator.py: |
-      GARBAGE_COMP_021_THUNK_CACHE_A = "memoize"
-      GARBAGE_COMP_021_FORCE_EVAL_B = "strict"
+    src/lazy_evaluator.py: |
+      from typing import Callable, Any, Optional
 
-      class GarbageLazyEvaluator:
-          GARBAGE_COMP_021_DEPTH_LIMIT_C = True
-          def evaluate(self):
-              pass
-    garbage_coroutine_pool.py: |
-      GARBAGE_COMP_021_POOL_STRATEGY_D = "elastic"
-      GARBAGE_COMP_021_YIELD_POINT_E = "cooperative"
+      class LazyEvaluator:
+          def __init__(self, thunk: Callable[[], Any]):
+              self.thunk = thunk
+              self.cached: Optional[Any] = None
+              self.evaluated = False
 
-      class GarbageCoroutinePool:
-          GARBAGE_COMP_021_STACK_SIZE_F = False
-          def spawn(self):
-              pass
+          def evaluate(self) -> Any:
+              if not self.evaluated:
+                  self.cached = self.thunk()
+                  self.evaluated = True
+              return self.cached
+
+          def reset(self) -> None:
+              self.cached = None
+              self.evaluated = False
+    src/coroutine_pool.py: |
+      from typing import Callable, List
+      import asyncio
+
+      class CoroutinePool:
+          def __init__(self, max_concurrency: int = 10):
+              self.max_concurrency = max_concurrency
+              self.semaphore = asyncio.Semaphore(max_concurrency)
+
+          async def submit(self, coro: Callable) -> Any:
+              async with self.semaphore:
+                  return await coro()
+
+          async def map(self, coro_factory: Callable, items: List) -> list:
+              tasks = [self.submit(lambda item=item: coro_factory(item)) for item in items]
+              return await asyncio.gather(*tasks)
   changed_files:
     src/utils.py: |
       def double_value(x):
@@ -62,69 +80,76 @@ repo:
 
       def summarize(results):
           return len(results)
-    garbage_lazy_evaluator.py: |
-      GARBAGE_COMP_021_THUNK_CACHE_A = "memoize"
-      GARBAGE_COMP_021_FORCE_EVAL_B = "strict"
+    src/lazy_evaluator.py: |
+      from typing import Callable, Any, Optional
 
-      class GarbageLazyEvaluator:
-          GARBAGE_COMP_021_DEPTH_LIMIT_C = True
-          def evaluate(self):
-              pass
-    garbage_coroutine_pool.py: |
-      GARBAGE_COMP_021_POOL_STRATEGY_D = "elastic"
-      GARBAGE_COMP_021_YIELD_POINT_E = "cooperative"
+      class LazyEvaluator:
+          def __init__(self, thunk: Callable[[], Any]):
+              self.thunk = thunk
+              self.cached: Optional[Any] = None
+              self.evaluated = False
 
-      class GarbageCoroutinePool:
-          GARBAGE_COMP_021_STACK_SIZE_F = False
-          def spawn(self):
-              pass
+          def evaluate(self) -> Any:
+              if not self.evaluated:
+                  self.cached = self.thunk()
+                  self.evaluated = True
+              return self.cached
+
+          def reset(self) -> None:
+              self.cached = None
+              self.evaluated = False
+    src/coroutine_pool.py: |
+      from typing import Callable, List
+      import asyncio
+
+      class CoroutinePool:
+          def __init__(self, max_concurrency: int = 10):
+              self.max_concurrency = max_concurrency
+              self.semaphore = asyncio.Semaphore(max_concurrency)
+
+          async def submit(self, coro: Callable) -> Any:
+              async with self.semaphore:
+                  return await coro()
+
+          async def map(self, coro_factory: Callable, items: List) -> list:
+              tasks = [self.submit(lambda item=item: coro_factory(item)) for item in items]
+              return await asyncio.gather(*tasks)
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_double
   selector:
     anchor: from src.utils import double_value
-- id: req_global_1
+- id: main_calls_double
   selector:
     anchor: return double_value(42)
-- id: no_global_0
+- id: utils_double_def
   selector:
-    anchor: GARBAGE_COMP_021_DEPTH_LIMIT_C
-- id: no_global_1
+    path: src/utils.py
+    anchor: def double_value(x)
+- id: no_lazy_evaluator
   selector:
-    anchor: GARBAGE_COMP_021_FORCE_EVAL_B
-- id: no_global_2
+    path: src/lazy_evaluator.py
+- id: no_coroutine_pool
   selector:
-    anchor: GARBAGE_COMP_021_POOL_STRATEGY_D
-- id: no_global_3
+    path: src/coroutine_pool.py
+- id: no_lazy_class
   selector:
-    anchor: GARBAGE_COMP_021_STACK_SIZE_F
-- id: no_global_4
+    anchor: LazyEvaluator
+- id: no_coroutine_class
   selector:
-    anchor: GARBAGE_COMP_021_THUNK_CACHE_A
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_021_YIELD_POINT_E
-- id: no_global_6
-  selector:
-    anchor: garbage_coroutine_pool.py
-- id: no_global_7
-  selector:
-    anchor: garbage_lazy_evaluator.py
+    anchor: CoroutinePool
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_changed
+  - main_imports_double
+  - main_calls_double
+  - utils_double_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_lazy_evaluator
+  - no_coroutine_pool
+  - no_lazy_class
+  - no_coroutine_class

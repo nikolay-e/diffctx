@@ -26,22 +26,36 @@ repo:
 
       def test_another_placeholder():
           pass
-    garbage_http_interceptor.py: |
-      GARBAGE_COMP_017_PROXY_MODE_A = "transparent"
-      GARBAGE_COMP_017_HEADER_INJECT_B = "custom"
+    src/http_interceptor.py: |
+      from typing import Callable, Dict
 
-      class GarbageHttpInterceptor:
-          GARBAGE_COMP_017_RETRY_POLICY_C = True
-          def intercept(self):
-              pass
-    garbage_mock_server.py: |
-      GARBAGE_COMP_017_FIXTURE_PATH_D = "snapshots"
-      GARBAGE_COMP_017_RECORD_MODE_E = "replay"
+      class HttpInterceptor:
+          def __init__(self, base_url: str):
+              self.base_url = base_url
+              self.before_hooks: list = []
 
-      class GarbageMockServer:
-          GARBAGE_COMP_017_PORT_RANGE_F = False
-          def serve(self):
-              pass
+          def add_hook(self, hook: Callable) -> None:
+              self.before_hooks.append(hook)
+
+          def intercept(self, request: Dict) -> Dict:
+              for hook in self.before_hooks:
+                  request = hook(request)
+              return request
+    src/mock_server.py: |
+      from typing import Dict, List
+
+      class MockServer:
+          def __init__(self, port: int = 8080):
+              self.port = port
+              self.routes: Dict[str, dict] = {}
+              self.request_log: List[dict] = []
+
+          def register(self, path: str, response: dict) -> None:
+              self.routes[path] = response
+
+          def handle(self, method: str, path: str) -> dict:
+              self.request_log.append({"method": method, "path": path})
+              return self.routes.get(path, {"status": 404})
   changed_files:
     src/api_client.py: |
       import requests
@@ -80,69 +94,77 @@ repo:
           mock_post.return_value.raise_for_status = mock.Mock()
           result = create_user("Bob", "bob@example.com")
           assert result["name"] == "Bob"
-    garbage_http_interceptor.py: |
-      GARBAGE_COMP_017_PROXY_MODE_A = "transparent"
-      GARBAGE_COMP_017_HEADER_INJECT_B = "custom"
+    src/http_interceptor.py: |
+      from typing import Callable, Dict
 
-      class GarbageHttpInterceptor:
-          GARBAGE_COMP_017_RETRY_POLICY_C = True
-          def intercept(self):
-              pass
-    garbage_mock_server.py: |
-      GARBAGE_COMP_017_FIXTURE_PATH_D = "snapshots"
-      GARBAGE_COMP_017_RECORD_MODE_E = "replay"
+      class HttpInterceptor:
+          def __init__(self, base_url: str):
+              self.base_url = base_url
+              self.before_hooks: list = []
 
-      class GarbageMockServer:
-          GARBAGE_COMP_017_PORT_RANGE_F = False
-          def serve(self):
-              pass
+          def add_hook(self, hook: Callable) -> None:
+              self.before_hooks.append(hook)
+
+          def intercept(self, request: Dict) -> Dict:
+              for hook in self.before_hooks:
+                  request = hook(request)
+              return request
+    src/mock_server.py: |
+      from typing import Dict, List
+
+      class MockServer:
+          def __init__(self, port: int = 8080):
+              self.port = port
+              self.routes: Dict[str, dict] = {}
+              self.request_log: List[dict] = []
+
+          def register(self, path: str, response: dict) -> None:
+              self.routes[path] = response
+
+          def handle(self, method: str, path: str) -> dict:
+              self.request_log.append({"method": method, "path": path})
+              return self.routes.get(path, {"status": 404})
   commit_message: Update files
 fragments:
-- id: test_api_file
+- id: test_api_changed
   selector:
     path: tests/test_api.py
-- id: req_global_0
+- id: test_imports_mock
   selector:
     anchor: from unittest import mock
-- id: req_global_1
+- id: test_patches_requests
   selector:
-    anchor: '@mock.patch(''src.api_client.requests.get'')'
-- id: no_global_0
+    anchor: "@mock.patch('src.api_client.requests.get')"
+- id: api_client_fetch_user
   selector:
-    anchor: GARBAGE_COMP_017_FIXTURE_PATH_D
-- id: no_global_1
+    path: src/api_client.py
+    anchor: "def fetch_user(user_id: int) -> Dict:"
+- id: api_client_create_user
   selector:
-    anchor: GARBAGE_COMP_017_HEADER_INJECT_B
-- id: no_global_2
+    path: src/api_client.py
+    anchor: "def create_user(name: str, email: str) -> Dict:"
+- id: no_http_interceptor
   selector:
-    anchor: GARBAGE_COMP_017_PORT_RANGE_F
-- id: no_global_3
+    path: src/http_interceptor.py
+- id: no_mock_server
   selector:
-    anchor: GARBAGE_COMP_017_PROXY_MODE_A
-- id: no_global_4
+    path: src/mock_server.py
+- id: no_interceptor_class
   selector:
-    anchor: GARBAGE_COMP_017_RECORD_MODE_E
-- id: no_global_5
+    anchor: HttpInterceptor
+- id: no_mock_server_class
   selector:
-    anchor: GARBAGE_COMP_017_RETRY_POLICY_C
-- id: no_global_6
-  selector:
-    anchor: garbage_http_interceptor.py
-- id: no_global_7
-  selector:
-    anchor: garbage_mock_server.py
+    anchor: MockServer
 oracle:
   required:
-  - test_api_file
-  - req_global_0
-  - req_global_1
+  - test_api_changed
+  - test_imports_mock
+  - test_patches_requests
+  - api_client_fetch_user
+  - api_client_create_user
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_http_interceptor
+  - no_mock_server
+  - no_interceptor_class
+  - no_mock_server_class

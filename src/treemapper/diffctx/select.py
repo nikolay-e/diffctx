@@ -4,6 +4,7 @@ import bisect
 import heapq
 import logging
 import math
+import os
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -230,6 +231,90 @@ def _compute_r_cap(rel: dict[FragmentId, float]) -> float:
     return max(med + UTILITY.r_cap_sigma * std, 1e-9)
 
 
+def _collect_greedy_densities(
+    candidates: list[Fragment],
+    rel: dict[FragmentId, float],
+    needs: tuple[InformationNeed, ...],
+    utility_state: UtilityState,
+) -> list[tuple[str, int, int, float, float, float]]:
+    result: list[tuple[str, int, int, float, float, float]] = []
+    for frag in candidates:
+        if frag.token_count > 0:
+            density = compute_density(frag, rel.get(frag.id, 0.0), needs, utility_state)
+            gain = marginal_gain(frag, rel.get(frag.id, 0.0), needs, utility_state)
+            result.append((str(frag.path), frag.start_line, frag.token_count, rel.get(frag.id, 0.0), gain, density))
+    return result
+
+
+def _write_greedy_dump(
+    path: str,
+    tau: float,
+    threshold: float,
+    baseline_k: int,
+    n_candidates: int,
+    n_selected: int,
+    remaining_budget: int,
+    densities: list[tuple[str, int, int, float, float, float]],
+) -> None:
+    import json as _json
+
+    with open(path, "w") as f:
+        f.write(
+            _json.dumps(
+                {
+                    "tau": tau,
+                    "threshold": threshold,
+                    "baseline_k": baseline_k,
+                    "n_candidates": n_candidates,
+                    "n_selected_noncore": n_selected,
+                    "remaining_budget": remaining_budget,
+                }
+            )
+            + "\n"
+        )
+        for fpath, start, tokens, ppr, gain, density in sorted(densities, key=lambda x: -x[5]):
+            f.write(
+                _json.dumps(
+                    {
+                        "path": fpath,
+                        "start": start,
+                        "tokens": tokens,
+                        "ppr": round(ppr, 6),
+                        "gain": round(gain, 4),
+                        "density": round(density, 6),
+                    }
+                )
+                + "\n"
+            )
+
+
+def _build_signature_lookup(fragments: list[Fragment], core_fragments: list[Fragment]) -> dict[FragmentId, Fragment]:
+    sig_by_loc: dict[tuple[Path, int], Fragment] = {}
+    for f in fragments:
+        if "_signature" in f.kind:
+            sig_by_loc[(f.path, f.start_line)] = f
+    sig_lookup: dict[FragmentId, Fragment] = {}
+    for cf in core_fragments:
+        key = (cf.path, cf.start_line)
+        if key in sig_by_loc:
+            sig_lookup[cf.id] = sig_by_loc[key]
+    return sig_lookup
+
+
+def _init_selection_state(
+    core_ids: set[FragmentId],
+    rel: dict[FragmentId, float],
+    budget_tokens: int,
+    file_importance: dict[Path, float] | None,
+) -> _SelectionState:
+    state = _SelectionState(remaining_budget=budget_tokens)
+    state.utility_state.r_cap = _compute_r_cap(rel)
+    state.utility_state.changed_dirs = frozenset(cid.path.parent for cid in core_ids)
+    if file_importance is not None:
+        state.utility_state.file_importance = file_importance
+    return state
+
+
 def lazy_greedy_select(
     fragments: list[Fragment],
     core_ids: set[FragmentId],
@@ -240,6 +325,8 @@ def lazy_greedy_select(
     file_importance: dict[Path, float] | None = None,
 ) -> SelectionResult:
     if not fragments:
+        if budget_tokens > 0:
+            logger.warning("Selection: budget=%d but no candidate fragments available", budget_tokens)
         return _log_and_return(
             SelectionResult(selected=[], reason="no_candidates", used_tokens=0, utility=0.0),
             core_ids,
@@ -249,21 +336,8 @@ def lazy_greedy_select(
     core_fragments.sort(key=lambda f: (f.token_count if f.token_count > 0 else 10**9, f.line_count, f.start_line))
     non_core_fragments = [f for f in fragments if f.id not in core_ids]
 
-    sig_by_loc: dict[tuple[Path, int], Fragment] = {}
-    for f in fragments:
-        if "_signature" in f.kind:
-            sig_by_loc[(f.path, f.start_line)] = f
-    sig_lookup: dict[FragmentId, Fragment] = {}
-    for cf in core_fragments:
-        key = (cf.path, cf.start_line)
-        if key in sig_by_loc:
-            sig_lookup[cf.id] = sig_by_loc[key]
-
-    state = _SelectionState(remaining_budget=budget_tokens)
-    state.utility_state.r_cap = _compute_r_cap(rel)
-    state.utility_state.changed_dirs = frozenset(cid.path.parent for cid in core_ids)
-    if file_importance is not None:
-        state.utility_state.file_importance = file_importance
+    sig_lookup = _build_signature_lookup(fragments, core_fragments)
+    state = _init_selection_state(core_ids, rel, budget_tokens, file_importance)
     _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
 
     if state.remaining_budget <= 0:
@@ -289,7 +363,22 @@ def lazy_greedy_select(
     id_to_frag: dict[FragmentId, Fragment] = {}
     heap = _build_initial_heap(candidates, rel, needs, state.utility_state, id_to_frag)
 
+    dump_greedy = os.environ.get("DIFFCTX_DUMP_GREEDY")
+    pre_greedy_densities = _collect_greedy_densities(candidates, rel, needs, state.utility_state) if dump_greedy else None
+
     selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, needs, tau, baseline_k)
+
+    if dump_greedy and pre_greedy_densities is not None:
+        _write_greedy_dump(
+            dump_greedy,
+            tau,
+            threshold,
+            baseline_k,
+            len(candidates),
+            selections_for_baseline,
+            state.remaining_budget,
+            pre_greedy_densities,
+        )
 
     greedy_utility = utility_value(state.utility_state)
     base_selected_ids = _IntervalIndex()

@@ -12,6 +12,14 @@ repo:
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     src/repositories/product_repository.py: |
       from typing import List, Optional
       from models.product import Product
@@ -34,22 +42,20 @@ repo:
                   "SELECT * FROM products WHERE name ILIKE %s",
                   [f"%{query}%"]
               )
-    garbage_index_manager.ts: |
-      const GARBAGE_CICD_DOCS_066_MANAGER_MARKER_A = "pg-index";
-      const GARBAGE_CICD_DOCS_066_CONCURRENT_MARKER_B = true;
+    src/repositories/user_repository.py: |
+      from typing import List, Optional
+      from models.user import User
 
-      class GarbageIndexManager {
-        static GARBAGE_CICD_DOCS_066_REINDEX_MARKER_C = "nightly";
-        manage(): void {}
-      }
-    garbage_index_analyzer.ts: |
-      const GARBAGE_CICD_DOCS_066_ANALYZE_MARKER_D = "explain";
-      const GARBAGE_CICD_DOCS_066_COST_MARKER_E = 100;
+      class UserRepository:
+          def find_by_email(self, email: str) -> Optional[User]:
+              result = self.db.query(
+                  "SELECT * FROM users WHERE email = %s",
+                  [email]
+              )
+              return User(**result[0]) if result else None
 
-      class GarbageIndexAnalyzer {
-        static GARBAGE_CICD_DOCS_066_VACUUM_MARKER_F = false;
-        analyze(): void {}
-      }
+          def find_all(self) -> List[User]:
+              return self.db.query("SELECT * FROM users ORDER BY name")
   changed_files:
     migrations/001_create_products.sql: |
       CREATE TABLE products (
@@ -61,6 +67,14 @@ repo:
           stock_quantity INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     migrations/002_add_product_indexes.sql: |
       -- Index for category filtering
@@ -101,65 +115,51 @@ repo:
                   "SELECT * FROM products WHERE name ILIKE %s",
                   [f"%{query}%"]
               )
-    garbage_index_manager.ts: |
-      const GARBAGE_CICD_DOCS_066_MANAGER_MARKER_A = "pg-index";
-      const GARBAGE_CICD_DOCS_066_CONCURRENT_MARKER_B = true;
+    src/repositories/user_repository.py: |
+      from typing import List, Optional
+      from models.user import User
 
-      class GarbageIndexManager {
-        static GARBAGE_CICD_DOCS_066_REINDEX_MARKER_C = "nightly";
-        manage(): void {}
-      }
-    garbage_index_analyzer.ts: |
-      const GARBAGE_CICD_DOCS_066_ANALYZE_MARKER_D = "explain";
-      const GARBAGE_CICD_DOCS_066_COST_MARKER_E = 100;
+      class UserRepository:
+          def find_by_email(self, email: str) -> Optional[User]:
+              result = self.db.query(
+                  "SELECT * FROM users WHERE email = %s",
+                  [email]
+              )
+              return User(**result[0]) if result else None
 
-      class GarbageIndexAnalyzer {
-        static GARBAGE_CICD_DOCS_066_VACUUM_MARKER_F = false;
-        analyze(): void {}
-      }
-  commit_message: Update files
+          def find_all(self) -> List[User]:
+              return self.db.query("SELECT * FROM users ORDER BY name")
+  commit_message: "db: add indexes for product category, price, and name queries"
 fragments:
-- id: 002_add_product_indexes_file
+- id: index_migration
   selector:
     path: migrations/002_add_product_indexes.sql
-- id: req_global_0
+- id: category_index
   selector:
-    anchor: -- Index for category filtering
-- id: no_global_0
+    anchor: CREATE INDEX idx_products_category ON products(category)
+- id: table_schema
   selector:
-    anchor: GARBAGE_CICD_DOCS_066_ANALYZE_MARKER_D
-- id: no_global_1
+    path: migrations/001_create_products.sql
+    anchor: category VARCHAR(100)
+- id: product_queries
   selector:
-    anchor: GARBAGE_CICD_DOCS_066_CONCURRENT_MARKER_B
-- id: no_global_2
+    path: src/repositories/product_repository.py
+    anchor: WHERE category = %s ORDER BY name
+- id: no_users_table
   selector:
-    anchor: GARBAGE_CICD_DOCS_066_COST_MARKER_E
-- id: no_global_3
+    path: migrations/001_create_users.sql
+    anchor: CREATE TABLE users
+- id: no_user_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_066_MANAGER_MARKER_A
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_066_REINDEX_MARKER_C
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_066_VACUUM_MARKER_F
-- id: no_global_6
-  selector:
-    anchor: garbage_index_analyzer.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_index_manager.ts
+    path: src/repositories/user_repository.py
+    anchor: find_by_email
 oracle:
   required:
-  - 002_add_product_indexes_file
-  - req_global_0
+  - index_migration
+  - category_index
+  - table_schema
+  - product_queries
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_users_table
+  - no_user_repository

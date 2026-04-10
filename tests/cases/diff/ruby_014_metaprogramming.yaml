@@ -221,44 +221,45 @@ fragments:
 - id: config_file
   selector:
     path: lib/config.rb
-- id: req_global_0
+- id: config_uses_define_accessors
   selector:
     anchor: define_accessors :host, :port, :debug, :timeout
+- id: dsl_define_accessors_method
+  selector:
+    path: lib/dsl.rb
+    anchor: def define_accessors(*names)
+- id: dsl_define_validators_method
+  selector:
+    path: lib/dsl.rb
+    anchor: def define_validators(*names)
+- id: dsl_class_methods_module
+  selector:
+    path: lib/dsl.rb
+    anchor: module ClassMethods
 - id: no_serializer
   selector:
     path: lib/serializer.rb
+    anchor: class AttributeSerializer
 - id: no_schema_builder
   selector:
     path: lib/schema_builder.rb
-- id: no_global_0
-  selector:
-    anchor: AttributeSerializer
-- id: no_global_1
-  selector:
-    anchor: SchemaBuilder
-- id: no_global_2
+    anchor: class SchemaBuilder
+- id: no_method_missing
   selector:
     anchor: method_missing
-- id: no_global_3
+- id: no_validate_type
   selector:
     anchor: validate_type
-- id: no_global_4
-  selector:
-    anchor: serializer.rb
-- id: no_global_5
-  selector:
-    anchor: schema_builder.rb
 oracle:
   required:
   - config_file
-  - req_global_0
+  - config_uses_define_accessors
+  - dsl_define_accessors_method
+  - dsl_define_validators_method
+  - dsl_class_methods_module
   allowed: []
   forbidden:
   - no_serializer
   - no_schema_builder
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_method_missing
+  - no_validate_type

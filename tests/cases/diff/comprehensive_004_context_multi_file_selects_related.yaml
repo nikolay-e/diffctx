@@ -42,22 +42,41 @@ repo:
 
       def health_check():
           return {"status": "ok", "version": "1.0.0"}
-    garbage_notification_hub.py: |
-      GARBAGE_COMP_004_CHANNEL_TYPE_A = "websocket"
-      GARBAGE_COMP_004_DELIVERY_MODE_B = "push"
+    src/notifications/email_sender.py: |
+      from typing import List
 
-      class GarbageNotificationHub:
-          GARBAGE_COMP_004_MAX_RETRIES_C = 3
-          def notify(self):
-              pass
-    garbage_audit_logger.py: |
-      GARBAGE_COMP_004_LOG_RETENTION_D = "days"
-      GARBAGE_COMP_004_COMPLIANCE_LEVEL_E = "gdpr"
+      class EmailSender:
+          def __init__(self, smtp_host: str, smtp_port: int):
+              self.smtp_host = smtp_host
+              self.smtp_port = smtp_port
 
-      class GarbageAuditLogger:
-          GARBAGE_COMP_004_ROTATION_POLICY_F = "daily"
-          def log(self):
-              pass
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+
+          def send_bulk(self, recipients: List[str], subject: str, body: str) -> int:
+              sent = 0
+              for recipient in recipients:
+                  if self.send(recipient, subject, body):
+                      sent += 1
+              return sent
+    src/audit/logger.py: |
+      import json
+      from datetime import datetime
+
+      class AuditLogger:
+          def __init__(self, log_file: str = "audit.log"):
+              self.log_file = log_file
+
+          def log_event(self, event_type: str, details: dict) -> None:
+              entry = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "type": event_type,
+                  "details": details,
+              }
+              print(json.dumps(entry))
+
+          def log_login_attempt(self, username: str, success: bool) -> None:
+              self.log_event("login", {"username": username, "success": success})
   changed_files:
     src/models/user.py: |
       class User:
@@ -104,69 +123,86 @@ repo:
 
       def health_check():
           return {"status": "ok", "version": "1.0.0"}
-    garbage_notification_hub.py: |
-      GARBAGE_COMP_004_CHANNEL_TYPE_A = "websocket"
-      GARBAGE_COMP_004_DELIVERY_MODE_B = "push"
+    src/notifications/email_sender.py: |
+      from typing import List
 
-      class GarbageNotificationHub:
-          GARBAGE_COMP_004_MAX_RETRIES_C = 3
-          def notify(self):
-              pass
-    garbage_audit_logger.py: |
-      GARBAGE_COMP_004_LOG_RETENTION_D = "days"
-      GARBAGE_COMP_004_COMPLIANCE_LEVEL_E = "gdpr"
+      class EmailSender:
+          def __init__(self, smtp_host: str, smtp_port: int):
+              self.smtp_host = smtp_host
+              self.smtp_port = smtp_port
 
-      class GarbageAuditLogger:
-          GARBAGE_COMP_004_ROTATION_POLICY_F = "daily"
-          def log(self):
-              pass
+          def send(self, to: str, subject: str, body: str) -> bool:
+              return True
+
+          def send_bulk(self, recipients: List[str], subject: str, body: str) -> int:
+              sent = 0
+              for recipient in recipients:
+                  if self.send(recipient, subject, body):
+                      sent += 1
+              return sent
+    src/audit/logger.py: |
+      import json
+      from datetime import datetime
+
+      class AuditLogger:
+          def __init__(self, log_file: str = "audit.log"):
+              self.log_file = log_file
+
+          def log_event(self, event_type: str, details: dict) -> None:
+              entry = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "type": event_type,
+                  "details": details,
+              }
+              print(json.dumps(entry))
+
+          def log_login_attempt(self, username: str, success: bool) -> None:
+              self.log_event("login", {"username": username, "success": success})
   commit_message: Update files
 fragments:
-- id: auth_file
+- id: auth_changed
   selector:
     path: src/services/auth.py
-- id: req_global_0
+- id: auth_validate_check
   selector:
-    anchor: 'if not user.validate():'
-- id: req_global_1
+    anchor: "if not user.validate():"
+- id: auth_password_strength
   selector:
     anchor: has_upper = any(c.isupper() for c in password)
-- id: no_global_0
+- id: user_model_validate
   selector:
-    anchor: GARBAGE_COMP_004_CHANNEL_TYPE_A
-- id: no_global_1
+    path: src/models/user.py
+    anchor: "def validate(self):"
+- id: routes_calls_authenticate
   selector:
-    anchor: GARBAGE_COMP_004_COMPLIANCE_LEVEL_E
-- id: no_global_2
+    path: src/api/routes.py
+    anchor: result = authenticate(request.username, request.password)
+- id: no_email_sender
   selector:
-    anchor: GARBAGE_COMP_004_DELIVERY_MODE_B
-- id: no_global_3
+    path: src/notifications/email_sender.py
+- id: no_audit_logger
   selector:
-    anchor: GARBAGE_COMP_004_LOG_RETENTION_D
-- id: no_global_4
+    path: src/audit/logger.py
+- id: no_smtp_host
   selector:
-    anchor: GARBAGE_COMP_004_MAX_RETRIES_C
-- id: no_global_5
+    anchor: smtp_host
+- id: no_log_event
   selector:
-    anchor: GARBAGE_COMP_004_ROTATION_POLICY_F
-- id: no_global_6
+    anchor: log_event
+- id: no_send_bulk
   selector:
-    anchor: garbage_audit_logger.py
-- id: no_global_7
-  selector:
-    anchor: garbage_notification_hub.py
+    anchor: send_bulk
 oracle:
   required:
-  - auth_file
-  - req_global_0
-  - req_global_1
+  - auth_changed
+  - auth_validate_check
+  - auth_password_strength
+  - user_model_validate
+  - routes_calls_authenticate
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_email_sender
+  - no_audit_logger
+  - no_smtp_host
+  - no_log_event
+  - no_send_bulk

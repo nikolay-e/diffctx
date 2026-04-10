@@ -247,12 +247,47 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
+- id: worker_concurrency_arg
+  selector:
+    path: worker.py
+    anchor: '--concurrency", type=int'
+- id: worker_queue_arg
+  selector:
+    path: worker.py
+    anchor: '--queue", type=str'
+- id: worker_env_vars
+  selector:
+    path: worker.py
+    anchor: 'CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY"'
+- id: scheduler_run
+  selector:
+    path: scheduler.py
+    anchor: "def run_scheduler"
+- id: no_k8s_job
+  selector:
+    path: k8s/job.yaml
+    anchor: "apiVersion: batch/v1"
+- id: no_test_worker
+  selector:
+    path: tests/test_worker.py
+    anchor: "def test_process_jobs"
+- id: no_start_script
+  selector:
+    path: scripts/start_worker.sh
+    anchor: "docker-compose up worker"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
+  - dockerfile_build_context
+  - worker_concurrency_arg
+  - worker_queue_arg
+  - worker_env_vars
+  - scheduler_run
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_k8s_job
+  - no_test_worker
+  - no_start_script

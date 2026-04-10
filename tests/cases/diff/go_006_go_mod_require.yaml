@@ -67,29 +67,47 @@ repo:
           srv.SetupRoutes()
           srv.Run(":8080")
       }
-    internal/unrelated/analytics/tracker.go: |
-      package analytics
+    internal/config/env.go: |
+      package config
 
-      const GARBAGE_GO_ANALYTICS_TRACK_001 = "analytics_garbage"
+      import "os"
 
-      type GARBAGE_GO_TYPE_TRACKER_002 struct {
-          endpoint string
+      type AppConfig struct {
+          Port        string
+          Environment string
+          LogLevel    string
       }
 
-      func GARBAGE_GO_FUNC_TRACKER_003() string {
-          return "GARBAGE_GO_TRACKER_UNUSED_004"
-      }
-    internal/unrelated/payment/stripe.go: |
-      package payment
-
-      const GARBAGE_GO_PAYMENT_STRIPE_005 = "payment_garbage"
-
-      type GARBAGE_GO_TYPE_PAYMENT_006 struct {
-          apiKey string
+      func LoadFromEnv() *AppConfig {
+          return &AppConfig{
+              Port:        getEnvOrDefault("PORT", "8080"),
+              Environment: getEnvOrDefault("APP_ENV", "development"),
+              LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
+          }
       }
 
-      func GARBAGE_GO_FUNC_PAYMENT_007() {
-          println("GARBAGE_GO_PAYMENT_OUTPUT_008")
+      func getEnvOrDefault(key, fallback string) string {
+          if val := os.Getenv(key); val != "" {
+              return val
+          }
+          return fallback
+      }
+    internal/middleware/cors.go: |
+      package middleware
+
+      import "github.com/gin-gonic/gin"
+
+      func CORSMiddleware() gin.HandlerFunc {
+          return func(c *gin.Context) {
+              c.Header("Access-Control-Allow-Origin", "*")
+              c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+              c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+              if c.Request.Method == "OPTIONS" {
+                  c.AbortWithStatus(204)
+                  return
+              }
+              c.Next()
+          }
       }
   changed_files:
     go.mod: |
@@ -161,73 +179,75 @@ repo:
           srv.SetupRoutes()
           srv.Run(":8080")
       }
-    internal/unrelated/analytics/tracker.go: |
-      package analytics
+    internal/config/env.go: |
+      package config
 
-      const GARBAGE_GO_ANALYTICS_TRACK_001 = "analytics_garbage"
+      import "os"
 
-      type GARBAGE_GO_TYPE_TRACKER_002 struct {
-          endpoint string
+      type AppConfig struct {
+          Port        string
+          Environment string
+          LogLevel    string
       }
 
-      func GARBAGE_GO_FUNC_TRACKER_003() string {
-          return "GARBAGE_GO_TRACKER_UNUSED_004"
-      }
-    internal/unrelated/payment/stripe.go: |
-      package payment
-
-      const GARBAGE_GO_PAYMENT_STRIPE_005 = "payment_garbage"
-
-      type GARBAGE_GO_TYPE_PAYMENT_006 struct {
-          apiKey string
+      func LoadFromEnv() *AppConfig {
+          return &AppConfig{
+              Port:        getEnvOrDefault("PORT", "8080"),
+              Environment: getEnvOrDefault("APP_ENV", "development"),
+              LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
+          }
       }
 
-      func GARBAGE_GO_FUNC_PAYMENT_007() {
-          println("GARBAGE_GO_PAYMENT_OUTPUT_008")
+      func getEnvOrDefault(key, fallback string) string {
+          if val := os.Getenv(key); val != "" {
+              return val
+          }
+          return fallback
       }
-  commit_message: Update files
+    internal/middleware/cors.go: |
+      package middleware
+
+      import "github.com/gin-gonic/gin"
+
+      func CORSMiddleware() gin.HandlerFunc {
+          return func(c *gin.Context) {
+              c.Header("Access-Control-Allow-Origin", "*")
+              c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+              c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+              if c.Request.Method == "OPTIONS" {
+                  c.AbortWithStatus(204)
+                  return
+              }
+              c.Next()
+          }
+      }
+  commit_message: "chore(deps): add redis, pgx, and sync dependencies"
 fragments:
-- id: go_file
+- id: changed_go_mod
   selector:
     path: go.mod
-- id: req_global_0
+- id: new_redis_dep
   selector:
     anchor: github.com/redis/go-redis/v9 v9.0.0
-- id: no_global_0
+- id: new_pgx_dep
   selector:
-    anchor: GARBAGE_GO_ANALYTICS_TRACK_001
-- id: no_global_1
+    anchor: github.com/jackc/pgx/v5 v5.4.0
+- id: unrelated_config_env
   selector:
-    anchor: GARBAGE_GO_FUNC_PAYMENT_007
-- id: no_global_2
+    anchor: func LoadFromEnv() *AppConfig {
+- id: unrelated_cors_middleware
   selector:
-    anchor: GARBAGE_GO_FUNC_TRACKER_003
-- id: no_global_3
+    anchor: func CORSMiddleware() gin.HandlerFunc {
+- id: unrelated_server_routes
   selector:
-    anchor: GARBAGE_GO_PAYMENT_STRIPE_005
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_GO_TYPE_PAYMENT_006
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_TRACKER_002
-- id: no_global_6
-  selector:
-    anchor: stripe.go
-- id: no_global_7
-  selector:
-    anchor: tracker.go
+    anchor: func (s *Server) SetupRoutes() {
 oracle:
   required:
-  - go_file
-  - req_global_0
+  - changed_go_mod
+  - new_redis_dep
+  - new_pgx_dep
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_config_env
+  - unrelated_cors_middleware
+  - unrelated_server_routes

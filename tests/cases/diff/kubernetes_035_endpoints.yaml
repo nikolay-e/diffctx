@@ -254,39 +254,49 @@ repo:
           kubernetes.core.k8s:
   commit_message: Update files
 fragments:
-- id: endpoints_file
+- id: endpoints_populated
   selector:
     path: k8s/base/endpoints.yaml
-- id: req_global_0
+- id: endpoints_external_api_label
   selector:
     anchor: 'app: external-api'
+- id: service_external_matches_endpoints
+  selector:
+    path: k8s/base/service-external.yaml
+    anchor: 'name: external-api'
+- id: deployment_references_external_api
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'value: external-api'
 - id: no_endpointslice
   selector:
     path: k8s/advanced/endpointslice.yaml
 - id: no_service_mesh_entry
   selector:
     path: k8s/advanced/service-mesh-entry.yaml
-- id: no_global_0
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_metrics_collector_endpoints
   selector:
     anchor: metrics-collector-endpoints
-- id: no_global_1
+- id: no_payment_gateway_external
   selector:
     anchor: payment-gateway-external
-- id: no_global_2
+- id: no_circuit_breaker
   selector:
-    anchor: endpointslice.yaml
-- id: no_global_3
-  selector:
-    anchor: service-mesh-entry.yaml
+    anchor: CIRCUIT_BREAKER
 oracle:
   required:
-  - endpoints_file
-  - req_global_0
+  - endpoints_populated
+  - endpoints_external_api_label
+  - service_external_matches_endpoints
+  - deployment_references_external_api
   allowed: []
   forbidden:
   - no_endpointslice
   - no_service_mesh_entry
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_configmap
+  - no_metrics_collector_endpoints
+  - no_payment_gateway_external
+  - no_circuit_breaker

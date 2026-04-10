@@ -586,7 +586,7 @@ class TestGraphBuildingIntegrity:
             edges[(src, hub)] = raw_weight
         edges[(sources[0], non_hub)] = raw_weight
 
-        categories: dict[tuple[FragmentId, FragmentId], str] = {k: "generic" for k in edges}
+        categories: dict[tuple[FragmentId, FragmentId], str] = dict.fromkeys(edges, "generic")
 
         suppressed = _apply_hub_suppression(edges, categories)
 

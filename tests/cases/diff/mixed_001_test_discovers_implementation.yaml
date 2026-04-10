@@ -1,0 +1,156 @@
+name: mixed_001_test_discovers_implementation
+repo:
+  initial_files:
+    pricing/calculator.py: |
+      from decimal import Decimal
+
+      def compute_total(items: list, tax_rate: Decimal) -> Decimal:
+          subtotal = sum(item["price"] * item["qty"] for item in items)
+          return subtotal * (1 + tax_rate)
+    checkout/api.py: |
+      from decimal import Decimal
+      from pricing.calculator import compute_total
+
+      def process_checkout(cart: dict) -> dict:
+          total = compute_total(cart["items"], Decimal("0.08"))
+          return {"order_id": "ord-1", "total": str(total)}
+    tests/test_checkout_flow.py: |
+      from decimal import Decimal
+      from checkout.api import process_checkout
+
+      def test_basic_checkout():
+          cart = {"items": [{"price": Decimal("10.00"), "qty": 2}]}
+          result = process_checkout(cart)
+          assert result["order_id"] == "ord-1"
+          assert Decimal(result["total"]) == Decimal("21.60")
+
+      def test_empty_cart():
+          result = process_checkout({"items": []})
+          assert Decimal(result["total"]) == Decimal("0.00")
+
+      def test_multiple_items():
+          cart = {
+              "items": [
+                  {"price": Decimal("5.00"), "qty": 3},
+                  {"price": Decimal("2.50"), "qty": 4},
+              ]
+          }
+          result = process_checkout(cart)
+          assert Decimal(result["total"]) == Decimal("27.00")
+    tests/test_pricing_calculator.py: |
+      from decimal import Decimal
+      from pricing.calculator import compute_total
+
+      def test_compute_total_with_tax():
+          items = [{"price": Decimal("100"), "qty": 1}]
+          assert compute_total(items, Decimal("0.10")) == Decimal("110.00")
+    pricing/discount.py: |
+      from decimal import Decimal
+
+      def apply_discount(amount: Decimal, percent: int) -> Decimal:
+          return amount * (1 - Decimal(percent) / 100)
+    checkout/cart.py: |
+      class Cart:
+          def __init__(self):
+              self.items = []
+
+          def add(self, item):
+              self.items.append(item)
+    tests/test_cart.py: |
+      from checkout.cart import Cart
+
+      def test_add_item():
+          c = Cart()
+          c.add({"price": 10})
+          assert len(c.items) == 1
+  changed_files:
+    pricing/calculator.py: |
+      from decimal import Decimal
+
+      def compute_total(items: list, tax_rate: Decimal) -> Decimal:
+          subtotal = sum(item["price"] * item["qty"] for item in items)
+          discount = subtotal * Decimal("0.05") if subtotal > 50 else Decimal("0")
+          return (subtotal - discount) * (1 + tax_rate)
+    checkout/api.py: |
+      from decimal import Decimal
+      from pricing.calculator import compute_total
+
+      def process_checkout(cart: dict) -> dict:
+          total = compute_total(cart["items"], Decimal("0.08"))
+          return {"order_id": "ord-1", "total": str(total)}
+    tests/test_checkout_flow.py: |
+      from decimal import Decimal
+      from checkout.api import process_checkout
+
+      def test_basic_checkout():
+          cart = {"items": [{"price": Decimal("10.00"), "qty": 2}]}
+          result = process_checkout(cart)
+          assert result["order_id"] == "ord-1"
+          assert Decimal(result["total"]) == Decimal("21.60")
+
+      def test_empty_cart():
+          result = process_checkout({"items": []})
+          assert Decimal(result["total"]) == Decimal("0.00")
+
+      def test_multiple_items():
+          cart = {
+              "items": [
+                  {"price": Decimal("5.00"), "qty": 3},
+                  {"price": Decimal("2.50"), "qty": 4},
+              ]
+          }
+          result = process_checkout(cart)
+          assert Decimal(result["total"]) == Decimal("27.00")
+    tests/test_pricing_calculator.py: |
+      from decimal import Decimal
+      from pricing.calculator import compute_total
+
+      def test_compute_total_with_tax():
+          items = [{"price": Decimal("100"), "qty": 1}]
+          assert compute_total(items, Decimal("0.10")) == Decimal("110.00")
+    pricing/discount.py: |
+      from decimal import Decimal
+
+      def apply_discount(amount: Decimal, percent: int) -> Decimal:
+          return amount * (1 - Decimal(percent) / 100)
+    checkout/cart.py: |
+      class Cart:
+          def __init__(self):
+              self.items = []
+
+          def add(self, item):
+              self.items.append(item)
+    tests/test_cart.py: |
+      from checkout.cart import Cart
+
+      def test_add_item():
+          c = Cart()
+          c.add({"price": 10})
+          assert len(c.items) == 1
+  commit_message: "pricing: add 5% discount for orders over $50"
+fragments:
+  - id: calculator_changed
+    selector: { path: pricing/calculator.py }
+  - id: direct_test
+    selector: { path: tests/test_pricing_calculator.py }
+  - id: indirect_test_via_api
+    selector: { path: tests/test_checkout_flow.py }
+  - id: api_consumer
+    selector: { path: checkout/api.py }
+  - id: discount_unrelated
+    selector: { path: pricing/discount.py }
+  - id: cart_unrelated
+    selector: { path: checkout/cart.py }
+  - id: cart_test_unrelated
+    selector: { path: tests/test_cart.py }
+oracle:
+  required:
+    - calculator_changed
+    - direct_test
+    - api_consumer
+  allowed:
+    - indirect_test_via_api
+  forbidden:
+    - discount_unrelated
+    - cart_unrelated
+    - cart_test_unrelated

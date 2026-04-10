@@ -145,15 +145,47 @@ repo:
       echo "Seeding database with test data"
   commit_message: Update files
 fragments:
-- id: values_file
+- id: values_ingress_enabled
   selector:
     path: chart/values.yaml
-- id: req_global_0
-  selector:
     anchor: 'enabled: true'
+- id: values_ingress_host
+  selector:
+    path: chart/values.yaml
+    anchor: app.example.com
+- id: values_ingress_tls
+  selector:
+    path: chart/values.yaml
+    anchor: app-tls
+- id: ingress_template_conditional
+  selector:
+    path: chart/templates/ingress.yaml
+    anchor: .Values.ingress.enabled
+- id: ingress_template_host
+  selector:
+    path: chart/templates/ingress.yaml
+    anchor: .Values.ingress.host
+- id: no_pdb
+  selector:
+    path: chart/templates/pdb.yaml
+    anchor: PodDisruptionBudget
+- id: no_seed_data
+  selector:
+    path: chart/scripts/seed-data.sh
+    anchor: Seeding database
+- id: no_deployment_template
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.replicaCount
 oracle:
   required:
-  - values_file
-  - req_global_0
+  - values_ingress_enabled
+  - values_ingress_host
+  - values_ingress_tls
+  - ingress_template_conditional
+  - ingress_template_host
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_pdb
+  - no_seed_data
+  - no_deployment_template

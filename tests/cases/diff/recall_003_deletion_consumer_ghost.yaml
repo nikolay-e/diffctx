@@ -1,0 +1,235 @@
+name: recall_003_deletion_consumer_ghost
+repo:
+  initial_files:
+    pkg/timeutil/format.go: |
+      package timeutil
+
+      import (
+          "fmt"
+          "time"
+      )
+
+      func FormatRelative(t time.Time) string {
+          d := time.Since(t)
+          if d < time.Minute {
+              return "just now"
+          }
+          if d < time.Hour {
+              return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+          }
+          return fmt.Sprintf("%d hours ago", int(d.Hours()))
+      }
+
+      func FormatISO(t time.Time) string {
+          return t.UTC().Format(time.RFC3339)
+      }
+
+      func ParseFlexible(s string) (time.Time, error) {
+          return time.Parse(time.RFC3339, s)
+      }
+    pkg/dashboard/widgets.go: |
+      package dashboard
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type ActivityWidget struct {
+          LastSeen time.Time
+      }
+
+      func (a *ActivityWidget) Render() string {
+          return fmt.Sprintf("Last activity: %s", timeutil.FormatRelative(a.LastSeen))
+      }
+    pkg/notifications/digest.go: |
+      package notifications
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type Notification struct {
+          Title     string
+          CreatedAt time.Time
+      }
+
+      func RenderDigest(items []Notification) string {
+          out := ""
+          for _, it := range items {
+              out += fmt.Sprintf("- %s (%s)\n", it.Title, timeutil.FormatRelative(it.CreatedAt))
+          }
+          return out
+      }
+    pkg/audit/log.go: |
+      package audit
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type Entry struct {
+          Action string
+          When   time.Time
+      }
+
+      func (e Entry) String() string {
+          return fmt.Sprintf("[%s] %s", timeutil.FormatRelative(e.When), e.Action)
+      }
+    pkg/timeutil/parse.go: |
+      package timeutil
+
+      import "time"
+
+      func ParseRFC3339(s string) (time.Time, error) {
+          return time.Parse(time.RFC3339, s)
+      }
+    pkg/dashboard/charts.go: |
+      package dashboard
+
+      type BarChart struct {
+          Labels []string
+          Values []int
+      }
+
+      func (b *BarChart) Render() string {
+          return ""
+      }
+    pkg/notifications/sender.go: |
+      package notifications
+
+      type Sender interface {
+          Send(to, msg string) error
+      }
+  changed_files:
+    pkg/timeutil/format.go: |
+      package timeutil
+
+      import (
+          "time"
+      )
+
+      func FormatISO(t time.Time) string {
+          return t.UTC().Format(time.RFC3339)
+      }
+
+      func ParseFlexible(s string) (time.Time, error) {
+          return time.Parse(time.RFC3339, s)
+      }
+    pkg/dashboard/widgets.go: |
+      package dashboard
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type ActivityWidget struct {
+          LastSeen time.Time
+      }
+
+      func (a *ActivityWidget) Render() string {
+          return fmt.Sprintf("Last activity: %s", timeutil.FormatRelative(a.LastSeen))
+      }
+    pkg/notifications/digest.go: |
+      package notifications
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type Notification struct {
+          Title     string
+          CreatedAt time.Time
+      }
+
+      func RenderDigest(items []Notification) string {
+          out := ""
+          for _, it := range items {
+              out += fmt.Sprintf("- %s (%s)\n", it.Title, timeutil.FormatRelative(it.CreatedAt))
+          }
+          return out
+      }
+    pkg/audit/log.go: |
+      package audit
+
+      import (
+          "fmt"
+          "time"
+
+          "example.com/app/pkg/timeutil"
+      )
+
+      type Entry struct {
+          Action string
+          When   time.Time
+      }
+
+      func (e Entry) String() string {
+          return fmt.Sprintf("[%s] %s", timeutil.FormatRelative(e.When), e.Action)
+      }
+    pkg/timeutil/parse.go: |
+      package timeutil
+
+      import "time"
+
+      func ParseRFC3339(s string) (time.Time, error) {
+          return time.Parse(time.RFC3339, s)
+      }
+    pkg/dashboard/charts.go: |
+      package dashboard
+
+      type BarChart struct {
+          Labels []string
+          Values []int
+      }
+
+      func (b *BarChart) Render() string {
+          return ""
+      }
+    pkg/notifications/sender.go: |
+      package notifications
+
+      type Sender interface {
+          Send(to, msg string) error
+      }
+  commit_message: "timeutil: remove FormatRelative (use FormatISO instead)"
+fragments:
+  - id: format_changed
+    selector: { path: pkg/timeutil/format.go }
+  - id: widgets_broken_consumer
+    selector: { path: pkg/dashboard/widgets.go }
+  - id: digest_broken_consumer
+    selector: { path: pkg/notifications/digest.go }
+  - id: audit_broken_consumer
+    selector: { path: pkg/audit/log.go }
+  - id: parse_unrelated_same_package
+    selector: { path: pkg/timeutil/parse.go }
+  - id: charts_unrelated
+    selector: { path: pkg/dashboard/charts.go }
+  - id: sender_unrelated
+    selector: { path: pkg/notifications/sender.go }
+oracle:
+  required:
+    - format_changed
+    - widgets_broken_consumer
+    - digest_broken_consumer
+    - audit_broken_consumer
+  allowed: []
+  forbidden:
+    - parse_unrelated_same_package
+    - charts_unrelated
+    - sender_unrelated

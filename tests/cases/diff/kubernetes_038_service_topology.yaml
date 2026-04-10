@@ -235,39 +235,52 @@ repo:
       const app = new App();
   commit_message: Update files
 fragments:
-- id: service_file
+- id: service_topology_hints
   selector:
     path: k8s/base/service.yaml
-- id: req_global_0
+- id: topology_aware_annotation
   selector:
     anchor: 'service.kubernetes.io/topology-aware-hints: "auto"'
-- id: no_pod_topology_spread
+- id: topology_keys
+  selector:
+    anchor: topologyKeys
+- id: deployment_topology_spread
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: topologySpreadConstraints
+- id: no_pod_topology_spread_configmap
   selector:
     path: k8s/scheduling/pod-topology-spread.yaml
-- id: no_node_affinity
+- id: no_node_affinity_configmap
   selector:
     path: k8s/scheduling/node-affinity.yaml
-- id: no_global_0
+- id: no_pdb
+  selector:
+    path: k8s/base/pdb.yaml
+- id: no_servicemonitor
+  selector:
+    path: k8s/base/servicemonitor.yaml
+- id: no_default_topology_constraints
   selector:
     anchor: default-topology-constraints
-- id: no_global_1
+- id: no_node_affinity_defaults
   selector:
     anchor: node-affinity-defaults
-- id: no_global_2
+- id: no_min_available
   selector:
-    anchor: pod-topology-spread.yaml
-- id: no_global_3
-  selector:
-    anchor: node-affinity.yaml
+    anchor: 'minAvailable: 4'
 oracle:
   required:
-  - service_file
-  - req_global_0
+  - service_topology_hints
+  - topology_aware_annotation
+  - topology_keys
+  - deployment_topology_spread
   allowed: []
   forbidden:
-  - no_pod_topology_spread
-  - no_node_affinity
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_pod_topology_spread_configmap
+  - no_node_affinity_configmap
+  - no_pdb
+  - no_servicemonitor
+  - no_default_topology_constraints
+  - no_node_affinity_defaults
+  - no_min_available

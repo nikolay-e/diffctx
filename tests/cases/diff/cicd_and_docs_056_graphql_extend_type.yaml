@@ -124,14 +124,17 @@ repo:
         static GARBAGE_CICD_DOCS_056_DIRECTIVE_MARKER_F = false;
         validate(): boolean { return true; }
       }
-  commit_message: Update files
+  commit_message: "Extend order schema with status filter, items, and OrderStatus enum"
 fragments:
 - id: orders_file
   selector:
     path: schema/orders.graphql
+- id: resolver_file
+  selector:
+    path: src/resolvers/order_resolver.py
 - id: req_global_0
   selector:
-    anchor: 'orders(status: OrderStatus): [Order!]!'
+    anchor: "orders(status: OrderStatus): [Order!]!"
 - id: no_global_0
   selector:
     anchor: GARBAGE_CICD_DOCS_056_CONFLICT_MARKER_C
@@ -160,7 +163,8 @@ oracle:
   required:
   - orders_file
   - req_global_0
-  allowed: []
+  allowed:
+  - resolver_file
   forbidden:
   - no_global_0
   - no_global_1

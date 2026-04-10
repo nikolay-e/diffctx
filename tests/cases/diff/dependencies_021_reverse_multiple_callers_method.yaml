@@ -28,9 +28,6 @@ repo:
           name = user.get_display_name()
           print(f"Welcome, {name}!")
     admin/user.py: |
-      GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
-      GARBAGE_DEP_021_ADMIN_MOD_B = True
-
       class User:
           def __init__(self, name: str, email: str, title: str = ""):
               self.name = name
@@ -38,17 +35,22 @@ repo:
               self.title = title
 
           def get_display_name(self, include_title: bool = False) -> str:
-              GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
               if include_title and self.title:
                   return f"{self.title} {self.name}"
               return self.name
-    views/sidebar.py: |
-      GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
-      GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
 
-      def render_sidebar(items: list) -> str:
-          GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
-          return "<aside>" + "".join(items) + "</aside>"
+          def get_admin_badge(self) -> str:
+              return f"[ADMIN] {self.name}"
+    views/sidebar.py: |
+      from typing import List
+
+      def render_sidebar(items: List[str]) -> str:
+          html_items = [f"<li>{item}</li>" for item in items]
+          return "<aside><ul>" + "".join(html_items) + "</ul></aside>"
+
+      def render_navigation(links: dict) -> str:
+          nav_items = [f'<a href="{url}">{label}</a>' for label, url in links.items()]
+          return "<nav>" + " | ".join(nav_items) + "</nav>"
   changed_files:
     models/user.py: |
       class User:
@@ -80,9 +82,6 @@ repo:
           name = user.get_display_name()
           print(f"Welcome, {name}!")
     admin/user.py: |
-      GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
-      GARBAGE_DEP_021_ADMIN_MOD_B = True
-
       class User:
           def __init__(self, name: str, email: str, title: str = ""):
               self.name = name
@@ -90,62 +89,66 @@ repo:
               self.title = title
 
           def get_display_name(self, include_title: bool = False) -> str:
-              GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
               if include_title and self.title:
                   return f"{self.title} {self.name}"
               return self.name
-    views/sidebar.py: |
-      GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
-      GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
 
-      def render_sidebar(items: list) -> str:
-          GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
-          return "<aside>" + "".join(items) + "</aside>"
+          def get_admin_badge(self) -> str:
+              return f"[ADMIN] {self.name}"
+    views/sidebar.py: |
+      from typing import List
+
+      def render_sidebar(items: List[str]) -> str:
+          html_items = [f"<li>{item}</li>" for item in items]
+          return "<aside><ul>" + "".join(html_items) + "</ul></aside>"
+
+      def render_navigation(links: dict) -> str:
+          nav_items = [f'<a href="{url}">{label}</a>' for label, url in links.items()]
+          return "<nav>" + " | ".join(nav_items) + "</nav>"
   commit_message: Update files
 fragments:
-- id: user
+- id: user_init_changed
   selector:
     path: models/user.py
-    anchor: 'def __init__(self, name: str, email: str, title: str = ""):'
-- id: user_1
+    anchor: "def __init__(self, name: str, email: str, title: str = \"\"):"
+- id: user_display_name_changed
   selector:
     path: models/user.py
-    anchor: 'def get_display_name(self, include_title: bool = False) -> str:'
-- id: no_user
+    anchor: "def get_display_name(self, include_title: bool = False) -> str:"
+- id: profile_calls_display_name
+  selector:
+    path: views/profile.py
+    anchor: name = user.get_display_name()
+- id: header_calls_display_name
+  selector:
+    path: views/header.py
+    anchor: display = user.get_display_name()
+- id: welcome_calls_display_name
+  selector:
+    path: emails/welcome.py
+    anchor: name = user.get_display_name()
+- id: no_admin_user
   selector:
     path: admin/user.py
 - id: no_sidebar
   selector:
     path: views/sidebar.py
-- id: no_global_0
+- id: no_admin_badge
   selector:
-    anchor: GARBAGE_DEP_021_ADMIN_USER_A
-- id: no_global_1
+    anchor: get_admin_badge
+- id: no_render_navigation
   selector:
-    anchor: GARBAGE_DEP_021_ADMIN_MOD_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_DEP_021_ADMIN_DISP_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP_021_SIDEBAR_MOD_G
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP_021_SIDEBAR_NAV_H
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP_021_SIDEBAR_RENDER_I
+    anchor: render_navigation
 oracle:
   required:
-  - user
-  - user_1
+  - user_init_changed
+  - user_display_name_changed
+  - profile_calls_display_name
+  - header_calls_display_name
+  - welcome_calls_display_name
   allowed: []
   forbidden:
-  - no_user
+  - no_admin_user
   - no_sidebar
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_admin_badge
+  - no_render_navigation

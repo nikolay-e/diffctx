@@ -33,22 +33,40 @@ repo:
           const config = initialize({ debug: false });
           return config;
       }
-    garbage_deploy_pipeline.ts: |
-      const GARBAGE_COMP_010_CANARY_WEIGHT_A = "percentage";
-      const GARBAGE_COMP_010_ROLLBACK_HOOK_B = "webhook";
+    scripts/deploy-pipeline.ts: |
+      import { execSync } from 'child_process';
 
-      class GarbageDeployPipeline {
-        static GARBAGE_COMP_010_APPROVAL_GATE_C = true;
-        deploy(): void {}
+      interface DeployConfig {
+        environment: string;
+        canaryWeight: number;
+        approvalRequired: boolean;
       }
-    garbage_release_manager.ts: |
-      const GARBAGE_COMP_010_CHANGELOG_GEN_D = "conventional";
-      const GARBAGE_COMP_010_TAG_PATTERN_E = "semver";
 
-      class GarbageReleaseManager {
-        static GARBAGE_COMP_010_DRAFT_MODE_F = false;
-        release(): void {}
+      function deployService(service: string, config: DeployConfig): void {
+        console.log(`Deploying ${service} to ${config.environment}`);
+        if (config.approvalRequired) {
+          console.log('Waiting for approval...');
+        }
+        execSync(`kubectl apply -f k8s/${service}.yaml`);
       }
+
+      export { deployService, DeployConfig };
+    scripts/release-manager.ts: |
+      import * as fs from 'fs';
+
+      interface ReleaseInfo {
+        version: string;
+        changelog: string;
+        isDraft: boolean;
+      }
+
+      function createRelease(info: ReleaseInfo): void {
+        const tag = `v${info.version}`;
+        console.log(`Creating release ${tag}`);
+        fs.writeFileSync('CHANGELOG.md', info.changelog, 'utf-8');
+      }
+
+      export { createRelease, ReleaseInfo };
   changed_files:
     turbo.json: |
       {
@@ -95,65 +113,67 @@ repo:
           const config = initialize({ debug: false });
           return config;
       }
-    garbage_deploy_pipeline.ts: |
-      const GARBAGE_COMP_010_CANARY_WEIGHT_A = "percentage";
-      const GARBAGE_COMP_010_ROLLBACK_HOOK_B = "webhook";
+    scripts/deploy-pipeline.ts: |
+      import { execSync } from 'child_process';
 
-      class GarbageDeployPipeline {
-        static GARBAGE_COMP_010_APPROVAL_GATE_C = true;
-        deploy(): void {}
+      interface DeployConfig {
+        environment: string;
+        canaryWeight: number;
+        approvalRequired: boolean;
       }
-    garbage_release_manager.ts: |
-      const GARBAGE_COMP_010_CHANGELOG_GEN_D = "conventional";
-      const GARBAGE_COMP_010_TAG_PATTERN_E = "semver";
 
-      class GarbageReleaseManager {
-        static GARBAGE_COMP_010_DRAFT_MODE_F = false;
-        release(): void {}
+      function deployService(service: string, config: DeployConfig): void {
+        console.log(`Deploying ${service} to ${config.environment}`);
+        if (config.approvalRequired) {
+          console.log('Waiting for approval...');
+        }
+        execSync(`kubectl apply -f k8s/${service}.yaml`);
       }
+
+      export { deployService, DeployConfig };
+    scripts/release-manager.ts: |
+      import * as fs from 'fs';
+
+      interface ReleaseInfo {
+        version: string;
+        changelog: string;
+        isDraft: boolean;
+      }
+
+      function createRelease(info: ReleaseInfo): void {
+        const tag = `v${info.version}`;
+        console.log(`Creating release ${tag}`);
+        fs.writeFileSync('CHANGELOG.md', info.changelog, 'utf-8');
+      }
+
+      export { createRelease, ReleaseInfo };
   commit_message: Update files
 fragments:
-- id: turbo_file
+- id: turbo_changed
   selector:
     path: turbo.json
-- id: req_global_0
+- id: turbo_env_added
   selector:
     anchor: '"outputs": ["dist/**"],'
-- id: no_global_0
+- id: no_deploy_pipeline
   selector:
-    anchor: GARBAGE_COMP_010_APPROVAL_GATE_C
-- id: no_global_1
+    path: scripts/deploy-pipeline.ts
+- id: no_release_manager
   selector:
-    anchor: GARBAGE_COMP_010_CANARY_WEIGHT_A
-- id: no_global_2
+    path: scripts/release-manager.ts
+- id: no_deploy_service
   selector:
-    anchor: GARBAGE_COMP_010_CHANGELOG_GEN_D
-- id: no_global_3
+    anchor: deployService
+- id: no_create_release
   selector:
-    anchor: GARBAGE_COMP_010_DRAFT_MODE_F
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_COMP_010_ROLLBACK_HOOK_B
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_010_TAG_PATTERN_E
-- id: no_global_6
-  selector:
-    anchor: garbage_deploy_pipeline.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_release_manager.ts
+    anchor: createRelease
 oracle:
   required:
-  - turbo_file
-  - req_global_0
+  - turbo_changed
+  - turbo_env_added
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_deploy_pipeline
+  - no_release_manager
+  - no_deploy_service
+  - no_create_release

@@ -1,0 +1,167 @@
+name: recall_004_struct_field_constructors
+repo:
+  initial_files:
+    models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class User:
+          id: int
+          email: str
+          name: str
+          created_at: Optional[str] = None
+    services/auth.py: |
+      from models.user import User
+
+      def register(email: str, name: str) -> User:
+          uid = _next_id()
+          return User(id=uid, email=email, name=name)
+
+      def _next_id() -> int:
+          return 1
+    services/user_service.py: |
+      from models.user import User
+
+      class UserService:
+          def __init__(self):
+              self._users: dict[int, User] = {}
+
+          def create(self, email: str, name: str) -> User:
+              u = User(id=len(self._users) + 1, email=email, name=name)
+              self._users[u.id] = u
+              return u
+    tests/fixtures.py: |
+      from models.user import User
+
+      def make_test_user(uid: int = 1) -> User:
+          return User(id=uid, email=f"test{uid}@example.com", name=f"Test {uid}")
+
+      def make_test_admin() -> User:
+          return User(id=999, email="admin@example.com", name="Admin")
+    services/user_query.py: |
+      from typing import Optional
+      from models.user import User
+
+      class UserQuery:
+          def find_by_email(self, email: str) -> Optional[User]:
+              return None
+
+          def find_by_id(self, uid: int) -> Optional[User]:
+              return None
+    models/order.py: |
+      from dataclasses import dataclass
+      from decimal import Decimal
+
+      @dataclass
+      class Order:
+          id: int
+          user_id: int
+          total: Decimal
+    services/order_service.py: |
+      from models.order import Order
+      from decimal import Decimal
+
+      def create_order(user_id: int, total: Decimal) -> Order:
+          return Order(id=1, user_id=user_id, total=total)
+    utils/validation.py: |
+      def is_valid_email(email: str) -> bool:
+          return "@" in email
+  changed_files:
+    models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
+
+      @dataclass
+      class User:
+          id: int
+          email: str
+          name: str
+          organization_id: int
+          created_at: Optional[str] = None
+    services/auth.py: |
+      from models.user import User
+
+      def register(email: str, name: str) -> User:
+          uid = _next_id()
+          return User(id=uid, email=email, name=name)
+
+      def _next_id() -> int:
+          return 1
+    services/user_service.py: |
+      from models.user import User
+
+      class UserService:
+          def __init__(self):
+              self._users: dict[int, User] = {}
+
+          def create(self, email: str, name: str) -> User:
+              u = User(id=len(self._users) + 1, email=email, name=name)
+              self._users[u.id] = u
+              return u
+    tests/fixtures.py: |
+      from models.user import User
+
+      def make_test_user(uid: int = 1) -> User:
+          return User(id=uid, email=f"test{uid}@example.com", name=f"Test {uid}")
+
+      def make_test_admin() -> User:
+          return User(id=999, email="admin@example.com", name="Admin")
+    services/user_query.py: |
+      from typing import Optional
+      from models.user import User
+
+      class UserQuery:
+          def find_by_email(self, email: str) -> Optional[User]:
+              return None
+
+          def find_by_id(self, uid: int) -> Optional[User]:
+              return None
+    models/order.py: |
+      from dataclasses import dataclass
+      from decimal import Decimal
+
+      @dataclass
+      class Order:
+          id: int
+          user_id: int
+          total: Decimal
+    services/order_service.py: |
+      from models.order import Order
+      from decimal import Decimal
+
+      def create_order(user_id: int, total: Decimal) -> Order:
+          return Order(id=1, user_id=user_id, total=total)
+    utils/validation.py: |
+      def is_valid_email(email: str) -> bool:
+          return "@" in email
+  commit_message: "user: add required organization_id field"
+fragments:
+  - id: user_changed
+    selector: { path: models/user.py }
+  - id: auth_constructor_broken
+    selector: { path: services/auth.py }
+  - id: user_service_constructor_broken
+    selector: { path: services/user_service.py }
+  - id: fixtures_constructor_broken
+    selector: { path: tests/fixtures.py }
+  - id: user_query_only_consumer
+    selector: { path: services/user_query.py }
+  - id: order_unrelated_model
+    selector: { path: models/order.py }
+  - id: order_service_unrelated
+    selector: { path: services/order_service.py }
+  - id: validation_unrelated
+    selector: { path: utils/validation.py }
+oracle:
+  required:
+    - user_changed
+    - auth_constructor_broken
+    - user_service_constructor_broken
+    - fixtures_constructor_broken
+  allowed:
+    - user_query_only_consumer
+  forbidden:
+    - order_unrelated_model
+    - order_service_unrelated
+    - validation_unrelated

@@ -87,6 +87,10 @@ fragments:
 - id: req_global_0
   selector:
     anchor: calculator_instance
+- id: test_calculator_uses_fixture
+  selector:
+    path: tests/test_calculator.py
+    anchor: "def test_add(calculator_instance):"
 - id: no_conftest
   selector:
     path: tests/integration/conftest.py
@@ -116,6 +120,7 @@ oracle:
   - conftest
   - conftest_1
   - req_global_0
+  - test_calculator_uses_fixture
   allowed: []
   forbidden:
   - no_conftest

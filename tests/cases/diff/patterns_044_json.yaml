@@ -211,7 +211,7 @@ repo:
           result = CsvSerializer.serialize_users(users)
           assert "Alice" in result
           assert "alice@test.com" in result
-  commit_message: Update files
+  commit_message: "Add JSON snapshot tests for user, order, and batch serialization"
 fragments:
 - id: test_serializers
   selector:
@@ -220,7 +220,7 @@ fragments:
 - id: test_serializers_1
   selector:
     path: tests/test_serializers.py
-    anchor: 'def test_serialize_user_snapshot():'
+    anchor: "def test_serialize_user_snapshot():"
 - id: serializers
   selector:
     path: src/serializers.py

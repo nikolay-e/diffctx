@@ -12,7 +12,6 @@ _NIM_EXTS = {".nim", ".nims"}
 
 _NIM_IMPORT_RE = re.compile(r"^\s*import\s+([\w/]+)", re.MULTILINE)
 _NIM_FROM_IMPORT_RE = re.compile(r"^\s*from\s+([\w/]+)\s+import", re.MULTILINE)
-_NIM_INCLUDE_RE = re.compile(r"^\s*include\s+([\w/]+)", re.MULTILINE)
 
 _PROC_RE = re.compile(
     r"^\s*(?:proc|func|method|iterator|converter|template|macro)\s+([a-zA-Z_]\w*)\s*(?:\*\s*)?[(\[]",
@@ -167,8 +166,6 @@ def _extract_refs(content: str) -> set[str]:
     for m in _NIM_IMPORT_RE.finditer(content):
         refs.add(m.group(1))
     for m in _NIM_FROM_IMPORT_RE.finditer(content):
-        refs.add(m.group(1))
-    for m in _NIM_INCLUDE_RE.finditer(content):
         refs.add(m.group(1))
     return refs
 

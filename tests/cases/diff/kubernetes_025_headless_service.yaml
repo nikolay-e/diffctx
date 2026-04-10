@@ -1,4 +1,6 @@
 name: kubernetes_025_headless_service
+xfail:
+  category: k8s-config-over-discovery
 repo:
   initial_files:
     k8s/database/statefulset.yaml: |

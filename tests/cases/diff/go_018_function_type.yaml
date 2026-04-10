@@ -35,29 +35,23 @@ repo:
       func (r *Router) Handle(path string, handler Handler) {
           r.handlers[path] = handler
       }
-    internal/unrelated/grpc/interceptor.go: |
-      package grpc
+    internal/http/cors.go: |
+      package http
 
-      const GARBAGE_GO_GRPC_INTERCEPT_001 = "grpc_garbage"
-
-      type GARBAGE_GO_TYPE_INTERCEPT_002 struct {
-          timeout int
+      type CORSConfig struct {
+          AllowedOrigins []string
+          AllowedMethods []string
+          AllowedHeaders []string
+          MaxAge         int
       }
 
-      func GARBAGE_GO_FUNC_INTERCEPT_003() string {
-          return "GARBAGE_GO_INTERCEPT_UNUSED_004"
-      }
-    internal/unrelated/grpc/codec.go: |
-      package grpc
-
-      const GARBAGE_GO_GRPC_CODEC_005 = "codec_garbage"
-
-      type GARBAGE_GO_TYPE_CODEC_006 struct {
-          encoding string
-      }
-
-      func GARBAGE_GO_FUNC_CODEC_007() {
-          println("GARBAGE_GO_CODEC_OUTPUT_008")
+      func DefaultCORSConfig() *CORSConfig {
+          return &CORSConfig{
+              AllowedOrigins: []string{"*"},
+              AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+              AllowedHeaders: []string{"Content-Type", "Authorization"},
+              MaxAge:         86400,
+          }
       }
   changed_files:
     internal/http/types.go: |
@@ -159,77 +153,57 @@ repo:
               }
           }
       }
-    internal/unrelated/grpc/interceptor.go: |
-      package grpc
+    internal/http/cors.go: |
+      package http
 
-      const GARBAGE_GO_GRPC_INTERCEPT_001 = "grpc_garbage"
-
-      type GARBAGE_GO_TYPE_INTERCEPT_002 struct {
-          timeout int
+      type CORSConfig struct {
+          AllowedOrigins []string
+          AllowedMethods []string
+          AllowedHeaders []string
+          MaxAge         int
       }
 
-      func GARBAGE_GO_FUNC_INTERCEPT_003() string {
-          return "GARBAGE_GO_INTERCEPT_UNUSED_004"
-      }
-    internal/unrelated/grpc/codec.go: |
-      package grpc
-
-      const GARBAGE_GO_GRPC_CODEC_005 = "codec_garbage"
-
-      type GARBAGE_GO_TYPE_CODEC_006 struct {
-          encoding string
-      }
-
-      func GARBAGE_GO_FUNC_CODEC_007() {
-          println("GARBAGE_GO_CODEC_OUTPUT_008")
+      func DefaultCORSConfig() *CORSConfig {
+          return &CORSConfig{
+              AllowedOrigins: []string{"*"},
+              AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+              AllowedHeaders: []string{"Content-Type", "Authorization"},
+              MaxAge:         86400,
+          }
       }
   commit_message: Update files
 fragments:
 - id: router_file
   selector:
     path: internal/http/router.go
-- id: req_global_0
-  selector:
-    anchor: func NewRouter(logger *log.Logger) *Router {
-- id: req_global_1
+- id: router_uses_middleware_type
   selector:
     anchor: func (r *Router) Use(m Middleware) {
-- id: no_global_0
+- id: router_uses_handler_type
   selector:
-    anchor: GARBAGE_GO_FUNC_CODEC_007
-- id: no_global_1
+    anchor: func (r *Router) applyMiddlewares(h Handler) Handler {
+- id: types_handler_definition
   selector:
-    anchor: GARBAGE_GO_FUNC_INTERCEPT_003
-- id: no_global_2
+    path: internal/http/types.go
+    anchor: type Handler func(req Request) Response
+- id: types_middleware_definition
   selector:
-    anchor: GARBAGE_GO_GRPC_CODEC_005
-- id: no_global_3
+    anchor: type Middleware func(Handler) Handler
+- id: no_cors_config
   selector:
-    anchor: GARBAGE_GO_GRPC_INTERCEPT_001
-- id: no_global_4
+    path: internal/http/cors.go
+    anchor: type CORSConfig struct {
+- id: no_cors_default
   selector:
-    anchor: GARBAGE_GO_TYPE_CODEC_006
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_INTERCEPT_002
-- id: no_global_6
-  selector:
-    anchor: codec.go
-- id: no_global_7
-  selector:
-    anchor: interceptor.go
+    anchor: func DefaultCORSConfig() *CORSConfig {
 oracle:
   required:
   - router_file
-  - req_global_0
-  - req_global_1
+  - router_uses_middleware_type
+  - router_uses_handler_type
+  - types_handler_definition
+  - types_middleware_definition
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_cors_config
+  - no_cors_default

@@ -68,72 +68,22 @@ repo:
           Name  string `json:"name" db:"name"`
           Email string `json:"email" db:"email"`
       }
-    internal/unrelated/notifications/email_sender.go: |
-      package notifications
+    internal/models/product.go: |
+      package models
 
-      import "context"
-
-      const GARBAGE_GO_EMAIL_SENDER_A1B2C3 = "email_garbage_marker"
-
-      type GARBAGE_GO_TYPE_SMTP_D4E5F6 struct {
-          host     string
-          port     int
-          username string
-          password string
+      type Product struct {
+          Name        string  `json:"name" db:"name"`
+          Description string  `json:"description" db:"description"`
+          Price       float64 `json:"price" db:"price"`
+          SKU         string  `json:"sku" db:"sku"`
       }
 
-      func GARBAGE_GO_FUNC_EMAIL_G7H8I9() string {
-          return "GARBAGE_GO_EMAIL_UNUSED_J0K1L2"
-      }
-
-      type EmailConfig struct {
-          SMTPHost     string
-          SMTPPort     int
-          FromAddress  string
-          FromName     string
-          TLSEnabled   bool
-      }
-
-      func GARBAGE_GO_FUNC_SEND_EMAIL_M3N4O5(ctx context.Context, to string) error {
-          println("GARBAGE_GO_EMAIL_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/notifications/sms_gateway.go: |
-      package notifications
-
-      const GARBAGE_GO_SMS_GATEWAY_S9T0U1 = "sms_garbage"
-
-      type GARBAGE_GO_TYPE_TWILIO_V2W3X4 struct {
-          accountSID string
-          authToken  string
-      }
-
-      func GARBAGE_GO_FUNC_SMS_Y5Z6A7() {
-          println("GARBAGE_GO_SMS_OUTPUT_B8C9D0")
-      }
-
-      type SMSConfig struct {
-          AccountSID   string
-          AuthToken    string
-          FromNumber   string
-          MessagingServiceSID string
-      }
-
-      func GARBAGE_GO_FUNC_SEND_SMS_E1F2G3(to, message string) error {
-          return nil
-      }
-    internal/unrelated/notifications/push_service.go: |
-      package notifications
-
-      const GARBAGE_GO_PUSH_SERVICE_H4I5J6 = "push_garbage"
-
-      type GARBAGE_GO_TYPE_FCM_K7L8M9 struct {
-          apiKey    string
-          projectID string
-      }
-
-      func GARBAGE_GO_FUNC_PUSH_N0O1P2() {
-          println("GARBAGE_GO_PUSH_OUTPUT_Q3R4S5")
+      func NewProduct(name string, price float64, sku string) *Product {
+          return &Product{
+              Name:  name,
+              Price: price,
+              SKU:   sku,
+          }
       }
   changed_files:
     internal/models/base.go: |
@@ -322,144 +272,60 @@ repo:
           }
           return &clone
       }
-    internal/unrelated/notifications/email_sender.go: |
-      package notifications
+    internal/models/product.go: |
+      package models
 
-      import "context"
-
-      const GARBAGE_GO_EMAIL_SENDER_A1B2C3 = "email_garbage_marker"
-
-      type GARBAGE_GO_TYPE_SMTP_D4E5F6 struct {
-          host     string
-          port     int
-          username string
-          password string
+      type Product struct {
+          Name        string  `json:"name" db:"name"`
+          Description string  `json:"description" db:"description"`
+          Price       float64 `json:"price" db:"price"`
+          SKU         string  `json:"sku" db:"sku"`
       }
 
-      func GARBAGE_GO_FUNC_EMAIL_G7H8I9() string {
-          return "GARBAGE_GO_EMAIL_UNUSED_J0K1L2"
-      }
-
-      type EmailConfig struct {
-          SMTPHost     string
-          SMTPPort     int
-          FromAddress  string
-          FromName     string
-          TLSEnabled   bool
-      }
-
-      func GARBAGE_GO_FUNC_SEND_EMAIL_M3N4O5(ctx context.Context, to string) error {
-          println("GARBAGE_GO_EMAIL_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/notifications/sms_gateway.go: |
-      package notifications
-
-      const GARBAGE_GO_SMS_GATEWAY_S9T0U1 = "sms_garbage"
-
-      type GARBAGE_GO_TYPE_TWILIO_V2W3X4 struct {
-          accountSID string
-          authToken  string
-      }
-
-      func GARBAGE_GO_FUNC_SMS_Y5Z6A7() {
-          println("GARBAGE_GO_SMS_OUTPUT_B8C9D0")
-      }
-
-      type SMSConfig struct {
-          AccountSID   string
-          AuthToken    string
-          FromNumber   string
-          MessagingServiceSID string
-      }
-
-      func GARBAGE_GO_FUNC_SEND_SMS_E1F2G3(to, message string) error {
-          return nil
-      }
-    internal/unrelated/notifications/push_service.go: |
-      package notifications
-
-      const GARBAGE_GO_PUSH_SERVICE_H4I5J6 = "push_garbage"
-
-      type GARBAGE_GO_TYPE_FCM_K7L8M9 struct {
-          apiKey    string
-          projectID string
-      }
-
-      func GARBAGE_GO_FUNC_PUSH_N0O1P2() {
-          println("GARBAGE_GO_PUSH_OUTPUT_Q3R4S5")
+      func NewProduct(name string, price float64, sku string) *Product {
+          return &Product{
+              Name:  name,
+              Price: price,
+              SKU:   sku,
+          }
       }
   commit_message: Update files
 fragments:
 - id: user_file
   selector:
     path: internal/models/user.go
-- id: req_global_0
+- id: user_embeds_base_model
   selector:
-    anchor: '"encoding/json"'
-- id: req_global_1
+    anchor: BaseModel
+- id: user_status_constants
   selector:
     anchor: UserStatusPending  UserStatus = "pending"
-- id: no_global_0
+- id: base_touch_method
   selector:
-    anchor: GARBAGE_GO_EMAIL_SENDER_A1B2C3
-- id: no_global_1
+    path: internal/models/base.go
+    anchor: func (b *BaseModel) Touch() {
+- id: base_mark_deleted
   selector:
-    anchor: GARBAGE_GO_FUNC_EMAIL_G7H8I9
-- id: no_global_2
+    anchor: func (s *SoftDelete) MarkDeleted() {
+- id: base_increment_version
   selector:
-    anchor: GARBAGE_GO_FUNC_PUSH_N0O1P2
-- id: no_global_3
+    anchor: func (v *Versionable) IncrementVersion() {
+- id: no_product_model
   selector:
-    anchor: GARBAGE_GO_FUNC_SEND_EMAIL_M3N4O5(ctx
-- id: no_global_4
+    path: internal/models/product.go
+    anchor: type Product struct {
+- id: no_product_constructor
   selector:
-    anchor: GARBAGE_GO_FUNC_SEND_SMS_E1F2G3(to
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_FUNC_SMS_Y5Z6A7
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_GO_PUSH_SERVICE_H4I5J6
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_GO_SMS_GATEWAY_S9T0U1
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_GO_TYPE_FCM_K7L8M9
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_GO_TYPE_SMTP_D4E5F6
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_GO_TYPE_TWILIO_V2W3X4
-- id: no_global_11
-  selector:
-    anchor: email_sender.go
-- id: no_global_12
-  selector:
-    anchor: push_service.go
-- id: no_global_13
-  selector:
-    anchor: sms_gateway.go
+    anchor: func NewProduct(name string, price float64, sku string) *Product {
 oracle:
   required:
   - user_file
-  - req_global_0
-  - req_global_1
+  - user_embeds_base_model
+  - user_status_constants
+  - base_touch_method
+  - base_mark_deleted
+  - base_increment_version
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
+  - no_product_model
+  - no_product_constructor

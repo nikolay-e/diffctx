@@ -616,7 +616,7 @@ GARBAGE_MARKERS = [
 ]
 
 
-MINIMUM_AVERAGE_SCORE = 70.0
+MINIMUM_AVERAGE_SCORE = 82.0
 
 
 def _extract_scores_from_reports(terminalreporter):
@@ -727,6 +727,46 @@ def _write_scores_report(results, stats, enrich):
     (scores_dir / "latest.json").write_text(json.dumps(report, indent=2))
 
 
+def _write_score_histogram(terminalreporter, results):
+    scores = [p["score"] for _, p in results]
+    if not scores:
+        return
+
+    bucket_labels = ["0-10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", "90-100", "100"]
+    counts = dict.fromkeys(bucket_labels, 0)
+    for s in scores:
+        if s >= 100.0:
+            counts["100"] += 1
+        else:
+            lo = int(s // 10) * 10
+            counts[f"{lo}-{lo + 10}"] += 1
+
+    total = len(scores)
+    max_count = max(counts.values()) if counts else 1
+
+    terminalreporter.write_line("")
+    terminalreporter.write_line("  Score distribution:")
+    for label in bucket_labels:
+        count = counts[label]
+        bar_len = int(40 * count / max_count) if max_count > 0 else 0
+        bar = "\u2588" * bar_len
+        pct = 100 * count / total
+        if label == "100":
+            terminalreporter.write_line(f"     {label}% \u2502 {bar:<40} {count:>4} ({pct:>5.1f}%)")
+        else:
+            terminalreporter.write_line(f"  {label:>6}% \u2502 {bar:<40} {count:>4} ({pct:>5.1f}%)")
+    terminalreporter.write_line("")
+
+    for thresh in [50, 70, 90, 100]:
+        above = sum(1 for s in scores if s >= thresh)
+        op = "=" if thresh == 100 else "\u2265"
+        terminalreporter.write_line(f"  {op}{thresh:>3}%: {above:>5} / {total} ({100 * above / total:.1f}%)")
+
+    below_50 = sum(1 for s in scores if s < 50)
+    terminalreporter.write_line(f"   <50%: {below_50:>5} / {total} ({100 * below_50 / total:.1f}%)")
+    terminalreporter.write_line("")
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     results = getattr(config, "_diffctx_results", None)
     if results is None:
@@ -750,6 +790,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     terminalreporter.write_line(f"  Context enrichment (global):        {enrich['global_enrichment']:.0f}%")
     terminalreporter.write_line(f"  Total diff tokens:    {enrich['total_diff_tok']:,}")
     terminalreporter.write_line(f"  Total context tokens: {enrich['total_ctx_tok']:,}")
+
+    _write_score_histogram(terminalreporter, results)
 
     if stats["avg_score"] < MINIMUM_AVERAGE_SCORE:
         terminalreporter.write_sep("!", "SCORE REGRESSION")

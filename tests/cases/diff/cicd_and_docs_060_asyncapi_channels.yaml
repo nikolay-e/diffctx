@@ -40,22 +40,26 @@ repo:
       def consume_order_events():
           for message in consumer:
               process_order_event(message.value)
-    garbage_event_router.ts: |
-      const GARBAGE_CICD_DOCS_060_ROUTER_MARKER_A = "kafka-router";
-      const GARBAGE_CICD_DOCS_060_PARTITION_MARKER_B = 3;
+    src/events/payment_publisher.py: |
+      import json
+      from kafka import KafkaProducer
 
-      class GarbageEventRouter {
-        static GARBAGE_CICD_DOCS_060_BALANCE_MARKER_C = "round-robin";
-        route(): void {}
-      }
-    garbage_event_serializer.ts: |
-      const GARBAGE_CICD_DOCS_060_SERIALIZE_MARKER_D = "avro";
-      const GARBAGE_CICD_DOCS_060_SCHEMA_MARKER_E = "registry";
+      payment_producer = KafkaProducer(
+          bootstrap_servers=['localhost:9092'],
+          value_serializer=lambda v: json.dumps(v).encode('utf-8')
+      )
 
-      class GarbageEventSerializer {
-        static GARBAGE_CICD_DOCS_060_COMPRESS_MARKER_F = true;
-        serialize(): void {}
-      }
+      def publish_payment_processed(payment_id: str, amount: float):
+          payment_producer.send('payments/processed', {
+              'paymentId': payment_id,
+              'amount': amount,
+          })
+          payment_producer.flush()
+    src/config/kafka_config.py: |
+      KAFKA_BOOTSTRAP_SERVERS = ['localhost:9092']
+      KAFKA_CONSUMER_GROUP = 'order-service-group'
+      KAFKA_AUTO_OFFSET_RESET = 'earliest'
+      KAFKA_MAX_POLL_RECORDS = 500
   changed_files:
     asyncapi.yaml: |
       asyncapi: 2.6.0
@@ -136,94 +140,45 @@ repo:
                 type: string
               quantity:
                 type: integer
-    src/events/order_publisher.py: |
-      import json
-      from kafka import KafkaProducer
-
-      producer = KafkaProducer(
-          bootstrap_servers=['localhost:9092'],
-          value_serializer=lambda v: json.dumps(v).encode('utf-8')
-      )
-
-      def publish_order_created(order_id: str):
-          producer.send('orders/created', {'orderId': order_id})
-          producer.flush()
-    src/events/order_consumer.py: |
-      import json
-      from kafka import KafkaConsumer
-
-      consumer = KafkaConsumer(
-          'orders/created',
-          bootstrap_servers=['localhost:9092'],
-          value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-      )
-
-      def consume_order_events():
-          for message in consumer:
-              process_order_event(message.value)
-    garbage_event_router.ts: |
-      const GARBAGE_CICD_DOCS_060_ROUTER_MARKER_A = "kafka-router";
-      const GARBAGE_CICD_DOCS_060_PARTITION_MARKER_B = 3;
-
-      class GarbageEventRouter {
-        static GARBAGE_CICD_DOCS_060_BALANCE_MARKER_C = "round-robin";
-        route(): void {}
-      }
-    garbage_event_serializer.ts: |
-      const GARBAGE_CICD_DOCS_060_SERIALIZE_MARKER_D = "avro";
-      const GARBAGE_CICD_DOCS_060_SCHEMA_MARKER_E = "registry";
-
-      class GarbageEventSerializer {
-        static GARBAGE_CICD_DOCS_060_COMPRESS_MARKER_F = true;
-        serialize(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Expand asyncapi spec with new order event channels and schemas"
 fragments:
-- id: asyncapi_file
+- id: asyncapi_spec
   selector:
     path: asyncapi.yaml
-- id: req_global_0
+- id: schema_ref_created_event
   selector:
-    anchor: '$ref: ''#/components/schemas/OrderCreatedEvent'''
-- id: req_global_1
+    anchor: "$ref: '#/components/schemas/OrderCreatedEvent'"
+- id: created_event_schema
   selector:
-    anchor: 'OrderCreatedEvent:'
-- id: no_global_0
+    anchor: "OrderCreatedEvent:"
+- id: no_kafka_config_marker
   selector:
-    anchor: GARBAGE_CICD_DOCS_060_BALANCE_MARKER_C
-- id: no_global_1
+    anchor: KAFKA_AUTO_OFFSET_RESET
+- id: order_publisher
   selector:
-    anchor: GARBAGE_CICD_DOCS_060_COMPRESS_MARKER_F
-- id: no_global_2
+    path: src/events/order_publisher.py
+    anchor: def publish_order_created
+- id: order_consumer
   selector:
-    anchor: GARBAGE_CICD_DOCS_060_PARTITION_MARKER_B
-- id: no_global_3
+    path: src/events/order_consumer.py
+    anchor: def consume_order_events
+- id: no_payment_publisher
   selector:
-    anchor: GARBAGE_CICD_DOCS_060_ROUTER_MARKER_A
-- id: no_global_4
+    path: src/events/payment_publisher.py
+    anchor: def publish_payment_processed
+- id: no_kafka_config
   selector:
-    anchor: GARBAGE_CICD_DOCS_060_SCHEMA_MARKER_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_060_SERIALIZE_MARKER_D
-- id: no_global_6
-  selector:
-    anchor: garbage_event_router.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_event_serializer.ts
+    path: src/config/kafka_config.py
+    anchor: KAFKA_BOOTSTRAP_SERVERS
 oracle:
   required:
-  - asyncapi_file
-  - req_global_0
-  - req_global_1
+  - asyncapi_spec
+  - schema_ref_created_event
+  - created_event_schema
+  - order_publisher
+  - order_consumer
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_payment_publisher
+  - no_kafka_config
+  - no_kafka_config_marker

@@ -44,22 +44,48 @@ repo:
           server.add_insecure_port('[::]:50051')
           server.start()
           server.wait_for_termination()
-    garbage_grpc_interceptor.ts: |
-      const GARBAGE_CICD_DOCS_058_INTERCEPT_MARKER_A = "unary";
-      const GARBAGE_CICD_DOCS_058_TIMEOUT_MARKER_B = 30000;
+    src/grpc/health_check.py: |
+      import grpc
+      from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-      class GarbageGrpcInterceptor {
-        static GARBAGE_CICD_DOCS_058_RETRY_MARKER_C = 3;
-        intercept(): void {}
-      }
-    garbage_grpc_middleware.ts: |
-      const GARBAGE_CICD_DOCS_058_AUTH_MARKER_D = "bearer";
-      const GARBAGE_CICD_DOCS_058_LOG_MARKER_E = "debug";
+      class HealthServicer(health_pb2_grpc.HealthServicer):
+          def Check(self, request, context):
+              return health_pb2.HealthCheckResponse(
+                  status=health_pb2.HealthCheckResponse.SERVING
+              )
 
-      class GarbageGrpcMiddleware {
-        static GARBAGE_CICD_DOCS_058_TRACE_MARKER_F = true;
-        handle(): void {}
-      }
+          def Watch(self, request, context):
+              context.abort(grpc.StatusCode.UNIMPLEMENTED, "Watch not supported")
+    src/middleware/auth_interceptor.py: |
+      import grpc
+
+      class AuthInterceptor(grpc.ServerInterceptor):
+          def __init__(self, token_validator):
+              self.token_validator = token_validator
+
+          def intercept_service(self, continuation, handler_call_details):
+              metadata = dict(handler_call_details.invocation_metadata)
+              token = metadata.get("authorization", "")
+              if not self.token_validator.validate(token):
+                  return grpc.unary_unary_rpc_method_handler(
+                      lambda req, ctx: ctx.abort(
+                          grpc.StatusCode.UNAUTHENTICATED, "Invalid token"
+                      )
+                  )
+              return continuation(handler_call_details)
+    src/database.py: |
+      from sqlalchemy import create_engine
+      from sqlalchemy.orm import sessionmaker
+
+      engine = create_engine("postgresql://localhost/mydb")
+      SessionLocal = sessionmaker(bind=engine)
+
+      def get_db():
+          db = SessionLocal()
+          try:
+              return db
+          finally:
+              db.close()
   changed_files:
     proto/user_service.proto: |
       syntax = "proto3";
@@ -113,91 +139,42 @@ repo:
         string name = 2;
         string email = 3;
       }
-    src/grpc/user_service.py: |
-      import grpc
-      from proto import user_service_pb2, user_service_pb2_grpc
-      from database import get_db
-
-      class UserServiceServicer(user_service_pb2_grpc.UserServiceServicer):
-          def GetUser(self, request, context):
-              db = get_db()
-              user = db.query(User).filter(User.id == request.id).first()
-              if not user:
-                  context.abort(grpc.StatusCode.NOT_FOUND, "User not found")
-              return user_service_pb2.User(id=user.id, name=user.name)
-    src/grpc/server.py: |
-      import grpc
-      from concurrent import futures
-      from proto import user_service_pb2_grpc
-      from grpc.user_service import UserServiceServicer
-
-      def serve():
-          server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-          user_service_pb2_grpc.add_UserServiceServicer_to_server(
-              UserServiceServicer(), server
-          )
-          server.add_insecure_port('[::]:50051')
-          server.start()
-          server.wait_for_termination()
-    garbage_grpc_interceptor.ts: |
-      const GARBAGE_CICD_DOCS_058_INTERCEPT_MARKER_A = "unary";
-      const GARBAGE_CICD_DOCS_058_TIMEOUT_MARKER_B = 30000;
-
-      class GarbageGrpcInterceptor {
-        static GARBAGE_CICD_DOCS_058_RETRY_MARKER_C = 3;
-        intercept(): void {}
-      }
-    garbage_grpc_middleware.ts: |
-      const GARBAGE_CICD_DOCS_058_AUTH_MARKER_D = "bearer";
-      const GARBAGE_CICD_DOCS_058_LOG_MARKER_E = "debug";
-
-      class GarbageGrpcMiddleware {
-        static GARBAGE_CICD_DOCS_058_TRACE_MARKER_F = true;
-        handle(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Add CRUD RPCs to UserService proto definition"
 fragments:
-- id: user_service_file
+- id: proto_user_service
   selector:
     path: proto/user_service.proto
-- id: req_global_0
+- id: new_list_users_rpc
   selector:
     anchor: rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
-- id: no_global_0
+- id: servicer_implementation
   selector:
-    anchor: GARBAGE_CICD_DOCS_058_AUTH_MARKER_D
-- id: no_global_1
+    path: src/grpc/user_service.py
+    anchor: class UserServiceServicer
+- id: grpc_server_setup
   selector:
-    anchor: GARBAGE_CICD_DOCS_058_INTERCEPT_MARKER_A
-- id: no_global_2
+    path: src/grpc/server.py
+    anchor: add_UserServiceServicer_to_server
+- id: no_health_check
   selector:
-    anchor: GARBAGE_CICD_DOCS_058_LOG_MARKER_E
-- id: no_global_3
+    path: src/grpc/health_check.py
+    anchor: class HealthServicer
+- id: no_auth_interceptor
   selector:
-    anchor: GARBAGE_CICD_DOCS_058_RETRY_MARKER_C
-- id: no_global_4
+    path: src/middleware/auth_interceptor.py
+    anchor: class AuthInterceptor
+- id: no_database_module
   selector:
-    anchor: GARBAGE_CICD_DOCS_058_TIMEOUT_MARKER_B
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_058_TRACE_MARKER_F
-- id: no_global_6
-  selector:
-    anchor: garbage_grpc_interceptor.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_grpc_middleware.ts
+    path: src/database.py
+    anchor: def get_db
 oracle:
   required:
-  - user_service_file
-  - req_global_0
+  - proto_user_service
+  - new_list_users_rpc
+  - servicer_implementation
+  - grpc_server_setup
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_health_check
+  - no_auth_interceptor
+  - no_database_module

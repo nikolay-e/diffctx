@@ -90,29 +90,69 @@ repo:
           close(jobs)
           wg.Wait()
       }
-    internal/unrelated/scheduler/cron.go: |
+    internal/scheduler/cron.go: |
       package scheduler
 
-      const GARBAGE_GO_SCHEDULER_CRON_001 = "scheduler_garbage"
+      import "time"
 
-      type GARBAGE_GO_TYPE_CRON_002 struct {
-          expression string
+      type CronScheduler struct {
+          interval time.Duration
+          tasks    []CronTask
       }
 
-      func GARBAGE_GO_FUNC_CRON_003() string {
-          return "GARBAGE_GO_CRON_UNUSED_004"
-      }
-    internal/unrelated/taskqueue/rabbitmq.go: |
-      package taskqueue
-
-      const GARBAGE_GO_TASKQUEUE_RABBIT_005 = "taskqueue_garbage"
-
-      type GARBAGE_GO_TYPE_RABBIT_006 struct {
-          url string
+      type CronTask struct {
+          Name     string
+          Schedule string
+          Handler  func() error
       }
 
-      func GARBAGE_GO_FUNC_RABBIT_007() {
-          println("GARBAGE_GO_RABBIT_OUTPUT_008")
+      func NewCronScheduler(interval time.Duration) *CronScheduler {
+          return &CronScheduler{interval: interval}
+      }
+
+      func (cs *CronScheduler) Register(name, schedule string, handler func() error) {
+          cs.tasks = append(cs.tasks, CronTask{Name: name, Schedule: schedule, Handler: handler})
+      }
+
+      func (cs *CronScheduler) Run() error {
+          for _, task := range cs.tasks {
+              if err := task.Handler(); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    internal/pubsub/broker.go: |
+      package pubsub
+
+      import "sync"
+
+      type Broker struct {
+          mu          sync.RWMutex
+          subscribers map[string][]chan []byte
+      }
+
+      func NewBroker() *Broker {
+          return &Broker{subscribers: make(map[string][]chan []byte)}
+      }
+
+      func (b *Broker) Subscribe(topic string) <-chan []byte {
+          b.mu.Lock()
+          defer b.mu.Unlock()
+          ch := make(chan []byte, 10)
+          b.subscribers[topic] = append(b.subscribers[topic], ch)
+          return ch
+      }
+
+      func (b *Broker) Publish(topic string, data []byte) {
+          b.mu.RLock()
+          defer b.mu.RUnlock()
+          for _, ch := range b.subscribers[topic] {
+              select {
+              case ch <- data:
+              default:
+              }
+          }
       }
   changed_files:
     internal/worker/pool.go: |
@@ -256,77 +296,113 @@ repo:
           close(jobs)
           wg.Wait()
       }
-    internal/unrelated/scheduler/cron.go: |
+    internal/scheduler/cron.go: |
       package scheduler
 
-      const GARBAGE_GO_SCHEDULER_CRON_001 = "scheduler_garbage"
+      import "time"
 
-      type GARBAGE_GO_TYPE_CRON_002 struct {
-          expression string
+      type CronScheduler struct {
+          interval time.Duration
+          tasks    []CronTask
       }
 
-      func GARBAGE_GO_FUNC_CRON_003() string {
-          return "GARBAGE_GO_CRON_UNUSED_004"
-      }
-    internal/unrelated/taskqueue/rabbitmq.go: |
-      package taskqueue
-
-      const GARBAGE_GO_TASKQUEUE_RABBIT_005 = "taskqueue_garbage"
-
-      type GARBAGE_GO_TYPE_RABBIT_006 struct {
-          url string
+      type CronTask struct {
+          Name     string
+          Schedule string
+          Handler  func() error
       }
 
-      func GARBAGE_GO_FUNC_RABBIT_007() {
-          println("GARBAGE_GO_RABBIT_OUTPUT_008")
+      func NewCronScheduler(interval time.Duration) *CronScheduler {
+          return &CronScheduler{interval: interval}
       }
-  commit_message: Update files
+
+      func (cs *CronScheduler) Register(name, schedule string, handler func() error) {
+          cs.tasks = append(cs.tasks, CronTask{Name: name, Schedule: schedule, Handler: handler})
+      }
+
+      func (cs *CronScheduler) Run() error {
+          for _, task := range cs.tasks {
+              if err := task.Handler(); err != nil {
+                  return err
+              }
+          }
+          return nil
+      }
+    internal/pubsub/broker.go: |
+      package pubsub
+
+      import "sync"
+
+      type Broker struct {
+          mu          sync.RWMutex
+          subscribers map[string][]chan []byte
+      }
+
+      func NewBroker() *Broker {
+          return &Broker{subscribers: make(map[string][]chan []byte)}
+      }
+
+      func (b *Broker) Subscribe(topic string) <-chan []byte {
+          b.mu.Lock()
+          defer b.mu.Unlock()
+          ch := make(chan []byte, 10)
+          b.subscribers[topic] = append(b.subscribers[topic], ch)
+          return ch
+      }
+
+      func (b *Broker) Publish(topic string, data []byte) {
+          b.mu.RLock()
+          defer b.mu.RUnlock()
+          for _, ch := range b.subscribers[topic] {
+              select {
+              case ch <- data:
+              default:
+              }
+          }
+      }
+  commit_message: "feat(worker): add timeout, priority, result channels, and logging"
 fragments:
-- id: pool_file
+- id: changed_pool
   selector:
     path: internal/worker/pool.go
-- id: req_global_0
-  selector:
-    anchor: Payload  interface{}
-- id: req_global_1
+- id: new_worker_signature
   selector:
     anchor: func NewWorker(id int, jobs <-chan Job, results chan<- Result, logger *log.Logger) *Worker {
-- id: no_global_0
+- id: new_process_with_timeout
   selector:
-    anchor: GARBAGE_GO_FUNC_CRON_003
-- id: no_global_1
+    anchor: func (w *Worker) processWithTimeout(ctx context.Context, job Job) Result {
+- id: goroutine_in_timeout
   selector:
-    anchor: GARBAGE_GO_FUNC_RABBIT_007
-- id: no_global_2
+    anchor: "go func() {"
+- id: dispatcher_uses_job_type
   selector:
-    anchor: GARBAGE_GO_SCHEDULER_CRON_001
-- id: no_global_3
+    anchor: func (d *Dispatcher) Submit(job Job) {
+- id: dispatcher_job_queue
   selector:
-    anchor: GARBAGE_GO_TASKQUEUE_RABBIT_005
-- id: no_global_4
+    anchor: "jobQueue    chan Job"
+- id: caller_main_creates_worker
   selector:
-    anchor: GARBAGE_GO_TYPE_CRON_002
-- id: no_global_5
+    anchor: "w := worker.NewWorker(i, jobs)"
+- id: caller_main_sends_job
   selector:
-    anchor: GARBAGE_GO_TYPE_RABBIT_006
-- id: no_global_6
+    anchor: "jobs <- worker.Job{ID: j}"
+- id: unrelated_cron_scheduler
   selector:
-    anchor: cron.go
-- id: no_global_7
+    anchor: func (cs *CronScheduler) Run() error {
+- id: unrelated_pubsub_broker
   selector:
-    anchor: rabbitmq.go
+    anchor: func (b *Broker) Publish(topic string, data []byte) {
 oracle:
   required:
-  - pool_file
-  - req_global_0
-  - req_global_1
+  - changed_pool
+  - new_worker_signature
+  - new_process_with_timeout
+  - goroutine_in_timeout
+  - dispatcher_uses_job_type
+  - dispatcher_job_queue
+  - caller_main_creates_worker
+  - caller_main_sends_job
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_cron_scheduler
+  - unrelated_pubsub_broker

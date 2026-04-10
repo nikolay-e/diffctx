@@ -47,7 +47,7 @@ def _get_embed_model() -> SentenceTransformer | None:
                     _EMBED_AVAILABLE = False
                     return None
                 except Exception as e:
-                    logger.debug("diffctx: failed to load embedding model: %s", e)
+                    logger.warning("diffctx: failed to load embedding model %s: %s", _EMBED_MODEL_NAME, e)
                     _EMBED_AVAILABLE = False
                     return None
     return _EMBED_MODEL

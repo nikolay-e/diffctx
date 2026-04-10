@@ -1,0 +1,258 @@
+name: precision_002_legacy_v1_v2_split
+repo:
+  initial_files:
+    api/v2/handlers.go: |
+      package v2
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type CreateUserRequest struct {
+          Email string `json:"email"`
+          Name  string `json:"name"`
+      }
+
+      func CreateUser(w http.ResponseWriter, r *http.Request) {
+          var req CreateUserRequest
+          if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+              http.Error(w, err.Error(), http.StatusBadRequest)
+              return
+          }
+          w.WriteHeader(http.StatusCreated)
+      }
+
+      func GetUser(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+      }
+    api/v2/middleware.go: |
+      package v2
+
+      import "net/http"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              token := r.Header.Get("Authorization")
+              if token == "" {
+                  http.Error(w, "unauthorized", http.StatusUnauthorized)
+                  return
+              }
+              next.ServeHTTP(w, r)
+          })
+      }
+    api/v2/router.go: |
+      package v2
+
+      import "net/http"
+
+      func RegisterRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/v2/users", CreateUser)
+          mux.HandleFunc("/v2/users/{id}", GetUser)
+      }
+    api/v1/handlers.go: |
+      package v1
+
+      // DEPRECATED: v1 API is frozen. Do not modify. Will be removed 2026-12.
+      // All new clients must use v2.
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type CreateUserRequest struct {
+          Email string `json:"email"`
+          Name  string `json:"name"`
+      }
+
+      func CreateUser(w http.ResponseWriter, r *http.Request) {
+          var req CreateUserRequest
+          if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+              http.Error(w, err.Error(), http.StatusBadRequest)
+              return
+          }
+          w.WriteHeader(http.StatusCreated)
+      }
+
+      func GetUser(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+      }
+    api/v1/middleware.go: |
+      package v1
+
+      import "net/http"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+    api/v1/router.go: |
+      package v1
+
+      import "net/http"
+
+      func RegisterRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/v1/users", CreateUser)
+          mux.HandleFunc("/v1/users/{id}", GetUser)
+      }
+    cmd/server/main.go: |
+      package main
+
+      import (
+          "net/http"
+
+          v1 "example.com/app/api/v1"
+          v2 "example.com/app/api/v2"
+      )
+
+      func main() {
+          mux := http.NewServeMux()
+          v1.RegisterRoutes(mux)
+          v2.RegisterRoutes(mux)
+          http.ListenAndServe(":8080", mux)
+      }
+  changed_files:
+    api/v2/handlers.go: |
+      package v2
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type CreateUserRequest struct {
+          Email    string   `json:"email"`
+          Name     string   `json:"name"`
+          Roles    []string `json:"roles"`
+          OrgID    string   `json:"org_id"`
+      }
+
+      func CreateUser(w http.ResponseWriter, r *http.Request) {
+          var req CreateUserRequest
+          if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+              http.Error(w, err.Error(), http.StatusBadRequest)
+              return
+          }
+          if req.OrgID == "" {
+              http.Error(w, "org_id required", http.StatusBadRequest)
+              return
+          }
+          w.WriteHeader(http.StatusCreated)
+      }
+
+      func GetUser(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+      }
+    api/v2/middleware.go: |
+      package v2
+
+      import "net/http"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              token := r.Header.Get("Authorization")
+              if token == "" {
+                  http.Error(w, "unauthorized", http.StatusUnauthorized)
+                  return
+              }
+              next.ServeHTTP(w, r)
+          })
+      }
+    api/v2/router.go: |
+      package v2
+
+      import "net/http"
+
+      func RegisterRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/v2/users", CreateUser)
+          mux.HandleFunc("/v2/users/{id}", GetUser)
+      }
+    api/v1/handlers.go: |
+      package v1
+
+      // DEPRECATED: v1 API is frozen. Do not modify. Will be removed 2026-12.
+      // All new clients must use v2.
+
+      import (
+          "encoding/json"
+          "net/http"
+      )
+
+      type CreateUserRequest struct {
+          Email string `json:"email"`
+          Name  string `json:"name"`
+      }
+
+      func CreateUser(w http.ResponseWriter, r *http.Request) {
+          var req CreateUserRequest
+          if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+              http.Error(w, err.Error(), http.StatusBadRequest)
+              return
+          }
+          w.WriteHeader(http.StatusCreated)
+      }
+
+      func GetUser(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+      }
+    api/v1/middleware.go: |
+      package v1
+
+      import "net/http"
+
+      func AuthMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              next.ServeHTTP(w, r)
+          })
+      }
+    api/v1/router.go: |
+      package v1
+
+      import "net/http"
+
+      func RegisterRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/v1/users", CreateUser)
+          mux.HandleFunc("/v1/users/{id}", GetUser)
+      }
+    cmd/server/main.go: |
+      package main
+
+      import (
+          "net/http"
+
+          v1 "example.com/app/api/v1"
+          v2 "example.com/app/api/v2"
+      )
+
+      func main() {
+          mux := http.NewServeMux()
+          v1.RegisterRoutes(mux)
+          v2.RegisterRoutes(mux)
+          http.ListenAndServe(":8080", mux)
+      }
+  commit_message: "api/v2: add roles and org_id to CreateUserRequest"
+fragments:
+  - id: v2_handlers_changed
+    selector: { path: api/v2/handlers.go }
+  - id: v2_router_same_package
+    selector: { path: api/v2/router.go }
+  - id: v1_handlers_frozen
+    selector: { path: api/v1/handlers.go }
+  - id: v1_router_frozen
+    selector: { path: api/v1/router.go }
+  - id: v1_middleware_frozen
+    selector: { path: api/v1/middleware.go }
+  - id: server_main
+    selector: { path: cmd/server/main.go }
+oracle:
+  required:
+    - v2_handlers_changed
+  allowed:
+    - v2_router_same_package
+    - server_main
+  forbidden:
+    - v1_handlers_frozen
+    - v1_router_frozen
+    - v1_middleware_frozen

@@ -17,6 +17,20 @@ repo:
           price DECIMAL(10, 2) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE user_preferences (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id),
+          theme VARCHAR(50) DEFAULT 'light',
+          notifications BOOLEAN DEFAULT TRUE
+      );
     src/models/category.py: |
       from dataclasses import dataclass
       from typing import Optional
@@ -38,22 +52,15 @@ repo:
           name: str
           price: Decimal
           category_id: Optional[int] = None
-    garbage_constraint_manager.ts: |
-      const GARBAGE_CICD_DOCS_067_CONSTRAINT_MARKER_A = "deferrable";
-      const GARBAGE_CICD_DOCS_067_CASCADE_MARKER_B = "restrict";
+    src/models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
 
-      class GarbageConstraintManager {
-        static GARBAGE_CICD_DOCS_067_VALIDATE_MARKER_C = true;
-        manage(): void {}
-      }
-    garbage_fk_validator.ts: |
-      const GARBAGE_CICD_DOCS_067_FK_MARKER_D = "orphan-check";
-      const GARBAGE_CICD_DOCS_067_INTEGRITY_MARKER_E = "strict";
-
-      class GarbageFkValidator {
-        static GARBAGE_CICD_DOCS_067_REPAIR_MARKER_F = false;
-        validate(): boolean { return true; }
-      }
+      @dataclass
+      class User:
+          id: int
+          email: str
+          name: str
   changed_files:
     migrations/001_create_tables.sql: |
       CREATE TABLE categories (
@@ -70,6 +77,20 @@ repo:
           category_id INTEGER,
           price DECIMAL(10, 2) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE user_preferences (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id),
+          theme VARCHAR(50) DEFAULT 'light',
+          notifications BOOLEAN DEFAULT TRUE
       );
     migrations/002_add_foreign_keys.sql: |
       -- Self-referencing FK for category hierarchy
@@ -109,65 +130,51 @@ repo:
           name: str
           price: Decimal
           category_id: Optional[int] = None
-    garbage_constraint_manager.ts: |
-      const GARBAGE_CICD_DOCS_067_CONSTRAINT_MARKER_A = "deferrable";
-      const GARBAGE_CICD_DOCS_067_CASCADE_MARKER_B = "restrict";
+    src/models/user.py: |
+      from dataclasses import dataclass
+      from typing import Optional
 
-      class GarbageConstraintManager {
-        static GARBAGE_CICD_DOCS_067_VALIDATE_MARKER_C = true;
-        manage(): void {}
-      }
-    garbage_fk_validator.ts: |
-      const GARBAGE_CICD_DOCS_067_FK_MARKER_D = "orphan-check";
-      const GARBAGE_CICD_DOCS_067_INTEGRITY_MARKER_E = "strict";
-
-      class GarbageFkValidator {
-        static GARBAGE_CICD_DOCS_067_REPAIR_MARKER_F = false;
-        validate(): boolean { return true; }
-      }
-  commit_message: Update files
+      @dataclass
+      class User:
+          id: int
+          email: str
+          name: str
+  commit_message: "db: add foreign key constraints for categories and products"
 fragments:
-- id: 002_add_foreign_keys_file
+- id: fk_migration
   selector:
     path: migrations/002_add_foreign_keys.sql
-- id: req_global_0
+- id: fk_category_hierarchy
   selector:
-    anchor: -- Self-referencing FK for category hierarchy
-- id: no_global_0
+    anchor: "-- Self-referencing FK for category hierarchy"
+- id: constrained_columns
   selector:
-    anchor: GARBAGE_CICD_DOCS_067_CASCADE_MARKER_B
-- id: no_global_1
+    path: migrations/001_create_tables.sql
+    anchor: parent_id INTEGER
+- id: category_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_067_CONSTRAINT_MARKER_A
-- id: no_global_2
+    path: src/models/category.py
+    anchor: "parent_id: Optional[int]"
+- id: product_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_067_FK_MARKER_D
-- id: no_global_3
+    path: src/models/product.py
+    anchor: "category_id: Optional[int]"
+- id: no_users_table
   selector:
-    anchor: GARBAGE_CICD_DOCS_067_INTEGRITY_MARKER_E
-- id: no_global_4
+    path: migrations/001_create_users.sql
+    anchor: CREATE TABLE users
+- id: no_user_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_067_REPAIR_MARKER_F
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_067_VALIDATE_MARKER_C
-- id: no_global_6
-  selector:
-    anchor: garbage_constraint_manager.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_fk_validator.ts
+    path: src/models/user.py
+    anchor: "class User"
 oracle:
   required:
-  - 002_add_foreign_keys_file
-  - req_global_0
-  allowed: []
+  - fk_migration
+  - fk_category_hierarchy
+  - constrained_columns
+  allowed:
+  - category_model
+  - product_model
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_users_table
+  - no_user_model

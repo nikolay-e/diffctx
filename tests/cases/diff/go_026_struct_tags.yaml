@@ -1,4 +1,6 @@
 name: go_026_struct_tags
+xfail:
+  category: go-cross-file-discovery
 repo:
   initial_files:
     internal/api/models.go: |
@@ -36,69 +38,28 @@ repo:
       func SerializeProduct(w http.ResponseWriter, p *Product) error {
           return json.NewEncoder(w).Encode(p)
       }
-    internal/unrelated/payments/stripe_client.go: |
-      package payments
+    internal/api/middleware.go: |
+      package api
 
-      import "context"
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
 
-      const GARBAGE_GO_STRIPE_CLIENT_A1B2C3 = "stripe_garbage_marker"
-
-      type GARBAGE_GO_TYPE_CHARGE_D4E5F6 struct {
-          amount   int64
-          currency string
-          source   string
+      func RequestLogger(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
       }
 
-      func GARBAGE_GO_FUNC_STRIPE_G7H8I9() string {
-          return "GARBAGE_GO_STRIPE_UNUSED_J0K1L2"
-      }
-
-      type StripeConfig struct {
-          APIKey         string
-          WebhookSecret  string
-          PublishableKey string
-      }
-
-      func GARBAGE_GO_FUNC_CREATE_CHARGE_M3N4O5(ctx context.Context, amount int64) error {
-          println("GARBAGE_GO_STRIPE_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/payments/paypal_gateway.go: |
-      package payments
-
-      const GARBAGE_GO_PAYPAL_GATEWAY_S9T0U1 = "paypal_garbage"
-
-      type GARBAGE_GO_TYPE_PAYPAL_V2W3X4 struct {
-          clientID     string
-          clientSecret string
-          sandbox      bool
-      }
-
-      func GARBAGE_GO_FUNC_PAYPAL_Y5Z6A7() {
-          println("GARBAGE_GO_PAYPAL_OUTPUT_B8C9D0")
-      }
-
-      type PayPalConfig struct {
-          ClientID     string
-          ClientSecret string
-          Environment  string
-      }
-
-      func GARBAGE_GO_FUNC_PAYPAL_ORDER_E1F2G3(orderID string) error {
-          return nil
-      }
-    internal/unrelated/payments/crypto_wallet.go: |
-      package payments
-
-      const GARBAGE_GO_CRYPTO_WALLET_H4I5J6 = "crypto_garbage"
-
-      type GARBAGE_GO_TYPE_BITCOIN_K7L8M9 struct {
-          address    string
-          privateKey string
-      }
-
-      func GARBAGE_GO_FUNC_CRYPTO_N0O1P2() {
-          println("GARBAGE_GO_CRYPTO_OUTPUT_Q3R4S5")
+      func ContentTypeJSON(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Content-Type", "application/json")
+              next.ServeHTTP(w, r)
+          })
       }
   changed_files:
     internal/api/models.go: |
@@ -218,141 +179,62 @@ repo:
       func SerializeProduct(w http.ResponseWriter, p *Product) error {
           return json.NewEncoder(w).Encode(p)
       }
-    internal/unrelated/payments/stripe_client.go: |
-      package payments
+    internal/api/middleware.go: |
+      package api
 
-      import "context"
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
 
-      const GARBAGE_GO_STRIPE_CLIENT_A1B2C3 = "stripe_garbage_marker"
-
-      type GARBAGE_GO_TYPE_CHARGE_D4E5F6 struct {
-          amount   int64
-          currency string
-          source   string
+      func RequestLogger(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
       }
 
-      func GARBAGE_GO_FUNC_STRIPE_G7H8I9() string {
-          return "GARBAGE_GO_STRIPE_UNUSED_J0K1L2"
-      }
-
-      type StripeConfig struct {
-          APIKey         string
-          WebhookSecret  string
-          PublishableKey string
-      }
-
-      func GARBAGE_GO_FUNC_CREATE_CHARGE_M3N4O5(ctx context.Context, amount int64) error {
-          println("GARBAGE_GO_STRIPE_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/payments/paypal_gateway.go: |
-      package payments
-
-      const GARBAGE_GO_PAYPAL_GATEWAY_S9T0U1 = "paypal_garbage"
-
-      type GARBAGE_GO_TYPE_PAYPAL_V2W3X4 struct {
-          clientID     string
-          clientSecret string
-          sandbox      bool
-      }
-
-      func GARBAGE_GO_FUNC_PAYPAL_Y5Z6A7() {
-          println("GARBAGE_GO_PAYPAL_OUTPUT_B8C9D0")
-      }
-
-      type PayPalConfig struct {
-          ClientID     string
-          ClientSecret string
-          Environment  string
-      }
-
-      func GARBAGE_GO_FUNC_PAYPAL_ORDER_E1F2G3(orderID string) error {
-          return nil
-      }
-    internal/unrelated/payments/crypto_wallet.go: |
-      package payments
-
-      const GARBAGE_GO_CRYPTO_WALLET_H4I5J6 = "crypto_garbage"
-
-      type GARBAGE_GO_TYPE_BITCOIN_K7L8M9 struct {
-          address    string
-          privateKey string
-      }
-
-      func GARBAGE_GO_FUNC_CRYPTO_N0O1P2() {
-          println("GARBAGE_GO_CRYPTO_OUTPUT_Q3R4S5")
+      func ContentTypeJSON(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              w.Header().Set("Content-Type", "application/json")
+              next.ServeHTTP(w, r)
+          })
       }
   commit_message: Update files
 fragments:
 - id: models_file
   selector:
     path: internal/api/models.go
-- id: req_global_0
+- id: user_role_enum
   selector:
     anchor: UserRoleAdmin     UserRole = "admin"
-- id: req_global_1
+- id: user_json_tags
   selector:
     anchor: ID          int64     `json:"id" db:"id" gorm:"primaryKey;autoIncrement"`
-- id: no_global_0
+- id: handler_serializes_user
   selector:
-    anchor: GARBAGE_GO_CRYPTO_WALLET_H4I5J6
-- id: no_global_1
+    path: internal/api/handlers.go
+    anchor: func SerializeUser(w http.ResponseWriter, u *User) error {
+- id: handler_serializes_product
   selector:
-    anchor: GARBAGE_GO_FUNC_CREATE_CHARGE_M3N4O5(ctx
-- id: no_global_2
+    anchor: func SerializeProduct(w http.ResponseWriter, p *Product) error {
+- id: no_middleware_logger
   selector:
-    anchor: GARBAGE_GO_FUNC_CRYPTO_N0O1P2
-- id: no_global_3
+    path: internal/api/middleware.go
+    anchor: func RequestLogger(next http.Handler) http.Handler {
+- id: no_middleware_content_type
   selector:
-    anchor: GARBAGE_GO_FUNC_PAYPAL_ORDER_E1F2G3(orderID
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_GO_FUNC_PAYPAL_Y5Z6A7
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_FUNC_STRIPE_G7H8I9
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_GO_PAYPAL_GATEWAY_S9T0U1
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_GO_STRIPE_CLIENT_A1B2C3
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_GO_TYPE_BITCOIN_K7L8M9
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_GO_TYPE_CHARGE_D4E5F6
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_GO_TYPE_PAYPAL_V2W3X4
-- id: no_global_11
-  selector:
-    anchor: crypto_wallet.go
-- id: no_global_12
-  selector:
-    anchor: paypal_gateway.go
-- id: no_global_13
-  selector:
-    anchor: stripe_client.go
+    anchor: func ContentTypeJSON(next http.Handler) http.Handler {
 oracle:
   required:
   - models_file
-  - req_global_0
-  - req_global_1
+  - user_role_enum
+  - user_json_tags
+  - handler_serializes_user
+  - handler_serializes_product
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
+  - no_middleware_logger
+  - no_middleware_content_type

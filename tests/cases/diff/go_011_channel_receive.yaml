@@ -67,29 +67,31 @@ repo:
               }
           }
       }
-    internal/unrelated/pubsub/kafka.go: |
-      package pubsub
+    internal/stream/stats.go: |
+      package stream
 
-      const GARBAGE_GO_PUBSUB_KAFKA_001 = "pubsub_garbage"
+      import "sync/atomic"
 
-      type GARBAGE_GO_TYPE_KAFKA_002 struct {
-          brokers []string
+      type StreamStats struct {
+          messagesIn  int64
+          messagesOut int64
+          bytesTotal  int64
       }
 
-      func GARBAGE_GO_FUNC_KAFKA_003() string {
-          return "GARBAGE_GO_KAFKA_UNUSED_004"
-      }
-    internal/unrelated/pubsub/nats.go: |
-      package pubsub
-
-      const GARBAGE_GO_PUBSUB_NATS_005 = "nats_garbage"
-
-      type GARBAGE_GO_TYPE_NATS_006 struct {
-          url string
+      func NewStreamStats() *StreamStats {
+          return &StreamStats{}
       }
 
-      func GARBAGE_GO_FUNC_NATS_007() {
-          println("GARBAGE_GO_NATS_OUTPUT_008")
+      func (s *StreamStats) RecordIn() {
+          atomic.AddInt64(&s.messagesIn, 1)
+      }
+
+      func (s *StreamStats) RecordOut() {
+          atomic.AddInt64(&s.messagesOut, 1)
+      }
+
+      func (s *StreamStats) Snapshot() (int64, int64) {
+          return atomic.LoadInt64(&s.messagesIn), atomic.LoadInt64(&s.messagesOut)
       }
   changed_files:
     internal/stream/producer.go: |
@@ -210,77 +212,65 @@ repo:
               }
           }
       }
-    internal/unrelated/pubsub/kafka.go: |
-      package pubsub
+    internal/stream/stats.go: |
+      package stream
 
-      const GARBAGE_GO_PUBSUB_KAFKA_001 = "pubsub_garbage"
+      import "sync/atomic"
 
-      type GARBAGE_GO_TYPE_KAFKA_002 struct {
-          brokers []string
+      type StreamStats struct {
+          messagesIn  int64
+          messagesOut int64
+          bytesTotal  int64
       }
 
-      func GARBAGE_GO_FUNC_KAFKA_003() string {
-          return "GARBAGE_GO_KAFKA_UNUSED_004"
-      }
-    internal/unrelated/pubsub/nats.go: |
-      package pubsub
-
-      const GARBAGE_GO_PUBSUB_NATS_005 = "nats_garbage"
-
-      type GARBAGE_GO_TYPE_NATS_006 struct {
-          url string
+      func NewStreamStats() *StreamStats {
+          return &StreamStats{}
       }
 
-      func GARBAGE_GO_FUNC_NATS_007() {
-          println("GARBAGE_GO_NATS_OUTPUT_008")
+      func (s *StreamStats) RecordIn() {
+          atomic.AddInt64(&s.messagesIn, 1)
+      }
+
+      func (s *StreamStats) RecordOut() {
+          atomic.AddInt64(&s.messagesOut, 1)
+      }
+
+      func (s *StreamStats) Snapshot() (int64, int64) {
+          return atomic.LoadInt64(&s.messagesIn), atomic.LoadInt64(&s.messagesOut)
       }
   commit_message: Update files
 fragments:
 - id: producer_file
   selector:
     path: internal/stream/producer.go
-- id: req_global_0
-  selector:
-    anchor: '"sync/atomic"'
-- id: req_global_1
+- id: producer_stats_struct
   selector:
     anchor: type ProducerStats struct {
-- id: no_global_0
+- id: new_producer_logger_param
   selector:
-    anchor: GARBAGE_GO_FUNC_KAFKA_003
-- id: no_global_1
+    anchor: func NewProducer(output chan<- Message, rate time.Duration, logger *log.Logger) *Producer {
+- id: consumer_reads_message_id
   selector:
-    anchor: GARBAGE_GO_FUNC_NATS_007
-- id: no_global_2
+    path: internal/stream/consumer.go
+    anchor: println("Received:", msg.ID)
+- id: consumer_receives_message
   selector:
-    anchor: GARBAGE_GO_PUBSUB_KAFKA_001
-- id: no_global_3
+    anchor: func NewConsumer(input <-chan Message) *Consumer {
+- id: no_unrelated_stats
   selector:
-    anchor: GARBAGE_GO_PUBSUB_NATS_005
-- id: no_global_4
+    path: internal/stream/stats.go
+    anchor: type StreamStats struct {
+- id: no_stats_record_in
   selector:
-    anchor: GARBAGE_GO_TYPE_KAFKA_002
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_NATS_006
-- id: no_global_6
-  selector:
-    anchor: kafka.go
-- id: no_global_7
-  selector:
-    anchor: nats.go
+    anchor: func (s *StreamStats) RecordIn() {
 oracle:
   required:
   - producer_file
-  - req_global_0
-  - req_global_1
+  - producer_stats_struct
+  - new_producer_logger_param
+  - consumer_reads_message_id
+  - consumer_receives_message
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_unrelated_stats
+  - no_stats_record_in

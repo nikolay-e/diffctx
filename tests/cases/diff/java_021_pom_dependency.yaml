@@ -97,6 +97,48 @@ repo:
           public Instant getLastUpdated() { return lastUpdated; }
           public void setLastUpdated(Instant lastUpdated) { this.lastUpdated = lastUpdated; }
       }
+    src/main/java/com/example/inventory/repository/InventoryRepository.java: |
+      package com.example.inventory.repository;
+
+      import com.example.inventory.entity.InventoryEntity;
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+
+      @Repository
+      public interface InventoryRepository extends JpaRepository<InventoryEntity, Long> {
+          InventoryEntity findByProductName(String productName);
+      }
+    src/main/java/com/example/inventory/config/CacheConfig.java: |
+      package com.example.inventory.config;
+
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.cache.annotation.EnableCaching;
+
+      @Configuration
+      @EnableCaching
+      public class CacheConfig {
+          public static final int DEFAULT_TTL = 3600;
+          public static final int MAX_CACHE_SIZE = 500;
+      }
+    src/main/java/com/example/inventory/dto/InventoryDTO.java: |
+      package com.example.inventory.dto;
+
+      public class InventoryDTO {
+          private String productName;
+          private int quantity;
+
+          public InventoryDTO() {}
+
+          public InventoryDTO(String productName, int quantity) {
+              this.productName = productName;
+              this.quantity = quantity;
+          }
+
+          public String getProductName() { return productName; }
+          public void setProductName(String productName) { this.productName = productName; }
+          public int getQuantity() { return quantity; }
+          public void setQuantity(int quantity) { this.quantity = quantity; }
+      }
   changed_files:
     pom.xml: |
       <?xml version="1.0" encoding="UTF-8"?>
@@ -207,68 +249,101 @@ repo:
           public Instant getLastUpdated() { return lastUpdated; }
           public void setLastUpdated(Instant lastUpdated) { this.lastUpdated = lastUpdated; }
       }
+    src/main/java/com/example/inventory/repository/InventoryRepository.java: |
+      package com.example.inventory.repository;
+
+      import com.example.inventory.entity.InventoryEntity;
+      import org.springframework.data.jpa.repository.JpaRepository;
+      import org.springframework.stereotype.Repository;
+
+      @Repository
+      public interface InventoryRepository extends JpaRepository<InventoryEntity, Long> {
+          InventoryEntity findByProductName(String productName);
+      }
+    src/main/java/com/example/inventory/config/CacheConfig.java: |
+      package com.example.inventory.config;
+
+      import org.springframework.context.annotation.Configuration;
+      import org.springframework.cache.annotation.EnableCaching;
+
+      @Configuration
+      @EnableCaching
+      public class CacheConfig {
+          public static final int DEFAULT_TTL = 3600;
+          public static final int MAX_CACHE_SIZE = 500;
+      }
+    src/main/java/com/example/inventory/dto/InventoryDTO.java: |
+      package com.example.inventory.dto;
+
+      public class InventoryDTO {
+          private String productName;
+          private int quantity;
+
+          public InventoryDTO() {}
+
+          public InventoryDTO(String productName, int quantity) {
+              this.productName = productName;
+              this.quantity = quantity;
+          }
+
+          public String getProductName() { return productName; }
+          public void setProductName(String productName) { this.productName = productName; }
+          public int getQuantity() { return quantity; }
+          public void setQuantity(int quantity) { this.quantity = quantity; }
+      }
   commit_message: Update files
 fragments:
-- id: pom
+- id: pom_jpa_dep
   selector:
     path: pom.xml
     anchor: <artifactId>spring-boot-starter-data-jpa</artifactId>
-- id: pom_1
+- id: pom_postgresql_dep
   selector:
     path: pom.xml
     anchor: <artifactId>postgresql</artifactId>
-- id: pom_2
+- id: pom_flyway_dep
   selector:
     path: pom.xml
     anchor: <artifactId>flyway-core</artifactId>
-- id: no_inventoryapplication
-  selector:
-    path: src/main/java/com/example/inventory/InventoryApplication.java
-- id: no_healthcontroller
-  selector:
-    path: src/main/java/com/example/inventory/controller/HealthController.java
-- id: no_inventoryentity
+- id: entity_jpa_annotations
   selector:
     path: src/main/java/com/example/inventory/entity/InventoryEntity.java
-- id: no_global_0
+    anchor: "import jakarta.persistence.*"
+- id: entity_table_mapping
   selector:
-    anchor: InventoryApplication
-- id: no_global_1
+    path: src/main/java/com/example/inventory/entity/InventoryEntity.java
+    anchor: '@Table(name = "inventory")'
+- id: repository_jpa_interface
   selector:
+    path: src/main/java/com/example/inventory/repository/InventoryRepository.java
+    anchor: JpaRepository<InventoryEntity, Long>
+- id: no_health_controller
+  selector:
+    path: src/main/java/com/example/inventory/controller/HealthController.java
+    anchor: "@GetMapping(\"/health\")"
+- id: no_application_main
+  selector:
+    path: src/main/java/com/example/inventory/InventoryApplication.java
     anchor: SpringApplication.run
-- id: no_global_2
+- id: no_cache_config
   selector:
-    anchor: HealthController
-- id: no_global_3
+    path: src/main/java/com/example/inventory/config/CacheConfig.java
+    anchor: "@EnableCaching"
+- id: no_inventory_dto
   selector:
-    anchor: /health
-- id: no_global_4
-  selector:
-    anchor: InventoryEntity
-- id: no_global_5
-  selector:
-    anchor: jakarta.persistence
-- id: no_global_6
-  selector:
-    anchor: '@Table'
-- id: no_global_7
-  selector:
-    anchor: '@GeneratedValue'
+    path: src/main/java/com/example/inventory/dto/InventoryDTO.java
+    anchor: class InventoryDTO
 oracle:
   required:
-  - pom
-  - pom_1
-  - pom_2
+  - pom_jpa_dep
+  - pom_postgresql_dep
+  - pom_flyway_dep
+  - entity_jpa_annotations
+  - entity_table_mapping
+  - repository_jpa_interface
   allowed: []
   forbidden:
-  - no_inventoryapplication
-  - no_healthcontroller
-  - no_inventoryentity
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_health_controller
+  - no_application_main
+  - no_cache_config
+  - no_inventory_dto

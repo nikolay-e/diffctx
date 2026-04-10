@@ -16,24 +16,31 @@ repo:
 
       default_timeout = Config.timeout
     adapters/config.py: |
-      GARBAGE_DEP_019_ADAPTER_CFG_A = "adapter_config"
-      GARBAGE_DEP_019_ADAPTER_MOD_B = True
+      from typing import Optional
 
       class Config:
           timeout = 30
           max_connections = 20
-          GARBAGE_DEP_019_ADAPTER_ATTR_C = "different_config"
+          retry_on_failure = True
 
-          def get_timeout(self):
+          def get_timeout(self) -> int:
               return self.timeout
-    defaults.py: |
-      GARBAGE_DEP_019_DEFAULTS_MOD_G = "defaults_sibling"
-      GARBAGE_DEP_019_DEFAULTS_KEY_H = 99
 
+          def with_timeout(self, value: int) -> 'Config':
+              self.timeout = value
+              return self
+    defaults.py: |
       class Defaults:
           timeout = 60
           max_connections = 5
-          GARBAGE_DEP_019_DEFAULTS_CLASS_I = "similar_shape"
+          pool_recycle = 3600
+
+          def to_dict(self) -> dict:
+              return {
+                  "timeout": self.timeout,
+                  "max_connections": self.max_connections,
+                  "pool_recycle": self.pool_recycle,
+              }
   changed_files:
     models.py: |
       class Config:
@@ -50,79 +57,75 @@ repo:
 
       default_timeout = Config.timeout
     adapters/config.py: |
-      GARBAGE_DEP_019_ADAPTER_CFG_A = "adapter_config"
-      GARBAGE_DEP_019_ADAPTER_MOD_B = True
+      from typing import Optional
 
       class Config:
           timeout = 30
           max_connections = 20
-          GARBAGE_DEP_019_ADAPTER_ATTR_C = "different_config"
+          retry_on_failure = True
 
-          def get_timeout(self):
+          def get_timeout(self) -> int:
               return self.timeout
-    defaults.py: |
-      GARBAGE_DEP_019_DEFAULTS_MOD_G = "defaults_sibling"
-      GARBAGE_DEP_019_DEFAULTS_KEY_H = 99
 
+          def with_timeout(self, value: int) -> 'Config':
+              self.timeout = value
+              return self
+    defaults.py: |
       class Defaults:
           timeout = 60
           max_connections = 5
-          GARBAGE_DEP_019_DEFAULTS_CLASS_I = "similar_shape"
+          pool_recycle = 3600
+
+          def to_dict(self) -> dict:
+              return {
+                  "timeout": self.timeout,
+                  "max_connections": self.max_connections,
+                  "pool_recycle": self.pool_recycle,
+              }
   commit_message: Update files
 fragments:
-- id: models
+- id: models_timeout_changed
   selector:
     path: models.py
     anchor: timeout = 60
-- id: models_1
+- id: models_class_def
   selector:
     path: models.py
-    anchor: 'class Config:'
-- id: client
+    anchor: "class Config:"
+- id: client_uses_timeout
   selector:
     path: client.py
-    anchor: 'def make_request():'
-- id: client_1
+    anchor: "def make_request():"
+- id: client_reads_config
   selector:
     path: client.py
     anchor: Config.timeout
-- id: no_config
+- id: settings_uses_timeout
+  selector:
+    path: settings.py
+    anchor: default_timeout = Config.timeout
+- id: no_adapter_config
   selector:
     path: adapters/config.py
 - id: no_defaults
   selector:
     path: defaults.py
-- id: no_global_0
+- id: no_adapter_retry
   selector:
-    anchor: GARBAGE_DEP_019_ADAPTER_CFG_A
-- id: no_global_1
+    anchor: retry_on_failure
+- id: no_defaults_pool
   selector:
-    anchor: GARBAGE_DEP_019_ADAPTER_MOD_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_DEP_019_ADAPTER_ATTR_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP_019_DEFAULTS_MOD_G
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP_019_DEFAULTS_KEY_H
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP_019_DEFAULTS_CLASS_I
+    anchor: pool_recycle
 oracle:
   required:
-  - models
-  - models_1
-  - client
-  - client_1
+  - models_timeout_changed
+  - models_class_def
+  - client_uses_timeout
+  - client_reads_config
+  - settings_uses_timeout
   allowed: []
   forbidden:
-  - no_config
+  - no_adapter_config
   - no_defaults
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_adapter_retry
+  - no_defaults_pool

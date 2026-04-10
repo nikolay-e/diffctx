@@ -230,7 +230,6 @@ def _collect_julia_refs(julia_files: list[Path]) -> set[str]:
         for module in _extract_usings(content):
             refs.add(_module_to_path(module))
             refs.add(_module_leaf(module))
-        refs.update(_extract_includes(content))
     return refs
 
 
@@ -342,7 +341,6 @@ class JuliaEdgeBuilder(EdgeBuilder):
         edges: EdgeDict,
     ) -> None:
         self._link_usings(jf, idx, edges)
-        self._link_includes(jf, idx, edges)
         self._link_supertypes(jf, type_defs, edges)
 
         self_funcs, self_types = _extract_definitions(jf.content)

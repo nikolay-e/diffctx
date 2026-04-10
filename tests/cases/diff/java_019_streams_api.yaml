@@ -360,85 +360,62 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: dataprocessor
+- id: dataprocessor_summary_import
   selector:
     path: src/main/java/com/analytics/processor/DataProcessor.java
     anchor: import com.analytics.model.TransactionSummary
-- id: dataprocessor_1
+- id: dataprocessor_method_refs
   selector:
     path: src/main/java/com/analytics/processor/DataProcessor.java
     anchor: Transaction::getAmount
-- id: dataprocessor_2
+- id: dataprocessor_customer_ref
   selector:
     path: src/main/java/com/analytics/processor/DataProcessor.java
     anchor: Transaction::getCustomerId
-- id: dataprocessor_3
+- id: dataprocessor_grouping
   selector:
     path: src/main/java/com/analytics/processor/DataProcessor.java
     anchor: Collectors.groupingBy
-- id: transactionsummary
-  selector:
-    path: src/main/java/com/analytics/model/TransactionSummary.java
-    anchor: public BigDecimal average()
-- id: transactionsummary_1
+- id: transactionsummary_record
   selector:
     path: src/main/java/com/analytics/model/TransactionSummary.java
     anchor: record TransactionSummary
-- id: no_recipescaler
+- id: transactionsummary_average
+  selector:
+    path: src/main/java/com/analytics/model/TransactionSummary.java
+    anchor: public BigDecimal average()
+- id: transaction_model_getters
+  selector:
+    path: src/main/java/com/analytics/model/Transaction.java
+    anchor: public String getCustomerId()
+- id: transaction_model_amount
+  selector:
+    path: src/main/java/com/analytics/model/Transaction.java
+    anchor: public BigDecimal getAmount()
+- id: no_recipe_scaler
   selector:
     path: src/main/java/com/unrelated/cooking/RecipeScaler.java
-- id: no_moonphasecalculator
+    anchor: scaleIngredient
+- id: no_moon_phase
   selector:
     path: src/main/java/com/unrelated/astro/MoonPhaseCalculator.java
-- id: no_boardnotation
+    anchor: getCurrentPhase
+- id: no_board_notation
   selector:
     path: src/main/java/com/unrelated/chess/BoardNotation.java
-- id: no_global_0
-  selector:
-    anchor: RecipeScaler
-- id: no_global_1
-  selector:
-    anchor: scaleIngredient
-- id: no_global_2
-  selector:
-    anchor: calculateCookingTime
-- id: no_global_3
-  selector:
-    anchor: MoonPhaseCalculator
-- id: no_global_4
-  selector:
-    anchor: getCurrentPhase
-- id: no_global_5
-  selector:
-    anchor: getIllumination
-- id: no_global_6
-  selector:
-    anchor: BoardNotation
-- id: no_global_7
-  selector:
     anchor: toAlgebraic
-- id: no_global_8
-  selector:
-    anchor: fromAlgebraic
 oracle:
   required:
-  - dataprocessor
-  - dataprocessor_1
-  - dataprocessor_2
-  - dataprocessor_3
-  - transactionsummary
-  - transactionsummary_1
+  - dataprocessor_summary_import
+  - dataprocessor_method_refs
+  - dataprocessor_customer_ref
+  - dataprocessor_grouping
+  - transactionsummary_record
+  - transactionsummary_average
+  - transaction_model_getters
+  - transaction_model_amount
   allowed: []
   forbidden:
-  - no_recipescaler
-  - no_moonphasecalculator
-  - no_boardnotation
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_recipe_scaler
+  - no_moon_phase
+  - no_board_notation

@@ -30,22 +30,53 @@ repo:
 
       def parse_arguments(args):
           return {"verbose": "--verbose" in args}
-    garbage_bloom_filter.py: |
-      GARBAGE_COMP_005_HASH_COUNT_A = "murmur3"
-      GARBAGE_COMP_005_FALSE_POSITIVE_B = "probability"
+    src/bloom_filter.py: |
+      import hashlib
+      from typing import List
 
-      class GarbageBloomFilter:
-          GARBAGE_COMP_005_BIT_ARRAY_SIZE_C = 1024
-          def insert(self):
-              pass
-    garbage_trie_index.py: |
-      GARBAGE_COMP_005_NODE_CAPACITY_D = "branching"
-      GARBAGE_COMP_005_COMPRESSION_E = "patricia"
+      class BloomFilter:
+          def __init__(self, size: int = 1024, hash_count: int = 3):
+              self.size = size
+              self.hash_count = hash_count
+              self.bit_array = [False] * size
 
-      class GarbageTrieIndex:
-          GARBAGE_COMP_005_PREFIX_LENGTH_F = 32
-          def search(self):
-              pass
+          def add(self, item: str) -> None:
+              for seed in range(self.hash_count):
+                  idx = int(hashlib.md5(f"{seed}:{item}".encode()).hexdigest(), 16) % self.size
+                  self.bit_array[idx] = True
+
+          def might_contain(self, item: str) -> bool:
+              return all(
+                  self.bit_array[int(hashlib.md5(f"{seed}:{item}".encode()).hexdigest(), 16) % self.size]
+                  for seed in range(self.hash_count)
+              )
+    src/trie_index.py: |
+      from typing import Dict, Optional
+
+      class TrieNode:
+          def __init__(self):
+              self.children: Dict[str, 'TrieNode'] = {}
+              self.is_end = False
+
+      class TrieIndex:
+          def __init__(self):
+              self.root = TrieNode()
+
+          def insert(self, word: str) -> None:
+              node = self.root
+              for char in word:
+                  if char not in node.children:
+                      node.children[char] = TrieNode()
+                  node = node.children[char]
+              node.is_end = True
+
+          def search(self, prefix: str) -> bool:
+              node = self.root
+              for char in prefix:
+                  if char not in node.children:
+                      return False
+                  node = node.children[char]
+              return True
   changed_files:
     src/special_algorithm.py: |
       from typing import Dict, Optional
@@ -79,69 +110,93 @@ repo:
 
       def parse_arguments(args):
           return {"verbose": "--verbose" in args}
-    garbage_bloom_filter.py: |
-      GARBAGE_COMP_005_HASH_COUNT_A = "murmur3"
-      GARBAGE_COMP_005_FALSE_POSITIVE_B = "probability"
+    src/bloom_filter.py: |
+      import hashlib
+      from typing import List
 
-      class GarbageBloomFilter:
-          GARBAGE_COMP_005_BIT_ARRAY_SIZE_C = 1024
-          def insert(self):
-              pass
-    garbage_trie_index.py: |
-      GARBAGE_COMP_005_NODE_CAPACITY_D = "branching"
-      GARBAGE_COMP_005_COMPRESSION_E = "patricia"
+      class BloomFilter:
+          def __init__(self, size: int = 1024, hash_count: int = 3):
+              self.size = size
+              self.hash_count = hash_count
+              self.bit_array = [False] * size
 
-      class GarbageTrieIndex:
-          GARBAGE_COMP_005_PREFIX_LENGTH_F = 32
-          def search(self):
-              pass
+          def add(self, item: str) -> None:
+              for seed in range(self.hash_count):
+                  idx = int(hashlib.md5(f"{seed}:{item}".encode()).hexdigest(), 16) % self.size
+                  self.bit_array[idx] = True
+
+          def might_contain(self, item: str) -> bool:
+              return all(
+                  self.bit_array[int(hashlib.md5(f"{seed}:{item}".encode()).hexdigest(), 16) % self.size]
+                  for seed in range(self.hash_count)
+              )
+    src/trie_index.py: |
+      from typing import Dict, Optional
+
+      class TrieNode:
+          def __init__(self):
+              self.children: Dict[str, 'TrieNode'] = {}
+              self.is_end = False
+
+      class TrieIndex:
+          def __init__(self):
+              self.root = TrieNode()
+
+          def insert(self, word: str) -> None:
+              node = self.root
+              for char in word:
+                  if char not in node.children:
+                      node.children[char] = TrieNode()
+                  node = node.children[char]
+              node.is_end = True
+
+          def search(self, prefix: str) -> bool:
+              node = self.root
+              for char in prefix:
+                  if char not in node.children:
+                      return False
+                  node = node.children[char]
+              return True
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_fibonacci
   selector:
     anchor: from src.special_algorithm import fibonacci_memoized_optimized
-- id: req_global_1
+- id: main_calls_fibonacci
   selector:
     anchor: result = fibonacci_memoized_optimized(10)
-- id: no_global_0
+- id: fibonacci_definition
   selector:
-    anchor: GARBAGE_COMP_005_BIT_ARRAY_SIZE_C
-- id: no_global_1
+    path: src/special_algorithm.py
+    anchor: "def fibonacci_memoized_optimized(n: int, cache: Optional[Dict] = None) -> int:"
+- id: no_bloom_filter
   selector:
-    anchor: GARBAGE_COMP_005_COMPRESSION_E
-- id: no_global_2
+    path: src/bloom_filter.py
+- id: no_trie_index
   selector:
-    anchor: GARBAGE_COMP_005_FALSE_POSITIVE_B
-- id: no_global_3
+    path: src/trie_index.py
+- id: no_bloom_class
   selector:
-    anchor: GARBAGE_COMP_005_HASH_COUNT_A
-- id: no_global_4
+    anchor: BloomFilter
+- id: no_trie_class
   selector:
-    anchor: GARBAGE_COMP_005_NODE_CAPACITY_D
-- id: no_global_5
+    anchor: TrieIndex
+- id: no_might_contain
   selector:
-    anchor: GARBAGE_COMP_005_PREFIX_LENGTH_F
-- id: no_global_6
-  selector:
-    anchor: garbage_bloom_filter.py
-- id: no_global_7
-  selector:
-    anchor: garbage_trie_index.py
+    anchor: might_contain
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_changed
+  - main_imports_fibonacci
+  - main_calls_fibonacci
+  - fibonacci_definition
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_bloom_filter
+  - no_trie_index
+  - no_bloom_class
+  - no_trie_class
+  - no_might_contain

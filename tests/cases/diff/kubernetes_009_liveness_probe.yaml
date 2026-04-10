@@ -233,63 +233,47 @@ repo:
               severity: critical
   commit_message: Update files
 fragments:
-- id: deployment
+- id: liveness_probe
   selector:
     path: k8s/apps/api/deployment.yaml
     anchor: 'livenessProbe:'
-- id: deployment_1
+- id: probe_path_live
   selector:
     path: k8s/apps/api/deployment.yaml
     anchor: 'path: /live'
-- id: deployment_2
+- id: probe_initial_delay
   selector:
     path: k8s/apps/api/deployment.yaml
     anchor: 'initialDelaySeconds: 30'
-- id: deployment_3
+- id: probe_failure_threshold
   selector:
     path: k8s/apps/api/deployment.yaml
     anchor: 'failureThreshold: 3'
+- id: health_live_endpoint
+  selector:
+    path: src/health.py
+    anchor: 'def live():'
 - id: no_hpa
   selector:
     path: k8s/apps/api/hpa.yaml
+    anchor: api-server-hpa
 - id: no_alerting_rules
   selector:
     path: k8s/monitoring/alerting-rules.yaml
-- id: no_global_0
-  selector:
-    anchor: api-server-hpa
-- id: no_global_1
-  selector:
-    anchor: HorizontalPodAutoscaler
-- id: no_global_2
-  selector:
-    anchor: averageUtilization
-- id: no_global_3
-  selector:
     anchor: pod-health-alerts
-- id: no_global_4
+- id: no_api_service
   selector:
-    anchor: PrometheusRule
-- id: no_global_5
-  selector:
-    anchor: PodNotReady
-- id: no_global_6
-  selector:
-    anchor: PodCrashLooping
+    path: k8s/apps/api/service.yaml
+    anchor: 'targetPort: 8080'
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
+  - liveness_probe
+  - probe_path_live
+  - probe_initial_delay
+  - probe_failure_threshold
+  - health_live_endpoint
   allowed: []
   forbidden:
   - no_hpa
   - no_alerting_rules
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_api_service

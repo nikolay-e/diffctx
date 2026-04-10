@@ -31,48 +31,29 @@ repo:
       from myproject import main
       main()
       ```
-    garbage_queue.py: |
-      GARBAGE_CD079_QUEUE_MARKER_A = "queue module"
-      GARBAGE_CD079_BROKER_MARKER_B = True
-
-      class MessageQueue:
-          GARBAGE_CD079_MQ_MARKER_C = "mq"
-
-          def enqueue(self, message: str) -> None:
-              GARBAGE_CD079_ENQUEUE_MARKER_D = "enqueued"
-              pass
-
-          def dequeue(self) -> str:
-              GARBAGE_CD079_DEQUEUE_MARKER_E = "dequeued"
-              return ""
-    garbage_scheduler.py: |
-      GARBAGE_CD079_SCHED_MARKER_F = "scheduler"
-      GARBAGE_CD079_CRON_MARKER_G = 60
-
-      class TaskScheduler:
-          GARBAGE_CD079_TASK_MARKER_H = "task"
-
-          def schedule(self, task_name: str, interval: int) -> None:
-              GARBAGE_CD079_SCHEDULE_MARKER_I = "scheduled"
-              pass
-
-          def cancel(self, task_name: str) -> bool:
-              GARBAGE_CD079_CANCEL_MARKER_J = "cancelled"
-              return True
-  changed_files:
-    .github/workflows/ci.yml: |
-      name: CI
-      on: [push, pull_request]
+    .github/workflows/release.yml: |
+      name: Release
+      on:
+        push:
+          tags:
+            - "v*"
       jobs:
-        test:
+        publish:
           runs-on: ubuntu-latest
           steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-python@v5
               with:
                 python-version: "3.12"
-            - run: pip install -e ".[dev]"
-            - run: pytest
+            - run: pip install build twine
+            - run: python -m build
+            - run: twine upload dist/*
+    src/myproject/__init__.py: |
+      __version__ = "1.0.0"
+
+      def main():
+          print(f"myproject v{__version__}")
+  changed_files:
     .github/ISSUE_TEMPLATE/bug_report.yml: |
       name: Bug Report
       description: File a bug report
@@ -157,101 +138,44 @@ repo:
       ## Contributing
 
       Please use the issue templates when reporting bugs or requesting features.
-    garbage_queue.py: |
-      GARBAGE_CD079_QUEUE_MARKER_A = "queue module"
-      GARBAGE_CD079_BROKER_MARKER_B = True
-
-      class MessageQueue:
-          GARBAGE_CD079_MQ_MARKER_C = "mq"
-
-          def enqueue(self, message: str) -> None:
-              GARBAGE_CD079_ENQUEUE_MARKER_D = "enqueued"
-              pass
-
-          def dequeue(self) -> str:
-              GARBAGE_CD079_DEQUEUE_MARKER_E = "dequeued"
-              return ""
-    garbage_scheduler.py: |
-      GARBAGE_CD079_SCHED_MARKER_F = "scheduler"
-      GARBAGE_CD079_CRON_MARKER_G = 60
-
-      class TaskScheduler:
-          GARBAGE_CD079_TASK_MARKER_H = "task"
-
-          def schedule(self, task_name: str, interval: int) -> None:
-              GARBAGE_CD079_SCHEDULE_MARKER_I = "scheduled"
-              pass
-
-          def cancel(self, task_name: str) -> bool:
-              GARBAGE_CD079_CANCEL_MARKER_J = "cancelled"
-              return True
-  commit_message: Update files
+  commit_message: "Add GitHub issue templates and update README contributing section"
 fragments:
-- id: bug_report_file
+- id: bug_report_template
   selector:
     path: .github/ISSUE_TEMPLATE/bug_report.yml
-- id: feature_request_file
+- id: feature_request_template
   selector:
     path: .github/ISSUE_TEMPLATE/feature_request.yml
-- id: req_global_0
+- id: bug_report_name
   selector:
-    anchor: 'name: Bug Report'
-- id: req_global_1
+    anchor: "name: Bug Report"
+- id: feature_request_name
   selector:
-    anchor: 'name: Feature Request'
-- id: no_global_0
+    anchor: "name: Feature Request"
+- id: config_template
   selector:
-    anchor: GARBAGE_CD079_QUEUE_MARKER_A
-- id: no_global_1
+    path: .github/ISSUE_TEMPLATE/config.yml
+- id: no_ci_workflow
   selector:
-    anchor: GARBAGE_CD079_BROKER_MARKER_B
-- id: no_global_2
+    path: .github/workflows/ci.yml
+    anchor: "name: CI"
+- id: no_release_workflow
   selector:
-    anchor: GARBAGE_CD079_MQ_MARKER_C
-- id: no_global_3
+    path: .github/workflows/release.yml
+    anchor: "name: Release"
+- id: no_init_module
   selector:
-    anchor: GARBAGE_CD079_ENQUEUE_MARKER_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CD079_DEQUEUE_MARKER_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CD079_SCHED_MARKER_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_CD079_CRON_MARKER_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_CD079_TASK_MARKER_H
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CD079_SCHEDULE_MARKER_I
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CD079_CANCEL_MARKER_J
-- id: no_global_10
-  selector:
-    anchor: garbage_queue.py
-- id: no_global_11
-  selector:
-    anchor: garbage_scheduler.py
+    path: src/myproject/__init__.py
+    anchor: __version__
 oracle:
   required:
-  - bug_report_file
-  - feature_request_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - bug_report_template
+  - feature_request_template
+  - bug_report_name
+  - feature_request_name
+  allowed:
+  - config_template
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
+  - no_ci_workflow
+  - no_release_workflow
+  - no_init_module

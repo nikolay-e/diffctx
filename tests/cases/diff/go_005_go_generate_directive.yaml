@@ -69,29 +69,56 @@ repo:
           }
           return user, nil
       }
-    internal/unrelated/codegen/protobuf.go: |
-      package codegen
+    cmd/api/handler.go: |
+      package api
 
-      const GARBAGE_GO_CODEGEN_PROTO_001 = "codegen_garbage"
+      import (
+          "context"
+          "mymodule/internal/service"
+      )
 
-      type GARBAGE_GO_TYPE_PROTO_002 struct {
-          protoPath string
+      type UserHandler struct {
+          svc service.UserService
       }
 
-      func GARBAGE_GO_FUNC_PROTO_003() string {
-          return "GARBAGE_GO_PROTO_UNUSED_004"
-      }
-    internal/unrelated/codegen/swagger.go: |
-      package codegen
-
-      const GARBAGE_GO_CODEGEN_SWAGGER_005 = "swagger_garbage"
-
-      type GARBAGE_GO_TYPE_SWAGGER_006 struct {
-          specPath string
+      func NewUserHandler(svc service.UserService) *UserHandler {
+          return &UserHandler{svc: svc}
       }
 
-      func GARBAGE_GO_FUNC_SWAGGER_007() {
-          println("GARBAGE_GO_SWAGGER_OUTPUT_008")
+      func (h *UserHandler) HandleGetUser(ctx context.Context, id int64) (*service.User, error) {
+          return h.svc.GetUser(ctx, id)
+      }
+
+      func (h *UserHandler) HandleCreateUser(ctx context.Context, name, email string) (*service.User, error) {
+          return h.svc.CreateUser(ctx, &service.CreateUserRequest{Name: name, Email: email})
+      }
+    internal/middleware/ratelimit.go: |
+      package middleware
+
+      import (
+          "sync"
+          "time"
+      )
+
+      type RateLimiter struct {
+          mu       sync.Mutex
+          tokens   int
+          maxRate  int
+          interval time.Duration
+      }
+
+      func NewRateLimiter(maxRate int, interval time.Duration) *RateLimiter {
+          return &RateLimiter{tokens: maxRate, maxRate: maxRate, interval: interval}
+      }
+
+      func (rl *RateLimiter) Allow() bool {
+          rl.mu.Lock()
+          defer rl.mu.Unlock()
+          if rl.tokens > 0 {
+              rl.tokens--
+              return true
+          }
+          return false
       }
   changed_files:
     internal/service/generate.go: |
@@ -198,77 +225,96 @@ repo:
           }
           return user, nil
       }
-    internal/unrelated/codegen/protobuf.go: |
-      package codegen
+    cmd/api/handler.go: |
+      package api
 
-      const GARBAGE_GO_CODEGEN_PROTO_001 = "codegen_garbage"
+      import (
+          "context"
+          "mymodule/internal/service"
+      )
 
-      type GARBAGE_GO_TYPE_PROTO_002 struct {
-          protoPath string
+      type UserHandler struct {
+          svc service.UserService
       }
 
-      func GARBAGE_GO_FUNC_PROTO_003() string {
-          return "GARBAGE_GO_PROTO_UNUSED_004"
-      }
-    internal/unrelated/codegen/swagger.go: |
-      package codegen
-
-      const GARBAGE_GO_CODEGEN_SWAGGER_005 = "swagger_garbage"
-
-      type GARBAGE_GO_TYPE_SWAGGER_006 struct {
-          specPath string
+      func NewUserHandler(svc service.UserService) *UserHandler {
+          return &UserHandler{svc: svc}
       }
 
-      func GARBAGE_GO_FUNC_SWAGGER_007() {
-          println("GARBAGE_GO_SWAGGER_OUTPUT_008")
+      func (h *UserHandler) HandleGetUser(ctx context.Context, id int64) (*service.User, error) {
+          return h.svc.GetUser(ctx, id)
       }
-  commit_message: Update files
+
+      func (h *UserHandler) HandleCreateUser(ctx context.Context, name, email string) (*service.User, error) {
+          return h.svc.CreateUser(ctx, &service.CreateUserRequest{Name: name, Email: email})
+      }
+    internal/middleware/ratelimit.go: |
+      package middleware
+
+      import (
+          "sync"
+          "time"
+      )
+
+      type RateLimiter struct {
+          mu       sync.Mutex
+          tokens   int
+          maxRate  int
+          interval time.Duration
+      }
+
+      func NewRateLimiter(maxRate int, interval time.Duration) *RateLimiter {
+          return &RateLimiter{tokens: maxRate, maxRate: maxRate, interval: interval}
+      }
+
+      func (rl *RateLimiter) Allow() bool {
+          rl.mu.Lock()
+          defer rl.mu.Unlock()
+          if rl.tokens > 0 {
+              rl.tokens--
+              return true
+          }
+          return false
+      }
+  commit_message: "feat(service): expand UserService interface with CRUD and listing"
 fragments:
-- id: interfaces_file
+- id: changed_interfaces
   selector:
     path: internal/service/interfaces.go
-- id: req_global_0
+- id: new_get_by_email_method
   selector:
     anchor: GetUserByEmail(ctx context.Context, email string) (*User, error)
-- id: req_global_1
+- id: new_list_options_type
   selector:
     anchor: type ListOptions struct {
-- id: no_global_0
+- id: generate_directive_mockgen
   selector:
-    anchor: GARBAGE_GO_CODEGEN_PROTO_001
-- id: no_global_1
+    anchor: "//go:generate mockgen -source=interfaces.go"
+- id: impl_user_service
   selector:
-    anchor: GARBAGE_GO_CODEGEN_SWAGGER_005
-- id: no_global_2
+    anchor: func NewUserService(repo UserRepository) UserService {
+- id: handler_consumes_interface
   selector:
-    anchor: GARBAGE_GO_FUNC_PROTO_003
-- id: no_global_3
+    anchor: "svc service.UserService"
+- id: handler_calls_create
   selector:
-    anchor: GARBAGE_GO_FUNC_SWAGGER_007
-- id: no_global_4
+    anchor: "return h.svc.CreateUser(ctx, &service.CreateUserRequest{Name: name, Email: email})"
+- id: unrelated_ratelimiter
   selector:
-    anchor: GARBAGE_GO_TYPE_PROTO_002
-- id: no_global_5
+    anchor: func (rl *RateLimiter) Allow() bool {
+- id: unrelated_ratelimit_file
   selector:
-    anchor: GARBAGE_GO_TYPE_SWAGGER_006
-- id: no_global_6
-  selector:
-    anchor: protobuf.go
-- id: no_global_7
-  selector:
-    anchor: swagger.go
+    anchor: ratelimit.go
 oracle:
   required:
-  - interfaces_file
-  - req_global_0
-  - req_global_1
+  - changed_interfaces
+  - new_get_by_email_method
+  - new_list_options_type
+  - generate_directive_mockgen
+  - impl_user_service
+  - handler_consumes_interface
+  - handler_calls_create
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_ratelimiter
+  - unrelated_ratelimit_file

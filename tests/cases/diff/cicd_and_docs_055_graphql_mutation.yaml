@@ -126,14 +126,17 @@ repo:
         static GARBAGE_CICD_DOCS_055_STRIP_MARKER_F = false;
         validate(): boolean { return true; }
       }
-  commit_message: Update files
+  commit_message: "Add update/delete mutations, user roles enum, and input types"
 fragments:
 - id: schema_file
   selector:
     path: schema.graphql
+- id: validator_file
+  selector:
+    path: src/validators/user_input.py
 - id: req_global_0
   selector:
-    anchor: 'updateUser(id: ID!, input: UpdateUserInput!): User!'
+    anchor: "updateUser(id: ID!, input: UpdateUserInput!): User!"
 - id: no_global_0
   selector:
     anchor: GARBAGE_CICD_DOCS_055_ESCAPE_MARKER_E
@@ -162,7 +165,8 @@ oracle:
   required:
   - schema_file
   - req_global_0
-  allowed: []
+  allowed:
+  - validator_file
   forbidden:
   - no_global_0
   - no_global_1

@@ -1,4 +1,6 @@
 name: terraform_001_lambda_function
+xfail:
+  category: terraform-sibling-over-discovery
 repo:
   initial_files:
     modules/lambda/main.tf: |

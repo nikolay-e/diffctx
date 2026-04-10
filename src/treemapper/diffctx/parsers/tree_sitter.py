@@ -109,11 +109,14 @@ class TreeSitterStrategy:
     priority = 100
 
     def __init__(self) -> None:
-        self._parsers: dict[str, Parser] = {}
+        self._parsers: dict[str, Parser | None] = {}
 
     def _get_parser(self, lang: str) -> Parser:
+        cached = self._parsers.get(lang)
+        if cached is not None:
+            return cached
         if lang in self._parsers:
-            return self._parsers[lang]
+            raise ValueError(f"Grammar unavailable for language: {lang}")
 
         if lang not in _LANG_MODULES:
             raise ValueError(f"Unsupported language: {lang}")
@@ -121,7 +124,11 @@ class TreeSitterStrategy:
         import importlib
 
         module_name = _LANG_MODULES[lang]
-        ts_lang_module = importlib.import_module(module_name)
+        try:
+            ts_lang_module = importlib.import_module(module_name)
+        except ImportError:
+            self._parsers[lang] = None
+            raise ValueError(f"Grammar unavailable for language: {lang}")
 
         if lang == "tsx":
             ts_lang = ts_lang_module.language_tsx()

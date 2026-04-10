@@ -162,15 +162,47 @@ repo:
       POST /api/v1/payments
   commit_message: Update files
 fragments:
-- id: values_file
+- id: values_service_type
   selector:
     path: chart/values.yaml
-- id: req_global_0
-  selector:
     anchor: 'type: LoadBalancer'
+- id: values_service_port
+  selector:
+    path: chart/values.yaml
+    anchor: 'port: 443'
+- id: values_lb_annotation
+  selector:
+    path: chart/values.yaml
+    anchor: aws-load-balancer-type
+- id: service_template_uses_type
+  selector:
+    path: chart/templates/service.yaml
+    anchor: .Values.service.type
+- id: service_template_uses_port
+  selector:
+    path: chart/templates/service.yaml
+    anchor: .Values.service.port
+- id: no_backup_cronjob
+  selector:
+    path: chart/templates/backup-cronjob.yaml
+    anchor: backup-tool
+- id: no_api_spec
+  selector:
+    path: chart/docs/api-spec.md
+    anchor: Payment API
+- id: no_deployment_template
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.replicaCount
 oracle:
   required:
-  - values_file
-  - req_global_0
+  - values_service_type
+  - values_service_port
+  - values_lb_annotation
+  - service_template_uses_type
+  - service_template_uses_port
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_backup_cronjob
+  - no_api_spec
+  - no_deployment_template

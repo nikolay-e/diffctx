@@ -41,7 +41,7 @@ class CochangeEdgeBuilder(EdgeBuilder):
     def _get_git_log_files(self, repo_root: Path) -> list[list[str]] | None:
         try:
             result = subprocess.run(
-                ["git", "-C", str(repo_root), "log", "--name-only", "--format=", f"-n{COCHANGE.commits_limit}"],
+                ["git", "-C", str(repo_root), "log", "--name-only", "--pretty=format:", f"-n{COCHANGE.commits_limit}"],
                 capture_output=True,
                 encoding="utf-8",
                 errors="replace",

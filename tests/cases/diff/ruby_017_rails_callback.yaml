@@ -232,44 +232,50 @@ fragments:
 - id: user_file
   selector:
     path: app/models/user.rb
-- id: req_global_0
+- id: user_registers_callbacks
   selector:
     anchor: before_save :normalize_email, :set_updated_at
+- id: callbacks_before_save_method
+  selector:
+    path: lib/callbacks.rb
+    anchor: def before_save(*methods)
+- id: callbacks_after_save_method
+  selector:
+    path: lib/callbacks.rb
+    anchor: def after_save(*methods)
+- id: callbacks_run_before
+  selector:
+    path: lib/callbacks.rb
+    anchor: def run_before_callbacks
+- id: callbacks_class_methods_module
+  selector:
+    path: lib/callbacks.rb
+    anchor: module ClassMethods
 - id: no_event_bus
   selector:
     path: lib/event_bus.rb
+    anchor: class EventBus
 - id: no_validator
   selector:
     path: lib/validator.rb
-- id: no_global_0
-  selector:
-    anchor: EventBus
-- id: no_global_1
-  selector:
-    anchor: ValidationPipeline
-- id: no_global_2
+    anchor: class ValidationPipeline
+- id: no_subscriber_count
   selector:
     anchor: subscriber_count
-- id: no_global_3
+- id: no_rule_count
   selector:
     anchor: rule_count
-- id: no_global_4
-  selector:
-    anchor: event_bus.rb
-- id: no_global_5
-  selector:
-    anchor: validator.rb
 oracle:
   required:
   - user_file
-  - req_global_0
+  - user_registers_callbacks
+  - callbacks_before_save_method
+  - callbacks_after_save_method
+  - callbacks_run_before
+  - callbacks_class_methods_module
   allowed: []
   forbidden:
   - no_event_bus
   - no_validator
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_subscriber_count
+  - no_rule_count

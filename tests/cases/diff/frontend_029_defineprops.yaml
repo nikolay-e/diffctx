@@ -83,7 +83,7 @@ repo:
           items: CardItem[];
       }>();
       </script>
-  commit_message: Update files
+  commit_message: "Implement Card and CardGrid components with typed defineProps"
 fragments:
 - id: card_file
   selector:
@@ -91,17 +91,30 @@ fragments:
 - id: cardgrid_file
   selector:
     path: CardGrid.vue
+- id: types_file
+  selector:
+    path: types.ts
+    anchor: interface CardProps
 - id: req_global_0
   selector:
     anchor: <div class="card">
 - id: req_global_1
   selector:
     anchor: <div class="card-grid">
+- id: req_global_2
+  selector:
+    anchor: defineProps<CardProps>()
+- id: no_garbage_marker
+  selector:
+    anchor: vue_garbage_marker_004
 oracle:
   required:
   - card_file
   - cardgrid_file
   - req_global_0
   - req_global_1
-  allowed: []
-  forbidden: []
+  - req_global_2
+  allowed:
+  - types_file
+  forbidden:
+  - no_garbage_marker

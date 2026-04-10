@@ -25,19 +25,27 @@ repo:
       def format_output(value: float) -> str:
           return f"Result: {value:.2f}"
     math/geometry.py: |
-      GARBAGE_DEP_020_GEOM_CALC_A = "geometry_module"
-      GARBAGE_DEP_020_GEOM_AREA_B = True
+      import math
 
-      def calculate(x: float, y: float) -> float:
-          GARBAGE_DEP_020_GEOM_BODY_C = "area_calc"
-          return x * y
+      def calculate_area(width: float, height: float) -> float:
+          return width * height
+
+      def calculate_perimeter(width: float, height: float) -> float:
+          return 2 * (width + height)
+
+      def calculate_diagonal(width: float, height: float) -> float:
+          return math.sqrt(width ** 2 + height ** 2)
     core/transformer.py: |
-      GARBAGE_DEP_020_TRANSFORM_MOD_G = "core_sibling"
-      GARBAGE_DEP_020_TRANSFORM_TYPE_H = "numeric"
+      from typing import List
 
       def transform(x: float) -> float:
-          GARBAGE_DEP_020_TRANSFORM_BODY_I = True
           return x * 2
+
+      def batch_transform(values: List[float]) -> List[float]:
+          return [transform(v) for v in values]
+
+      def inverse_transform(x: float) -> float:
+          return x / 2
   changed_files:
     core/calculator.py: |
       def calculate(x: float, precision: int = 2) -> float:
@@ -64,29 +72,49 @@ repo:
       def format_output(value: float) -> str:
           return f"Result: {value:.2f}"
     math/geometry.py: |
-      GARBAGE_DEP_020_GEOM_CALC_A = "geometry_module"
-      GARBAGE_DEP_020_GEOM_AREA_B = True
+      import math
 
-      def calculate(x: float, y: float) -> float:
-          GARBAGE_DEP_020_GEOM_BODY_C = "area_calc"
-          return x * y
+      def calculate_area(width: float, height: float) -> float:
+          return width * height
+
+      def calculate_perimeter(width: float, height: float) -> float:
+          return 2 * (width + height)
+
+      def calculate_diagonal(width: float, height: float) -> float:
+          return math.sqrt(width ** 2 + height ** 2)
     core/transformer.py: |
-      GARBAGE_DEP_020_TRANSFORM_MOD_G = "core_sibling"
-      GARBAGE_DEP_020_TRANSFORM_TYPE_H = "numeric"
+      from typing import List
 
       def transform(x: float) -> float:
-          GARBAGE_DEP_020_TRANSFORM_BODY_I = True
           return x * 2
+
+      def batch_transform(values: List[float]) -> List[float]:
+          return [transform(v) for v in values]
+
+      def inverse_transform(x: float) -> float:
+          return x / 2
   commit_message: Update files
 fragments:
-- id: calculator
+- id: calculator_signature_changed
   selector:
     path: core/calculator.py
-    anchor: 'def calculate(x: float, precision: int = 2) -> float:'
-- id: calculator_1
+    anchor: "def calculate(x: float, precision: int = 2) -> float:"
+- id: calculator_rounds_result
   selector:
     path: core/calculator.py
     anchor: round(result, precision)
+- id: billing_calls_calculate
+  selector:
+    path: services/billing.py
+    anchor: base = calculate(amount)
+- id: pricing_calls_calculate
+  selector:
+    path: services/pricing.py
+    anchor: return calculate(value) * 1.1
+- id: endpoints_calls_calculate
+  selector:
+    path: api/endpoints.py
+    anchor: result = calculate(data["value"])
 - id: no_geometry
   selector:
     path: math/geometry.py
@@ -96,36 +124,27 @@ fragments:
 - id: no_helpers
   selector:
     path: utils/helpers.py
-- id: no_global_0
+- id: no_calculate_area
   selector:
-    anchor: GARBAGE_DEP_020_GEOM_CALC_A
-- id: no_global_1
+    anchor: calculate_area
+- id: no_batch_transform
   selector:
-    anchor: GARBAGE_DEP_020_GEOM_AREA_B
-- id: no_global_2
+    anchor: batch_transform
+- id: no_format_output
   selector:
-    anchor: GARBAGE_DEP_020_GEOM_BODY_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP_020_TRANSFORM_MOD_G
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP_020_TRANSFORM_TYPE_H
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP_020_TRANSFORM_BODY_I
+    anchor: format_output
 oracle:
   required:
-  - calculator
-  - calculator_1
+  - calculator_signature_changed
+  - calculator_rounds_result
+  - billing_calls_calculate
+  - pricing_calls_calculate
+  - endpoints_calls_calculate
   allowed: []
   forbidden:
   - no_geometry
   - no_transformer
   - no_helpers
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_calculate_area
+  - no_batch_transform
+  - no_format_output

@@ -16,7 +16,8 @@ _JVM_EXTS = _JAVA_EXTS | _KOTLIN_EXTS | _SCALA_EXTS
 _JAVA_IMPORT_RE = re.compile(r"^\s*import\s+(?:static\s+)?([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*)?)", re.MULTILINE)
 _JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)", re.MULTILINE)
 _JAVA_CLASS_RE = re.compile(
-    r"^\s*(?:public |private |protected )?(?:abstract |final )?(?:class|interface|enum|record)\s+([A-Z]\w*)", re.MULTILINE
+    r"^\s*(?:(?:public|private|protected|static|abstract|final|sealed|non-sealed|strictfp)\s+)*(?:class|interface|enum|record)\s+([A-Z]\w*)",
+    re.MULTILINE,
 )
 _JAVA_EXTENDS_RE = re.compile(r"\bextends\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 _JAVA_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
@@ -43,6 +44,76 @@ _KOTLIN_DECL_RE = re.compile(r"(?:class|interface|object)\s+\w+")
 _SCALA_WITH_RE = re.compile(r"\bwith\s+([A-Z]\w*)")
 
 _ANNOTATION_RE = re.compile(r"@([A-Z]\w*)")
+
+_JVM_STDLIB_TYPES: frozenset[str] = frozenset(
+    {
+        "String",
+        "Integer",
+        "Long",
+        "Double",
+        "Float",
+        "Boolean",
+        "Byte",
+        "Short",
+        "Character",
+        "Object",
+        "Class",
+        "System",
+        "Math",
+        "Collections",
+        "Arrays",
+        "Optional",
+        "HashMap",
+        "ArrayList",
+        "LinkedList",
+        "Iterator",
+        "Iterable",
+        "Comparable",
+        "Runnable",
+        "Thread",
+        "Exception",
+        "RuntimeException",
+        "IllegalArgumentException",
+        "IllegalStateException",
+        "NullPointerException",
+        "IndexOutOfBoundsException",
+        "IOException",
+        "InputStream",
+        "OutputStream",
+        "StringBuilder",
+        "StringBuffer",
+        "Number",
+        "Enum",
+        "Void",
+        "Override",
+        "Unit",
+        "Any",
+        "AnyVal",
+        "AnyRef",
+        "Nothing",
+        "Option",
+        "Some",
+        "Either",
+        "Left",
+        "Right",
+        "Try",
+        "Success",
+        "Failure",
+        "Future",
+        "Promise",
+        "Seq",
+        "Vector",
+        "Map",
+        "Set",
+        "Tuple",
+        "Function",
+        "Product",
+        "Serializable",
+        "Pair",
+        "Triple",
+        "Sequence",
+    }
+)
 
 
 def _is_jvm_file(path: Path) -> bool:
@@ -262,17 +333,28 @@ class JVMEdgeBuilder(EdgeBuilder):
         class_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        ref_weights = [
-            (_extract_inheritance(jf.content, jf.path), self.inheritance_weight),
-            (_extract_type_refs(jf.content), self.type_weight),
-            (_extract_annotations(jf.content), self.annotation_weight),
-        ]
+        self._link_inheritance_refs(jf, class_to_frags, edges)
+        self._link_type_refs(jf, class_to_frags, edges)
+        self._link_annotation_refs(jf, class_to_frags, edges)
 
-        for refs, weight in ref_weights:
-            for ref in refs:
-                for fid in class_to_frags.get(ref.lower(), []):
+    def _link_inheritance_refs(self, jf: Fragment, class_to_frags: dict[str, list[FragmentId]], edges: EdgeDict) -> None:
+        for inh_ref in _extract_inheritance(jf.content, jf.path):
+            for fid in class_to_frags.get(inh_ref.lower(), []):
+                if fid != jf.id:
+                    self.add_edge(edges, jf.id, fid, self.inheritance_weight)
+
+    def _link_type_refs(self, jf: Fragment, class_to_frags: dict[str, list[FragmentId]], edges: EdgeDict) -> None:
+        for type_ref in _extract_type_refs(jf.content):
+            if type_ref not in _JVM_STDLIB_TYPES:
+                for fid in class_to_frags.get(type_ref.lower(), []):
                     if fid != jf.id:
-                        self.add_edge(edges, jf.id, fid, weight)
+                        self.add_edge(edges, jf.id, fid, self.type_weight)
+
+    def _link_annotation_refs(self, jf: Fragment, class_to_frags: dict[str, list[FragmentId]], edges: EdgeDict) -> None:
+        for ann_ref in _extract_annotations(jf.content):
+            for fid in class_to_frags.get(ann_ref.lower(), []):
+                if fid != jf.id:
+                    self.add_edge(edges, jf.id, fid, self.annotation_weight)
 
     def _link_same_package(
         self,

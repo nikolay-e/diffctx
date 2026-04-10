@@ -57,29 +57,27 @@ repo:
           defer cancel()
           return h.processor.Process(ctx, data)
       }
-    internal/unrelated/lifecycle/manager.go: |
-      package lifecycle
+    internal/handler/health_handler.go: |
+      package handler
 
-      const GARBAGE_GO_LIFECYCLE_MGR_001 = "lifecycle_garbage"
+      import (
+          "encoding/json"
+          "net/http"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_LIFECYCLE_002 struct {
-          state string
+      type HealthStatus struct {
+          Status    string    `json:"status"`
+          Timestamp time.Time `json:"timestamp"`
       }
 
-      func GARBAGE_GO_FUNC_LIFECYCLE_003() string {
-          return "GARBAGE_GO_LIFECYCLE_UNUSED_004"
-      }
-    internal/unrelated/lifecycle/hooks.go: |
-      package lifecycle
-
-      const GARBAGE_GO_LIFECYCLE_HOOKS_005 = "hooks_garbage"
-
-      type GARBAGE_GO_TYPE_HOOKS_006 struct {
-          callbacks []func()
-      }
-
-      func GARBAGE_GO_FUNC_HOOKS_007() {
-          println("GARBAGE_GO_HOOKS_OUTPUT_008")
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          status := HealthStatus{
+              Status:    "ok",
+              Timestamp: time.Now(),
+          }
+          w.Header().Set("Content-Type", "application/json")
+          json.NewEncoder(w).Encode(status)
       }
   changed_files:
     internal/service/processor.go: |
@@ -235,77 +233,61 @@ repo:
           defer cancel()
           return h.processor.Process(ctx, data)
       }
-    internal/unrelated/lifecycle/manager.go: |
-      package lifecycle
+    internal/handler/health_handler.go: |
+      package handler
 
-      const GARBAGE_GO_LIFECYCLE_MGR_001 = "lifecycle_garbage"
+      import (
+          "encoding/json"
+          "net/http"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_LIFECYCLE_002 struct {
-          state string
+      type HealthStatus struct {
+          Status    string    `json:"status"`
+          Timestamp time.Time `json:"timestamp"`
       }
 
-      func GARBAGE_GO_FUNC_LIFECYCLE_003() string {
-          return "GARBAGE_GO_LIFECYCLE_UNUSED_004"
-      }
-    internal/unrelated/lifecycle/hooks.go: |
-      package lifecycle
-
-      const GARBAGE_GO_LIFECYCLE_HOOKS_005 = "hooks_garbage"
-
-      type GARBAGE_GO_TYPE_HOOKS_006 struct {
-          callbacks []func()
-      }
-
-      func GARBAGE_GO_FUNC_HOOKS_007() {
-          println("GARBAGE_GO_HOOKS_OUTPUT_008")
+      func HealthCheck(w http.ResponseWriter, r *http.Request) {
+          status := HealthStatus{
+              Status:    "ok",
+              Timestamp: time.Now(),
+          }
+          w.Header().Set("Content-Type", "application/json")
+          json.NewEncoder(w).Encode(status)
       }
   commit_message: Update files
 fragments:
 - id: processor_file
   selector:
     path: internal/service/processor.go
-- id: req_global_0
+- id: processor_timeout_sentinel
   selector:
     anchor: ErrProcessingTimeout = errors.New("processing timeout")
-- id: req_global_1
+- id: processor_config_retry_delay
   selector:
     anchor: Timeout       time.Duration
-- id: no_global_0
+- id: caller_new_request_handler
   selector:
-    anchor: GARBAGE_GO_FUNC_HOOKS_007
-- id: no_global_1
+    path: internal/handler/request_handler.go
+    anchor: func NewRequestHandler(processor *service.Processor) *RequestHandler {
+- id: caller_invokes_process
   selector:
-    anchor: GARBAGE_GO_FUNC_LIFECYCLE_003
-- id: no_global_2
+    anchor: return h.processor.Process(ctx, data)
+- id: no_health_handler
   selector:
-    anchor: GARBAGE_GO_LIFECYCLE_HOOKS_005
-- id: no_global_3
+    path: internal/handler/health_handler.go
+    anchor: func HealthCheck(w http.ResponseWriter, r *http.Request) {
+- id: no_health_status_struct
   selector:
-    anchor: GARBAGE_GO_LIFECYCLE_MGR_001
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_GO_TYPE_HOOKS_006
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_LIFECYCLE_002
-- id: no_global_6
-  selector:
-    anchor: hooks.go
-- id: no_global_7
-  selector:
-    anchor: manager.go
+    anchor: type HealthStatus struct {
 oracle:
   required:
   - processor_file
-  - req_global_0
-  - req_global_1
+  - processor_timeout_sentinel
+  - processor_config_retry_delay
+  - caller_new_request_handler
+  - caller_invokes_process
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_health_handler
+  - no_health_status_struct

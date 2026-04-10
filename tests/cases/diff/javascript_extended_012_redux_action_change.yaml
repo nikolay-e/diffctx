@@ -125,36 +125,46 @@ fragments:
 - id: actions_file
   selector:
     path: src/store/actions.ts
-- id: req_global_0
+- id: increment_action_type
   selector:
     anchor: INCREMENT = 'INCREMENT'
-- id: req_global_1
+- id: decrement_action_type
   selector:
     anchor: DECREMENT = 'DECREMENT'
-- id: no_global_0
+- id: reducer_switch
   selector:
+    path: src/store/reducer.ts
+    anchor: "switch (action.type)"
+- id: reducer_imports
+  selector:
+    path: src/store/reducer.ts
+    anchor: import { INCREMENT, DECREMENT } from './actions'
+- id: no_selectors_select_count
+  selector:
+    path: src/store/selectors.ts
     anchor: selectCount
-- id: no_global_1
+- id: no_selectors_display
   selector:
-    anchor: selectIsPositive
-- id: no_global_2
-  selector:
+    path: src/store/selectors.ts
     anchor: selectCountDisplay
-- id: no_global_3
+- id: no_logger_middleware
   selector:
+    path: src/store/middleware.ts
     anchor: loggerMiddleware
-- id: no_global_4
+- id: no_crash_reporter
   selector:
+    path: src/store/middleware.ts
     anchor: crashReporter
 oracle:
   required:
   - actions_file
-  - req_global_0
-  - req_global_1
+  - increment_action_type
+  - decrement_action_type
+  - reducer_switch
+  - reducer_imports
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
+  - no_selectors_select_count
+  - no_selectors_display
+  - no_logger_middleware
+  - no_crash_reporter

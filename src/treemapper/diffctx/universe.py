@@ -19,11 +19,8 @@ logger = logging.getLogger(__name__)
 from . import git as _git  # noqa: E402
 
 _RARE_THRESHOLD = LIMITS.rare_identifier_threshold
-_MAX_EXPANSION_FILES = LIMITS.max_expansion_files
 _FALLBACK_MAX_FILES = 10_000
-_MAX_DISCOVERED_FILES = LIMITS.max_discovered_files
 _MAX_FILE_SIZE = LIMITS.max_file_size
-_MAX_CANDIDATE_FILES = LIMITS.max_candidate_files
 _MIN_CONCEPT_LENGTH = 4
 
 _BUILD_SYSTEM_NAMES = frozenset(
@@ -106,36 +103,7 @@ def _is_candidate_file(file_path: Path, root_dir: Path, included_set: set[Path],
     return True
 
 
-def _prioritize_candidates(
-    candidates: list[Path],
-    changed_files: set[Path],
-) -> list[Path]:
-    changed_dirs: set[Path] = set()
-    changed_extensions: set[str] = set()
-    for f in changed_files:
-        changed_dirs.add(f.parent)
-        if f.parent.parent != f.parent:
-            changed_dirs.add(f.parent.parent)
-        if f.suffix:
-            changed_extensions.add(f.suffix.lower())
-
-    priority: list[Path] = []
-    rest: list[Path] = []
-    for c in candidates:
-        if c.parent in changed_dirs or c.suffix.lower() in changed_extensions:
-            priority.append(c)
-        else:
-            rest.append(c)
-
-    budget = _MAX_CANDIDATE_FILES - len(priority)
-    if budget > 0:
-        priority.extend(rest[:budget])
-    return priority[:_MAX_CANDIDATE_FILES]
-
-
-def _collect_candidate_files(
-    root_dir: Path, included_set: set[Path], combined_spec: pathspec.PathSpec
-) -> tuple[list[Path], bool]:
+def _collect_candidate_files(root_dir: Path, included_set: set[Path], combined_spec: pathspec.PathSpec) -> list[Path]:
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z"],
@@ -147,16 +115,7 @@ def _collect_candidate_files(
         if result.returncode == 0 and result.stdout:
             out = result.stdout.decode("utf-8", errors="surrogateescape")
             files = [root_dir / f for f in out.split("\0") if f]
-            candidates = [f for f in files if _is_candidate_file(f, root_dir, included_set, combined_spec)]
-            is_large_repo = len(candidates) > _MAX_CANDIDATE_FILES
-            if is_large_repo:
-                logger.debug(
-                    "diffctx: %d candidates exceed cap %d, prioritizing by proximity",
-                    len(candidates),
-                    _MAX_CANDIDATE_FILES,
-                )
-                candidates = _prioritize_candidates(candidates, included_set)
-            return candidates, is_large_repo
+            return [f for f in files if _is_candidate_file(f, root_dir, included_set, combined_spec)]
     except (subprocess.SubprocessError, OSError):
         pass
     logger.warning("diffctx: git ls-files failed, falling back to rglob (limit %d files)", _FALLBACK_MAX_FILES)
@@ -167,39 +126,15 @@ def _collect_candidate_files(
             break
         if _is_candidate_file(f, root_dir, included_set, combined_spec):
             fallback.append(f)
-    return fallback, False
-
-
-def _path_distance(a: Path, b: Path) -> int:
-    a_parts = a.parent.parts
-    b_parts = b.parent.parts
-    common = 0
-    for x, y in zip(a_parts, b_parts):
-        if x != y:
-            break
-        common += 1
-    return (len(a_parts) - common) + (len(b_parts) - common)
+    return fallback
 
 
 def _build_ident_index(
     files: list[Path],
     concepts: frozenset[str],
-    changed_files: list[Path] | None = None,
 ) -> dict[str, list[Path]]:
-    if changed_files:
-        changed_dirs = {f.parent for f in changed_files}
-
-        def sort_key(p: Path) -> tuple[int, int, str]:
-            in_same_dir = 0 if p.parent in changed_dirs else 1
-            min_dist = min((_path_distance(p, cf) for cf in changed_files), default=0)
-            return (in_same_dir, min_dist, str(p))
-
-        prioritized = sorted(files, key=sort_key)[:2000]
-    else:
-        prioritized = sorted(files)[:2000]
-
     inverted_index: dict[str, list[Path]] = defaultdict(list)
-    for file_path in prioritized:
+    for file_path in files:
         try:
             content = file_path.read_text(encoding="utf-8")
             file_idents = extract_identifiers(content, skip_stopwords=False)
@@ -221,10 +156,18 @@ def _is_build_or_manifest(path: Path) -> bool:
 
 
 def _collect_expansion_files(
-    inverted_index: dict[str, list[Path]], concepts: frozenset[str], included_set: set[Path]
+    inverted_index: dict[str, list[Path]],
+    concepts: frozenset[str],
+    included_set: set[Path],
+    included_concept_counts: dict[str, int] | None = None,
 ) -> list[Path]:
+    extra = included_concept_counts or {}
     rare_concepts = [
-        c for c in concepts if len(c) >= _MIN_CONCEPT_LENGTH and 0 < len(inverted_index.get(c, [])) <= _RARE_THRESHOLD
+        c
+        for c in concepts
+        if len(c) >= _MIN_CONCEPT_LENGTH
+        and 0 < len(inverted_index.get(c, []))
+        and len(inverted_index.get(c, [])) + extra.get(c, 0) <= _RARE_THRESHOLD
     ]
     expansion_files: set[Path] = set()
 
@@ -232,8 +175,6 @@ def _collect_expansion_files(
         for file_path in inverted_index.get(concept, []):
             if file_path not in included_set and not _is_build_or_manifest(file_path):
                 expansion_files.add(file_path)
-                if len(expansion_files) >= _MAX_EXPANSION_FILES:
-                    return list(expansion_files)
 
     return list(expansion_files)
 
@@ -278,7 +219,6 @@ def _expand_universe_by_rare_identifiers(
     already_included: list[Path],
     combined_spec: pathspec.PathSpec,
     candidate_files: list[Path] | None = None,
-    changed_files: list[Path] | None = None,
 ) -> list[Path]:
     if not concepts:
         return []
@@ -287,9 +227,20 @@ def _expand_universe_by_rare_identifiers(
     if candidate_files is not None:
         files = [f for f in candidate_files if f not in included_set]
     else:
-        files, _ = _collect_candidate_files(root_dir, included_set, combined_spec)
-    inverted_index = _build_ident_index(files, concepts, changed_files=changed_files)
-    return _collect_expansion_files(inverted_index, concepts, included_set)
+        files = _collect_candidate_files(root_dir, included_set, combined_spec)
+    inverted_index = _build_ident_index(files, concepts)
+
+    included_concept_counts: dict[str, int] = {}
+    for f in already_included:
+        try:
+            content = f.read_text(encoding="utf-8")
+            for ident in extract_identifiers(content, skip_stopwords=False):
+                if ident in concepts:
+                    included_concept_counts[ident] = included_concept_counts.get(ident, 0) + 1
+        except (OSError, UnicodeDecodeError):
+            continue
+
+    return _collect_expansion_files(inverted_index, concepts, included_set, included_concept_counts)
 
 
 def _resolve_changed_files(

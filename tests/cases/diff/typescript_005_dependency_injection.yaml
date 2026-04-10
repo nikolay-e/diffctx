@@ -55,18 +55,16 @@ repo:
     src/services/userService.ts: |
       console.log('placeholder');
     src/unrelated/config.ts: |
-      // GARBAGE_TS_005_CONFIG_001 - configuration management
-      export interface GARBAGE_TS_005_ConfigSchema_002 {
+      export interface ConfigSchema {
         database: { host: string; port: number };
         redis: { url: string };
         api: { timeout: number };
       }
 
-      export class GARBAGE_TS_005_ConfigLoader_003 {
-        private config: Partial<GARBAGE_TS_005_ConfigSchema_002> = {};
-        private readonly GARBAGE_TS_005_ENV_PREFIX_004 = 'APP_';
+      export class ConfigLoader {
+        private config: Partial<ConfigSchema> = {};
 
-        load(): GARBAGE_TS_005_ConfigSchema_002 {
+        load(): ConfigSchema {
           return {
             database: { host: 'localhost', port: 5432 },
             redis: { url: 'redis://localhost:6379' },
@@ -74,23 +72,21 @@ repo:
           };
         }
 
-        get<K extends keyof GARBAGE_TS_005_ConfigSchema_002>(key: K): GARBAGE_TS_005_ConfigSchema_002[K] {
+        get<K extends keyof ConfigSchema>(key: K): ConfigSchema[K] {
           return this.load()[key];
         }
       }
 
-      export const GARBAGE_TS_005_config_005 = new GARBAGE_TS_005_ConfigLoader_003();
+      export const configLoader = new ConfigLoader();
     src/unrelated/events.ts: |
-      // GARBAGE_TS_005_EVENTS_006 - event bus
-      export type GARBAGE_TS_005_EventHandler_007<T> = (data: T) => void;
+      export type EventHandler<T> = (data: T) => void;
 
-      export class GARBAGE_TS_005_EventBus_008 {
-        private handlers = new Map<string, GARBAGE_TS_005_EventHandler_007<unknown>[]>();
-        private readonly GARBAGE_TS_005_MAX_LISTENERS_009 = 100;
+      export class EventBus {
+        private handlers = new Map<string, EventHandler<unknown>[]>();
 
-        on<T>(event: string, handler: GARBAGE_TS_005_EventHandler_007<T>): void {
+        on<T>(event: string, handler: EventHandler<T>): void {
           const handlers = this.handlers.get(event) || [];
-          handlers.push(handler as GARBAGE_TS_005_EventHandler_007<unknown>);
+          handlers.push(handler as EventHandler<unknown>);
           this.handlers.set(event, handlers);
         }
 
@@ -104,7 +100,7 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_005_eventBus_010 = new GARBAGE_TS_005_EventBus_008();
+      export const eventBus = new EventBus();
   changed_files:
     src/di/container.ts: |
       export type Constructor<T = unknown> = new (...args: unknown[]) => T;
@@ -215,18 +211,16 @@ repo:
         });
       }
     src/unrelated/config.ts: |
-      // GARBAGE_TS_005_CONFIG_001 - configuration management
-      export interface GARBAGE_TS_005_ConfigSchema_002 {
+      export interface ConfigSchema {
         database: { host: string; port: number };
         redis: { url: string };
         api: { timeout: number };
       }
 
-      export class GARBAGE_TS_005_ConfigLoader_003 {
-        private config: Partial<GARBAGE_TS_005_ConfigSchema_002> = {};
-        private readonly GARBAGE_TS_005_ENV_PREFIX_004 = 'APP_';
+      export class ConfigLoader {
+        private config: Partial<ConfigSchema> = {};
 
-        load(): GARBAGE_TS_005_ConfigSchema_002 {
+        load(): ConfigSchema {
           return {
             database: { host: 'localhost', port: 5432 },
             redis: { url: 'redis://localhost:6379' },
@@ -234,23 +228,21 @@ repo:
           };
         }
 
-        get<K extends keyof GARBAGE_TS_005_ConfigSchema_002>(key: K): GARBAGE_TS_005_ConfigSchema_002[K] {
+        get<K extends keyof ConfigSchema>(key: K): ConfigSchema[K] {
           return this.load()[key];
         }
       }
 
-      export const GARBAGE_TS_005_config_005 = new GARBAGE_TS_005_ConfigLoader_003();
+      export const configLoader = new ConfigLoader();
     src/unrelated/events.ts: |
-      // GARBAGE_TS_005_EVENTS_006 - event bus
-      export type GARBAGE_TS_005_EventHandler_007<T> = (data: T) => void;
+      export type EventHandler<T> = (data: T) => void;
 
-      export class GARBAGE_TS_005_EventBus_008 {
-        private handlers = new Map<string, GARBAGE_TS_005_EventHandler_007<unknown>[]>();
-        private readonly GARBAGE_TS_005_MAX_LISTENERS_009 = 100;
+      export class EventBus {
+        private handlers = new Map<string, EventHandler<unknown>[]>();
 
-        on<T>(event: string, handler: GARBAGE_TS_005_EventHandler_007<T>): void {
+        on<T>(event: string, handler: EventHandler<T>): void {
           const handlers = this.handlers.get(event) || [];
-          handlers.push(handler as GARBAGE_TS_005_EventHandler_007<unknown>);
+          handlers.push(handler as EventHandler<unknown>);
           this.handlers.set(event, handlers);
         }
 
@@ -264,86 +256,57 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_005_eventBus_010 = new GARBAGE_TS_005_EventBus_008();
+      export const eventBus = new EventBus();
   commit_message: Update files
 fragments:
 - id: userservice_file
   selector:
     path: src/services/userService.ts
-- id: req_global_0
+- id: user_repository_symbol
   selector:
     anchor: USER_REPOSITORY = Symbol('UserRepository')
-- id: req_global_1
+- id: get_user_method
   selector:
     anchor: 'async getUser(id: string): Promise<User | null> {'
-- id: no_global_0
+- id: container_class
   selector:
-    anchor: GARBAGE_TS_005_CONFIG_001
-- id: no_global_1
+    path: src/di/container.ts
+    anchor: class Container {
+- id: container_resolve
   selector:
-    anchor: GARBAGE_TS_005_ConfigLoader_003
-- id: no_global_2
+    path: src/di/container.ts
+    anchor: resolve<T>(identifier
+- id: container_register_singleton
   selector:
-    anchor: GARBAGE_TS_005_ConfigSchema_002
-- id: no_global_3
+    path: src/di/container.ts
+    anchor: registerSingleton<T>(identifier
+- id: no_config_loader
   selector:
-    anchor: GARBAGE_TS_005_ConfigSchema_002>(key
-- id: no_global_4
+    path: src/unrelated/config.ts
+    anchor: class ConfigLoader {
+- id: no_config_schema
   selector:
-    anchor: GARBAGE_TS_005_ConfigSchema_002[K
-- id: no_global_5
+    path: src/unrelated/config.ts
+    anchor: interface ConfigSchema {
+- id: no_event_bus
   selector:
-    anchor: GARBAGE_TS_005_ENV_PREFIX_004
-- id: no_global_6
+    path: src/unrelated/events.ts
+    anchor: class EventBus {
+- id: no_event_handler
   selector:
-    anchor: GARBAGE_TS_005_EVENTS_006
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_TS_005_EventBus_008
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_TS_005_EventHandler_007<T>
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_TS_005_EventHandler_007<unknown>
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_TS_005_EventHandler_007<unknown>[]>
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_TS_005_MAX_LISTENERS_009
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_TS_005_config_005
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_TS_005_eventBus_010
-- id: no_global_14
-  selector:
-    anchor: config.ts
-- id: no_global_15
-  selector:
-    anchor: events.ts
+    path: src/unrelated/events.ts
+    anchor: type EventHandler<T>
 oracle:
   required:
   - userservice_file
-  - req_global_0
-  - req_global_1
+  - user_repository_symbol
+  - get_user_method
+  - container_class
+  - container_resolve
+  - container_register_singleton
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
+  - no_config_loader
+  - no_config_schema
+  - no_event_bus
+  - no_event_handler

@@ -8,7 +8,7 @@ from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
-_RUST_USE_STMT_RE = re.compile(r"^\s*use\s+(.+?)\s*;", re.MULTILINE)
+_RUST_USE_STMT_RE = re.compile(r"^\s*use\s+([^;\n]+?)\s*;", re.MULTILINE)
 _RUST_MOD_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*[;{]", re.MULTILINE)
 
 _RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)", re.MULTILINE)
@@ -126,6 +126,42 @@ def _is_rust_file(path: Path) -> bool:
 _MAX_USE_TREE_DEPTH = 10
 
 
+def _find_matching_brace(inner: str) -> int:
+    depth = 1
+    for i, ch in enumerate(inner):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return 0
+
+
+def _split_brace_items(items_str: str) -> list[str]:
+    items: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in items_str:
+        if ch == "{":
+            depth += 1
+            current.append(ch)
+        elif ch == "}":
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            item = "".join(current).strip()
+            if item and item != "self":
+                items.append(item)
+            current = []
+        else:
+            current.append(ch)
+    item = "".join(current).strip()
+    if item and item != "self":
+        items.append(item)
+    return items
+
+
 def _parse_use_tree(text: str, _depth: int = 0) -> list[str]:
     if _depth > _MAX_USE_TREE_DEPTH:
         return []
@@ -135,36 +171,9 @@ def _parse_use_tree(text: str, _depth: int = 0) -> list[str]:
     brace_pos = text.index("{")
     prefix = text[:brace_pos].rstrip(":")
     inner = text[brace_pos + 1 :]
-    depth = 1
-    end = 0
-    for i, ch in enumerate(inner):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    items_str = inner[:end]
+    end = _find_matching_brace(inner)
     results: list[str] = []
-    current: list[str] = []
-    d = 0
-    for ch in items_str:
-        if ch == "{":
-            d += 1
-            current.append(ch)
-        elif ch == "}":
-            d -= 1
-            current.append(ch)
-        elif ch == "," and d == 0:
-            item = "".join(current).strip()
-            if item and item != "self":
-                results.extend(_parse_use_tree(f"{prefix}::{item}" if prefix else item, _depth + 1))
-            current = []
-        else:
-            current.append(ch)
-    item = "".join(current).strip()
-    if item and item != "self":
+    for item in _split_brace_items(inner[:end]):
         results.extend(_parse_use_tree(f"{prefix}::{item}" if prefix else item, _depth + 1))
     return results
 
@@ -378,7 +387,7 @@ class RustEdgeBuilder(EdgeBuilder):
         rust_frags: list[Fragment],
         edges: EdgeDict,
     ) -> None:
-        if rf.path.stem.lower() not in {"lib", "main", "mod"}:
+        if rf.path.stem.lower() not in {"lib", "mod"}:
             return
         parent_dir = rf.path.parent
         for f in rust_frags:

@@ -48,37 +48,35 @@ repo:
     src/components/ProductList.tsx: |
       console.log('placeholder');
     src/unrelated/theme.ts: |
-      // GARBAGE_TS_002_THEME_001 - theming utilities
-      export type GARBAGE_TS_002_ThemeMode_002 = 'light' | 'dark' | 'system';
+      export type ThemeMode = 'light' | 'dark' | 'system';
 
-      export interface GARBAGE_TS_002_ThemeColors_003 {
+      export interface ThemeColors {
         primary: string;
         secondary: string;
         background: string;
         text: string;
       }
 
-      export const GARBAGE_TS_002_lightTheme_004: GARBAGE_TS_002_ThemeColors_003 = {
+      export const lightTheme: ThemeColors = {
         primary: '#3B82F6',
         secondary: '#10B981',
         background: '#FFFFFF',
         text: '#1F2937',
       };
 
-      export const GARBAGE_TS_002_darkTheme_005: GARBAGE_TS_002_ThemeColors_003 = {
+      export const darkTheme: ThemeColors = {
         primary: '#60A5FA',
         secondary: '#34D399',
         background: '#1F2937',
         text: '#F9FAFB',
       };
 
-      export function GARBAGE_TS_002_getTheme_006(mode: GARBAGE_TS_002_ThemeMode_002): GARBAGE_TS_002_ThemeColors_003 {
-        return mode === 'dark' ? GARBAGE_TS_002_darkTheme_005 : GARBAGE_TS_002_lightTheme_004;
+      export function getTheme(mode: ThemeMode): ThemeColors {
+        return mode === 'dark' ? darkTheme : lightTheme;
       }
     src/unrelated/storage.ts: |
-      // GARBAGE_TS_002_STORAGE_007 - local storage wrapper
-      export class GARBAGE_TS_002_StorageService_008 {
-        private prefix = 'GARBAGE_TS_002_PREFIX_009_';
+      export class StorageService {
+        private prefix = 'app_';
 
         set<T>(key: string, value: T): void {
           localStorage.setItem(this.prefix + key, JSON.stringify(value));
@@ -94,7 +92,7 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_002_storage_010 = new GARBAGE_TS_002_StorageService_008();
+      export const storage = new StorageService();
   changed_files:
     src/types/product.ts: |
       export interface Product {
@@ -192,37 +190,35 @@ repo:
         );
       }
     src/unrelated/theme.ts: |
-      // GARBAGE_TS_002_THEME_001 - theming utilities
-      export type GARBAGE_TS_002_ThemeMode_002 = 'light' | 'dark' | 'system';
+      export type ThemeMode = 'light' | 'dark' | 'system';
 
-      export interface GARBAGE_TS_002_ThemeColors_003 {
+      export interface ThemeColors {
         primary: string;
         secondary: string;
         background: string;
         text: string;
       }
 
-      export const GARBAGE_TS_002_lightTheme_004: GARBAGE_TS_002_ThemeColors_003 = {
+      export const lightTheme: ThemeColors = {
         primary: '#3B82F6',
         secondary: '#10B981',
         background: '#FFFFFF',
         text: '#1F2937',
       };
 
-      export const GARBAGE_TS_002_darkTheme_005: GARBAGE_TS_002_ThemeColors_003 = {
+      export const darkTheme: ThemeColors = {
         primary: '#60A5FA',
         secondary: '#34D399',
         background: '#1F2937',
         text: '#F9FAFB',
       };
 
-      export function GARBAGE_TS_002_getTheme_006(mode: GARBAGE_TS_002_ThemeMode_002): GARBAGE_TS_002_ThemeColors_003 {
-        return mode === 'dark' ? GARBAGE_TS_002_darkTheme_005 : GARBAGE_TS_002_lightTheme_004;
+      export function getTheme(mode: ThemeMode): ThemeColors {
+        return mode === 'dark' ? darkTheme : lightTheme;
       }
     src/unrelated/storage.ts: |
-      // GARBAGE_TS_002_STORAGE_007 - local storage wrapper
-      export class GARBAGE_TS_002_StorageService_008 {
-        private prefix = 'GARBAGE_TS_002_PREFIX_009_';
+      export class StorageService {
+        private prefix = 'app_';
 
         set<T>(key: string, value: T): void {
           localStorage.setItem(this.prefix + key, JSON.stringify(value));
@@ -238,62 +234,48 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_002_storage_010 = new GARBAGE_TS_002_StorageService_008();
+      export const storage = new StorageService();
   commit_message: Update files
 fragments:
 - id: productlist_file
   selector:
     path: src/components/ProductList.tsx
-- id: req_global_0
+- id: productlist_component
   selector:
     anchor: 'function ProductList({ products, showOutOfStock = false }: ProductListProps) {'
-- id: no_global_0
+- id: use_cart_hook
   selector:
-    anchor: GARBAGE_TS_002_STORAGE_007
-- id: no_global_1
+    path: src/hooks/useCart.ts
+    anchor: function useCart()
+- id: product_type
   selector:
-    anchor: GARBAGE_TS_002_StorageService_008
-- id: no_global_2
+    path: src/types/product.ts
+    anchor: interface Product {
+- id: cart_item_type
   selector:
-    anchor: GARBAGE_TS_002_THEME_001
-- id: no_global_3
+    path: src/types/product.ts
+    anchor: interface CartItem {
+- id: no_theme_colors
   selector:
-    anchor: GARBAGE_TS_002_ThemeColors_003
-- id: no_global_4
+    path: src/unrelated/theme.ts
+    anchor: interface ThemeColors {
+- id: no_get_theme
   selector:
-    anchor: GARBAGE_TS_002_ThemeMode_002
-- id: no_global_5
+    path: src/unrelated/theme.ts
+    anchor: getTheme(mode
+- id: no_storage_service
   selector:
-    anchor: GARBAGE_TS_002_darkTheme_005
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_TS_002_getTheme_006(mode
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_TS_002_lightTheme_004
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_TS_002_storage_010
-- id: no_global_9
-  selector:
-    anchor: storage.ts
-- id: no_global_10
-  selector:
-    anchor: theme.ts
+    path: src/unrelated/storage.ts
+    anchor: class StorageService {
 oracle:
   required:
   - productlist_file
-  - req_global_0
+  - productlist_component
+  - use_cart_hook
+  - product_type
+  - cart_item_type
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
+  - no_theme_colors
+  - no_get_theme
+  - no_storage_service

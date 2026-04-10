@@ -110,15 +110,11 @@ repo:
 
       @Service
       public class AuditLogService {
-          public static final String GARBAGE_JAVA_AUDIT_401 = "audit_log_marker_mu";
-          private static final String GARBAGE_JAVA_LOG_402 = "log_entry_marker_nu";
-
           private final List<AuditEntry> auditLog = new ArrayList<>();
 
           public void logAction(String userId, String action, String details) {
               AuditEntry entry = new AuditEntry(userId, action, details, Instant.now());
               auditLog.add(entry);
-              logGarbageMarkers();
           }
 
           public List<AuditEntry> getRecentActions(String userId, int limit) {
@@ -126,10 +122,6 @@ repo:
                   .filter(e -> e.userId().equals(userId))
                   .limit(limit)
                   .toList();
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_AUDIT_401 + GARBAGE_JAVA_LOG_402);
           }
 
           public record AuditEntry(String userId, String action, String details, Instant timestamp) {}
@@ -143,14 +135,10 @@ repo:
 
       @Component
       public class MetricsCollector {
-          public static final String GARBAGE_JAVA_METRICS_403 = "metrics_marker_xi";
-
           private final ConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();
 
           public void incrementCounter(String name) {
               counters.computeIfAbsent(name, k -> new AtomicLong()).incrementAndGet();
-              String GARBAGE_JAVA_COUNTER_404 = "counter_marker_omicron";
-              System.out.println(GARBAGE_JAVA_METRICS_403 + GARBAGE_JAVA_COUNTER_404);
           }
 
           public long getCounterValue(String name) {
@@ -348,15 +336,11 @@ repo:
 
       @Service
       public class AuditLogService {
-          public static final String GARBAGE_JAVA_AUDIT_401 = "audit_log_marker_mu";
-          private static final String GARBAGE_JAVA_LOG_402 = "log_entry_marker_nu";
-
           private final List<AuditEntry> auditLog = new ArrayList<>();
 
           public void logAction(String userId, String action, String details) {
               AuditEntry entry = new AuditEntry(userId, action, details, Instant.now());
               auditLog.add(entry);
-              logGarbageMarkers();
           }
 
           public List<AuditEntry> getRecentActions(String userId, int limit) {
@@ -364,10 +348,6 @@ repo:
                   .filter(e -> e.userId().equals(userId))
                   .limit(limit)
                   .toList();
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_AUDIT_401 + GARBAGE_JAVA_LOG_402);
           }
 
           public record AuditEntry(String userId, String action, String details, Instant timestamp) {}
@@ -381,14 +361,10 @@ repo:
 
       @Component
       public class MetricsCollector {
-          public static final String GARBAGE_JAVA_METRICS_403 = "metrics_marker_xi";
-
           private final ConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();
 
           public void incrementCounter(String name) {
               counters.computeIfAbsent(name, k -> new AtomicLong()).incrementAndGet();
-              String GARBAGE_JAVA_COUNTER_404 = "counter_marker_omicron";
-              System.out.println(GARBAGE_JAVA_METRICS_403 + GARBAGE_JAVA_COUNTER_404);
           }
 
           public long getCounterValue(String name) {
@@ -435,38 +411,38 @@ fragments:
 - id: userservice_file
   selector:
     path: src/main/java/com/userportal/service/UserService.java
-- id: req_global_0
+- id: controller_consumes_service
   selector:
-    anchor: package com.userportal.dto;
-- id: no_global_0
+    path: src/main/java/com/userportal/controller/UserController.java
+    anchor: userService.findById(id)
+- id: controller_injects_service
   selector:
-    anchor: GARBAGE_JAVA_AUDIT_401
-- id: no_global_1
+    path: src/main/java/com/userportal/controller/UserController.java
+    anchor: private final UserService userService
+- id: no_audit_log_service
   selector:
-    anchor: GARBAGE_JAVA_COUNTER_404
-- id: no_global_2
+    path: src/main/java/com/userportal/unrelated/AuditLogService.java
+    anchor: class AuditLogService
+- id: no_metrics_collector
   selector:
-    anchor: GARBAGE_JAVA_LOG_402
-- id: no_global_3
+    path: src/main/java/com/userportal/unrelated/MetricsCollector.java
+    anchor: class MetricsCollector
+- id: no_audit_log_action
   selector:
-    anchor: GARBAGE_JAVA_METRICS_403
-- id: no_global_4
+    anchor: logAction
+- id: no_increment_counter
   selector:
-    anchor: AuditLogService.java
-- id: no_global_5
-  selector:
-    anchor: MetricsCollector.java
+    anchor: incrementCounter
 oracle:
   required:
   - createuserrequest_file
   - updateuserrequest_file
   - userservice_file
-  - req_global_0
+  - controller_consumes_service
+  - controller_injects_service
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_audit_log_service
+  - no_metrics_collector
+  - no_audit_log_action
+  - no_increment_counter

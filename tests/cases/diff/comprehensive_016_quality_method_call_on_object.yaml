@@ -27,22 +27,42 @@ repo:
 
       def log_activity(action, details):
           print(f"[{action}] {details}")
-    garbage_event_bus.py: |
-      GARBAGE_COMP_016_TOPIC_PATTERN_A = "fanout"
-      GARBAGE_COMP_016_DEAD_LETTER_B = "queue"
+    src/event_bus.py: |
+      from typing import Callable, Dict, List
 
-      class GarbageEventBus:
-          GARBAGE_COMP_016_ORDERING_GUARANTEE_C = True
-          def publish(self):
-              pass
-    garbage_schema_registry.py: |
-      GARBAGE_COMP_016_COMPATIBILITY_D = "backward"
-      GARBAGE_COMP_016_SERIALIZATION_E = "avro"
+      class EventBus:
+          def __init__(self):
+              self.handlers: Dict[str, List[Callable]] = {}
 
-      class GarbageSchemaRegistry:
-          GARBAGE_COMP_016_VERSION_STRATEGY_F = False
-          def register(self):
-              pass
+          def subscribe(self, event: str, handler: Callable) -> None:
+              self.handlers.setdefault(event, []).append(handler)
+
+          def publish(self, event: str, data: dict) -> None:
+              for handler in self.handlers.get(event, []):
+                  handler(data)
+
+          def unsubscribe(self, event: str, handler: Callable) -> None:
+              if event in self.handlers:
+                  self.handlers[event] = [h for h in self.handlers[event] if h != handler]
+    src/schema_registry.py: |
+      from typing import Dict, Optional
+
+      class SchemaRegistry:
+          def __init__(self):
+              self.schemas: Dict[str, dict] = {}
+              self.versions: Dict[str, int] = {}
+
+          def register(self, name: str, schema: dict) -> int:
+              version = self.versions.get(name, 0) + 1
+              self.schemas[f"{name}:v{version}"] = schema
+              self.versions[name] = version
+              return version
+
+          def get_latest(self, name: str) -> Optional[dict]:
+              version = self.versions.get(name)
+              if version is None:
+                  return None
+              return self.schemas.get(f"{name}:v{version}")
   changed_files:
     src/service.py: |
       class DataService:
@@ -76,69 +96,78 @@ repo:
 
       def log_activity(action, details):
           print(f"[{action}] {details}")
-    garbage_event_bus.py: |
-      GARBAGE_COMP_016_TOPIC_PATTERN_A = "fanout"
-      GARBAGE_COMP_016_DEAD_LETTER_B = "queue"
+    src/event_bus.py: |
+      from typing import Callable, Dict, List
 
-      class GarbageEventBus:
-          GARBAGE_COMP_016_ORDERING_GUARANTEE_C = True
-          def publish(self):
-              pass
-    garbage_schema_registry.py: |
-      GARBAGE_COMP_016_COMPATIBILITY_D = "backward"
-      GARBAGE_COMP_016_SERIALIZATION_E = "avro"
+      class EventBus:
+          def __init__(self):
+              self.handlers: Dict[str, List[Callable]] = {}
 
-      class GarbageSchemaRegistry:
-          GARBAGE_COMP_016_VERSION_STRATEGY_F = False
-          def register(self):
-              pass
+          def subscribe(self, event: str, handler: Callable) -> None:
+              self.handlers.setdefault(event, []).append(handler)
+
+          def publish(self, event: str, data: dict) -> None:
+              for handler in self.handlers.get(event, []):
+                  handler(data)
+
+          def unsubscribe(self, event: str, handler: Callable) -> None:
+              if event in self.handlers:
+                  self.handlers[event] = [h for h in self.handlers[event] if h != handler]
+    src/schema_registry.py: |
+      from typing import Dict, Optional
+
+      class SchemaRegistry:
+          def __init__(self):
+              self.schemas: Dict[str, dict] = {}
+              self.versions: Dict[str, int] = {}
+
+          def register(self, name: str, schema: dict) -> int:
+              version = self.versions.get(name, 0) + 1
+              self.schemas[f"{name}:v{version}"] = schema
+              self.versions[name] = version
+              return version
+
+          def get_latest(self, name: str) -> Optional[dict]:
+              version = self.versions.get(name)
+              if version is None:
+                  return None
+              return self.schemas.get(f"{name}:v{version}")
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_service
   selector:
     anchor: from src.service import DataService
-- id: req_global_1
+- id: main_creates_service
   selector:
     anchor: svc = DataService()
-- id: no_global_0
+- id: service_class_def
   selector:
-    anchor: GARBAGE_COMP_016_COMPATIBILITY_D
-- id: no_global_1
+    path: src/service.py
+    anchor: "class DataService:"
+- id: no_event_bus
   selector:
-    anchor: GARBAGE_COMP_016_DEAD_LETTER_B
-- id: no_global_2
+    path: src/event_bus.py
+- id: no_schema_registry
   selector:
-    anchor: GARBAGE_COMP_016_ORDERING_GUARANTEE_C
-- id: no_global_3
+    path: src/schema_registry.py
+- id: no_event_bus_class
   selector:
-    anchor: GARBAGE_COMP_016_SERIALIZATION_E
-- id: no_global_4
+    anchor: EventBus
+- id: no_schema_class
   selector:
-    anchor: GARBAGE_COMP_016_TOPIC_PATTERN_A
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_016_VERSION_STRATEGY_F
-- id: no_global_6
-  selector:
-    anchor: garbage_event_bus.py
-- id: no_global_7
-  selector:
-    anchor: garbage_schema_registry.py
+    anchor: SchemaRegistry
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_changed
+  - main_imports_service
+  - main_creates_service
+  - service_class_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_event_bus
+  - no_schema_registry
+  - no_event_bus_class
+  - no_schema_class

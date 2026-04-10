@@ -295,39 +295,57 @@ repo:
       info:
   commit_message: Update files
 fragments:
-- id: service_file
+- id: service_multiport
   selector:
     path: k8s/base/service.yaml
-- id: req_global_0
+- id: service_grpc_appprotocol
+  selector:
+    anchor: 'appProtocol: grpc'
+- id: service_prometheus_annotations
   selector:
     anchor: 'prometheus.io/scrape: "true"'
+- id: deployment_container_ports
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'containerPort: 9090'
+- id: deployment_metrics_port
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'containerPort: 9100'
 - id: no_servicemesh_sidecar
   selector:
     path: k8s/mesh/servicemesh-sidecar.yaml
 - id: no_grpc_health_probe
   selector:
     path: k8s/tools/grpc-health-probe.yaml
-- id: no_global_0
+- id: no_hpa
+  selector:
+    path: k8s/base/hpa.yaml
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_default_sidecar
   selector:
     anchor: default-sidecar
-- id: no_global_1
+- id: no_grpc_health_check
   selector:
     anchor: grpc-health-check
-- id: no_global_2
+- id: no_average_utilization
   selector:
-    anchor: servicemesh-sidecar.yaml
-- id: no_global_3
-  selector:
-    anchor: grpc-health-probe.yaml
+    anchor: averageUtilization
 oracle:
   required:
-  - service_file
-  - req_global_0
+  - service_multiport
+  - service_grpc_appprotocol
+  - service_prometheus_annotations
+  - deployment_container_ports
+  - deployment_metrics_port
   allowed: []
   forbidden:
   - no_servicemesh_sidecar
   - no_grpc_health_probe
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_hpa
+  - no_configmap
+  - no_default_sidecar
+  - no_grpc_health_check
+  - no_average_utilization

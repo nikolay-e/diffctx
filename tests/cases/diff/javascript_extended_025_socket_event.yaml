@@ -186,7 +186,7 @@ fragments:
 - id: events_1
   selector:
     path: src/socket/events.ts
-    anchor: chat:message
+    anchor: "chat:message"
 - id: events_2
   selector:
     path: src/socket/events.ts
@@ -211,10 +211,10 @@ fragments:
     anchor: setupAdminHandler
 - id: no_global_4
   selector:
-    anchor: admin:kick
+    anchor: "admin:kick"
 - id: no_global_5
   selector:
-    anchor: admin:ban
+    anchor: "admin:ban"
 oracle:
   required:
   - events

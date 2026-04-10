@@ -80,20 +80,14 @@ repo:
           simple := utils.FormatString("world")
           fmt.Println(simple)
       }
-    internal/unrelated/metrics/collector.go: |
+    internal/metrics/collector.go: |
       package metrics
 
       import "sync"
 
-      const GARBAGE_GO_METRICS_COLLECTOR_001 = "metrics_garbage_marker"
-
       type MetricsCollector struct {
           mu      sync.RWMutex
           metrics map[string]int64
-      }
-
-      func GARBAGE_GO_FUNC_METRICS_002() string {
-          return "GARBAGE_GO_METRICS_UNUSED_003"
       }
 
       func NewMetricsCollector() *MetricsCollector {
@@ -107,17 +101,36 @@ repo:
           defer c.mu.Unlock()
           c.metrics[name]++
       }
-    internal/unrelated/telemetry/tracer.go: |
+
+      func (c *MetricsCollector) Get(name string) int64 {
+          c.mu.RLock()
+          defer c.mu.RUnlock()
+          return c.metrics[name]
+      }
+    internal/telemetry/tracer.go: |
       package telemetry
 
-      const GARBAGE_GO_TELEMETRY_TRACER_004 = "telemetry_garbage"
+      import "context"
 
-      type GARBAGE_GO_TYPE_TRACER_005 struct {
-          enabled bool
+      type Span struct {
+          name  string
+          start int64
       }
 
-      func GARBAGE_GO_FUNC_TRACER_006() {
-          println("GARBAGE_GO_OUTPUT_007")
+      type Tracer struct {
+          enabled bool
+          spans   []Span
+      }
+
+      func NewTracer(enabled bool) *Tracer {
+          return &Tracer{enabled: enabled}
+      }
+
+      func (t *Tracer) StartSpan(ctx context.Context, name string) context.Context {
+          if !t.enabled {
+              return ctx
+          }
+          return ctx
       }
   changed_files:
     internal/utils/helpers.go: |
@@ -222,20 +235,14 @@ repo:
           simple := utils.FormatString("world")
           fmt.Println(simple)
       }
-    internal/unrelated/metrics/collector.go: |
+    internal/metrics/collector.go: |
       package metrics
 
       import "sync"
 
-      const GARBAGE_GO_METRICS_COLLECTOR_001 = "metrics_garbage_marker"
-
       type MetricsCollector struct {
           mu      sync.RWMutex
           metrics map[string]int64
-      }
-
-      func GARBAGE_GO_FUNC_METRICS_002() string {
-          return "GARBAGE_GO_METRICS_UNUSED_003"
       }
 
       func NewMetricsCollector() *MetricsCollector {
@@ -249,61 +256,76 @@ repo:
           defer c.mu.Unlock()
           c.metrics[name]++
       }
-    internal/unrelated/telemetry/tracer.go: |
+
+      func (c *MetricsCollector) Get(name string) int64 {
+          c.mu.RLock()
+          defer c.mu.RUnlock()
+          return c.metrics[name]
+      }
+    internal/telemetry/tracer.go: |
       package telemetry
 
-      const GARBAGE_GO_TELEMETRY_TRACER_004 = "telemetry_garbage"
+      import "context"
 
-      type GARBAGE_GO_TYPE_TRACER_005 struct {
+      type Span struct {
+          name  string
+          start int64
+      }
+
+      type Tracer struct {
           enabled bool
+          spans   []Span
       }
 
-      func GARBAGE_GO_FUNC_TRACER_006() {
-          println("GARBAGE_GO_OUTPUT_007")
+      func NewTracer(enabled bool) *Tracer {
+          return &Tracer{enabled: enabled}
       }
-  commit_message: Update files
+
+      func (t *Tracer) StartSpan(ctx context.Context, name string) context.Context {
+          if !t.enabled {
+              return ctx
+          }
+          return ctx
+      }
+  commit_message: "refactor(utils): add uppercase formatting and expand string helpers"
 fragments:
-- id: helpers_file
+- id: changed_helpers
   selector:
     path: internal/utils/helpers.go
-- id: req_global_0
+- id: new_uppercase_formatter
   selector:
     anchor: func NewUppercaseFormatter(prefix, suffix string) *StringFormatter {
-- id: req_global_1
+- id: format_uppercase_branch
   selector:
     anchor: if f.uppercase {
-- id: no_global_0
+- id: caller_main_format
   selector:
-    anchor: GARBAGE_GO_FUNC_METRICS_002
-- id: no_global_1
+    anchor: formatter := utils.NewStringFormatter("<<", ">>")
+- id: caller_main_format_string
   selector:
-    anchor: GARBAGE_GO_FUNC_TRACER_006
-- id: no_global_2
+    anchor: simple := utils.FormatString("world")
+- id: unrelated_metrics_collector
   selector:
-    anchor: GARBAGE_GO_METRICS_COLLECTOR_001
-- id: no_global_3
+    anchor: func (c *MetricsCollector) Increment(name string) {
+- id: unrelated_tracer
   selector:
-    anchor: GARBAGE_GO_TELEMETRY_TRACER_004
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_GO_TYPE_TRACER_005
-- id: no_global_5
+    anchor: func (t *Tracer) StartSpan(ctx context.Context, name string) context.Context {
+- id: unrelated_collector_file
   selector:
     anchor: collector.go
-- id: no_global_6
+- id: unrelated_tracer_file
   selector:
     anchor: tracer.go
 oracle:
   required:
-  - helpers_file
-  - req_global_0
-  - req_global_1
+  - changed_helpers
+  - new_uppercase_formatter
+  - format_uppercase_branch
+  - caller_main_format
+  - caller_main_format_string
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - unrelated_metrics_collector
+  - unrelated_tracer
+  - unrelated_collector_file
+  - unrelated_tracer_file

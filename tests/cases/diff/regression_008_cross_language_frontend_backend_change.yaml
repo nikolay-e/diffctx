@@ -446,6 +446,27 @@ repo:
               return self._roles.get(role, set()).copy()
   commit_message: Update files
 fragments:
+- id: api_file
+  selector:
+    path: backend/src/api.py
+- id: api_insights_route
+  selector:
+    path: backend/src/api.py
+    anchor: "/api/insights"
+- id: service_get_insights
+  selector:
+    path: backend/src/analytics/service.py
+    anchor: def get_insights
+- id: service_compute_trends
+  selector:
+    path: backend/src/analytics/service.py
+    anchor: def _compute_trends
+- id: insights_hook_file
+  selector:
+    path: frontend/src/hooks/useInsights.ts
+- id: insights_page_file
+  selector:
+    path: frontend/src/pages/InsightsPage.tsx
 - id: req_global_0
   selector:
     anchor: get_insights
@@ -485,8 +506,18 @@ fragments:
 - id: no_global_6
   selector:
     anchor: add_role
+- id: no_calculator_percentile
+  selector:
+    path: backend/src/analytics/calculator.py
+    anchor: def percentile
 oracle:
   required:
+  - api_file
+  - api_insights_route
+  - service_get_insights
+  - service_compute_trends
+  - insights_hook_file
+  - insights_page_file
   - req_global_0
   - req_global_1
   - req_global_2
@@ -502,3 +533,4 @@ oracle:
   - no_global_4
   - no_global_5
   - no_global_6
+  - no_calculator_percentile

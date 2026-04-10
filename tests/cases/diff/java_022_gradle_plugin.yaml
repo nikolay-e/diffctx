@@ -67,6 +67,46 @@ repo:
                   .withDetail("version", "1.0.0");
           }
       }
+    src/test/java/com/example/webapp/WebApplicationTest.java: |
+      package com.example.webapp;
+
+      import org.junit.jupiter.api.Test;
+      import org.springframework.boot.test.context.SpringBootTest;
+
+      @SpringBootTest
+      class WebApplicationTest {
+          @Test
+          void contextLoads() {
+          }
+      }
+    src/main/java/com/example/webapp/config/SecurityConfig.java: |
+      package com.example.webapp.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+
+      @Configuration
+      public class SecurityConfig {
+          @Bean
+          public String corsFilter() {
+              return "permissive";
+          }
+      }
+    src/main/java/com/example/webapp/service/NotificationService.java: |
+      package com.example.webapp.service;
+
+      import org.springframework.stereotype.Service;
+
+      @Service
+      public class NotificationService {
+          public void sendEmail(String to, String subject, String body) {
+              System.out.println("Sending email to " + to);
+          }
+
+          public void sendPush(String userId, String message) {
+              System.out.println("Push to " + userId);
+          }
+      }
   changed_files:
     build.gradle: |
       plugins {
@@ -151,74 +191,109 @@ repo:
                   .withDetail("version", "1.0.0");
           }
       }
+    src/test/java/com/example/webapp/WebApplicationTest.java: |
+      package com.example.webapp;
+
+      import org.junit.jupiter.api.Test;
+      import org.springframework.boot.test.context.SpringBootTest;
+
+      @SpringBootTest
+      class WebApplicationTest {
+          @Test
+          void contextLoads() {
+          }
+      }
+    src/main/java/com/example/webapp/config/SecurityConfig.java: |
+      package com.example.webapp.config;
+
+      import org.springframework.context.annotation.Bean;
+      import org.springframework.context.annotation.Configuration;
+
+      @Configuration
+      public class SecurityConfig {
+          @Bean
+          public String corsFilter() {
+              return "permissive";
+          }
+      }
+    src/main/java/com/example/webapp/service/NotificationService.java: |
+      package com.example.webapp.service;
+
+      import org.springframework.stereotype.Service;
+
+      @Service
+      public class NotificationService {
+          public void sendEmail(String to, String subject, String body) {
+              System.out.println("Sending email to " + to);
+          }
+
+          public void sendPush(String userId, String message) {
+              System.out.println("Push to " + userId);
+          }
+      }
   commit_message: Update files
 fragments:
-- id: build
+- id: gradle_dependency_management_plugin
   selector:
     path: build.gradle
-    anchor: id 'io.spring.dependency-management' version '1.1.4'
-- id: build_1
+    anchor: "id 'io.spring.dependency-management' version '1.1.4'"
+- id: gradle_jacoco_plugin
   selector:
     path: build.gradle
-    anchor: id 'jacoco'
-- id: build_2
+    anchor: "id 'jacoco'"
+- id: gradle_actuator_dep
   selector:
     path: build.gradle
     anchor: spring-boot-starter-actuator
-- id: build_3
+- id: gradle_test_dep
   selector:
     path: build.gradle
     anchor: spring-boot-starter-test
-- id: build_4
+- id: gradle_jacoco_finalize
   selector:
     path: build.gradle
     anchor: finalizedBy jacocoTestReport
-- id: no_webapplication
-  selector:
-    path: src/main/java/com/example/webapp/WebApplication.java
-- id: no_indexcontroller
-  selector:
-    path: src/main/java/com/example/webapp/controller/IndexController.java
-- id: no_healthindicator
+- id: health_indicator_actuate_import
   selector:
     path: src/main/java/com/example/webapp/health/HealthIndicator.java
-- id: no_global_0
+    anchor: "import org.springframework.boot.actuate.health.Health"
+- id: health_indicator_class
   selector:
-    anchor: WebApplication
-- id: no_global_1
+    path: src/main/java/com/example/webapp/health/HealthIndicator.java
+    anchor: extends AbstractHealthIndicator
+- id: test_class_spring_boot_test
   selector:
+    path: src/test/java/com/example/webapp/WebApplicationTest.java
+    anchor: "@SpringBootTest"
+- id: no_index_controller
+  selector:
+    path: src/main/java/com/example/webapp/controller/IndexController.java
+    anchor: "Welcome to the web application"
+- id: no_web_application_main
+  selector:
+    path: src/main/java/com/example/webapp/WebApplication.java
     anchor: SpringApplication.run
-- id: no_global_2
+- id: no_security_config
   selector:
-    anchor: IndexController
-- id: no_global_3
+    path: src/main/java/com/example/webapp/config/SecurityConfig.java
+    anchor: corsFilter
+- id: no_notification_service
   selector:
-    anchor: Welcome to the web application
-- id: no_global_4
-  selector:
-    anchor: AbstractHealthIndicator
-- id: no_global_5
-  selector:
-    anchor: doHealthCheck
-- id: no_global_6
-  selector:
-    anchor: builder.up()
+    path: src/main/java/com/example/webapp/service/NotificationService.java
+    anchor: sendEmail
 oracle:
   required:
-  - build
-  - build_1
-  - build_2
-  - build_3
-  - build_4
+  - gradle_dependency_management_plugin
+  - gradle_jacoco_plugin
+  - gradle_actuator_dep
+  - gradle_test_dep
+  - gradle_jacoco_finalize
+  - health_indicator_actuate_import
+  - health_indicator_class
+  - test_class_spring_boot_test
   allowed: []
   forbidden:
-  - no_webapplication
-  - no_indexcontroller
-  - no_healthindicator
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_index_controller
+  - no_web_application_main
+  - no_security_config
+  - no_notification_service

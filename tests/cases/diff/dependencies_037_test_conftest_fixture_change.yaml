@@ -34,45 +34,48 @@ repo:
 
       def test_db_is_connected(db):
           assert db.connected is True
-    tests/integration/conftest.py: |
-      import pytest
-      from src.database import Database
-      GARBAGE_DEP037_INTEG_CONFTEST_A = "integration_conftest"
-      GARBAGE_DEP037_INTEG_SETUP_B = True
+    tests/test_users.py: |
+      def test_user_lookup(db):
+          users = db.query("SELECT * FROM users WHERE id = 1")
+          assert isinstance(users, list)
 
-      @pytest.fixture
-      def db():
-          GARBAGE_DEP037_INTEG_DB_C = "integration_db_fixture"
-          database = Database("integration://localhost:5432")
-          database.connect()
-          yield database
-          database.disconnect()
-    tests/test_migrations.py: |
-      GARBAGE_DEP037_MIGTEST_D = "migration_test_module"
-      GARBAGE_DEP037_MIGTEST_INIT_E = True
+      def test_user_insert(db):
+          db.query("INSERT INTO users (name) VALUES ('alice')")
+    tests/test_orders.py: |
+      def test_order_listing(db):
+          orders = db.query("SELECT * FROM orders")
+          assert isinstance(orders, list)
+    tests/test_health.py: |
+      def test_module_imports():
+          import src.database
+          assert src.database is not None
 
-      def test_migration_runs(db):
-          GARBAGE_DEP037_MIGTEST_RUN_F = "running"
-          result = db.query("SELECT version FROM schema_migrations")
-          assert isinstance(result, list)
-    src/cache_store.py: |
-      GARBAGE_DEP037_CACHE_G = "cache_store_module"
-      GARBAGE_DEP037_CACHE_INIT_H = True
+      def test_database_class_exists():
+          from src.database import Database
+          assert Database is not None
+    tests/test_string_utils.py: |
+      def test_upper():
+          assert "abc".upper() == "ABC"
 
-      class CacheStore:
-          def __init__(self, connection_string: str):
-              self.connection_string = connection_string
-              self.connected = False
+      def test_split():
+          assert "a,b,c".split(",") == ["a", "b", "c"]
+    src/cache.py: |
+      class Cache:
+          def __init__(self):
+              self._store = {}
 
-          def connect(self):
-              GARBAGE_DEP037_CACHE_CONN_I = "connecting"
-              self.connected = True
+          def get(self, key: str):
+              return self._store.get(key)
 
-          def disconnect(self):
-              self.connected = False
+          def set(self, key: str, value):
+              self._store[key] = value
+    tests/test_cache.py: |
+      from src.cache import Cache
 
-          def query(self, key: str) -> list:
-              return []
+      def test_cache_set_get():
+          c = Cache()
+          c.set("key", "value")
+          assert c.get("key") == "value"
   changed_files:
     src/database.py: |
       class Database:
@@ -96,21 +99,12 @@ repo:
 
       @pytest.fixture
       def db():
-          database = Database("test://localhost")
+          database = Database("test://localhost?strict=true")
           database.connect()
+          database.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
           yield database
+          database.query("ROLLBACK")
           database.disconnect()
-
-      @pytest.fixture
-      def db_with_data(db):
-          db.query("INSERT INTO users VALUES (1, 'test')")
-          return db
-
-      @pytest.fixture
-      def transaction_db(db):
-          db.query("BEGIN TRANSACTION")
-          yield db
-          db.query("ROLLBACK")
     tests/test_queries.py: |
       def test_query_returns_list(db):
           result = db.query("SELECT * FROM users")
@@ -118,111 +112,72 @@ repo:
 
       def test_db_is_connected(db):
           assert db.connected is True
-    tests/integration/conftest.py: |
-      import pytest
-      from src.database import Database
-      GARBAGE_DEP037_INTEG_CONFTEST_A = "integration_conftest"
-      GARBAGE_DEP037_INTEG_SETUP_B = True
+    tests/test_users.py: |
+      def test_user_lookup(db):
+          users = db.query("SELECT * FROM users WHERE id = 1")
+          assert isinstance(users, list)
 
-      @pytest.fixture
-      def db():
-          GARBAGE_DEP037_INTEG_DB_C = "integration_db_fixture"
-          database = Database("integration://localhost:5432")
-          database.connect()
-          yield database
-          database.disconnect()
-    tests/test_migrations.py: |
-      GARBAGE_DEP037_MIGTEST_D = "migration_test_module"
-      GARBAGE_DEP037_MIGTEST_INIT_E = True
+      def test_user_insert(db):
+          db.query("INSERT INTO users (name) VALUES ('alice')")
+    tests/test_orders.py: |
+      def test_order_listing(db):
+          orders = db.query("SELECT * FROM orders")
+          assert isinstance(orders, list)
+    tests/test_health.py: |
+      def test_module_imports():
+          import src.database
+          assert src.database is not None
 
-      def test_migration_runs(db):
-          GARBAGE_DEP037_MIGTEST_RUN_F = "running"
-          result = db.query("SELECT version FROM schema_migrations")
-          assert isinstance(result, list)
-    src/cache_store.py: |
-      GARBAGE_DEP037_CACHE_G = "cache_store_module"
-      GARBAGE_DEP037_CACHE_INIT_H = True
+      def test_database_class_exists():
+          from src.database import Database
+          assert Database is not None
+    tests/test_string_utils.py: |
+      def test_upper():
+          assert "abc".upper() == "ABC"
 
-      class CacheStore:
-          def __init__(self, connection_string: str):
-              self.connection_string = connection_string
-              self.connected = False
+      def test_split():
+          assert "a,b,c".split(",") == ["a", "b", "c"]
+    src/cache.py: |
+      class Cache:
+          def __init__(self):
+              self._store = {}
 
-          def connect(self):
-              GARBAGE_DEP037_CACHE_CONN_I = "connecting"
-              self.connected = True
+          def get(self, key: str):
+              return self._store.get(key)
 
-          def disconnect(self):
-              self.connected = False
+          def set(self, key: str, value):
+              self._store[key] = value
+    tests/test_cache.py: |
+      from src.cache import Cache
 
-          def query(self, key: str) -> list:
-              return []
-  commit_message: Update files
+      def test_cache_set_get():
+          c = Cache()
+          c.set("key", "value")
+          assert c.get("key") == "value"
+  commit_message: "conftest: db fixture wraps each test in SERIALIZABLE transaction"
 fragments:
-- id: conftest
-  selector:
-    path: tests/conftest.py
-    anchor: 'def db_with_data(db):'
-- id: conftest_1
-  selector:
-    path: tests/conftest.py
-    anchor: 'def transaction_db(db):'
-- id: conftest_2
-  selector:
-    path: tests/conftest.py
-    anchor: INSERT INTO users VALUES
-- id: no_conftest
-  selector:
-    path: tests/integration/conftest.py
-- id: no_test_migrations
-  selector:
-    path: tests/test_migrations.py
-- id: no_cache_store
-  selector:
-    path: src/cache_store.py
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_DEP037_INTEG_CONFTEST_A
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_DEP037_INTEG_SETUP_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_DEP037_INTEG_DB_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP037_MIGTEST_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP037_MIGTEST_INIT_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP037_MIGTEST_RUN_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_DEP037_CACHE_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_DEP037_CACHE_INIT_H
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_DEP037_CACHE_CONN_I
+  - id: conftest_changed
+    selector: { path: tests/conftest.py }
+  - id: queries_uses_db
+    selector: { path: tests/test_queries.py }
+  - id: users_uses_db
+    selector: { path: tests/test_users.py }
+  - id: orders_uses_db
+    selector: { path: tests/test_orders.py }
+  - id: health_no_db_fixture
+    selector: { path: tests/test_health.py }
+  - id: string_utils_no_db
+    selector: { path: tests/test_string_utils.py }
+  - id: cache_test_unrelated
+    selector: { path: tests/test_cache.py }
 oracle:
   required:
-  - conftest
-  - conftest_1
-  - conftest_2
+    - conftest_changed
+    - queries_uses_db
+    - users_uses_db
+    - orders_uses_db
   allowed: []
   forbidden:
-  - no_conftest
-  - no_test_migrations
-  - no_cache_store
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+    - health_no_db_fixture
+    - string_utils_no_db
+    - cache_test_unrelated

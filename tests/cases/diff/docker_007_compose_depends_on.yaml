@@ -260,16 +260,46 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
-- id: req_global_1
+- id: postgres_volumes
   selector:
     anchor: 'postgres_data:'
+- id: app_db_connection
+  selector:
+    path: src/app.py
+    anchor: 'host=os.getenv("DB_HOST", "db")'
+- id: app_redis_connection
+  selector:
+    path: src/app.py
+    anchor: 'host=os.getenv("REDIS_HOST", "redis")'
+- id: worker_imports
+  selector:
+    path: src/worker.py
+    anchor: "from app import get_db_connection, get_redis_client"
+- id: no_wait_script
+  selector:
+    path: scripts/wait_for_deps.sh
+    anchor: "until pg_isready"
+- id: no_k8s_deployment
+  selector:
+    path: k8s/deployment.yaml
+    anchor: "apiVersion: apps/v1"
+- id: no_test_deps
+  selector:
+    path: tests/test_deps.py
+    anchor: "def test_dependency_order"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
-  - req_global_1
+  - dockerfile_build_context
+  - postgres_volumes
+  - app_db_connection
+  - app_redis_connection
+  - worker_imports
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_wait_script
+  - no_k8s_deployment
+  - no_test_deps

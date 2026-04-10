@@ -33,7 +33,6 @@ repo:
 
       @app.route("/ready")
       def ready():
-          # Check if dependencies are available
           checks = {
               "database": check_database(),
               "cache": check_cache()
@@ -43,11 +42,9 @@ repo:
           return jsonify({"status": status, "checks": checks}), code
 
       def check_database():
-          # Simulated check
           return True
 
       def check_cache():
-          # Simulated check
           return True
     src/app.py: |
       from health import app, check_database, check_cache
@@ -125,7 +122,6 @@ repo:
 
       @app.route("/ready")
       def ready():
-          # Check if dependencies are available
           checks = {
               "database": check_database(),
               "cache": check_cache()
@@ -135,11 +131,9 @@ repo:
           return jsonify({"status": status, "checks": checks}), code
 
       def check_database():
-          # Simulated check
           return True
 
       def check_cache():
-          # Simulated check
           return True
     src/app.py: |
       from health import app, check_database, check_cache
@@ -255,12 +249,42 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
+- id: health_endpoint
+  selector:
+    path: src/health.py
+    anchor: '@app.route("/health")'
+- id: healthz_endpoint
+  selector:
+    path: src/health.py
+    anchor: '@app.route("/healthz")'
+- id: ready_endpoint
+  selector:
+    path: src/health.py
+    anchor: '@app.route("/ready")'
+- id: no_prometheus_alerts
+  selector:
+    path: prometheus/alerts.yml
+    anchor: "name: health"
+- id: no_grafana_dashboard
+  selector:
+    path: grafana/dashboard.json
+    anchor: "{"
+- id: no_health_check_script
+  selector:
+    path: scripts/health_check.sh
+    anchor: "curl -f http://localhost:8080/health"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
+  - dockerfile_build_context
+  - health_endpoint
+  - healthz_endpoint
+  - ready_endpoint
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_prometheus_alerts
+  - no_grafana_dashboard
+  - no_health_check_script

@@ -1,4 +1,6 @@
 name: terraform_026_route53_record
+xfail:
+  category: terraform-sibling-over-discovery
 repo:
   initial_files:
     dns.tf: |

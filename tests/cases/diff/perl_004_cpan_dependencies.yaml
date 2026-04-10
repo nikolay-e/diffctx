@@ -40,8 +40,6 @@ repo:
 
       1;
     lib/MyApp/Importer.pm: |
-      my $GARBAGE_PERL_004_A = "noise_marker_importer";
-
       package MyApp::Importer;
       use strict;
       use warnings;
@@ -68,8 +66,6 @@ repo:
 
       1;
     lib/MyApp/Reporter.pm: |
-      my $GARBAGE_PERL_004_B = "noise_marker_reporter";
-
       package MyApp::Reporter;
       use strict;
       use warnings;
@@ -157,8 +153,6 @@ repo:
 
       1;
     lib/MyApp/Importer.pm: |
-      my $GARBAGE_PERL_004_A = "noise_marker_importer";
-
       package MyApp::Importer;
       use strict;
       use warnings;
@@ -185,8 +179,6 @@ repo:
 
       1;
     lib/MyApp/Reporter.pm: |
-      my $GARBAGE_PERL_004_B = "noise_marker_reporter";
-
       package MyApp::Reporter;
       use strict;
       use warnings;
@@ -216,67 +208,61 @@ repo:
       1;
   commit_message: Update files
 fragments:
-- id: cpanfile
+- id: cpanfile_csv_xs_dep
   selector:
     path: cpanfile
-    anchor: Text::CSV_XS
-- id: exporter
+    anchor: "Text::CSV_XS"
+- id: exporter_use_csv_xs
   selector:
     path: lib/MyApp/Exporter.pm
-    anchor: use Text::CSV_XS
-- id: exporter_1
+    anchor: "use Text::CSV_XS"
+- id: exporter_export_csv_sub
   selector:
     path: lib/MyApp/Exporter.pm
     anchor: sub export_csv
-- id: exporter_2
+- id: exporter_csv_xs_new
   selector:
     path: lib/MyApp/Exporter.pm
-    anchor: Text::CSV_XS->new
+    anchor: "Text::CSV_XS->new"
 - id: no_importer
   selector:
     path: lib/MyApp/Importer.pm
 - id: no_reporter
   selector:
     path: lib/MyApp/Reporter.pm
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_PERL_004_A
-- id: no_global_1
-  selector:
-    anchor: noise_marker_importer
-- id: no_global_2
+- id: no_importer_from_file
   selector:
     anchor: import_from_file
-- id: no_global_3
+- id: no_importer_parse_csv_line
   selector:
     anchor: parse_csv_line
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_PERL_004_B
-- id: no_global_5
-  selector:
-    anchor: noise_marker_reporter
-- id: no_global_6
+- id: no_reporter_generate_report
   selector:
     anchor: generate_report
-- id: no_global_7
+- id: no_reporter_generate_summary
   selector:
     anchor: generate_summary
+- id: no_reporter_template
+  selector:
+    path: lib/MyApp/Reporter.pm
+    anchor: Template->new
+- id: no_importer_source
+  selector:
+    path: lib/MyApp/Importer.pm
+    anchor: source
 oracle:
   required:
-  - cpanfile
-  - exporter
-  - exporter_1
-  - exporter_2
+  - cpanfile_csv_xs_dep
+  - exporter_use_csv_xs
+  - exporter_export_csv_sub
+  - exporter_csv_xs_new
   allowed: []
   forbidden:
   - no_importer
   - no_reporter
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_importer_from_file
+  - no_importer_parse_csv_line
+  - no_reporter_generate_report
+  - no_reporter_generate_summary
+  - no_reporter_template
+  - no_importer_source

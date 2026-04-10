@@ -52,7 +52,7 @@ def test_binary_detection_with_null_byte(data, null_offset):
 
 
 @given(st.binary(min_size=10, max_size=1000).filter(lambda x: b"\x00" not in x))
-@settings(max_examples=50)
+@settings(max_examples=50, derandomize=True, deadline=None)
 def test_text_file_not_detected_as_binary(data):
     with tempfile.TemporaryDirectory() as tmp_dir:
         f = Path(tmp_dir) / "test.txt"

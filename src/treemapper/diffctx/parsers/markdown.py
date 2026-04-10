@@ -62,7 +62,20 @@ class MistuneMarkdownStrategy:
     def _find_all_headings(self, lines: list[str]) -> list[tuple[int, int]]:
         headings: list[tuple[int, int]] = []
         i = 0
+        fence_marker: str | None = None
         while i < len(lines):
+            stripped = lines[i].lstrip()
+            if fence_marker is None:
+                if stripped.startswith("```") or stripped.startswith("~~~"):
+                    fence_marker = stripped[:3]
+                    i += 1
+                    continue
+            else:
+                if stripped.startswith(fence_marker):
+                    fence_marker = None
+                i += 1
+                continue
+
             result = self._try_atx_heading(lines[i])
             if result is not None:
                 headings.append((i + 1, result))

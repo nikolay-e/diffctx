@@ -109,15 +109,47 @@ repo:
       import requests
   commit_message: Update files
 fragments:
-- id: values_file
+- id: values_log_level
   selector:
     path: chart/values.yaml
-- id: req_global_0
-  selector:
     anchor: 'logLevel: debug'
+- id: values_debug_mode
+  selector:
+    path: chart/values.yaml
+    anchor: 'debugMode: true'
+- id: values_max_connections
+  selector:
+    path: chart/values.yaml
+    anchor: 'maxConnections: 100'
+- id: configmap_template_log_level
+  selector:
+    path: chart/templates/configmap.yaml
+    anchor: .Values.config.logLevel
+- id: configmap_template_debug_mode
+  selector:
+    path: chart/templates/configmap.yaml
+    anchor: .Values.config.debugMode
+- id: no_networkpolicy
+  selector:
+    path: chart/templates/networkpolicy.yaml
+    anchor: NetworkPolicy
+- id: no_load_test
+  selector:
+    path: chart/tools/load-test.py
+    anchor: import requests
+- id: no_deployment_template
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.replicaCount
 oracle:
   required:
-  - values_file
-  - req_global_0
+  - values_log_level
+  - values_debug_mode
+  - values_max_connections
+  - configmap_template_log_level
+  - configmap_template_debug_mode
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_networkpolicy
+  - no_load_test
+  - no_deployment_template

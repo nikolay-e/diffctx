@@ -289,104 +289,62 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: apicontroller
+- id: apicontroller_route_annotation
   selector:
     path: src/Controllers/ApiController.php
     anchor: '#[Route(''/api/users'', ''POST'', middleware: [''auth''])]'
-- id: apicontroller_1
+- id: apicontroller_import_route
   selector:
     path: src/Controllers/ApiController.php
     anchor: use App\Attributes\Route
-- id: route
+- id: route_path_param
   selector:
     path: src/Attributes/Route.php
     anchor: public string $path
-- id: route_1
+- id: route_method_param
   selector:
     path: src/Attributes/Route.php
     anchor: public string $method = 'GET'
-- id: route_2
+- id: route_middleware_param
   selector:
     path: src/Attributes/Route.php
     anchor: public array $middleware = []
-- id: no_validate
-  selector:
-    path: src/Attributes/Validate.php
-- id: no_admincontroller
-  selector:
-    path: src/Controllers/AdminController.php
-- id: no_middleware
-  selector:
-    path: src/Attributes/Middleware.php
-- id: no_authcontroller
-  selector:
-    path: src/Controllers/AuthController.php
-- id: no_router
+- id: router_reads_route_attributes
   selector:
     path: src/Routing/Router.php
-- id: no_global_0
+    anchor: getAttributes(\App\Attributes\Route::class)
+- id: router_calls_get_path
   selector:
+    path: src/Routing/Router.php
+    anchor: $route->getPath()
+- id: no_validate_attribute
+  selector:
+    path: src/Attributes/Validate.php
     anchor: class Validate
-- id: no_global_1
+- id: no_admin_controller
   selector:
-    anchor: TARGET_PARAMETER
-- id: no_global_2
-  selector:
-    anchor: getRule
-- id: no_global_3
-  selector:
+    path: src/Controllers/AdminController.php
     anchor: class AdminController
-- id: no_global_4
+- id: no_middleware_attribute
   selector:
-    anchor: admin_dashboard
-- id: no_global_5
-  selector:
-    anchor: maintenance
-- id: no_global_6
-  selector:
+    path: src/Attributes/Middleware.php
     anchor: class Middleware
-- id: no_global_7
+- id: no_auth_controller
   selector:
-    anchor: isGlobal
-- id: no_global_8
-  selector:
+    path: src/Controllers/AuthController.php
     anchor: class AuthController
-- id: no_global_9
-  selector:
-    anchor: jwt_token_here
-- id: no_global_10
-  selector:
-    anchor: class Router
-- id: no_global_11
-  selector:
-    anchor: registerController
-- id: no_global_12
-  selector:
-    anchor: ReflectionClass
 oracle:
   required:
-  - apicontroller
-  - apicontroller_1
-  - route
-  - route_1
-  - route_2
+  - apicontroller_route_annotation
+  - apicontroller_import_route
+  - route_path_param
+  - route_method_param
+  - route_middleware_param
+  - router_reads_route_attributes
+  - router_calls_get_path
   allowed: []
   forbidden:
-  - no_validate
-  - no_admincontroller
-  - no_middleware
-  - no_authcontroller
-  - no_router
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
+  - no_validate_attribute
+  - no_admin_controller
+  - no_middleware_attribute
+  - no_auth_controller

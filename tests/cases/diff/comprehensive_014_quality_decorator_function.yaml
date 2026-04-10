@@ -37,22 +37,38 @@ repo:
 
       def send_notification(user, message):
           return f"Sent '{message}' to {user}"
-    garbage_middleware_chain.py: |
-      GARBAGE_COMP_014_PRIORITY_ORDER_A = "fifo"
-      GARBAGE_COMP_014_ERROR_HANDLER_B = "fallthrough"
+    src/middleware.py: |
+      from typing import Callable, List
 
-      class GarbageMiddlewareChain:
-          GARBAGE_COMP_014_SHORT_CIRCUIT_C = True
-          def execute(self):
-              pass
-    garbage_plugin_loader.py: |
-      GARBAGE_COMP_014_DISCOVERY_PATH_D = "entrypoints"
-      GARBAGE_COMP_014_LAZY_IMPORT_E = "deferred"
+      class MiddlewareChain:
+          def __init__(self):
+              self.middlewares: List[Callable] = []
 
-      class GarbagePluginLoader:
-          GARBAGE_COMP_014_SANDBOX_MODE_F = False
-          def load(self):
-              pass
+          def add(self, middleware: Callable) -> None:
+              self.middlewares.append(middleware)
+
+          def execute(self, request: dict) -> dict:
+              result = request
+              for mw in self.middlewares:
+                  result = mw(result)
+              return result
+    src/plugin_loader.py: |
+      import importlib
+      from typing import Dict, Any
+
+      class PluginLoader:
+          def __init__(self, plugin_dir: str = "plugins"):
+              self.plugin_dir = plugin_dir
+              self.plugins: Dict[str, Any] = {}
+
+          def load(self, name: str) -> Any:
+              if name not in self.plugins:
+                  module = importlib.import_module(f"{self.plugin_dir}.{name}")
+                  self.plugins[name] = module
+              return self.plugins[name]
+
+          def list_loaded(self) -> list:
+              return list(self.plugins.keys())
   changed_files:
     src/decorators.py: |
       import functools
@@ -94,69 +110,79 @@ repo:
 
       def send_notification(user, message):
           return f"Sent '{message}' to {user}"
-    garbage_middleware_chain.py: |
-      GARBAGE_COMP_014_PRIORITY_ORDER_A = "fifo"
-      GARBAGE_COMP_014_ERROR_HANDLER_B = "fallthrough"
+    src/middleware.py: |
+      from typing import Callable, List
 
-      class GarbageMiddlewareChain:
-          GARBAGE_COMP_014_SHORT_CIRCUIT_C = True
-          def execute(self):
-              pass
-    garbage_plugin_loader.py: |
-      GARBAGE_COMP_014_DISCOVERY_PATH_D = "entrypoints"
-      GARBAGE_COMP_014_LAZY_IMPORT_E = "deferred"
+      class MiddlewareChain:
+          def __init__(self):
+              self.middlewares: List[Callable] = []
 
-      class GarbagePluginLoader:
-          GARBAGE_COMP_014_SANDBOX_MODE_F = False
-          def load(self):
-              pass
+          def add(self, middleware: Callable) -> None:
+              self.middlewares.append(middleware)
+
+          def execute(self, request: dict) -> dict:
+              result = request
+              for mw in self.middlewares:
+                  result = mw(result)
+              return result
+    src/plugin_loader.py: |
+      import importlib
+      from typing import Dict, Any
+
+      class PluginLoader:
+          def __init__(self, plugin_dir: str = "plugins"):
+              self.plugin_dir = plugin_dir
+              self.plugins: Dict[str, Any] = {}
+
+          def load(self, name: str) -> Any:
+              if name not in self.plugins:
+                  module = importlib.import_module(f"{self.plugin_dir}.{name}")
+                  self.plugins[name] = module
+              return self.plugins[name]
+
+          def list_loaded(self) -> list:
+              return list(self.plugins.keys())
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_decorators
   selector:
     anchor: from src.decorators import log_calls, retry
-- id: req_global_1
+- id: main_uses_log_calls
   selector:
     anchor: return f"Hello, {name}!"
-- id: no_global_0
+- id: decorators_log_calls_def
   selector:
-    anchor: GARBAGE_COMP_014_DISCOVERY_PATH_D
-- id: no_global_1
+    path: src/decorators.py
+    anchor: def log_calls(func)
+- id: decorators_retry_def
   selector:
-    anchor: GARBAGE_COMP_014_ERROR_HANDLER_B
-- id: no_global_2
+    path: src/decorators.py
+    anchor: def retry(max_attempts=3)
+- id: no_middleware
   selector:
-    anchor: GARBAGE_COMP_014_LAZY_IMPORT_E
-- id: no_global_3
+    path: src/middleware.py
+- id: no_plugin_loader
   selector:
-    anchor: GARBAGE_COMP_014_PRIORITY_ORDER_A
-- id: no_global_4
+    path: src/plugin_loader.py
+- id: no_middleware_chain
   selector:
-    anchor: GARBAGE_COMP_014_SANDBOX_MODE_F
-- id: no_global_5
+    anchor: MiddlewareChain
+- id: no_plugin_class
   selector:
-    anchor: GARBAGE_COMP_014_SHORT_CIRCUIT_C
-- id: no_global_6
-  selector:
-    anchor: garbage_middleware_chain.py
-- id: no_global_7
-  selector:
-    anchor: garbage_plugin_loader.py
+    anchor: PluginLoader
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_changed
+  - main_imports_decorators
+  - main_uses_log_calls
+  - decorators_log_calls_def
+  - decorators_retry_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_middleware
+  - no_plugin_loader
+  - no_middleware_chain
+  - no_plugin_class

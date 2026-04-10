@@ -24,22 +24,42 @@ repo:
 
       def log_step(step_name, status):
           print(f"Step {step_name}: {status}")
-    garbage_pipeline_orchestrator.py: |
-      GARBAGE_COMP_018_DAG_EXECUTOR_A = "topological"
-      GARBAGE_COMP_018_TASK_QUEUE_B = "priority"
+    src/pipeline_orchestrator.py: |
+      from typing import Callable, List
 
-      class GarbagePipelineOrchestrator:
-          GARBAGE_COMP_018_CONCURRENCY_LIMIT_C = True
-          def orchestrate(self):
-              pass
-    garbage_workflow_engine.py: |
-      GARBAGE_COMP_018_STATE_MACHINE_D = "finite"
-      GARBAGE_COMP_018_TRANSITION_LOG_E = "audit"
+      class PipelineOrchestrator:
+          def __init__(self):
+              self.stages: List[Callable] = []
 
-      class GarbageWorkflowEngine:
-          GARBAGE_COMP_018_COMPENSATION_F = False
-          def execute(self):
-              pass
+          def add_stage(self, stage: Callable) -> None:
+              self.stages.append(stage)
+
+          def run(self, initial_data):
+              result = initial_data
+              for stage in self.stages:
+                  result = stage(result)
+              return result
+
+          def clear(self) -> None:
+              self.stages.clear()
+    src/workflow_engine.py: |
+      from typing import Dict
+
+      class WorkflowEngine:
+          def __init__(self):
+              self.state = "idle"
+              self.transitions: Dict[str, str] = {}
+
+          def add_transition(self, from_state: str, to_state: str) -> None:
+              self.transitions[from_state] = to_state
+
+          def advance(self) -> str:
+              next_state = self.transitions.get(self.state, "done")
+              self.state = next_state
+              return self.state
+
+          def reset(self) -> None:
+              self.state = "idle"
   changed_files:
     src/utils.py: |
       from typing import Any
@@ -69,65 +89,84 @@ repo:
 
       def log_step(step_name, status):
           print(f"Step {step_name}: {status}")
-    garbage_pipeline_orchestrator.py: |
-      GARBAGE_COMP_018_DAG_EXECUTOR_A = "topological"
-      GARBAGE_COMP_018_TASK_QUEUE_B = "priority"
+    src/pipeline_orchestrator.py: |
+      from typing import Callable, List
 
-      class GarbagePipelineOrchestrator:
-          GARBAGE_COMP_018_CONCURRENCY_LIMIT_C = True
-          def orchestrate(self):
-              pass
-    garbage_workflow_engine.py: |
-      GARBAGE_COMP_018_STATE_MACHINE_D = "finite"
-      GARBAGE_COMP_018_TRANSITION_LOG_E = "audit"
+      class PipelineOrchestrator:
+          def __init__(self):
+              self.stages: List[Callable] = []
 
-      class GarbageWorkflowEngine:
-          GARBAGE_COMP_018_COMPENSATION_F = False
-          def execute(self):
-              pass
+          def add_stage(self, stage: Callable) -> None:
+              self.stages.append(stage)
+
+          def run(self, initial_data):
+              result = initial_data
+              for stage in self.stages:
+                  result = stage(result)
+              return result
+
+          def clear(self) -> None:
+              self.stages.clear()
+    src/workflow_engine.py: |
+      from typing import Dict
+
+      class WorkflowEngine:
+          def __init__(self):
+              self.state = "idle"
+              self.transitions: Dict[str, str] = {}
+
+          def add_transition(self, from_state: str, to_state: str) -> None:
+              self.transitions[from_state] = to_state
+
+          def advance(self) -> str:
+              next_state = self.transitions.get(self.state, "done")
+              self.state = next_state
+              return self.state
+
+          def reset(self) -> None:
+              self.state = "idle"
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_process_data
   selector:
-    anchor: 'def process(data):'
-- id: no_global_0
+    anchor: "def process(data):"
+- id: utils_validate_def
   selector:
-    anchor: GARBAGE_COMP_018_COMPENSATION_F
-- id: no_global_1
+    path: src/utils.py
+    anchor: "def validate(x: Any) -> bool:"
+- id: utils_transform_def
   selector:
-    anchor: GARBAGE_COMP_018_CONCURRENCY_LIMIT_C
-- id: no_global_2
+    path: src/utils.py
+    anchor: "def transform(x: float) -> float:"
+- id: utils_save_def
   selector:
-    anchor: GARBAGE_COMP_018_DAG_EXECUTOR_A
-- id: no_global_3
+    path: src/utils.py
+    anchor: "def save(x: Any) -> str:"
+- id: no_pipeline_orchestrator
   selector:
-    anchor: GARBAGE_COMP_018_STATE_MACHINE_D
-- id: no_global_4
+    path: src/pipeline_orchestrator.py
+- id: no_workflow_engine
   selector:
-    anchor: GARBAGE_COMP_018_TASK_QUEUE_B
-- id: no_global_5
+    path: src/workflow_engine.py
+- id: no_orchestrator_class
   selector:
-    anchor: GARBAGE_COMP_018_TRANSITION_LOG_E
-- id: no_global_6
+    anchor: PipelineOrchestrator
+- id: no_workflow_class
   selector:
-    anchor: garbage_pipeline_orchestrator.py
-- id: no_global_7
-  selector:
-    anchor: garbage_workflow_engine.py
+    anchor: WorkflowEngine
 oracle:
   required:
-  - main_file
-  - req_global_0
+  - main_changed
+  - main_process_data
+  - utils_validate_def
+  - utils_transform_def
+  - utils_save_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_pipeline_orchestrator
+  - no_workflow_engine
+  - no_orchestrator_class
+  - no_workflow_class

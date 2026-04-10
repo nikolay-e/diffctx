@@ -2,15 +2,20 @@ name: cicd_and_docs_077_sql_create_function
 repo:
   initial_files:
     sql/functions/format_currency.sql: |
-      -- Format amount as currency string
       CREATE OR REPLACE FUNCTION format_currency(amount DECIMAL)
       RETURNS TEXT AS $$
       BEGIN
           RETURN '$' || TO_CHAR(amount, 'FM999,999,990.00');
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
+    sql/functions/format_date.sql: |
+      CREATE OR REPLACE FUNCTION format_date(ts TIMESTAMP, fmt TEXT DEFAULT 'YYYY-MM-DD')
+      RETURNS TEXT AS $$
+      BEGIN
+          RETURN TO_CHAR(ts, fmt);
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
     sql/queries/order_report.sql: |
-      -- Order report using format_currency function
       SELECT
           id,
           user_id,
@@ -39,26 +44,8 @@ repo:
           def get_order_report(self) -> List[FormattedOrder]:
               results = self.db.execute_file('sql/queries/order_report.sql')
               return [FormattedOrder(**r) for r in results]
-    garbage_function_validator.ts: |
-      const GARBAGE_CICD_DOCS_077_FUNC_MARKER_A = "plpgsql";
-      const GARBAGE_CICD_DOCS_077_IMMUTABLE_MARKER_B = "stable";
-
-      class GarbageFunctionValidator {
-        static GARBAGE_CICD_DOCS_077_RETURN_MARKER_C = true;
-        validate(): void {}
-      }
-    garbage_sql_parser.ts: |
-      const GARBAGE_CICD_DOCS_077_PARSE_MARKER_D = "ast";
-      const GARBAGE_CICD_DOCS_077_TOKEN_MARKER_E = "lexer";
-
-      class GarbageSQLParser {
-        static GARBAGE_CICD_DOCS_077_COMPILE_MARKER_F = false;
-        parse(): void {}
-      }
   changed_files:
     sql/functions/format_currency.sql: |
-      -- Format amount as currency string with multi-currency support
-      -- Supports USD, EUR, GBP, JPY, and custom currency codes
       CREATE OR REPLACE FUNCTION format_currency(
           amount DECIMAL,
           currency_code TEXT DEFAULT 'USD',
@@ -69,7 +56,6 @@ repo:
           symbol TEXT;
           formatted TEXT;
       BEGIN
-          -- Determine currency symbol
           symbol := CASE currency_code
               WHEN 'USD' THEN '$'
               WHEN 'EUR' THEN '€'
@@ -81,14 +67,12 @@ repo:
               ELSE currency_code || ' '
           END;
 
-          -- Format the amount
           IF show_decimals THEN
               formatted := TO_CHAR(amount, 'FM999,999,990.00');
           ELSE
               formatted := TO_CHAR(ROUND(amount), 'FM999,999,990');
           END IF;
 
-          -- Handle negative amounts
           IF amount < 0 THEN
               RETURN '(' || symbol || REPLACE(formatted, '-', '') || ')';
           ELSE
@@ -97,7 +81,6 @@ repo:
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
 
-      -- Helper function to format with locale
       CREATE OR REPLACE FUNCTION format_currency_locale(
           amount DECIMAL,
           locale TEXT DEFAULT 'en_US'
@@ -113,8 +96,14 @@ repo:
           END;
       END;
       $$ LANGUAGE plpgsql IMMUTABLE;
+    sql/functions/format_date.sql: |
+      CREATE OR REPLACE FUNCTION format_date(ts TIMESTAMP, fmt TEXT DEFAULT 'YYYY-MM-DD')
+      RETURNS TEXT AS $$
+      BEGIN
+          RETURN TO_CHAR(ts, fmt);
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
     sql/queries/order_report.sql: |
-      -- Order report using format_currency function
       SELECT
           id,
           user_id,
@@ -143,65 +132,37 @@ repo:
           def get_order_report(self) -> List[FormattedOrder]:
               results = self.db.execute_file('sql/queries/order_report.sql')
               return [FormattedOrder(**r) for r in results]
-    garbage_function_validator.ts: |
-      const GARBAGE_CICD_DOCS_077_FUNC_MARKER_A = "plpgsql";
-      const GARBAGE_CICD_DOCS_077_IMMUTABLE_MARKER_B = "stable";
-
-      class GarbageFunctionValidator {
-        static GARBAGE_CICD_DOCS_077_RETURN_MARKER_C = true;
-        validate(): void {}
-      }
-    garbage_sql_parser.ts: |
-      const GARBAGE_CICD_DOCS_077_PARSE_MARKER_D = "ast";
-      const GARBAGE_CICD_DOCS_077_TOKEN_MARKER_E = "lexer";
-
-      class GarbageSQLParser {
-        static GARBAGE_CICD_DOCS_077_COMPILE_MARKER_F = false;
-        parse(): void {}
-      }
-  commit_message: Update files
+  commit_message: "db: extend format_currency with multi-currency and locale support"
 fragments:
-- id: format_currency_file
+- id: function_changed
   selector:
     path: sql/functions/format_currency.sql
-- id: req_global_0
+- id: new_signature
   selector:
-    anchor: -- Format amount as currency string with multi-currency support
-- id: no_global_0
+    anchor: currency_code TEXT DEFAULT 'USD'
+- id: caller_old_signature
   selector:
-    anchor: GARBAGE_CICD_DOCS_077_COMPILE_MARKER_F
-- id: no_global_1
+    path: sql/queries/order_report.sql
+    anchor: format_currency(total) AS formatted_total
+- id: report_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_077_FUNC_MARKER_A
-- id: no_global_2
+    path: src/repositories/order_report_repository.py
+    anchor: execute_file('sql/queries/order_report.sql')
+- id: no_format_date_function
   selector:
-    anchor: GARBAGE_CICD_DOCS_077_IMMUTABLE_MARKER_B
-- id: no_global_3
+    path: sql/functions/format_date.sql
+    anchor: format_date
+- id: no_formatted_order_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_077_PARSE_MARKER_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_077_RETURN_MARKER_C
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_077_TOKEN_MARKER_E
-- id: no_global_6
-  selector:
-    anchor: garbage_function_validator.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_sql_parser.ts
+    path: src/models/formatted_order.py
+    anchor: FormattedOrder
 oracle:
   required:
-  - format_currency_file
-  - req_global_0
-  allowed: []
+  - function_changed
+  - new_signature
+  - caller_old_signature
+  allowed:
+  - report_repository
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_format_date_function
+  - no_formatted_order_model

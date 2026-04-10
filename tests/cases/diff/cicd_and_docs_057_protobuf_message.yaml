@@ -111,11 +111,17 @@ repo:
         static GARBAGE_CICD_DOCS_057_NULLABLE_MARKER_F = false;
         validate(): boolean { return true; }
       }
-  commit_message: Update files
+  commit_message: "Add email, status enum, roles, and timestamp to User proto message"
 fragments:
 - id: user_file
   selector:
     path: proto/user.proto
+- id: service_file
+  selector:
+    path: src/services/user_service.py
+- id: model_file
+  selector:
+    path: src/models/user.py
 - id: req_global_0
   selector:
     anchor: import "google/protobuf/timestamp.proto";
@@ -147,7 +153,9 @@ oracle:
   required:
   - user_file
   - req_global_0
-  allowed: []
+  allowed:
+  - service_file
+  - model_file
   forbidden:
   - no_global_0
   - no_global_1

@@ -103,14 +103,17 @@ repo:
         static GARBAGE_CICD_DOCS_054_LIMIT_MARKER_F = false;
         validate(): boolean { return true; }
       }
-  commit_message: Update files
+  commit_message: "Add pagination to users query and new searchUsers/Order types"
 fragments:
 - id: schema_file
   selector:
     path: schema.graphql
+- id: resolver_file
+  selector:
+    path: src/resolvers/user_resolver.py
 - id: req_global_0
   selector:
-    anchor: 'users(limit: Int = 10, offset: Int = 0): [User!]!'
+    anchor: "users(limit: Int = 10, offset: Int = 0): [User!]!"
 - id: no_global_0
   selector:
     anchor: GARBAGE_CICD_DOCS_054_CACHE_MARKER_C
@@ -139,7 +142,8 @@ oracle:
   required:
   - schema_file
   - req_global_0
-  allowed: []
+  allowed:
+  - resolver_file
   forbidden:
   - no_global_0
   - no_global_1

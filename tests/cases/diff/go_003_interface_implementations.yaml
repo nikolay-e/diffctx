@@ -89,36 +89,54 @@ repo:
           }
           return nil, ErrKeyNotFound
       }
-    internal/unrelated/auth/authenticator.go: |
+    internal/service/upload_service.go: |
+      package service
+
+      import (
+          "context"
+          "mymodule/internal/storage"
+      )
+
+      type UploadService struct {
+          store storage.Storage
+      }
+
+      func NewUploadService(store storage.Storage) *UploadService {
+          return &UploadService{store: store}
+      }
+
+      func (u *UploadService) Upload(ctx context.Context, key string, data []byte) error {
+          return u.store.Save(ctx, key, data)
+      }
+
+      func (u *UploadService) Download(ctx context.Context, key string) ([]byte, error) {
+          return u.store.Load(ctx, key)
+      }
+    internal/auth/token_store.go: |
       package auth
 
       import "time"
 
-      const GARBAGE_GO_AUTH_IMPL_001 = "auth_garbage_marker"
-
-      type GARBAGE_GO_TYPE_AUTH_002 struct {
-          secret string
+      type TokenStore struct {
+          tokens map[string]TokenEntry
       }
 
-      func GARBAGE_GO_FUNC_AUTH_003() string {
-          return "GARBAGE_GO_AUTH_UNUSED_004"
-      }
-
-      type TokenClaims struct {
+      type TokenEntry struct {
           UserID    int64
           ExpiresAt time.Time
       }
-    internal/unrelated/logging/structured_logger.go: |
-      package logging
 
-      const GARBAGE_GO_LOGGER_IMPL_005 = "logger_garbage"
-
-      type GARBAGE_GO_TYPE_LOGGER_006 struct {
-          level string
+      func NewTokenStore() *TokenStore {
+          return &TokenStore{tokens: make(map[string]TokenEntry)}
       }
 
-      func GARBAGE_GO_FUNC_LOGGER_007() {
-          println("GARBAGE_GO_LOGGER_OUTPUT_008")
+      func (ts *TokenStore) Store(token string, entry TokenEntry) {
+          ts.tokens[token] = entry
+      }
+
+      func (ts *TokenStore) Lookup(token string) (TokenEntry, bool) {
+          entry, ok := ts.tokens[token]
+          return entry, ok
       }
   changed_files:
     internal/storage/interfaces.go: |
@@ -225,84 +243,94 @@ repo:
           }
           return nil, ErrKeyNotFound
       }
-    internal/unrelated/auth/authenticator.go: |
+    internal/service/upload_service.go: |
+      package service
+
+      import (
+          "context"
+          "mymodule/internal/storage"
+      )
+
+      type UploadService struct {
+          store storage.Storage
+      }
+
+      func NewUploadService(store storage.Storage) *UploadService {
+          return &UploadService{store: store}
+      }
+
+      func (u *UploadService) Upload(ctx context.Context, key string, data []byte) error {
+          return u.store.Save(ctx, key, data)
+      }
+
+      func (u *UploadService) Download(ctx context.Context, key string) ([]byte, error) {
+          return u.store.Load(ctx, key)
+      }
+    internal/auth/token_store.go: |
       package auth
 
       import "time"
 
-      const GARBAGE_GO_AUTH_IMPL_001 = "auth_garbage_marker"
-
-      type GARBAGE_GO_TYPE_AUTH_002 struct {
-          secret string
+      type TokenStore struct {
+          tokens map[string]TokenEntry
       }
 
-      func GARBAGE_GO_FUNC_AUTH_003() string {
-          return "GARBAGE_GO_AUTH_UNUSED_004"
-      }
-
-      type TokenClaims struct {
+      type TokenEntry struct {
           UserID    int64
           ExpiresAt time.Time
       }
-    internal/unrelated/logging/structured_logger.go: |
-      package logging
 
-      const GARBAGE_GO_LOGGER_IMPL_005 = "logger_garbage"
-
-      type GARBAGE_GO_TYPE_LOGGER_006 struct {
-          level string
+      func NewTokenStore() *TokenStore {
+          return &TokenStore{tokens: make(map[string]TokenEntry)}
       }
 
-      func GARBAGE_GO_FUNC_LOGGER_007() {
-          println("GARBAGE_GO_LOGGER_OUTPUT_008")
+      func (ts *TokenStore) Store(token string, entry TokenEntry) {
+          ts.tokens[token] = entry
       }
-  commit_message: Update files
+
+      func (ts *TokenStore) Lookup(token string) (TokenEntry, bool) {
+          entry, ok := ts.tokens[token]
+          return entry, ok
+      }
+  commit_message: "feat(storage): expand Storage interface with Delete, Exists; add ListableStorage"
 fragments:
-- id: interfaces_file
+- id: changed_interfaces
   selector:
     path: internal/storage/interfaces.go
-- id: req_global_0
+- id: new_delete_method
   selector:
-    anchor: SetMetadata(ctx context.Context, key string, meta *Metadata) error
-- id: req_global_1
+    anchor: Delete(ctx context.Context, key string) error
+- id: new_exists_method
+  selector:
+    anchor: Exists(ctx context.Context, key string) (bool, error)
+- id: new_listable_interface
   selector:
     anchor: type ListableStorage interface {
-- id: no_global_0
+- id: impl_file_storage
   selector:
-    anchor: GARBAGE_GO_AUTH_IMPL_001
-- id: no_global_1
+    path: internal/storage/file_storage.go
+- id: impl_memory_storage
   selector:
-    anchor: GARBAGE_GO_FUNC_AUTH_003
-- id: no_global_2
+    path: internal/storage/memory_storage.go
+- id: consumer_upload_service
   selector:
-    anchor: GARBAGE_GO_FUNC_LOGGER_007
-- id: no_global_3
+    anchor: "store storage.Storage"
+- id: unrelated_token_store
   selector:
-    anchor: GARBAGE_GO_LOGGER_IMPL_005
-- id: no_global_4
+    anchor: func (ts *TokenStore) Store(token string, entry TokenEntry) {
+- id: unrelated_token_store_file
   selector:
-    anchor: GARBAGE_GO_TYPE_AUTH_002
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_LOGGER_006
-- id: no_global_6
-  selector:
-    anchor: authenticator.go
-- id: no_global_7
-  selector:
-    anchor: structured_logger.go
+    anchor: token_store.go
 oracle:
   required:
-  - interfaces_file
-  - req_global_0
-  - req_global_1
+  - changed_interfaces
+  - new_delete_method
+  - new_exists_method
+  - new_listable_interface
+  - impl_file_storage
+  - impl_memory_storage
+  - consumer_upload_service
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_token_store
+  - unrelated_token_store_file

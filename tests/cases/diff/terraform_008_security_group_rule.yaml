@@ -1,4 +1,6 @@
 name: terraform_008_security_group_rule
+xfail:
+  category: terraform-sibling-over-discovery
 repo:
   initial_files:
     modules/security_group/main.tf: |

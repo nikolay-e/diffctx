@@ -1,147 +1,37 @@
 name: kubernetes_005_configmap_reference
+xfail:
+  category: k8s-config-over-discovery
 repo:
   initial_files:
-    k8s/base/configmap.yaml: |
+    k8s/base/app-config.yaml: |
       apiVersion: v1
       kind: ConfigMap
       metadata:
         name: app-config
         namespace: production
-        labels:
-          app: myapp
       data:
         LOG_LEVEL: info
         MAX_CONNECTIONS: "100"
         CACHE_TTL: "3600"
-        FEATURE_FLAGS: |
-          enable_new_ui=true
-          enable_analytics=true
-          beta_features=false
-        config.yaml: |
-          server:
-            port: 8080
-            host: 0.0.0.0
-          logging:
-            level: info
-            format: json
-    k8s/base/deployment.yaml: |
+    k8s/base/api-deployment.yaml: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: myapp
+        name: api-server
         namespace: production
-        labels:
-          app: myapp
-          version: v1
       spec:
         replicas: 3
         selector:
           matchLabels:
-            app: myapp
+            app: api-server
         template:
           metadata:
             labels:
-              app: myapp
-              version: v1
+              app: api-server
           spec:
             containers:
-            - name: app
-              image: myapp:v1.0.0
-              ports:
-              - containerPort: 8080
-              env: []
-              volumeMounts:
-              - name: config-volume
-                mountPath: /app/config
-                readOnly: true
-            volumes:
-            - name: config-volume
-              configMap:
-                name: app-config
-                items:
-                - key: config.yaml
-                  path: config.yaml
-    k8s/infra/coredns-config.yaml: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: coredns-custom
-        namespace: kube-system
-      data:
-        custom.server: |
-          example.local:53 {
-              forward . 10.0.0.1
-              cache 30
-              log
-          }
-    k8s/apps/frontend/nginx-config.yaml: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: nginx-config
-        namespace: production
-      data:
-        default.conf: |
-          server {
-              listen 80;
-              server_name _;
-              location / {
-                  root /usr/share/nginx/html;
-                  try_files $uri $uri/ /index.html;
-              }
-              location /api/ {
-                  proxy_pass http://backend-api;
-              }
-          }
-  changed_files:
-    k8s/base/configmap.yaml: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: app-config
-        namespace: production
-        labels:
-          app: myapp
-      data:
-        LOG_LEVEL: info
-        MAX_CONNECTIONS: "100"
-        CACHE_TTL: "3600"
-        FEATURE_FLAGS: |
-          enable_new_ui=true
-          enable_analytics=true
-          beta_features=false
-        config.yaml: |
-          server:
-            port: 8080
-            host: 0.0.0.0
-          logging:
-            level: info
-            format: json
-    k8s/base/deployment.yaml: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: myapp
-        namespace: production
-        labels:
-          app: myapp
-          version: v1
-      spec:
-        replicas: 3
-        selector:
-          matchLabels:
-            app: myapp
-        template:
-          metadata:
-            labels:
-              app: myapp
-              version: v1
-          spec:
-            containers:
-            - name: app
-              image: myapp:v1.0.0
-              ports:
-              - containerPort: 8080
+            - name: api
+              image: api-server:v1.2.0
               env:
               - name: LOG_LEVEL
                 valueFrom:
@@ -158,124 +48,290 @@ repo:
                   configMapKeyRef:
                     name: app-config
                     key: CACHE_TTL
-              volumeMounts:
-              - name: config-volume
-                mountPath: /app/config
-                readOnly: true
-            volumes:
-            - name: config-volume
-              configMap:
-                name: app-config
-                items:
-                - key: config.yaml
-                  path: config.yaml
-    k8s/infra/coredns-config.yaml: |
+    k8s/base/worker-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: background-worker
+        namespace: production
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: background-worker
+        template:
+          metadata:
+            labels:
+              app: background-worker
+          spec:
+            containers:
+            - name: worker
+              image: background-worker:v1.2.0
+              env:
+              - name: LOG_LEVEL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: LOG_LEVEL
+              - name: CACHE_TTL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: CACHE_TTL
+    k8s/base/scheduler-cronjob.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: nightly-scheduler
+        namespace: production
+      spec:
+        schedule: "0 2 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: scheduler
+                  image: scheduler:v1.0.0
+                  env:
+                  - name: MAX_CONNECTIONS
+                    valueFrom:
+                      configMapKeyRef:
+                        name: app-config
+                        key: MAX_CONNECTIONS
+                restartPolicy: OnFailure
+    k8s/base/database-config.yaml: |
       apiVersion: v1
       kind: ConfigMap
       metadata:
-        name: coredns-custom
-        namespace: kube-system
-      data:
-        custom.server: |
-          example.local:53 {
-              forward . 10.0.0.1
-              cache 30
-              log
-          }
-    k8s/apps/frontend/nginx-config.yaml: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: nginx-config
+        name: database-config
         namespace: production
       data:
-        default.conf: |
-          server {
-              listen 80;
-              server_name _;
-              location / {
-                  root /usr/share/nginx/html;
-                  try_files $uri $uri/ /index.html;
-              }
-              location /api/ {
-                  proxy_pass http://backend-api;
-              }
-          }
-  commit_message: Update files
+        DB_HOST: postgres.production.svc
+        DB_PORT: "5432"
+        DB_NAME: appdb
+    k8s/base/database-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: postgres
+        namespace: production
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          metadata:
+            labels:
+              app: postgres
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15
+              env:
+              - name: DB_HOST
+                valueFrom:
+                  configMapKeyRef:
+                    name: database-config
+                    key: DB_HOST
+              - name: DB_PORT
+                valueFrom:
+                  configMapKeyRef:
+                    name: database-config
+                    key: DB_PORT
+    k8s/base/api-service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+  changed_files:
+    k8s/base/app-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-config
+        namespace: production
+      data:
+        LOG_LEVEL: info
+        MAX_CONNECTIONS: "200"
+        CACHE_TTL: "7200"
+        REQUEST_TIMEOUT_SEC: "30"
+    k8s/base/api-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: api-server
+        template:
+          metadata:
+            labels:
+              app: api-server
+          spec:
+            containers:
+            - name: api
+              image: api-server:v1.2.0
+              env:
+              - name: LOG_LEVEL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: LOG_LEVEL
+              - name: MAX_CONNECTIONS
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: MAX_CONNECTIONS
+              - name: CACHE_TTL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: CACHE_TTL
+              - name: REQUEST_TIMEOUT_SEC
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: REQUEST_TIMEOUT_SEC
+    k8s/base/worker-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: background-worker
+        namespace: production
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: background-worker
+        template:
+          metadata:
+            labels:
+              app: background-worker
+          spec:
+            containers:
+            - name: worker
+              image: background-worker:v1.2.0
+              env:
+              - name: LOG_LEVEL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: LOG_LEVEL
+              - name: CACHE_TTL
+                valueFrom:
+                  configMapKeyRef:
+                    name: app-config
+                    key: CACHE_TTL
+    k8s/base/scheduler-cronjob.yaml: |
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: nightly-scheduler
+        namespace: production
+      spec:
+        schedule: "0 2 * * *"
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: scheduler
+                  image: scheduler:v1.0.0
+                  env:
+                  - name: MAX_CONNECTIONS
+                    valueFrom:
+                      configMapKeyRef:
+                        name: app-config
+                        key: MAX_CONNECTIONS
+                restartPolicy: OnFailure
+    k8s/base/database-config.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: database-config
+        namespace: production
+      data:
+        DB_HOST: postgres.production.svc
+        DB_PORT: "5432"
+        DB_NAME: appdb
+    k8s/base/database-deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: postgres
+        namespace: production
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: postgres
+        template:
+          metadata:
+            labels:
+              app: postgres
+          spec:
+            containers:
+            - name: postgres
+              image: postgres:15
+              env:
+              - name: DB_HOST
+                valueFrom:
+                  configMapKeyRef:
+                    name: database-config
+                    key: DB_HOST
+              - name: DB_PORT
+                valueFrom:
+                  configMapKeyRef:
+                    name: database-config
+                    key: DB_PORT
+    k8s/base/api-service.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-server
+        namespace: production
+      spec:
+        selector:
+          app: api-server
+        ports:
+        - port: 80
+          targetPort: 8080
+  commit_message: "app-config: add REQUEST_TIMEOUT_SEC, bump MAX_CONNECTIONS to 200; wire api-server"
 fragments:
-- id: deployment
-  selector:
-    path: k8s/base/deployment.yaml
-    anchor: '- name: LOG_LEVEL'
-- id: deployment_1
-  selector:
-    path: k8s/base/deployment.yaml
-    anchor: 'configMapKeyRef:'
-- id: deployment_2
-  selector:
-    path: k8s/base/deployment.yaml
-    anchor: 'key: MAX_CONNECTIONS'
-- id: deployment_3
-  selector:
-    path: k8s/base/deployment.yaml
-    anchor: 'key: CACHE_TTL'
-- id: configmap
-  selector:
-    path: k8s/base/configmap.yaml
-    anchor: 'name: app-config'
-- id: configmap_1
-  selector:
-    path: k8s/base/configmap.yaml
-    anchor: 'LOG_LEVEL: info'
-- id: configmap_2
-  selector:
-    path: k8s/base/configmap.yaml
-    anchor: 'MAX_CONNECTIONS: "100"'
-- id: configmap_3
-  selector:
-    path: k8s/base/configmap.yaml
-    anchor: 'CACHE_TTL: "3600"'
-- id: no_coredns_config
-  selector:
-    path: k8s/infra/coredns-config.yaml
-- id: no_nginx_config
-  selector:
-    path: k8s/apps/frontend/nginx-config.yaml
-- id: no_global_0
-  selector:
-    anchor: coredns-custom
-- id: no_global_1
-  selector:
-    anchor: example.local
-- id: no_global_2
-  selector:
-    anchor: forward . 10.0.0.1
-- id: no_global_3
-  selector:
-    anchor: nginx-config
-- id: no_global_4
-  selector:
-    anchor: proxy_pass
-- id: no_global_5
-  selector:
-    anchor: server_name _
+  - id: app_config_changed
+    selector: { path: k8s/base/app-config.yaml }
+  - id: api_deployment_updated
+    selector: { path: k8s/base/api-deployment.yaml }
+  - id: worker_must_update
+    selector: { path: k8s/base/worker-deployment.yaml }
+  - id: scheduler_must_update
+    selector: { path: k8s/base/scheduler-cronjob.yaml }
+  - id: database_config_unrelated
+    selector: { path: k8s/base/database-config.yaml }
+  - id: database_deployment_unrelated
+    selector: { path: k8s/base/database-deployment.yaml }
+  - id: api_service_unrelated
+    selector: { path: k8s/base/api-service.yaml }
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
-  - configmap
-  - configmap_1
-  - configmap_2
-  - configmap_3
-  allowed: []
+    - app_config_changed
+    - worker_must_update
+    - scheduler_must_update
+  allowed:
+    - api_deployment_updated
   forbidden:
-  - no_coredns_config
-  - no_nginx_config
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+    - database_config_unrelated
+    - database_deployment_unrelated
+    - api_service_unrelated

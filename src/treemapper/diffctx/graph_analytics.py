@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import subprocess
 from collections import defaultdict
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import networkx as nx
 
 from .project_graph import ProjectGraph, _relative_path
 from .types import Fragment, FragmentId
@@ -123,53 +124,12 @@ def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:
 
 
 def _tarjan_scc(adjacency: dict[str, set[str]]) -> list[list[str]]:
-    index_counter = [0]
-    stack: list[str] = []
-    on_stack: set[str] = set()
-    index: dict[str, int] = {}
-    lowlink: dict[str, int] = {}
-    result: list[list[str]] = []
-
-    for start in adjacency:
-        if start in index:
-            continue
-
-        index[start] = lowlink[start] = index_counter[0]
-        index_counter[0] += 1
-        stack.append(start)
-        on_stack.add(start)
-
-        work: list[tuple[str, Iterator[str]]] = [(start, iter(adjacency.get(start, set())))]
-
-        while work:
-            v, it = work[-1]
-            try:
-                w = next(it)
-                if w not in index:
-                    index[w] = lowlink[w] = index_counter[0]
-                    index_counter[0] += 1
-                    stack.append(w)
-                    on_stack.add(w)
-                    work.append((w, iter(adjacency.get(w, set()))))
-                elif w in on_stack:
-                    lowlink[v] = min(lowlink[v], index[w])
-            except StopIteration:
-                work.pop()
-                if work:
-                    parent = work[-1][0]
-                    lowlink[parent] = min(lowlink[parent], lowlink[v])
-                if lowlink[v] == index[v]:
-                    component: list[str] = []
-                    while True:
-                        w = stack.pop()
-                        on_stack.discard(w)
-                        component.append(w)
-                        if w == v:
-                            break
-                    if len(component) > 1:
-                        result.append(component)
-
-    return result
+    g = nx.DiGraph()
+    for node, neighbors in adjacency.items():
+        g.add_node(node)
+        for nbr in neighbors:
+            g.add_edge(node, nbr)
+    return [list(c) for c in nx.strongly_connected_components(g) if len(c) > 1]
 
 
 def detect_cycles(

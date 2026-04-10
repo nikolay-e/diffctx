@@ -197,16 +197,46 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
-- id: req_global_1
+- id: volume_driver_config
   selector:
     anchor: 'driver: local'
+- id: storage_data_path
+  selector:
+    path: src/storage.py
+    anchor: 'DATA_PATH = Path(os.getenv("DATA_PATH"'
+- id: storage_config_path
+  selector:
+    path: src/storage.py
+    anchor: 'CONFIG_PATH = Path(os.getenv("CONFIG_PATH"'
+- id: storage_logs_path
+  selector:
+    path: src/storage.py
+    anchor: 'LOGS_PATH = Path(os.getenv("LOGS_PATH"'
+- id: no_backup_script
+  selector:
+    path: scripts/backup.sh
+    anchor: "tar -czf backup.tar.gz"
+- id: no_k8s_pvc
+  selector:
+    path: k8s/pvc.yaml
+    anchor: "apiVersion: v1"
+- id: no_terraform_storage
+  selector:
+    path: terraform/storage.tf
+    anchor: "aws_ebs_volume"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
-  - req_global_1
+  - dockerfile_build_context
+  - volume_driver_config
+  - storage_data_path
+  - storage_config_path
+  - storage_logs_path
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_backup_script
+  - no_k8s_pvc
+  - no_terraform_storage

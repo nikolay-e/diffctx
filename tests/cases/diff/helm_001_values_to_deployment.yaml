@@ -200,19 +200,47 @@ repo:
       Check pod logs using kubectl logs.
   commit_message: Update files
 fragments:
-- id: values_file
+- id: values_replica_count
   selector:
     path: chart/values.yaml
-- id: req_global_0
-  selector:
     anchor: 'replicaCount: 3'
-- id: req_global_1
+- id: values_pull_policy
   selector:
+    path: chart/values.yaml
     anchor: 'pullPolicy: Always'
+- id: deployment_uses_replica_count
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.replicaCount
+- id: deployment_uses_image_tag
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.image.tag
+- id: deployment_uses_pull_policy
+  selector:
+    path: chart/templates/deployment.yaml
+    anchor: .Values.image.pullPolicy
+- id: no_monitoring_dashboard
+  selector:
+    path: chart/templates/monitoring-dashboard.json
+    anchor: dashboard
+- id: no_runbook
+  selector:
+    path: chart/docs/runbook.md
+    anchor: Runbook
+- id: no_service_template
+  selector:
+    path: chart/templates/service.yaml
+    anchor: .Values.service.type
 oracle:
   required:
-  - values_file
-  - req_global_0
-  - req_global_1
+  - values_replica_count
+  - values_pull_policy
+  - deployment_uses_replica_count
+  - deployment_uses_image_tag
+  - deployment_uses_pull_policy
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_monitoring_dashboard
+  - no_runbook
+  - no_service_template

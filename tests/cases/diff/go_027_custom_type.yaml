@@ -59,68 +59,31 @@ repo:
       func GetOrderPriority(id int) int {
           return 0
       }
-    internal/unrelated/analytics/tracker.go: |
-      package analytics
+    internal/domain/events.go: |
+      package domain
 
-      import "context"
+      import "time"
 
-      const GARBAGE_GO_ANALYTICS_TRACKER_A1B2C3 = "analytics_garbage_marker"
+      type EventKind string
 
-      type GARBAGE_GO_TYPE_EVENT_D4E5F6 struct {
-          name       string
-          properties map[string]interface{}
+      const (
+          EventKindCreated EventKind = "created"
+          EventKindUpdated EventKind = "updated"
+          EventKindDeleted EventKind = "deleted"
+      )
+
+      type DomainEvent struct {
+          Kind      EventKind
+          Entity    string
+          Timestamp time.Time
       }
 
-      func GARBAGE_GO_FUNC_ANALYTICS_G7H8I9() string {
-          return "GARBAGE_GO_ANALYTICS_UNUSED_J0K1L2"
-      }
-
-      type AnalyticsConfig struct {
-          APIKey      string
-          Endpoint    string
-          BatchSize   int
-          FlushInterval int
-      }
-
-      func GARBAGE_GO_FUNC_TRACK_EVENT_M3N4O5(ctx context.Context, event string) error {
-          println("GARBAGE_GO_TRACK_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/analytics/segment.go: |
-      package analytics
-
-      const GARBAGE_GO_SEGMENT_CLIENT_S9T0U1 = "segment_garbage"
-
-      type GARBAGE_GO_TYPE_SEGMENT_V2W3X4 struct {
-          writeKey string
-          client   interface{}
-      }
-
-      func GARBAGE_GO_FUNC_SEGMENT_Y5Z6A7() {
-          println("GARBAGE_GO_SEGMENT_OUTPUT_B8C9D0")
-      }
-
-      type SegmentConfig struct {
-          WriteKey  string
-          Endpoint  string
-          Verbose   bool
-      }
-
-      func GARBAGE_GO_FUNC_SEGMENT_IDENTIFY_E1F2G3(userID string) error {
-          return nil
-      }
-    internal/unrelated/analytics/mixpanel.go: |
-      package analytics
-
-      const GARBAGE_GO_MIXPANEL_CLIENT_H4I5J6 = "mixpanel_garbage"
-
-      type GARBAGE_GO_TYPE_MIXPANEL_K7L8M9 struct {
-          token     string
-          projectID string
-      }
-
-      func GARBAGE_GO_FUNC_MIXPANEL_N0O1P2() {
-          println("GARBAGE_GO_MIXPANEL_OUTPUT_Q3R4S5")
+      func NewEvent(kind EventKind, entity string) DomainEvent {
+          return DomainEvent{
+              Kind:      kind,
+              Entity:    entity,
+              Timestamp: time.Now(),
+          }
       }
   changed_files:
     internal/domain/types.go: |
@@ -333,140 +296,73 @@ repo:
       func (m Money) IsZero() bool {
           return m.Amount == 0
       }
-    internal/unrelated/analytics/tracker.go: |
-      package analytics
+    internal/domain/events.go: |
+      package domain
 
-      import "context"
+      import "time"
 
-      const GARBAGE_GO_ANALYTICS_TRACKER_A1B2C3 = "analytics_garbage_marker"
+      type EventKind string
 
-      type GARBAGE_GO_TYPE_EVENT_D4E5F6 struct {
-          name       string
-          properties map[string]interface{}
+      const (
+          EventKindCreated EventKind = "created"
+          EventKindUpdated EventKind = "updated"
+          EventKindDeleted EventKind = "deleted"
+      )
+
+      type DomainEvent struct {
+          Kind      EventKind
+          Entity    string
+          Timestamp time.Time
       }
 
-      func GARBAGE_GO_FUNC_ANALYTICS_G7H8I9() string {
-          return "GARBAGE_GO_ANALYTICS_UNUSED_J0K1L2"
-      }
-
-      type AnalyticsConfig struct {
-          APIKey      string
-          Endpoint    string
-          BatchSize   int
-          FlushInterval int
-      }
-
-      func GARBAGE_GO_FUNC_TRACK_EVENT_M3N4O5(ctx context.Context, event string) error {
-          println("GARBAGE_GO_TRACK_OUTPUT_P6Q7R8")
-          return nil
-      }
-    internal/unrelated/analytics/segment.go: |
-      package analytics
-
-      const GARBAGE_GO_SEGMENT_CLIENT_S9T0U1 = "segment_garbage"
-
-      type GARBAGE_GO_TYPE_SEGMENT_V2W3X4 struct {
-          writeKey string
-          client   interface{}
-      }
-
-      func GARBAGE_GO_FUNC_SEGMENT_Y5Z6A7() {
-          println("GARBAGE_GO_SEGMENT_OUTPUT_B8C9D0")
-      }
-
-      type SegmentConfig struct {
-          WriteKey  string
-          Endpoint  string
-          Verbose   bool
-      }
-
-      func GARBAGE_GO_FUNC_SEGMENT_IDENTIFY_E1F2G3(userID string) error {
-          return nil
-      }
-    internal/unrelated/analytics/mixpanel.go: |
-      package analytics
-
-      const GARBAGE_GO_MIXPANEL_CLIENT_H4I5J6 = "mixpanel_garbage"
-
-      type GARBAGE_GO_TYPE_MIXPANEL_K7L8M9 struct {
-          token     string
-          projectID string
-      }
-
-      func GARBAGE_GO_FUNC_MIXPANEL_N0O1P2() {
-          println("GARBAGE_GO_MIXPANEL_OUTPUT_Q3R4S5")
+      func NewEvent(kind EventKind, entity string) DomainEvent {
+          return DomainEvent{
+              Kind:      kind,
+              Entity:    entity,
+              Timestamp: time.Now(),
+          }
       }
   commit_message: Update files
 fragments:
 - id: service_file
   selector:
     path: internal/domain/service.go
-- id: req_global_0
+- id: service_uses_user_id_type
   selector:
-    anchor: ErrUserNotFound    = errors.New("user not found")
-- id: req_global_1
+    anchor: statuses map[UserID]Status
+- id: service_uses_priority_type
   selector:
-    anchor: func NewUserStatusService() *UserStatusService {
-- id: no_global_0
+    anchor: priorities map[OrderID]Priority
+- id: types_user_id
   selector:
-    anchor: GARBAGE_GO_ANALYTICS_TRACKER_A1B2C3
-- id: no_global_1
+    path: internal/domain/types.go
+    anchor: type UserID int64
+- id: types_status_constants
   selector:
-    anchor: GARBAGE_GO_FUNC_ANALYTICS_G7H8I9
-- id: no_global_2
+    anchor: StatusPending   Status = "pending"
+- id: types_priority_constants
   selector:
-    anchor: GARBAGE_GO_FUNC_MIXPANEL_N0O1P2
-- id: no_global_3
+    anchor: PriorityLow    Priority = 1
+- id: types_money_struct
   selector:
-    anchor: GARBAGE_GO_FUNC_SEGMENT_IDENTIFY_E1F2G3(userID
-- id: no_global_4
+    anchor: type Money struct {
+- id: no_events_kind
   selector:
-    anchor: GARBAGE_GO_FUNC_SEGMENT_Y5Z6A7
-- id: no_global_5
+    path: internal/domain/events.go
+    anchor: type EventKind string
+- id: no_events_constructor
   selector:
-    anchor: GARBAGE_GO_FUNC_TRACK_EVENT_M3N4O5(ctx
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_GO_MIXPANEL_CLIENT_H4I5J6
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_GO_SEGMENT_CLIENT_S9T0U1
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_GO_TYPE_EVENT_D4E5F6
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_GO_TYPE_MIXPANEL_K7L8M9
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_GO_TYPE_SEGMENT_V2W3X4
-- id: no_global_11
-  selector:
-    anchor: mixpanel.go
-- id: no_global_12
-  selector:
-    anchor: segment.go
-- id: no_global_13
-  selector:
-    anchor: tracker.go
+    anchor: func NewEvent(kind EventKind, entity string) DomainEvent {
 oracle:
   required:
   - service_file
-  - req_global_0
-  - req_global_1
+  - service_uses_user_id_type
+  - service_uses_priority_type
+  - types_user_id
+  - types_status_constants
+  - types_priority_constants
+  - types_money_struct
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
+  - no_events_kind
+  - no_events_constructor

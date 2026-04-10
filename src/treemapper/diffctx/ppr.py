@@ -117,6 +117,7 @@ def personalized_pagerank(
 
     valid_seeds = seeds & graph.nodes
     if not valid_seeds:
+        logger.warning("PPR: none of %d seeds found in graph (%d nodes) — returning uniform", len(seeds), len(graph.nodes))
         return {n: 1.0 / len(graph.nodes) for n in graph.nodes}
 
     forward_scores = _personalized_pagerank_sparse(graph, valid_seeds, alpha, tol, seed_weights)
@@ -132,13 +133,12 @@ def personalized_pagerank(
         combined[node] = lam * fwd + (1 - lam) * bwd
 
     total = sum(combined.values())
-    if total > 0:
-        return {n: s / total for n, s in combined.items()}
-
     logger.debug(
         "PPR sparse bidirectional: forward=%d backward=%d combined=%d nodes",
         len(forward_scores),
         len(backward_scores),
         len(combined),
     )
+    if total > 0:
+        return {n: s / total for n, s in combined.items()}
     return combined

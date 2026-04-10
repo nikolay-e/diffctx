@@ -36,34 +36,29 @@ repo:
                   (user_id,)
               )
               return [Order(**r) for r in results]
-    garbage_table_builder.ts: |
-      const GARBAGE_CICD_DOCS_065_BUILDER_MARKER_A = "knex";
-      const GARBAGE_CICD_DOCS_065_CHARSET_MARKER_B = "utf8mb4";
+    src/models/user.py: |
+      from dataclasses import dataclass
+      from datetime import datetime
+      from typing import Optional
 
-      class GarbageTableBuilder {
-        static GARBAGE_CICD_DOCS_065_ENGINE_MARKER_C = "InnoDB";
-        build(): void {}
-      }
-    garbage_table_migrator.ts: |
-      const GARBAGE_CICD_DOCS_065_MIGRATOR_MARKER_D = "liquibase";
-      const GARBAGE_CICD_DOCS_065_CHANGELOG_MARKER_E = "xml";
+      @dataclass
+      class User:
+          id: int
+          name: str
+          email: str
+          created_at: Optional[datetime] = None
+    src/services/shipping_service.py: |
+      from typing import Optional
 
-      class GarbageTableMigrator {
-        static GARBAGE_CICD_DOCS_065_CONTEXT_MARKER_F = "production";
-        migrate(): void {}
-      }
+      class ShippingService:
+          def calculate_shipping(self, weight: float, destination: str) -> float:
+              base_rate = 5.99
+              per_kg = 1.50
+              return base_rate + (weight * per_kg)
+
+          def get_tracking(self, shipment_id: str) -> Optional[str]:
+              return None
   changed_files:
-    migrations/001_create_orders.sql: |
-      CREATE TABLE orders (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER REFERENCES users(id),
-          total DECIMAL(10, 2),
-          status VARCHAR(50) DEFAULT 'pending',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX idx_orders_user_id ON orders(user_id);
-      CREATE INDEX idx_orders_status ON orders(status);
     migrations/002_create_order_items.sql: |
       CREATE TABLE order_items (
           id SERIAL PRIMARY KEY,
@@ -78,19 +73,6 @@ repo:
 
       CREATE INDEX idx_order_items_order_id ON order_items(order_id);
       CREATE INDEX idx_order_items_product_id ON order_items(product_id);
-    src/models/order.py: |
-      from dataclasses import dataclass
-      from datetime import datetime
-      from decimal import Decimal
-      from typing import Optional
-
-      @dataclass
-      class Order:
-          id: int
-          user_id: int
-          total: Decimal
-          status: str = 'pending'
-          created_at: Optional[datetime] = None
     src/models/order_item.py: |
       from dataclasses import dataclass
       from datetime import datetime
@@ -107,84 +89,47 @@ repo:
           unit_price: Decimal
           subtotal: Optional[Decimal] = None
           created_at: Optional[datetime] = None
-    src/repositories/order_repository.py: |
-      from typing import List, Optional
-      from models.order import Order
-
-      class OrderRepository:
-          def find_by_user(self, user_id: int) -> List[Order]:
-              results = db.execute(
-                  "SELECT * FROM orders WHERE user_id = %s",
-                  (user_id,)
-              )
-              return [Order(**r) for r in results]
-    garbage_table_builder.ts: |
-      const GARBAGE_CICD_DOCS_065_BUILDER_MARKER_A = "knex";
-      const GARBAGE_CICD_DOCS_065_CHARSET_MARKER_B = "utf8mb4";
-
-      class GarbageTableBuilder {
-        static GARBAGE_CICD_DOCS_065_ENGINE_MARKER_C = "InnoDB";
-        build(): void {}
-      }
-    garbage_table_migrator.ts: |
-      const GARBAGE_CICD_DOCS_065_MIGRATOR_MARKER_D = "liquibase";
-      const GARBAGE_CICD_DOCS_065_CHANGELOG_MARKER_E = "xml";
-
-      class GarbageTableMigrator {
-        static GARBAGE_CICD_DOCS_065_CONTEXT_MARKER_F = "production";
-        migrate(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Add order_items table and model with FK to orders"
 fragments:
-- id: 002_create_order_items_file
+- id: new_migration
   selector:
     path: migrations/002_create_order_items.sql
-- id: order_item_file
-  selector:
-    path: src/models/order_item.py
-- id: req_global_0
+- id: create_order_items_table
   selector:
     anchor: CREATE TABLE order_items (
-- id: req_global_1
+- id: order_item_model
   selector:
-    anchor: from dataclasses import dataclass
-- id: no_global_0
+    path: src/models/order_item.py
+    anchor: class OrderItem
+- id: orders_migration_fk_target
   selector:
-    anchor: GARBAGE_CICD_DOCS_065_BUILDER_MARKER_A
-- id: no_global_1
+    path: migrations/001_create_orders.sql
+    anchor: CREATE TABLE orders
+- id: order_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_065_CHANGELOG_MARKER_E
-- id: no_global_2
+    path: src/models/order.py
+    anchor: class Order
+- id: order_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_065_CHARSET_MARKER_B
-- id: no_global_3
+    path: src/repositories/order_repository.py
+    anchor: class OrderRepository
+- id: no_user_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_065_CONTEXT_MARKER_F
-- id: no_global_4
+    path: src/models/user.py
+    anchor: class User
+- id: no_shipping_service
   selector:
-    anchor: GARBAGE_CICD_DOCS_065_ENGINE_MARKER_C
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_065_MIGRATOR_MARKER_D
-- id: no_global_6
-  selector:
-    anchor: garbage_table_builder.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_table_migrator.ts
+    path: src/services/shipping_service.py
+    anchor: class ShippingService
 oracle:
   required:
-  - 002_create_order_items_file
-  - order_item_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - new_migration
+  - create_order_items_table
+  - order_item_model
+  - orders_migration_fk_target
+  - order_model
+  allowed:
+  - order_repository
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_user_model
+  - no_shipping_service

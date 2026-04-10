@@ -36,9 +36,7 @@ repo:
           }
       }
     src/unrelated/encryption.ts: |
-      const GARBAGE_JSX_008_ENCRYPT_CONFIG_A = 'encryption_garbage_marker';
-
-      export class GarbageEncryptionService {
+      export class EncryptionService {
           encrypt(data: string): string {
               return Buffer.from(data).toString('base64');
           }
@@ -48,13 +46,11 @@ repo:
           }
       }
 
-      export function GARBAGE_JSX_008_GENERATE_KEY_B(): string {
-          return 'GARBAGE_JSX_008_KEY_OUTPUT_C';
+      export function generateKey(): string {
+          return crypto.randomBytes(32).toString('hex');
       }
     src/unrelated/audit.ts: |
-      const GARBAGE_JSX_008_AUDIT_LOG_D = { retention: 90 };
-
-      export class GARBAGE_JSX_008_AUDIT_SERVICE_E {
+      export class AuditService {
           private logs: string[] = [];
 
           record(action: string): void {
@@ -66,7 +62,7 @@ repo:
           }
       }
 
-      export function GARBAGE_JSX_008_PURGE_AUDIT_F(): void {
+      export function purgeAuditLogs(): void {
           console.log('purging audit logs');
       }
   changed_files:
@@ -108,9 +104,7 @@ repo:
           }
       }
     src/unrelated/encryption.ts: |
-      const GARBAGE_JSX_008_ENCRYPT_CONFIG_A = 'encryption_garbage_marker';
-
-      export class GarbageEncryptionService {
+      export class EncryptionService {
           encrypt(data: string): string {
               return Buffer.from(data).toString('base64');
           }
@@ -120,13 +114,11 @@ repo:
           }
       }
 
-      export function GARBAGE_JSX_008_GENERATE_KEY_B(): string {
-          return 'GARBAGE_JSX_008_KEY_OUTPUT_C';
+      export function generateKey(): string {
+          return crypto.randomBytes(32).toString('hex');
       }
     src/unrelated/audit.ts: |
-      const GARBAGE_JSX_008_AUDIT_LOG_D = { retention: 90 };
-
-      export class GARBAGE_JSX_008_AUDIT_SERVICE_E {
+      export class AuditService {
           private logs: string[] = [];
 
           record(action: string): void {
@@ -138,7 +130,7 @@ repo:
           }
       }
 
-      export function GARBAGE_JSX_008_PURGE_AUDIT_F(): void {
+      export function purgeAuditLogs(): void {
           console.log('purging audit logs');
       }
   commit_message: Update files
@@ -146,44 +138,44 @@ fragments:
 - id: interfaces_file
   selector:
     path: src/interfaces.ts
-- id: req_global_0
+- id: repository_interface
   selector:
     anchor: interface Repository<T> {
-- id: req_global_1
+- id: identifiable_interface
   selector:
     anchor: interface Identifiable {
-- id: no_global_0
+- id: user_repo_implements
   selector:
-    anchor: GARBAGE_JSX_008_AUDIT_LOG_D
-- id: no_global_1
+    path: src/user_repo.ts
+    anchor: class UserRepository implements Repository<User> {
+- id: user_repo_findById
   selector:
-    anchor: GARBAGE_JSX_008_AUDIT_SERVICE_E
-- id: no_global_2
+    path: src/user_repo.ts
+    anchor: "async findById(id: string)"
+- id: no_encryption_service
   selector:
-    anchor: GARBAGE_JSX_008_ENCRYPT_CONFIG_A
-- id: no_global_3
+    path: src/unrelated/encryption.ts
+    anchor: class EncryptionService {
+- id: no_audit_service
   selector:
-    anchor: GARBAGE_JSX_008_GENERATE_KEY_B
-- id: no_global_4
+    path: src/unrelated/audit.ts
+    anchor: class AuditService {
+- id: no_generate_key
   selector:
-    anchor: GARBAGE_JSX_008_PURGE_AUDIT_F
-- id: no_global_5
+    anchor: generateKey
+- id: no_purge_audit
   selector:
-    anchor: audit.ts
-- id: no_global_6
-  selector:
-    anchor: encryption.ts
+    anchor: purgeAuditLogs
 oracle:
   required:
   - interfaces_file
-  - req_global_0
-  - req_global_1
+  - repository_interface
+  - identifiable_interface
+  - user_repo_implements
+  - user_repo_findById
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_encryption_service
+  - no_audit_service
+  - no_generate_key
+  - no_purge_audit

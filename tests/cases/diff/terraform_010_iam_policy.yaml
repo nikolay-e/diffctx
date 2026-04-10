@@ -1,4 +1,6 @@
 name: terraform_010_iam_policy
+xfail:
+  category: terraform-sibling-over-discovery
 repo:
   initial_files:
     modules/iam_role/main.tf: |

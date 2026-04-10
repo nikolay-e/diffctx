@@ -51,9 +51,6 @@ repo:
       const std = @import("std");
       const errors = @import("errors.zig");
 
-      const GARBAGE_ZIG_003_WRITER_MARKER_A: []const u8 = "writer";
-      const GARBAGE_ZIG_003_WRITE_FLAG_B: bool = true;
-
       pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
           const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
               error.AccessDenied => return errors.FileError.PermissionDenied,
@@ -63,28 +60,29 @@ repo:
           try file.writeAll(data);
       }
     src/network_errors.zig: |
-      const GARBAGE_ZIG_003_NET_ERR_MARKER_C: []const u8 = "network_errors";
-      const GARBAGE_ZIG_003_TIMEOUT_VAL_D: u64 = 30000;
-
       pub const NetworkError = error{
           ConnectionRefused,
           Timeout,
           DnsResolutionFailed,
       };
+
+      pub fn isRetryable(err: NetworkError) bool {
+          return switch (err) {
+              NetworkError.Timeout => true,
+              NetworkError.ConnectionRefused => true,
+              NetworkError.DnsResolutionFailed => false,
+          };
+      }
     src/parser.zig: |
       const std = @import("std");
       const errors = @import("errors.zig");
-
-      const GARBAGE_ZIG_003_PARSER_MARKER_E: []const u8 = "parser";
-      const GARBAGE_ZIG_003_TOKEN_FLAG_F: bool = true;
 
       pub fn parseContent(content: []const u8) errors.ParseError!void {
           if (content.len == 0) return errors.ParseError.InvalidSyntax;
           if (content[0] != '{') return errors.ParseError.UnexpectedToken;
       }
     src/utils.zig: |
-      const GARBAGE_ZIG_003_UTILS_MARKER_G: []const u8 = "utils";
-      const GARBAGE_ZIG_003_HELPER_H: bool = true;
+      const std = @import("std");
 
       pub fn trimWhitespace(input: []const u8) []const u8 {
           var start: usize = 0;
@@ -148,9 +146,6 @@ repo:
       const std = @import("std");
       const errors = @import("errors.zig");
 
-      const GARBAGE_ZIG_003_WRITER_MARKER_A: []const u8 = "writer";
-      const GARBAGE_ZIG_003_WRITE_FLAG_B: bool = true;
-
       pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
           const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
               error.AccessDenied => return errors.FileError.PermissionDenied,
@@ -160,28 +155,29 @@ repo:
           try file.writeAll(data);
       }
     src/network_errors.zig: |
-      const GARBAGE_ZIG_003_NET_ERR_MARKER_C: []const u8 = "network_errors";
-      const GARBAGE_ZIG_003_TIMEOUT_VAL_D: u64 = 30000;
-
       pub const NetworkError = error{
           ConnectionRefused,
           Timeout,
           DnsResolutionFailed,
       };
+
+      pub fn isRetryable(err: NetworkError) bool {
+          return switch (err) {
+              NetworkError.Timeout => true,
+              NetworkError.ConnectionRefused => true,
+              NetworkError.DnsResolutionFailed => false,
+          };
+      }
     src/parser.zig: |
       const std = @import("std");
       const errors = @import("errors.zig");
-
-      const GARBAGE_ZIG_003_PARSER_MARKER_E: []const u8 = "parser";
-      const GARBAGE_ZIG_003_TOKEN_FLAG_F: bool = true;
 
       pub fn parseContent(content: []const u8) errors.ParseError!void {
           if (content.len == 0) return errors.ParseError.InvalidSyntax;
           if (content[0] != '{') return errors.ParseError.UnexpectedToken;
       }
     src/utils.zig: |
-      const GARBAGE_ZIG_003_UTILS_MARKER_G: []const u8 = "utils";
-      const GARBAGE_ZIG_003_HELPER_H: bool = true;
+      const std = @import("std");
 
       pub fn trimWhitespace(input: []const u8) []const u8 {
           var start: usize = 0;
@@ -190,70 +186,62 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: errors
+- id: error_set_filelocked
   selector:
     path: src/errors.zig
     anchor: FileLocked
-- id: handler
+- id: handler_filelocked_switch
   selector:
     path: src/handler.zig
     anchor: errors.FileError.FileLocked
-- id: handler_1
+- id: handler_locked_message
   selector:
     path: src/handler.zig
     anchor: File is locked
-- id: no_writer
+- id: reader_filebusy_mapping
+  selector:
+    path: src/reader.zig
+    anchor: error.FileBusy
+- id: reader_filelocked_return
+  selector:
+    path: src/reader.zig
+    anchor: errors.FileError.FileLocked
+- id: writer_fileoutput_fn
   selector:
     path: src/writer.zig
-- id: no_network_errors
+    anchor: writeOutput
+- id: network_error_set
   selector:
     path: src/network_errors.zig
-- id: no_parser
+    anchor: NetworkError
+- id: network_retryable_fn
+  selector:
+    path: src/network_errors.zig
+    anchor: isRetryable
+- id: parser_parse_content
   selector:
     path: src/parser.zig
-- id: no_utils
+    anchor: parseContent
+- id: parser_invalid_syntax
+  selector:
+    path: src/parser.zig
+    anchor: InvalidSyntax
+- id: utils_trim_fn
   selector:
     path: src/utils.zig
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_ZIG_003_WRITER_MARKER_A
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_ZIG_003_WRITE_FLAG_B
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_ZIG_003_NET_ERR_MARKER_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_ZIG_003_TIMEOUT_VAL_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_ZIG_003_PARSER_MARKER_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_ZIG_003_TOKEN_FLAG_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_ZIG_003_UTILS_MARKER_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_ZIG_003_HELPER_H
+    anchor: trimWhitespace
 oracle:
   required:
-  - errors
-  - handler
-  - handler_1
-  allowed: []
+  - error_set_filelocked
+  - handler_filelocked_switch
+  - handler_locked_message
+  - reader_filebusy_mapping
+  - reader_filelocked_return
+  allowed:
+  - writer_fileoutput_fn
   forbidden:
-  - no_writer
-  - no_network_errors
-  - no_parser
-  - no_utils
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - network_error_set
+  - network_retryable_fn
+  - parser_parse_content
+  - parser_invalid_syntax
+  - utils_trim_fn

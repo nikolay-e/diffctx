@@ -60,14 +60,12 @@ repo:
       };
 
       }
-    include/unrelated/network_socket.hpp: |
+    include/network/tcp_socket.hpp: |
       #pragma once
-      // GARBAGE_CPP_SOCKET_244_001
-      #define GARBAGE_CPP_SOCKET_BUFFER_244_002 4096
+      #include <cstddef>
 
-      namespace app::unrelated::network {
+      namespace app::network {
 
-      // GARBAGE_CPP_SOCKET_ENUM_244_003
       enum class SocketState {
           Disconnected,
           Connecting,
@@ -75,45 +73,34 @@ repo:
           Error
       };
 
-      // GARBAGE_CPP_SOCKET_CLASS_244_004
       class TcpSocket {
       public:
-          // GARBAGE_CPP_SOCKET_CONNECT_244_005
           bool connect(const char* host, int port) {
-              // GARBAGE_CPP_SOCKET_CONNECT_IMPL_244_006
               return false;
           }
 
-          // GARBAGE_CPP_SOCKET_SEND_244_007
           int send(const char* data, size_t length) {
-              // GARBAGE_CPP_SOCKET_SEND_IMPL_244_008
               return 0;
           }
 
-          // GARBAGE_CPP_SOCKET_RECV_244_009
           int receive(char* buffer, size_t maxLength) {
-              // GARBAGE_CPP_SOCKET_RECV_IMPL_244_010
               return 0;
           }
 
-          // GARBAGE_CPP_SOCKET_CLOSE_244_011
           void close() {
-              // GARBAGE_CPP_SOCKET_CLOSE_IMPL_244_012
           }
 
       private:
           SocketState state_ = SocketState::Disconnected;
-          char buffer_[GARBAGE_CPP_SOCKET_BUFFER_244_002];
+          char buffer_[4096];
       };
 
       }
-    src/unrelated/database_connection.cpp: |
-      // GARBAGE_CPP_DB_244_013
+    src/persistence/database_connection.cpp: |
       #include <string>
 
-      namespace app::unrelated::database {
+      namespace app::persistence {
 
-      // GARBAGE_CPP_DB_CONFIG_244_014
       struct ConnectionConfig {
           std::string host;
           int port;
@@ -122,23 +109,16 @@ repo:
           std::string password;
       };
 
-      // GARBAGE_CPP_DB_CLASS_244_015
       class DatabaseConnection {
       public:
-          // GARBAGE_CPP_DB_CONNECT_244_016
           bool connect(const ConnectionConfig& config) {
-              // GARBAGE_CPP_DB_CONNECT_IMPL_244_017
               return false;
           }
 
-          // GARBAGE_CPP_DB_QUERY_244_018
           void executeQuery(const std::string& sql) {
-              // GARBAGE_CPP_DB_QUERY_IMPL_244_019
           }
 
-          // GARBAGE_CPP_DB_DISCONNECT_244_020
           void disconnect() {
-              // GARBAGE_CPP_DB_DISCONNECT_IMPL_244_021
           }
       };
 
@@ -205,14 +185,12 @@ repo:
       };
 
       }
-    include/unrelated/network_socket.hpp: |
+    include/network/tcp_socket.hpp: |
       #pragma once
-      // GARBAGE_CPP_SOCKET_244_001
-      #define GARBAGE_CPP_SOCKET_BUFFER_244_002 4096
+      #include <cstddef>
 
-      namespace app::unrelated::network {
+      namespace app::network {
 
-      // GARBAGE_CPP_SOCKET_ENUM_244_003
       enum class SocketState {
           Disconnected,
           Connecting,
@@ -220,45 +198,34 @@ repo:
           Error
       };
 
-      // GARBAGE_CPP_SOCKET_CLASS_244_004
       class TcpSocket {
       public:
-          // GARBAGE_CPP_SOCKET_CONNECT_244_005
           bool connect(const char* host, int port) {
-              // GARBAGE_CPP_SOCKET_CONNECT_IMPL_244_006
               return false;
           }
 
-          // GARBAGE_CPP_SOCKET_SEND_244_007
           int send(const char* data, size_t length) {
-              // GARBAGE_CPP_SOCKET_SEND_IMPL_244_008
               return 0;
           }
 
-          // GARBAGE_CPP_SOCKET_RECV_244_009
           int receive(char* buffer, size_t maxLength) {
-              // GARBAGE_CPP_SOCKET_RECV_IMPL_244_010
               return 0;
           }
 
-          // GARBAGE_CPP_SOCKET_CLOSE_244_011
           void close() {
-              // GARBAGE_CPP_SOCKET_CLOSE_IMPL_244_012
           }
 
       private:
           SocketState state_ = SocketState::Disconnected;
-          char buffer_[GARBAGE_CPP_SOCKET_BUFFER_244_002];
+          char buffer_[4096];
       };
 
       }
-    src/unrelated/database_connection.cpp: |
-      // GARBAGE_CPP_DB_244_013
+    src/persistence/database_connection.cpp: |
       #include <string>
 
-      namespace app::unrelated::database {
+      namespace app::persistence {
 
-      // GARBAGE_CPP_DB_CONFIG_244_014
       struct ConnectionConfig {
           std::string host;
           int port;
@@ -267,23 +234,16 @@ repo:
           std::string password;
       };
 
-      // GARBAGE_CPP_DB_CLASS_244_015
       class DatabaseConnection {
       public:
-          // GARBAGE_CPP_DB_CONNECT_244_016
           bool connect(const ConnectionConfig& config) {
-              // GARBAGE_CPP_DB_CONNECT_IMPL_244_017
               return false;
           }
 
-          // GARBAGE_CPP_DB_QUERY_244_018
           void executeQuery(const std::string& sql) {
-              // GARBAGE_CPP_DB_QUERY_IMPL_244_019
           }
 
-          // GARBAGE_CPP_DB_DISCONNECT_244_020
           void disconnect() {
-              // GARBAGE_CPP_DB_DISCONNECT_IMPL_244_021
           }
       };
 
@@ -411,111 +371,77 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_user_repository
   selector:
     path: src/main.cpp
-- id: req_global_0
+    anchor: "class UserRepository {"
+- id: main_create_user_new
   selector:
-    anchor: namespace app::service {
-- id: req_global_1
+    path: src/main.cpp
+    anchor: "entity::User* user = new entity::User(name, email)"
+- id: main_create_admin_new
   selector:
-    anchor: entity::User* createAdmin(const std::string& name, const std::string& email) {
-- id: no_global_0
+    path: src/main.cpp
+    anchor: "new entity::User(name, email, entity::UserRole::Admin)"
+- id: main_delete_user
   selector:
-    anchor: GARBAGE_CPP_DB_244_013
-- id: no_global_1
+    path: src/main.cpp
+    anchor: "delete *it"
+- id: main_user_service
   selector:
-    anchor: GARBAGE_CPP_DB_CLASS_244_015
-- id: no_global_2
+    path: src/main.cpp
+    anchor: "class UserService {"
+- id: user_class_definition
   selector:
-    anchor: GARBAGE_CPP_DB_CONFIG_244_014
-- id: no_global_3
+    path: include/entity/user.hpp
+    anchor: "class User {"
+- id: user_role_enum
   selector:
-    anchor: GARBAGE_CPP_DB_CONNECT_244_016
-- id: no_global_4
+    path: include/entity/user.hpp
+    anchor: "enum class UserRole {"
+- id: user_constructor
   selector:
-    anchor: GARBAGE_CPP_DB_CONNECT_IMPL_244_017
-- id: no_global_5
+    path: include/entity/user.hpp
+    anchor: "User(const std::string& name, const std::string& email)"
+- id: user_set_role
   selector:
-    anchor: GARBAGE_CPP_DB_DISCONNECT_244_020
-- id: no_global_6
+    path: include/entity/user.hpp
+    anchor: "void setRole(UserRole role)"
+- id: user_preferences_struct
   selector:
-    anchor: GARBAGE_CPP_DB_DISCONNECT_IMPL_244_021
-- id: no_global_7
+    path: include/entity/user.hpp
+    anchor: "struct UserPreferences {"
+- id: no_tcp_socket_class
   selector:
-    anchor: GARBAGE_CPP_DB_QUERY_244_018
-- id: no_global_8
+    path: include/network/tcp_socket.hpp
+    anchor: "class TcpSocket {"
+- id: no_tcp_socket_connect
   selector:
-    anchor: GARBAGE_CPP_DB_QUERY_IMPL_244_019
-- id: no_global_9
+    path: include/network/tcp_socket.hpp
+    anchor: "bool connect(const char* host, int port)"
+- id: no_database_connection
   selector:
-    anchor: GARBAGE_CPP_SOCKET_244_001
-- id: no_global_10
+    path: src/persistence/database_connection.cpp
+    anchor: "class DatabaseConnection {"
+- id: no_connection_config
   selector:
-    anchor: GARBAGE_CPP_SOCKET_BUFFER_244_002
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_CLASS_244_004
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_CLOSE_244_011
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_CLOSE_IMPL_244_012
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_CONNECT_244_005
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_CONNECT_IMPL_244_006
-- id: no_global_16
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_ENUM_244_003
-- id: no_global_17
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_RECV_244_009
-- id: no_global_18
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_RECV_IMPL_244_010
-- id: no_global_19
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_SEND_244_007
-- id: no_global_20
-  selector:
-    anchor: GARBAGE_CPP_SOCKET_SEND_IMPL_244_008
-- id: no_global_21
-  selector:
-    anchor: database_connection.cpp
-- id: no_global_22
-  selector:
-    anchor: network_socket.hpp
+    path: src/persistence/database_connection.cpp
+    anchor: "struct ConnectionConfig {"
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_user_repository
+  - main_create_user_new
+  - main_create_admin_new
+  - main_delete_user
+  - main_user_service
+  - user_class_definition
+  - user_role_enum
+  - user_constructor
+  - user_set_role
+  - user_preferences_struct
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
-  - no_global_18
-  - no_global_19
-  - no_global_20
-  - no_global_21
-  - no_global_22
+  - no_tcp_socket_class
+  - no_tcp_socket_connect
+  - no_database_connection
+  - no_connection_config

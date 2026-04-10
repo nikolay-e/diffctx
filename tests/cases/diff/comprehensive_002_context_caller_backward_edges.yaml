@@ -40,22 +40,39 @@ repo:
 
       def build_connection_string(host, port, db):
           return f"postgresql://{host}:{port}/{db}"
-    garbage_rate_limiter.py: |
-      GARBAGE_COMP_002_BUCKET_SIZE_A = "tokens"
-      GARBAGE_COMP_002_REFILL_RATE_B = "per_second"
+    src/rate_limiter.py: |
+      from typing import Dict
+      import time
 
-      class GarbageRateLimiter:
-          GARBAGE_COMP_002_WINDOW_DURATION_C = 60
-          def limit(self):
-              pass
-    garbage_circuit_breaker.py: |
-      GARBAGE_COMP_002_FAILURE_THRESHOLD_D = "threshold"
-      GARBAGE_COMP_002_RECOVERY_TIMEOUT_E = "recovery"
+      class TokenBucketLimiter:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens: Dict[str, float] = {}
 
-      class GarbageCircuitBreaker:
-          GARBAGE_COMP_002_HALF_OPEN_STATE_F = True
-          def trip(self):
-              pass
+          def allow_request(self, client_id: str) -> bool:
+              current = self.tokens.get(client_id, self.capacity)
+              if current > 0:
+                  self.tokens[client_id] = current - 1
+                  return True
+              return False
+    src/circuit_breaker.py: |
+      import time
+
+      class CircuitBreaker:
+          FAILURE_THRESHOLD = 5
+          RECOVERY_TIMEOUT = 30
+
+          def __init__(self):
+              self.failure_count = 0
+              self.state = "closed"
+              self.last_failure_time = 0.0
+
+          def record_failure(self):
+              self.failure_count += 1
+              if self.failure_count >= self.FAILURE_THRESHOLD:
+                  self.state = "open"
+                  self.last_failure_time = time.time()
   changed_files:
     src/core.py: |
       from typing import List
@@ -99,69 +116,88 @@ repo:
 
       def build_connection_string(host, port, db):
           return f"postgresql://{host}:{port}/{db}"
-    garbage_rate_limiter.py: |
-      GARBAGE_COMP_002_BUCKET_SIZE_A = "tokens"
-      GARBAGE_COMP_002_REFILL_RATE_B = "per_second"
+    src/rate_limiter.py: |
+      from typing import Dict
+      import time
 
-      class GarbageRateLimiter:
-          GARBAGE_COMP_002_WINDOW_DURATION_C = 60
-          def limit(self):
-              pass
-    garbage_circuit_breaker.py: |
-      GARBAGE_COMP_002_FAILURE_THRESHOLD_D = "threshold"
-      GARBAGE_COMP_002_RECOVERY_TIMEOUT_E = "recovery"
+      class TokenBucketLimiter:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens: Dict[str, float] = {}
 
-      class GarbageCircuitBreaker:
-          GARBAGE_COMP_002_HALF_OPEN_STATE_F = True
-          def trip(self):
-              pass
+          def allow_request(self, client_id: str) -> bool:
+              current = self.tokens.get(client_id, self.capacity)
+              if current > 0:
+                  self.tokens[client_id] = current - 1
+                  return True
+              return False
+    src/circuit_breaker.py: |
+      import time
+
+      class CircuitBreaker:
+          FAILURE_THRESHOLD = 5
+          RECOVERY_TIMEOUT = 30
+
+          def __init__(self):
+              self.failure_count = 0
+              self.state = "closed"
+              self.last_failure_time = 0.0
+
+          def record_failure(self):
+              self.failure_count += 1
+              if self.failure_count >= self.FAILURE_THRESHOLD:
+                  self.state = "open"
+                  self.last_failure_time = time.time()
   commit_message: Update files
 fragments:
-- id: core_file
+- id: core_function_changed
   selector:
     path: src/core.py
-- id: req_global_0
+- id: core_function_empty_check
   selector:
-    anchor: 'if not values:'
-- id: no_global_0
+    anchor: "if not values:"
+- id: caller_a_uses_core_function
   selector:
-    anchor: GARBAGE_COMP_002_BUCKET_SIZE_A
-- id: no_global_1
+    path: src/caller_a.py
+    anchor: result = core_function(data)
+- id: caller_b_uses_core_function
   selector:
-    anchor: GARBAGE_COMP_002_FAILURE_THRESHOLD_D
-- id: no_global_2
+    path: src/caller_b.py
+    anchor: base = core_function(data)
+- id: no_unrelated_module
   selector:
-    anchor: GARBAGE_COMP_002_HALF_OPEN_STATE_F
-- id: no_global_3
+    path: src/unrelated_module.py
+- id: no_rate_limiter
   selector:
-    anchor: GARBAGE_COMP_002_RECOVERY_TIMEOUT_E
-- id: no_global_4
+    path: src/rate_limiter.py
+- id: no_circuit_breaker
   selector:
-    anchor: GARBAGE_COMP_002_REFILL_RATE_B
-- id: no_global_5
+    path: src/circuit_breaker.py
+- id: no_environment_variable
   selector:
-    anchor: GARBAGE_COMP_002_WINDOW_DURATION_C
-- id: no_global_6
+    anchor: read_environment_variable
+- id: no_connection_string
   selector:
-    anchor: garbage_circuit_breaker.py
-- id: no_global_7
+    anchor: build_connection_string
+- id: no_token_bucket
   selector:
-    anchor: garbage_rate_limiter.py
-- id: no_global_8
+    anchor: TokenBucketLimiter
+- id: no_circuit_state
   selector:
-    anchor: unrelated_module.py
+    anchor: FAILURE_THRESHOLD
 oracle:
   required:
-  - core_file
-  - req_global_0
+  - core_function_changed
+  - core_function_empty_check
+  - caller_a_uses_core_function
+  - caller_b_uses_core_function
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_unrelated_module
+  - no_rate_limiter
+  - no_circuit_breaker
+  - no_environment_variable
+  - no_connection_string
+  - no_token_bucket
+  - no_circuit_state

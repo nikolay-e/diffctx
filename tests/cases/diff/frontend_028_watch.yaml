@@ -68,17 +68,30 @@ repo:
           }
       }, { immediate: false });
       </script>
-  commit_message: Update files
+  commit_message: "Implement user search with Vue watch and API integration"
 fragments:
 - id: usersearch_file
   selector:
     path: UserSearch.vue
+- id: api_file
+  selector:
+    path: api.ts
+    anchor: async function searchUsers
 - id: req_global_0
   selector:
     anchor: <div class="user-search">
+- id: req_global_1
+  selector:
+    anchor: import { searchUsers } from './api'
+- id: no_garbage_marker
+  selector:
+    anchor: vue_garbage_marker_003
 oracle:
   required:
   - usersearch_file
   - req_global_0
-  allowed: []
-  forbidden: []
+  - req_global_1
+  allowed:
+  - api_file
+  forbidden:
+  - no_garbage_marker

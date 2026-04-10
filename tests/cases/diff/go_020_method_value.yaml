@@ -30,29 +30,31 @@ repo:
       package dispatch
 
       func Dispatch() {}
-    internal/unrelated/email/smtp.go: |
-      package email
+    internal/notification/formatter.go: |
+      package notification
 
-      const GARBAGE_GO_EMAIL_SMTP_001 = "email_garbage"
+      import (
+          "fmt"
+          "strings"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_SMTP_002 struct {
-          host string
+      type MessageFormatter struct {
+          dateFormat string
+          uppercase  bool
       }
 
-      func GARBAGE_GO_FUNC_SMTP_003() string {
-          return "GARBAGE_GO_SMTP_UNUSED_004"
-      }
-    internal/unrelated/email/template.go: |
-      package email
-
-      const GARBAGE_GO_EMAIL_TEMPLATE_005 = "template_garbage"
-
-      type GARBAGE_GO_TYPE_TEMPLATE_006 struct {
-          path string
+      func NewFormatter(dateFormat string) *MessageFormatter {
+          return &MessageFormatter{dateFormat: dateFormat}
       }
 
-      func GARBAGE_GO_FUNC_TEMPLATE_007() {
-          println("GARBAGE_GO_TEMPLATE_OUTPUT_008")
+      func (f *MessageFormatter) Format(msg string) string {
+          timestamp := time.Now().Format(f.dateFormat)
+          result := fmt.Sprintf("[%s] %s", timestamp, msg)
+          if f.uppercase {
+              return strings.ToUpper(result)
+          }
+          return result
       }
   changed_files:
     internal/notification/notifier.go: |
@@ -165,77 +167,69 @@ repo:
           dispatcher.Register(EventAlert, notifier.Alert)
           dispatcher.Register(EventError, notifier.Error)
       }
-    internal/unrelated/email/smtp.go: |
-      package email
+    internal/notification/formatter.go: |
+      package notification
 
-      const GARBAGE_GO_EMAIL_SMTP_001 = "email_garbage"
+      import (
+          "fmt"
+          "strings"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_SMTP_002 struct {
-          host string
+      type MessageFormatter struct {
+          dateFormat string
+          uppercase  bool
       }
 
-      func GARBAGE_GO_FUNC_SMTP_003() string {
-          return "GARBAGE_GO_SMTP_UNUSED_004"
-      }
-    internal/unrelated/email/template.go: |
-      package email
-
-      const GARBAGE_GO_EMAIL_TEMPLATE_005 = "template_garbage"
-
-      type GARBAGE_GO_TYPE_TEMPLATE_006 struct {
-          path string
+      func NewFormatter(dateFormat string) *MessageFormatter {
+          return &MessageFormatter{dateFormat: dateFormat}
       }
 
-      func GARBAGE_GO_FUNC_TEMPLATE_007() {
-          println("GARBAGE_GO_TEMPLATE_OUTPUT_008")
+      func (f *MessageFormatter) Format(msg string) string {
+          timestamp := time.Now().Format(f.dateFormat)
+          result := fmt.Sprintf("[%s] %s", timestamp, msg)
+          if f.uppercase {
+              return strings.ToUpper(result)
+          }
+          return result
       }
   commit_message: Update files
 fragments:
 - id: dispatcher_file
   selector:
     path: internal/dispatch/dispatcher.go
-- id: req_global_0
+- id: dispatcher_struct
   selector:
     anchor: type Dispatcher struct {
-- id: req_global_1
+- id: setup_binds_notifier_methods
   selector:
-    anchor: func NewDispatcher(logger *log.Logger) *Dispatcher {
-- id: no_global_0
+    anchor: dispatcher.Register(EventInfo, notifier.Notify)
+- id: notifier_notify_method
   selector:
-    anchor: GARBAGE_GO_EMAIL_SMTP_001
-- id: no_global_1
+    path: internal/notification/notifier.go
+    anchor: func (n *Notifier) Notify(msg string) {
+- id: notifier_alert_method
   selector:
-    anchor: GARBAGE_GO_EMAIL_TEMPLATE_005
-- id: no_global_2
+    anchor: func (n *Notifier) Alert(msg string) {
+- id: notifier_error_method
   selector:
-    anchor: GARBAGE_GO_FUNC_SMTP_003
-- id: no_global_3
+    anchor: func (n *Notifier) Error(msg string) {
+- id: no_formatter
   selector:
-    anchor: GARBAGE_GO_FUNC_TEMPLATE_007
-- id: no_global_4
+    path: internal/notification/formatter.go
+    anchor: type MessageFormatter struct {
+- id: no_formatter_format
   selector:
-    anchor: GARBAGE_GO_TYPE_SMTP_002
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_TEMPLATE_006
-- id: no_global_6
-  selector:
-    anchor: smtp.go
-- id: no_global_7
-  selector:
-    anchor: template.go
+    anchor: func (f *MessageFormatter) Format(msg string) string {
 oracle:
   required:
   - dispatcher_file
-  - req_global_0
-  - req_global_1
+  - dispatcher_struct
+  - setup_binds_notifier_methods
+  - notifier_notify_method
+  - notifier_alert_method
+  - notifier_error_method
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_formatter
+  - no_formatter_format

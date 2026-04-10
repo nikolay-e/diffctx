@@ -33,32 +33,34 @@ repo:
           def find_all(self) -> List[User]:
               results = db.execute("SELECT * FROM users")
               return [User(**r) for r in results]
-    garbage_migration_runner.ts: |
-      const GARBAGE_CICD_DOCS_064_RUNNER_MARKER_A = "flyway";
-      const GARBAGE_CICD_DOCS_064_VERSION_MARKER_B = "9.0.0";
-
-      class GarbageMigrationRunner {
-        static GARBAGE_CICD_DOCS_064_BASELINE_MARKER_C = true;
-        run(): void {}
-      }
-    garbage_migration_validator.ts: |
-      const GARBAGE_CICD_DOCS_064_VALIDATE_MARKER_D = "checksum";
-      const GARBAGE_CICD_DOCS_064_REPAIR_MARKER_E = false;
-
-      class GarbageMigrationValidator {
-        static GARBAGE_CICD_DOCS_064_STRICT_MARKER_F = true;
-        validate(): boolean { return true; }
-      }
-  changed_files:
-    migrations/001_create_users.sql: |
-      CREATE TABLE users (
+    migrations/000_create_roles.sql: |
+      CREATE TABLE roles (
           id SERIAL PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          email VARCHAR(255) UNIQUE NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          name VARCHAR(100) UNIQUE NOT NULL,
+          description TEXT
       );
 
-      CREATE INDEX idx_users_email ON users(email);
+      INSERT INTO roles (name, description) VALUES
+          ('admin', 'Full system access'),
+          ('editor', 'Content management'),
+          ('viewer', 'Read-only access');
+    src/repositories/order_repository.py: |
+      from typing import List, Optional
+      from models.order import Order
+
+      class OrderRepository:
+          def find_by_user(self, user_id: int) -> List[Order]:
+              results = db.execute(
+                  "SELECT * FROM orders WHERE user_id = %s", (user_id,)
+              )
+              return [Order(**r) for r in results]
+
+          def find_pending(self) -> List[Order]:
+              results = db.execute(
+                  "SELECT * FROM orders WHERE status = 'pending'"
+              )
+              return [Order(**r) for r in results]
+  changed_files:
     migrations/002_add_user_status.sql: |
       ALTER TABLE users
       ADD COLUMN status VARCHAR(50) DEFAULT 'active' NOT NULL;
@@ -71,88 +73,42 @@ repo:
 
       CREATE INDEX idx_users_status ON users(status);
       CREATE INDEX idx_users_last_login ON users(last_login_at);
-    src/models/user.py: |
-      from dataclasses import dataclass
-      from datetime import datetime
-      from typing import Optional
-
-      @dataclass
-      class User:
-          id: int
-          name: str
-          email: str
-          created_at: Optional[datetime] = None
-    src/repositories/user_repository.py: |
-      from typing import List, Optional
-      from models.user import User
-
-      class UserRepository:
-          def find_by_id(self, user_id: int) -> Optional[User]:
-              result = db.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-              return User(**result) if result else None
-
-          def find_all(self) -> List[User]:
-              results = db.execute("SELECT * FROM users")
-              return [User(**r) for r in results]
-    garbage_migration_runner.ts: |
-      const GARBAGE_CICD_DOCS_064_RUNNER_MARKER_A = "flyway";
-      const GARBAGE_CICD_DOCS_064_VERSION_MARKER_B = "9.0.0";
-
-      class GarbageMigrationRunner {
-        static GARBAGE_CICD_DOCS_064_BASELINE_MARKER_C = true;
-        run(): void {}
-      }
-    garbage_migration_validator.ts: |
-      const GARBAGE_CICD_DOCS_064_VALIDATE_MARKER_D = "checksum";
-      const GARBAGE_CICD_DOCS_064_REPAIR_MARKER_E = false;
-
-      class GarbageMigrationValidator {
-        static GARBAGE_CICD_DOCS_064_STRICT_MARKER_F = true;
-        validate(): boolean { return true; }
-      }
-  commit_message: Update files
+  commit_message: "Add status, last_login, and is_verified columns to users table"
 fragments:
-- id: 002_add_user_status_file
+- id: new_migration
   selector:
     path: migrations/002_add_user_status.sql
-- id: req_global_0
+- id: alter_table_users
   selector:
     anchor: ALTER TABLE users
-- id: no_global_0
+- id: user_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_064_BASELINE_MARKER_C
-- id: no_global_1
+    path: src/models/user.py
+    anchor: "class User:"
+- id: user_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_064_REPAIR_MARKER_E
-- id: no_global_2
+    path: src/repositories/user_repository.py
+    anchor: class UserRepository
+- id: create_users_migration
   selector:
-    anchor: GARBAGE_CICD_DOCS_064_RUNNER_MARKER_A
-- id: no_global_3
+    path: migrations/001_create_users.sql
+    anchor: CREATE TABLE users
+- id: no_roles_migration
   selector:
-    anchor: GARBAGE_CICD_DOCS_064_STRICT_MARKER_F
-- id: no_global_4
+    path: migrations/000_create_roles.sql
+    anchor: CREATE TABLE roles
+- id: no_order_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_064_VALIDATE_MARKER_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_064_VERSION_MARKER_B
-- id: no_global_6
-  selector:
-    anchor: garbage_migration_runner.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_migration_validator.ts
+    path: src/repositories/order_repository.py
+    anchor: class OrderRepository
 oracle:
   required:
-  - 002_add_user_status_file
-  - req_global_0
+  - new_migration
+  - alter_table_users
+  - user_model
+  - user_repository
+  - create_users_migration
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_roles_migration
+  - no_order_repository

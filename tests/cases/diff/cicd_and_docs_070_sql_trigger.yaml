@@ -14,6 +14,18 @@ repo:
       CREATE TRIGGER users_audit
       AFTER INSERT OR UPDATE OR DELETE ON users
       FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+    sql/triggers/updated_at_trigger.sql: |
+      CREATE OR REPLACE FUNCTION update_timestamp()
+      RETURNS TRIGGER AS $$
+      BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      CREATE TRIGGER products_updated_at
+      BEFORE UPDATE ON products
+      FOR EACH ROW EXECUTE FUNCTION update_timestamp();
     src/services/user_service.py: |
       from typing import Optional
       from models.user import User
@@ -35,22 +47,19 @@ repo:
                   [user_id]
               )
               return User(**result[0]) if result else None
-    garbage_trigger_manager.ts: |
-      const GARBAGE_CICD_DOCS_070_TRIGGER_MARKER_A = "after";
-      const GARBAGE_CICD_DOCS_070_TIMING_MARKER_B = "row";
+    src/services/product_service.py: |
+      from typing import List
+      from models.product import Product
 
-      class GarbageTriggerManager {
-        static GARBAGE_CICD_DOCS_070_DEFER_MARKER_C = false;
-        manage(): void {}
-      }
-    garbage_audit_handler.ts: |
-      const GARBAGE_CICD_DOCS_070_AUDIT_MARKER_D = "json";
-      const GARBAGE_CICD_DOCS_070_RETENTION_MARKER_E = 90;
+      class ProductService:
+          def __init__(self, db):
+              self.db = db
 
-      class GarbageAuditHandler {
-        static GARBAGE_CICD_DOCS_070_COMPRESS_MARKER_F = true;
-        handle(): void {}
-      }
+          def update_price(self, product_id: int, new_price: float) -> None:
+              self.db.execute(
+                  "UPDATE products SET price = %s WHERE id = %s",
+                  [new_price, product_id]
+              )
   changed_files:
     sql/triggers/audit_trigger.sql: |
       CREATE OR REPLACE FUNCTION audit_trigger_func()
@@ -110,6 +119,18 @@ repo:
       CREATE TRIGGER products_audit
       AFTER INSERT OR UPDATE OR DELETE ON products
       FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+    sql/triggers/updated_at_trigger.sql: |
+      CREATE OR REPLACE FUNCTION update_timestamp()
+      RETURNS TRIGGER AS $$
+      BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      CREATE TRIGGER products_updated_at
+      BEFORE UPDATE ON products
+      FOR EACH ROW EXECUTE FUNCTION update_timestamp();
     src/services/user_service.py: |
       from typing import Optional
       from models.user import User
@@ -131,65 +152,45 @@ repo:
                   [user_id]
               )
               return User(**result[0]) if result else None
-    garbage_trigger_manager.ts: |
-      const GARBAGE_CICD_DOCS_070_TRIGGER_MARKER_A = "after";
-      const GARBAGE_CICD_DOCS_070_TIMING_MARKER_B = "row";
+    src/services/product_service.py: |
+      from typing import List
+      from models.product import Product
 
-      class GarbageTriggerManager {
-        static GARBAGE_CICD_DOCS_070_DEFER_MARKER_C = false;
-        manage(): void {}
-      }
-    garbage_audit_handler.ts: |
-      const GARBAGE_CICD_DOCS_070_AUDIT_MARKER_D = "json";
-      const GARBAGE_CICD_DOCS_070_RETENTION_MARKER_E = 90;
+      class ProductService:
+          def __init__(self, db):
+              self.db = db
 
-      class GarbageAuditHandler {
-        static GARBAGE_CICD_DOCS_070_COMPRESS_MARKER_F = true;
-        handle(): void {}
-      }
-  commit_message: Update files
+          def update_price(self, product_id: int, new_price: float) -> None:
+              self.db.execute(
+                  "UPDATE products SET price = %s WHERE id = %s",
+                  [new_price, product_id]
+              )
+  commit_message: "db: enhance audit trigger with session context and changed fields tracking"
 fragments:
-- id: audit_trigger_file
+- id: trigger_changed
   selector:
     path: sql/triggers/audit_trigger.sql
-- id: req_global_0
+- id: session_context
   selector:
-    anchor: v_user_id INTEGER;
-- id: no_global_0
+    anchor: v_user_id INTEGER
+- id: audited_user_operations
   selector:
-    anchor: GARBAGE_CICD_DOCS_070_AUDIT_MARKER_D
-- id: no_global_1
+    path: src/services/user_service.py
+    anchor: UPDATE users SET name
+- id: no_updated_at_trigger
   selector:
-    anchor: GARBAGE_CICD_DOCS_070_COMPRESS_MARKER_F
-- id: no_global_2
+    path: sql/triggers/updated_at_trigger.sql
+    anchor: update_timestamp
+- id: no_product_service
   selector:
-    anchor: GARBAGE_CICD_DOCS_070_DEFER_MARKER_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_CICD_DOCS_070_RETENTION_MARKER_E
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_070_TIMING_MARKER_B
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_070_TRIGGER_MARKER_A
-- id: no_global_6
-  selector:
-    anchor: garbage_audit_handler.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_trigger_manager.ts
+    path: src/services/product_service.py
+    anchor: ProductService
 oracle:
   required:
-  - audit_trigger_file
-  - req_global_0
+  - trigger_changed
+  - session_context
+  - audited_user_operations
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_updated_at_trigger
+  - no_product_service

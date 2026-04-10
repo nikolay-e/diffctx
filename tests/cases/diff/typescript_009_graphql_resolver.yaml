@@ -167,16 +167,40 @@ fragments:
 - id: postresolvers_file
   selector:
     path: src/graphql/resolvers/postResolvers.ts
-- id: req_global_0
+- id: resolver_type_imports
   selector:
     anchor: import { GraphQLContext, Post, User, CreatePostInput } from '../types';
-- id: req_global_1
+- id: post_resolvers_interface
   selector:
     anchor: interface PostResolvers {
+- id: graphql_context_type
+  selector:
+    path: src/graphql/types.ts
+    anchor: interface GraphQLContext {
+- id: post_api_interface
+  selector:
+    path: src/graphql/types.ts
+    anchor: interface PostAPI {
+- id: user_api_interface
+  selector:
+    path: src/graphql/types.ts
+    anchor: interface UserAPI {
+- id: no_vendor_search
+  selector:
+    path: vendor/search-client/index.ts
+- id: no_media_docs
+  selector:
+    path: docs/media/processing.md
+    anchor: Media Processing
 oracle:
   required:
   - postresolvers_file
-  - req_global_0
-  - req_global_1
+  - resolver_type_imports
+  - post_resolvers_interface
+  - graphql_context_type
+  - post_api_interface
+  - user_api_interface
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_vendor_search
+  - no_media_docs

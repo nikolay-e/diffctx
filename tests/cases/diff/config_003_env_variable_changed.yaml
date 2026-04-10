@@ -67,31 +67,43 @@ repo:
           @classmethod
           def is_production(cls) -> bool:
               return "production" in cls.DATABASE_URL
-    unrelated/report_generator.py: |
-      # GARBAGE_CFG_003_MARKER_A
-      GARBAGE_CFG_003_REPORT_B = "unrelated-report-config"
+    reporting/monthly.py: |
+      from datetime import date, timedelta
+
 
       def generate_monthly_report(month: int, year: int) -> dict:
-          return {"month": month, "year": year, "status": "generated"}
+          start = date(year, month, 1)
+          if month == 12:
+              end = date(year + 1, 1, 1) - timedelta(days=1)
+          else:
+              end = date(year, month + 1, 1) - timedelta(days=1)
+          return {"start": str(start), "end": str(end), "status": "generated"}
+
 
       def export_csv(data: list[dict], filename: str) -> str:
           return f"{filename}.csv"
+    caching/redis_backend.py: |
+      from typing import Any, Optional
 
-      GARBAGE_CFG_003_FORMAT_C = "unused-format-string"
-    unrelated/cache_manager.py: |
-      # GARBAGE_CFG_003_MARKER_D
-      GARBAGE_CFG_003_CACHE_E = "unrelated-cache-backend"
 
-      class CacheManager:
-          def __init__(self, ttl: int = 300):
-              self.store = {}
+      class RedisCache:
+          def __init__(self, host: str = "localhost", port: int = 6379, ttl: int = 300):
+              self.host = host
+              self.port = port
               self.ttl = ttl
+              self.store: dict[str, Any] = {}
 
-          def get(self, key: str):
+          def get(self, key: str) -> Optional[Any]:
               return self.store.get(key)
 
-          def set(self, key: str, value):
+          def set(self, key: str, value: Any):
               self.store[key] = value
+
+          def invalidate(self, pattern: str) -> int:
+              keys = [k for k in self.store if pattern in k]
+              for k in keys:
+                  del self.store[k]
+              return len(keys)
   changed_files:
     .env.example: |
       # API Configuration
@@ -159,70 +171,98 @@ repo:
           @classmethod
           def is_production(cls) -> bool:
               return "production" in cls.DATABASE_URL
-    unrelated/report_generator.py: |
-      # GARBAGE_CFG_003_MARKER_A
-      GARBAGE_CFG_003_REPORT_B = "unrelated-report-config"
+    reporting/monthly.py: |
+      from datetime import date, timedelta
+
 
       def generate_monthly_report(month: int, year: int) -> dict:
-          return {"month": month, "year": year, "status": "generated"}
+          start = date(year, month, 1)
+          if month == 12:
+              end = date(year + 1, 1, 1) - timedelta(days=1)
+          else:
+              end = date(year, month + 1, 1) - timedelta(days=1)
+          return {"start": str(start), "end": str(end), "status": "generated"}
+
 
       def export_csv(data: list[dict], filename: str) -> str:
           return f"{filename}.csv"
+    caching/redis_backend.py: |
+      from typing import Any, Optional
 
-      GARBAGE_CFG_003_FORMAT_C = "unused-format-string"
-    unrelated/cache_manager.py: |
-      # GARBAGE_CFG_003_MARKER_D
-      GARBAGE_CFG_003_CACHE_E = "unrelated-cache-backend"
 
-      class CacheManager:
-          def __init__(self, ttl: int = 300):
-              self.store = {}
+      class RedisCache:
+          def __init__(self, host: str = "localhost", port: int = 6379, ttl: int = 300):
+              self.host = host
+              self.port = port
               self.ttl = ttl
+              self.store: dict[str, Any] = {}
 
-          def get(self, key: str):
+          def get(self, key: str) -> Optional[Any]:
               return self.store.get(key)
 
-          def set(self, key: str, value):
+          def set(self, key: str, value: Any):
               self.store[key] = value
+
+          def invalidate(self, pattern: str) -> int:
+              keys = [k for k in self.store if pattern in k]
+              for k in keys:
+                  del self.store[k]
+              return len(keys)
   commit_message: Update files
 fragments:
 - id: env_file
   selector:
     path: .env.example
-- id: req_global_0
+- id: timeout_changed
   selector:
     anchor: API_TIMEOUT=60
-- id: no_global_0
+- id: retry_count_changed
   selector:
-    anchor: GARBAGE_CFG_003_CACHE_E
-- id: no_global_1
+    anchor: API_RETRY_COUNT=5
+- id: client_get_timeout
   selector:
-    anchor: GARBAGE_CFG_003_FORMAT_C
-- id: no_global_2
+    path: client.py
+    anchor: 'os.getenv("API_TIMEOUT"'
+- id: client_get_retry_count
   selector:
-    anchor: GARBAGE_CFG_003_MARKER_A
-- id: no_global_3
+    path: client.py
+    anchor: 'os.getenv("API_RETRY_COUNT"'
+- id: settings_timeout
   selector:
-    anchor: GARBAGE_CFG_003_MARKER_D
-- id: no_global_4
+    path: settings.py
+    anchor: 'API_TIMEOUT = int'
+- id: settings_retry_count
   selector:
-    anchor: GARBAGE_CFG_003_REPORT_B
-- id: no_global_5
+    path: settings.py
+    anchor: 'API_RETRY_COUNT = int'
+- id: no_reporting
   selector:
-    anchor: cache_manager.py
-- id: no_global_6
+    path: reporting/monthly.py
+- id: no_caching
   selector:
-    anchor: report_generator.py
+    path: caching/redis_backend.py
+- id: no_generate_monthly
+  selector:
+    anchor: generate_monthly_report
+- id: no_redis_cache
+  selector:
+    anchor: RedisCache
+- id: no_export_csv
+  selector:
+    anchor: export_csv
 oracle:
   required:
   - env_file
-  - req_global_0
+  - timeout_changed
+  - retry_count_changed
+  - client_get_timeout
+  - client_get_retry_count
+  - settings_timeout
+  - settings_retry_count
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_reporting
+  - no_caching
+  - no_generate_monthly
+  - no_redis_cache
+  - no_export_csv

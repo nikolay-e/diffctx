@@ -202,89 +202,72 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: main
+- id: main_calls_add
   selector:
     path: src/main.rs
-    anchor: math::add(2, 3)
-- id: main_1
+    anchor: "math::add(2, 3)"
+- id: main_calls_multiply
   selector:
     path: src/main.rs
-    anchor: math::multiply(4, 5)
-- id: no_statistics
-  selector:
-    path: src/statistics.rs
-- id: no_conversion
-  selector:
-    path: src/conversion.rs
-- id: no_calculator_cli
+    anchor: "math::multiply(4, 5)"
+- id: cli_calls_add
   selector:
     path: src/calculator_cli.rs
-- id: no_bignum
+    anchor: "math::add(a, b)"
+- id: cli_calls_multiply
   selector:
-    path: src/bignum.rs
-- id: no_math_test
+    path: src/calculator_cli.rs
+    anchor: "math::multiply(a, b)"
+- id: cli_batch_calls_add
+  selector:
+    path: src/calculator_cli.rs
+    anchor: "math::add(*a, *b)"
+- id: test_calls_add
   selector:
     path: src/math_test.rs
-- id: no_global_0
+    anchor: "math::add(2, 3), 5"
+- id: test_calls_multiply
   selector:
-    anchor: StatisticalSummary
-- id: no_global_1
+    path: src/math_test.rs
+    anchor: "math::multiply(4, 5), 20"
+- id: no_statistics_mean
   selector:
-    anchor: standard_deviation
-- id: no_global_2
+    path: src/statistics.rs
+    anchor: "pub fn mean(values: &[f64])"
+- id: no_statistics_variance
   selector:
-    anchor: fn variance
-- id: no_global_3
+    path: src/statistics.rs
+    anchor: "pub fn variance(values: &[f64])"
+- id: no_conversion_miles
   selector:
-    anchor: METERS_PER_MILE
-- id: no_global_4
+    path: src/conversion.rs
+    anchor: "pub fn miles_to_km"
+- id: no_conversion_celsius
   selector:
-    anchor: KG_PER_POUND
-- id: no_global_5
+    path: src/conversion.rs
+    anchor: "pub fn celsius_to_fahrenheit"
+- id: no_bignum_struct
   selector:
-    anchor: celsius_to_fahrenheit
-- id: no_global_6
+    path: src/bignum.rs
+    anchor: "pub struct BigNum"
+- id: no_bignum_from_i64
   selector:
-    anchor: run_interactive
-- id: no_global_7
-  selector:
-    anchor: run_batch
-- id: no_global_8
-  selector:
-    anchor: CLI Calculator
-- id: no_global_9
-  selector:
-    anchor: struct BigNum
-- id: no_global_10
-  selector:
-    anchor: from_i64
-- id: no_global_11
-  selector:
-    anchor: test_add
-- id: no_global_12
-  selector:
-    anchor: test_multiply
+    path: src/bignum.rs
+    anchor: "pub fn from_i64"
 oracle:
   required:
-  - main
-  - main_1
+  - main_calls_add
+  - main_calls_multiply
+  - cli_calls_add
+  - cli_calls_multiply
+  - cli_batch_calls_add
+  - test_calls_add
+  - test_calls_multiply
   allowed: []
   forbidden:
-  - no_statistics
-  - no_conversion
-  - no_calculator_cli
-  - no_bignum
-  - no_math_test
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
+  - no_statistics_mean
+  - no_statistics_variance
+  - no_conversion_miles
+  - no_conversion_celsius
+  - no_bignum_struct
+  - no_bignum_from_i64

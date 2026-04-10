@@ -50,29 +50,32 @@ repo:
               Message: err.Error(),
           })
       }
-    internal/unrelated/validation/rules.go: |
-      package validation
+    internal/handler/middleware.go: |
+      package handler
 
-      const GARBAGE_GO_VALIDATION_RULES_001 = "validation_garbage"
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_RULES_002 struct {
-          patterns []string
+      func LoggingMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
       }
 
-      func GARBAGE_GO_FUNC_RULES_003() string {
-          return "GARBAGE_GO_RULES_UNUSED_004"
-      }
-    internal/unrelated/validation/sanitizer.go: |
-      package validation
-
-      const GARBAGE_GO_VALIDATION_SANITIZE_005 = "sanitizer_garbage"
-
-      type GARBAGE_GO_TYPE_SANITIZE_006 struct {
-          allowedTags []string
-      }
-
-      func GARBAGE_GO_FUNC_SANITIZE_007() {
-          println("GARBAGE_GO_SANITIZE_OUTPUT_008")
+      func RecoveryMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              defer func() {
+                  if err := recover(); err != nil {
+                      http.Error(w, "internal server error", http.StatusInternalServerError)
+                  }
+              }()
+              next.ServeHTTP(w, r)
+          })
       }
   changed_files:
     internal/errors/domain_errors.go: |
@@ -189,77 +192,66 @@ repo:
               Message: err.Error(),
           })
       }
-    internal/unrelated/validation/rules.go: |
-      package validation
+    internal/handler/middleware.go: |
+      package handler
 
-      const GARBAGE_GO_VALIDATION_RULES_001 = "validation_garbage"
+      import (
+          "log"
+          "net/http"
+          "time"
+      )
 
-      type GARBAGE_GO_TYPE_RULES_002 struct {
-          patterns []string
+      func LoggingMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              start := time.Now()
+              next.ServeHTTP(w, r)
+              log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+          })
       }
 
-      func GARBAGE_GO_FUNC_RULES_003() string {
-          return "GARBAGE_GO_RULES_UNUSED_004"
-      }
-    internal/unrelated/validation/sanitizer.go: |
-      package validation
-
-      const GARBAGE_GO_VALIDATION_SANITIZE_005 = "sanitizer_garbage"
-
-      type GARBAGE_GO_TYPE_SANITIZE_006 struct {
-          allowedTags []string
-      }
-
-      func GARBAGE_GO_FUNC_SANITIZE_007() {
-          println("GARBAGE_GO_SANITIZE_OUTPUT_008")
+      func RecoveryMiddleware(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              defer func() {
+                  if err := recover(); err != nil {
+                      http.Error(w, "internal server error", http.StatusInternalServerError)
+                  }
+              }()
+              next.ServeHTTP(w, r)
+          })
       }
   commit_message: Update files
 fragments:
 - id: domain_errors_file
   selector:
     path: internal/errors/domain_errors.go
-- id: req_global_0
+- id: new_sentinel_errors
   selector:
-    anchor: ErrNotFound       = errors.New("resource not found")
-- id: req_global_1
+    anchor: ErrConflict       = errors.New("resource conflict")
+- id: domain_error_struct
   selector:
     anchor: type DomainError struct {
-- id: no_global_0
+- id: http_errors_maps_sentinels
   selector:
-    anchor: GARBAGE_GO_FUNC_RULES_003
-- id: no_global_1
+    path: internal/errors/http_errors.go
+    anchor: func HTTPStatusCode(err error) int {
+- id: http_errors_checks_not_found
   selector:
-    anchor: GARBAGE_GO_FUNC_SANITIZE_007
-- id: no_global_2
+    anchor: errors.Is(err, ErrNotFound)
+- id: no_middleware_logging
   selector:
-    anchor: GARBAGE_GO_TYPE_RULES_002
-- id: no_global_3
+    path: internal/handler/middleware.go
+    anchor: func LoggingMiddleware(next http.Handler) http.Handler {
+- id: no_middleware_recovery
   selector:
-    anchor: GARBAGE_GO_TYPE_SANITIZE_006
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_GO_VALIDATION_RULES_001
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_VALIDATION_SANITIZE_005
-- id: no_global_6
-  selector:
-    anchor: rules.go
-- id: no_global_7
-  selector:
-    anchor: sanitizer.go
+    anchor: func RecoveryMiddleware(next http.Handler) http.Handler {
 oracle:
   required:
   - domain_errors_file
-  - req_global_0
-  - req_global_1
+  - new_sentinel_errors
+  - domain_error_struct
+  - http_errors_maps_sentinels
+  - http_errors_checks_not_found
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_middleware_logging
+  - no_middleware_recovery

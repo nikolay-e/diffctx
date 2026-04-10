@@ -34,22 +34,49 @@ repo:
 
       def format_result(rows):
           return [dict(row) for row in rows]
-    garbage_query_cache.py: |
-      GARBAGE_COMP_012_CACHE_BACKEND_A = "redis"
-      GARBAGE_COMP_012_INVALIDATION_B = "ttl"
+    src/query_cache.py: |
+      from typing import Dict, Optional
+      import time
 
-      class GarbageQueryCache:
-          GARBAGE_COMP_012_WARM_STRATEGY_C = True
-          def cache(self):
-              pass
-    garbage_connection_pool.py: |
-      GARBAGE_COMP_012_POOL_SIZE_D = "adaptive"
-      GARBAGE_COMP_012_IDLE_TIMEOUT_E = "reclaim"
+      class QueryCache:
+          def __init__(self, ttl_seconds: int = 300):
+              self.ttl = ttl_seconds
+              self.cache: Dict[str, tuple] = {}
 
-      class GarbageConnectionPool:
-          GARBAGE_COMP_012_HEALTH_CHECK_F = False
-          def acquire(self):
-              pass
+          def get(self, key: str) -> Optional[str]:
+              if key in self.cache:
+                  result, timestamp = self.cache[key]
+                  if time.time() - timestamp < self.ttl:
+                      return result
+                  del self.cache[key]
+              return None
+
+          def set(self, key: str, value: str) -> None:
+              self.cache[key] = (value, time.time())
+    src/connection_pool.py: |
+      from typing import List, Optional
+
+      class ConnectionPool:
+          def __init__(self, max_size: int = 10):
+              self.max_size = max_size
+              self.available: List[str] = []
+              self.in_use: List[str] = []
+
+          def acquire(self) -> Optional[str]:
+              if self.available:
+                  conn = self.available.pop()
+                  self.in_use.append(conn)
+                  return conn
+              if len(self.in_use) < self.max_size:
+                  conn = f"conn_{len(self.in_use)}"
+                  self.in_use.append(conn)
+                  return conn
+              return None
+
+          def release(self, conn: str) -> None:
+              if conn in self.in_use:
+                  self.in_use.remove(conn)
+                  self.available.append(conn)
   changed_files:
     src/builder.py: |
       class QueryBuilder:
@@ -86,69 +113,85 @@ repo:
 
       def format_result(rows):
           return [dict(row) for row in rows]
-    garbage_query_cache.py: |
-      GARBAGE_COMP_012_CACHE_BACKEND_A = "redis"
-      GARBAGE_COMP_012_INVALIDATION_B = "ttl"
+    src/query_cache.py: |
+      from typing import Dict, Optional
+      import time
 
-      class GarbageQueryCache:
-          GARBAGE_COMP_012_WARM_STRATEGY_C = True
-          def cache(self):
-              pass
-    garbage_connection_pool.py: |
-      GARBAGE_COMP_012_POOL_SIZE_D = "adaptive"
-      GARBAGE_COMP_012_IDLE_TIMEOUT_E = "reclaim"
+      class QueryCache:
+          def __init__(self, ttl_seconds: int = 300):
+              self.ttl = ttl_seconds
+              self.cache: Dict[str, tuple] = {}
 
-      class GarbageConnectionPool:
-          GARBAGE_COMP_012_HEALTH_CHECK_F = False
-          def acquire(self):
-              pass
+          def get(self, key: str) -> Optional[str]:
+              if key in self.cache:
+                  result, timestamp = self.cache[key]
+                  if time.time() - timestamp < self.ttl:
+                      return result
+                  del self.cache[key]
+              return None
+
+          def set(self, key: str, value: str) -> None:
+              self.cache[key] = (value, time.time())
+    src/connection_pool.py: |
+      from typing import List, Optional
+
+      class ConnectionPool:
+          def __init__(self, max_size: int = 10):
+              self.max_size = max_size
+              self.available: List[str] = []
+              self.in_use: List[str] = []
+
+          def acquire(self) -> Optional[str]:
+              if self.available:
+                  conn = self.available.pop()
+                  self.in_use.append(conn)
+                  return conn
+              if len(self.in_use) < self.max_size:
+                  conn = f"conn_{len(self.in_use)}"
+                  self.in_use.append(conn)
+                  return conn
+              return None
+
+          def release(self, conn: str) -> None:
+              if conn in self.in_use:
+                  self.in_use.remove(conn)
+                  self.available.append(conn)
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_builder
   selector:
     anchor: from src.builder import QueryBuilder
-- id: req_global_1
+- id: main_uses_builder_chain
   selector:
     anchor: return QueryBuilder().select("*").from_table("users").build()
-- id: no_global_0
+- id: builder_class_def
   selector:
-    anchor: GARBAGE_COMP_012_CACHE_BACKEND_A
-- id: no_global_1
+    path: src/builder.py
+    anchor: "class QueryBuilder:"
+- id: no_query_cache
   selector:
-    anchor: GARBAGE_COMP_012_HEALTH_CHECK_F
-- id: no_global_2
+    path: src/query_cache.py
+- id: no_connection_pool
   selector:
-    anchor: GARBAGE_COMP_012_IDLE_TIMEOUT_E
-- id: no_global_3
+    path: src/connection_pool.py
+- id: no_cache_get
   selector:
-    anchor: GARBAGE_COMP_012_INVALIDATION_B
-- id: no_global_4
+    anchor: "def get(self, key"
+- id: no_pool_acquire
   selector:
-    anchor: GARBAGE_COMP_012_POOL_SIZE_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_012_WARM_STRATEGY_C
-- id: no_global_6
-  selector:
-    anchor: garbage_connection_pool.py
-- id: no_global_7
-  selector:
-    anchor: garbage_query_cache.py
+    anchor: "def acquire(self)"
 oracle:
   required:
-  - main_file
-  - req_global_0
-  - req_global_1
+  - main_changed
+  - main_imports_builder
+  - main_uses_builder_chain
+  - builder_class_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_query_cache
+  - no_connection_pool
+  - no_cache_get
+  - no_pool_acquire

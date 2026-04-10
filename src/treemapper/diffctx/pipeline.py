@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -12,20 +13,12 @@ from ..tokens import count_tokens
 from . import git as _git
 from .config import LIMITS
 from .core import _compute_seed_weights, _identify_core_fragments
-from .edges import discover_all_related_files
 from .file_importance import compute_file_importance
-from .filtering import (
-    _apply_hunk_proximity_bonus,
-    _cap_context_fragments,
-    _filter_low_relevance_fragments,
-    _filter_unrelated_fragments,
-)
 from .fragmentation import _process_files_for_fragments
 from .git import CatFileBatch, GitError, split_diff_range
-from .graph import build_graph
 from .postpass import _coherence_post_pass, _ensure_changed_files_represented
-from .ppr import personalized_pagerank
 from .render import build_diff_context_output
+from .scoring import DiscoveryContext, EnsembleDiscovery, PPRScoring, ScoringStrategy
 from .select import lazy_greedy_select
 from .signatures import _generate_signature_variants
 from .types import Fragment, FragmentId
@@ -33,7 +26,6 @@ from .universe import (
     _collect_candidate_files,
     _discover_untracked_files,
     _enrich_concepts,
-    _expand_universe_by_rare_identifiers,
     _filter_whitelist,
     _normalize_path,
     _resolve_changed_files,
@@ -44,7 +36,6 @@ from .utility import concepts_from_diff_text, needs_from_diff
 logger = logging.getLogger(__name__)
 
 _OVERHEAD_PER_FRAGMENT = LIMITS.overhead_per_fragment
-_MAX_DISCOVERED_FILES = LIMITS.max_discovered_files
 _UNLIMITED_BUDGET = 10_000_000
 
 
@@ -72,42 +63,44 @@ def _select_full_mode(
     return selected
 
 
-def _select_with_ppr(
+def _score_and_select(
     all_fragments: list[Fragment],
     core_ids: set[FragmentId],
     diff_text: str,
     budget_tokens: int | None,
-    alpha: float,
     tau: float,
     hunks: list[Any],
     repo_root: Path | None = None,
     seed_weights: dict[FragmentId, float] | None = None,
+    scoring_strategy: ScoringStrategy | None = None,
 ) -> tuple[list[Fragment], Any]:
-    graph = build_graph(all_fragments, repo_root=repo_root)
-    rel_scores = personalized_pagerank(graph, core_ids, alpha=alpha, seed_weights=seed_weights)
-    _apply_hunk_proximity_bonus(rel_scores, core_ids, all_fragments, hunks)
+    strategy = scoring_strategy or PPRScoring()
 
-    filtered_fragments = _filter_unrelated_fragments(all_fragments, core_ids, graph)
-    filtered_fragments = _filter_low_relevance_fragments(filtered_fragments, core_ids, rel_scores)
-    filtered_fragments = _cap_context_fragments(filtered_fragments, core_ids, rel_scores)
+    dump_scores = os.environ.get("DIFFCTX_DUMP_SCORES")
+    scoring_result = strategy.score_and_filter(
+        all_fragments,
+        core_ids,
+        hunks,
+        repo_root=repo_root,
+        seed_weights=seed_weights,
+        dump_scores_file=dump_scores,
+    )
 
-    needs = needs_from_diff(filtered_fragments, core_ids, graph, diff_text)
-
-    file_importance = compute_file_importance(filtered_fragments)
-
+    needs = needs_from_diff(scoring_result.filtered_fragments, core_ids, scoring_result.graph, diff_text)
+    file_importance = compute_file_importance(scoring_result.filtered_fragments)
     effective_budget = budget_tokens if budget_tokens is not None else _UNLIMITED_BUDGET
 
     result = lazy_greedy_select(
-        fragments=filtered_fragments,
+        fragments=scoring_result.filtered_fragments,
         core_ids=core_ids,
-        rel=rel_scores,
+        rel=scoring_result.rel_scores,
         needs=needs,
         budget_tokens=effective_budget,
         tau=tau,
         file_importance=file_importance,
     )
 
-    selected = _coherence_post_pass(result, filtered_fragments, graph, effective_budget)
+    selected = _coherence_post_pass(result, scoring_result.filtered_fragments, scoring_result.graph, effective_budget)
     return selected.selected, selected
 
 
@@ -209,49 +202,52 @@ def build_diff_context(
         seen_frag_ids: set[FragmentId] = set()
         all_fragments = _process_files_for_fragments(changed_files, root_dir, preferred_revs, seen_frag_ids, batch_reader)
 
-        all_candidate_files, is_large_repo = _collect_candidate_files(root_dir, set(changed_files), combined_spec)
+        all_candidate_files = _collect_candidate_files(root_dir, set(changed_files), combined_spec)
         all_candidate_files = _filter_whitelist(all_candidate_files, root_dir, wl_spec)
 
         t1 = time.perf_counter()
 
-        edge_discovered = discover_all_related_files(changed_files, all_candidate_files, root_dir)
-        if len(edge_discovered) > _MAX_DISCOVERED_FILES:
-            logger.debug(
-                "diffctx: capping edge-discovered files from %d to %d",
-                len(edge_discovered),
-                _MAX_DISCOVERED_FILES,
-            )
-            edge_discovered = edge_discovered[:_MAX_DISCOVERED_FILES]
-        edge_discovered = [_normalize_path(p, root_dir) for p in edge_discovered]
-        all_fragments.extend(_process_files_for_fragments(edge_discovered, root_dir, preferred_revs, seen_frag_ids, batch_reader))
+        file_cache: dict[Path, str] = {}
+        for f in all_candidate_files:
+            try:
+                if f.stat().st_size <= 100_000:
+                    file_cache[f] = f.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        discovery_ctx = DiscoveryContext(
+            root_dir=root_dir,
+            changed_files=changed_files,
+            all_candidate_files=all_candidate_files,
+            diff_text=diff_text,
+            expansion_concepts=frozenset(expansion_concepts),
+            file_cache=file_cache,
+        )
+        discovery_strategy = EnsembleDiscovery()
+        discovered_files = discovery_strategy.discover(discovery_ctx)
+        discovered_files = [_normalize_path(p, root_dir) for p in discovered_files]
+        all_fragments.extend(
+            _process_files_for_fragments(discovered_files, root_dir, preferred_revs, seen_frag_ids, batch_reader)
+        )
 
         t2 = time.perf_counter()
 
-        if not is_large_repo:
-            expanded_files = _expand_universe_by_rare_identifiers(
-                root_dir,
-                expansion_concepts,
-                changed_files + edge_discovered,
-                combined_spec,
-                candidate_files=all_candidate_files,
-                changed_files=changed_files,
-            )
-            expanded_files = [_normalize_path(p, root_dir) for p in expanded_files]
-            all_fragments.extend(
-                _process_files_for_fragments(expanded_files, root_dir, preferred_revs, seen_frag_ids, batch_reader)
-            )
-        else:
-            logger.debug("diffctx: skipping rare-identifier expansion for large repo")
-
-        t3 = time.perf_counter()
-
     logger.debug(
-        "diffctx: timing — changed_files %.3fs, edge_discovery %.3fs, expansion %.3fs, total_io %.3fs",
+        "diffctx: timing — changed_files %.3fs, discovery %.3fs, total_io %.3fs",
         t1 - t0,
         t2 - t1,
-        t3 - t2,
-        t3 - t0,
+        t2 - t0,
     )
+
+    dump_dir = os.environ.get("DIFFCTX_DUMP_DIR")
+    if dump_dir:
+        _dump = Path(dump_dir)
+        _dump.mkdir(parents=True, exist_ok=True)
+        universe = set(changed_files) | set(discovered_files)
+        (_dump / "universe.txt").write_text("\n".join(sorted(str(p.relative_to(root_dir)) for p in universe)) + "\n")
+        fragmented = {str(f.path.relative_to(root_dir)) for f in all_fragments}
+        (_dump / "fragmented.txt").write_text("\n".join(sorted(fragmented)) + "\n")
+        (_dump / "candidates.txt").write_text(f"candidates={len(all_candidate_files)} discovered={len(discovered_files)}\n")
 
     _assign_token_counts(all_fragments)
 
@@ -268,16 +264,16 @@ def build_diff_context(
         _log_full_mode(selected)
     else:
         seed_weights = _compute_seed_weights(hunks, core_ids, all_fragments)
-        selected, result = _select_with_ppr(
+        selected, result = _score_and_select(
             all_fragments,
             core_ids,
             diff_text,
             budget_tokens,
-            alpha,
             tau,
             hunks=hunks,
             repo_root=root_dir,
             seed_weights=seed_weights,
+            scoring_strategy=PPRScoring(alpha=alpha),
         )
         effective_budget = budget_tokens if budget_tokens is not None else _UNLIMITED_BUDGET
         remaining = effective_budget - result.used_tokens
@@ -289,6 +285,10 @@ def build_diff_context(
 
     t5 = time.perf_counter()
     logger.debug("diffctx: timing — graph+select %.3fs", t5 - t4)
+
+    if dump_dir:
+        sel_paths = {str(f.path.relative_to(root_dir)) for f in selected}
+        (Path(dump_dir) / "selected.txt").write_text("\n".join(sorted(sel_paths)) + "\n")
 
     if no_content:
         for frag in selected:

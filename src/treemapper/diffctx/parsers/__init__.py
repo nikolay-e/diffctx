@@ -60,7 +60,7 @@ class FragmentationEngine:
                     if result:
                         return result
                 except Exception as e:
-                    logger.warning("Strategy %s failed for %s: %s", type(strategy).__name__, path, e)
+                    logger.warning("Strategy %s failed for %s: %s", type(strategy).__name__, path, e, exc_info=True)
                     continue
 
         return GenericStrategy().fragment(path, content)

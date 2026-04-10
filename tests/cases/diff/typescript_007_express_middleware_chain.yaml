@@ -133,16 +133,40 @@ fragments:
 - id: ratelimit_file
   selector:
     path: src/middleware/rateLimit.ts
-- id: req_global_0
+- id: ratelimit_imports
   selector:
     anchor: import { Response, NextFunction } from 'express';
-- id: req_global_1
+- id: ratelimit_entry_type
   selector:
     anchor: interface RateLimitEntry {
+- id: authenticated_request_type
+  selector:
+    path: src/middleware/types.ts
+    anchor: interface AuthenticatedRequest extends Request {
+- id: middleware_function_type
+  selector:
+    path: src/middleware/types.ts
+    anchor: type MiddlewareFunction =
+- id: rate_limit_config_type
+  selector:
+    path: src/middleware/types.ts
+    anchor: interface RateLimitConfig {
+- id: no_vendor_upload
+  selector:
+    path: vendor/upload-handler/index.ts
+- id: no_compression_docs
+  selector:
+    path: docs/compression/overview.md
+    anchor: Compression Guide
 oracle:
   required:
   - ratelimit_file
-  - req_global_0
-  - req_global_1
+  - ratelimit_imports
+  - ratelimit_entry_type
+  - authenticated_request_type
+  - middleware_function_type
+  - rate_limit_config_type
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_vendor_upload
+  - no_compression_docs

@@ -107,9 +107,6 @@ repo:
       import java.time.LocalDate;
 
       public class TicketPricing {
-          public static final String GARBAGE_JAVA_TICKET_301 = "ticket_marker_theta";
-          private static final String GARBAGE_JAVA_PRICE_302 = "price_marker_iota";
-
           private final BigDecimal basePrice;
 
           public TicketPricing(BigDecimal basePrice) {
@@ -124,12 +121,7 @@ repo:
               if (visitorAge < 12) {
                   price = price.multiply(new BigDecimal("0.5"));
               }
-              logGarbageMarkers();
               return price;
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_TICKET_301 + GARBAGE_JAVA_PRICE_302);
           }
       }
     src/main/java/com/zoo/unrelated/MaintenanceScheduler.java: |
@@ -140,14 +132,10 @@ repo:
       import java.util.List;
 
       public class MaintenanceScheduler {
-          public static final String GARBAGE_JAVA_MAINT_303 = "maintenance_marker_kappa";
-
           private final List<MaintenanceTask> tasks = new ArrayList<>();
 
           public void scheduleTask(String description, LocalDateTime scheduledTime) {
               tasks.add(new MaintenanceTask(description, scheduledTime));
-              String GARBAGE_JAVA_TASK_304 = "task_marker_lambda";
-              System.out.println(GARBAGE_JAVA_MAINT_303 + GARBAGE_JAVA_TASK_304);
           }
 
           private record MaintenanceTask(String description, LocalDateTime scheduledTime) {}
@@ -325,9 +313,6 @@ repo:
       import java.time.LocalDate;
 
       public class TicketPricing {
-          public static final String GARBAGE_JAVA_TICKET_301 = "ticket_marker_theta";
-          private static final String GARBAGE_JAVA_PRICE_302 = "price_marker_iota";
-
           private final BigDecimal basePrice;
 
           public TicketPricing(BigDecimal basePrice) {
@@ -342,12 +327,7 @@ repo:
               if (visitorAge < 12) {
                   price = price.multiply(new BigDecimal("0.5"));
               }
-              logGarbageMarkers();
               return price;
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_TICKET_301 + GARBAGE_JAVA_PRICE_302);
           }
       }
     src/main/java/com/zoo/unrelated/MaintenanceScheduler.java: |
@@ -358,14 +338,10 @@ repo:
       import java.util.List;
 
       public class MaintenanceScheduler {
-          public static final String GARBAGE_JAVA_MAINT_303 = "maintenance_marker_kappa";
-
           private final List<MaintenanceTask> tasks = new ArrayList<>();
 
           public void scheduleTask(String description, LocalDateTime scheduledTime) {
               tasks.add(new MaintenanceTask(description, scheduledTime));
-              String GARBAGE_JAVA_TASK_304 = "task_marker_lambda";
-              System.out.println(GARBAGE_JAVA_MAINT_303 + GARBAGE_JAVA_TASK_304);
           }
 
           private record MaintenanceTask(String description, LocalDateTime scheduledTime) {}
@@ -375,36 +351,47 @@ fragments:
 - id: dog_file
   selector:
     path: src/main/java/com/zoo/model/Dog.java
-- id: req_global_0
+- id: dog_new_tricks_field
   selector:
     anchor: private List<String> tricks;
-- id: no_global_0
+- id: animal_abstract_speak
   selector:
-    anchor: GARBAGE_JAVA_MAINT_303
-- id: no_global_1
+    path: src/main/java/com/zoo/model/Animal.java
+    anchor: public abstract String speak();
+- id: animal_eat_method
   selector:
-    anchor: GARBAGE_JAVA_PRICE_302
-- id: no_global_2
+    path: src/main/java/com/zoo/model/Animal.java
+    anchor: public void eat(String food)
+- id: animal_sleep_method
   selector:
-    anchor: GARBAGE_JAVA_TASK_304
-- id: no_global_3
+    path: src/main/java/com/zoo/model/Animal.java
+    anchor: public void sleep()
+- id: animal_get_age
   selector:
-    anchor: GARBAGE_JAVA_TICKET_301
-- id: no_global_4
+    path: src/main/java/com/zoo/model/Animal.java
+    anchor: public int getAgeInYears()
+- id: no_ticket_pricing
   selector:
-    anchor: MaintenanceScheduler.java
-- id: no_global_5
+    path: src/main/java/com/zoo/unrelated/TicketPricing.java
+    anchor: calculatePrice
+- id: no_maintenance_scheduler
   selector:
-    anchor: TicketPricing.java
+    path: src/main/java/com/zoo/unrelated/MaintenanceScheduler.java
+    anchor: scheduleTask
+- id: no_cat_speak
+  selector:
+    path: src/main/java/com/zoo/model/Cat.java
+    anchor: return "Meow!"
 oracle:
   required:
   - dog_file
-  - req_global_0
+  - dog_new_tricks_field
+  - animal_abstract_speak
+  - animal_eat_method
+  - animal_sleep_method
+  - animal_get_age
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_ticket_pricing
+  - no_maintenance_scheduler
+  - no_cat_speak

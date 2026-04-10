@@ -265,36 +265,46 @@ fragments:
 - id: networkpolicy_file
   selector:
     path: k8s/base/networkpolicy.yaml
-- id: req_global_0
+- id: netpol_targets_order_processor
   selector:
     anchor: 'name: order-processor-egress'
+- id: deployment_env_vars
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: DATABASE_HOST
+- id: deployment_labels
+  selector:
+    path: k8s/base/deployment.yaml
+    anchor: 'app: order-processor'
 - id: no_cilium_netpol
   selector:
     path: k8s/cni/cilium-netpol.yaml
 - id: no_calico_globalnetpol
   selector:
     path: k8s/cni/calico-globalnetpol.yaml
-- id: no_global_0
+- id: no_configmap
+  selector:
+    path: k8s/base/configmap.yaml
+- id: no_cilium_network_policy
   selector:
     anchor: CiliumNetworkPolicy
-- id: no_global_1
+- id: no_global_network_policy
   selector:
     anchor: GlobalNetworkPolicy
-- id: no_global_2
+- id: no_batch_size
   selector:
-    anchor: cilium-netpol.yaml
-- id: no_global_3
-  selector:
-    anchor: calico-globalnetpol.yaml
+    anchor: BATCH_SIZE
 oracle:
   required:
   - networkpolicy_file
-  - req_global_0
+  - netpol_targets_order_processor
+  - deployment_env_vars
+  - deployment_labels
   allowed: []
   forbidden:
   - no_cilium_netpol
   - no_calico_globalnetpol
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_configmap
+  - no_cilium_network_policy
+  - no_global_network_policy
+  - no_batch_size

@@ -31,22 +31,36 @@ repo:
       def create_list_orders_request(page: int, page_size: int):
           pagination = common_pb2.Pagination(page=page, page_size=page_size)
           return orders_pb2.ListOrdersRequest(pagination=pagination)
-    garbage_proto_generator.ts: |
-      const GARBAGE_CICD_DOCS_059_GENERATOR_MARKER_A = "grpc-tools";
-      const GARBAGE_CICD_DOCS_059_OUTPUT_MARKER_B = "./generated";
+    proto/inventory.proto: |
+      syntax = "proto3";
 
-      class GarbageProtoGenerator {
-        static GARBAGE_CICD_DOCS_059_FLAT_MARKER_C = true;
-        generate(): void {}
-      }
-    garbage_proto_resolver.ts: |
-      const GARBAGE_CICD_DOCS_059_RESOLVE_MARKER_D = "recursive";
-      const GARBAGE_CICD_DOCS_059_INCLUDE_MARKER_E = "./proto";
+      package inventory;
 
-      class GarbageProtoResolver {
-        static GARBAGE_CICD_DOCS_059_CACHED_MARKER_F = false;
-        resolve(): void {}
+      service InventoryService {
+        rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
       }
+
+      message CheckStockRequest {
+        string product_id = 1;
+      }
+
+      message CheckStockResponse {
+        int32 available = 1;
+        string warehouse = 2;
+      }
+    src/services/notification_service.py: |
+      from typing import List
+
+      class NotificationService:
+          def send_email(self, to: str, subject: str, body: str) -> bool:
+              return True
+
+          def send_bulk(self, recipients: List[str], subject: str, body: str) -> int:
+              sent = 0
+              for r in recipients:
+                  if self.send_email(r, subject, body):
+                      sent += 1
+              return sent
   changed_files:
     proto/common.proto: |
       syntax = "proto3";
@@ -92,79 +106,40 @@ repo:
         string status = 2;
         common.Money total = 3;
       }
-    src/services/order_service.py: |
-      from proto import orders_pb2, common_pb2
-
-      def create_list_orders_request(page: int, page_size: int):
-          pagination = common_pb2.Pagination(page=page, page_size=page_size)
-          return orders_pb2.ListOrdersRequest(pagination=pagination)
-    garbage_proto_generator.ts: |
-      const GARBAGE_CICD_DOCS_059_GENERATOR_MARKER_A = "grpc-tools";
-      const GARBAGE_CICD_DOCS_059_OUTPUT_MARKER_B = "./generated";
-
-      class GarbageProtoGenerator {
-        static GARBAGE_CICD_DOCS_059_FLAT_MARKER_C = true;
-        generate(): void {}
-      }
-    garbage_proto_resolver.ts: |
-      const GARBAGE_CICD_DOCS_059_RESOLVE_MARKER_D = "recursive";
-      const GARBAGE_CICD_DOCS_059_INCLUDE_MARKER_E = "./proto";
-
-      class GarbageProtoResolver {
-        static GARBAGE_CICD_DOCS_059_CACHED_MARKER_F = false;
-        resolve(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Extend common proto types and update orders to use them"
 fragments:
-- id: common_file
+- id: common_proto
   selector:
     path: proto/common.proto
-- id: orders_file
+- id: orders_proto
   selector:
     path: proto/orders.proto
-- id: req_global_0
+- id: new_sort_field
   selector:
     anchor: string sort_by = 3;
-- id: req_global_1
+- id: orders_uses_date_range
   selector:
     anchor: common.DateRange date_range = 2;
-- id: no_global_0
+- id: order_service_consumer
   selector:
-    anchor: GARBAGE_CICD_DOCS_059_CACHED_MARKER_F
-- id: no_global_1
+    path: src/services/order_service.py
+    anchor: from proto import orders_pb2, common_pb2
+- id: no_inventory_proto
   selector:
-    anchor: GARBAGE_CICD_DOCS_059_FLAT_MARKER_C
-- id: no_global_2
+    path: proto/inventory.proto
+    anchor: service InventoryService
+- id: no_notification_service
   selector:
-    anchor: GARBAGE_CICD_DOCS_059_GENERATOR_MARKER_A
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_CICD_DOCS_059_INCLUDE_MARKER_E
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_059_OUTPUT_MARKER_B
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_059_RESOLVE_MARKER_D
-- id: no_global_6
-  selector:
-    anchor: garbage_proto_generator.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_proto_resolver.ts
+    path: src/services/notification_service.py
+    anchor: class NotificationService
 oracle:
   required:
-  - common_file
-  - orders_file
-  - req_global_0
-  - req_global_1
+  - common_proto
+  - orders_proto
+  - new_sort_field
+  - orders_uses_date_range
+  - order_service_consumer
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_inventory_proto
+  - no_notification_service

@@ -18,7 +18,6 @@ repo:
       def get_connection() -> Generator:
           if not DATABASE_URL:
               raise ValueError("DATABASE_URL not configured")
-          # Simulated connection
           conn = {"url": DATABASE_URL, "connected": True}
           try:
               yield conn
@@ -55,11 +54,10 @@ repo:
           build: .
           environment:
             - DATABASE_URL=postgres://localhost:5432/db
-    scripts/unrelated_script.sh: |
+    scripts/deploy.sh: |
       #!/bin/bash
-      # GARBAGE_DOCKER_076_SCRIPT_MARKER_c1v2b3
-      GARBAGE_DOCKER_076_UNRELATED_VAR_n4m5q6="nothing"
-      echo "This script has no connection to anything"
+      docker-compose pull
+      docker-compose up -d
     tests/test_db.py: |
       def test_connection():
           pass
@@ -87,7 +85,6 @@ repo:
       def get_connection() -> Generator:
           if not DATABASE_URL:
               raise ValueError("DATABASE_URL not configured")
-          # Simulated connection
           conn = {"url": DATABASE_URL, "connected": True}
           try:
               yield conn
@@ -181,11 +178,10 @@ repo:
       volumes:
         postgres_data:
         redis_data:
-    scripts/unrelated_script.sh: |
+    scripts/deploy.sh: |
       #!/bin/bash
-      # GARBAGE_DOCKER_076_SCRIPT_MARKER_c1v2b3
-      GARBAGE_DOCKER_076_UNRELATED_VAR_n4m5q6="nothing"
-      echo "This script has no connection to anything"
+      docker-compose pull
+      docker-compose up -d
     tests/test_db.py: |
       def test_connection():
           pass
@@ -200,28 +196,46 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
-- id: req_global_1
+- id: postgres_volumes
   selector:
     anchor: 'postgres_data:'
-- id: no_global_0
+- id: db_database_url
   selector:
-    anchor: GARBAGE_DOCKER_076_SCRIPT_MARKER_c1v2b3
-- id: no_global_1
+    path: src/db.py
+    anchor: 'DATABASE_URL = os.getenv("DATABASE_URL")'
+- id: db_redis_url
   selector:
-    anchor: GARBAGE_DOCKER_076_UNRELATED_VAR_n4m5q6="nothing
-- id: no_global_2
+    path: src/db.py
+    anchor: 'REDIS_URL = os.getenv("REDIS_URL")'
+- id: db_secret_key
   selector:
-    anchor: unrelated_script.sh
+    path: src/db.py
+    anchor: 'SECRET_KEY = os.getenv("SECRET_KEY")'
+- id: no_deploy_script
+  selector:
+    path: scripts/deploy.sh
+    anchor: "docker-compose pull"
+- id: no_terraform_ssm
+  selector:
+    path: terraform/ssm.tf
+    anchor: "aws_ssm_parameter"
+- id: no_test_db
+  selector:
+    path: tests/test_db.py
+    anchor: "def test_connection"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
-  - req_global_1
+  - dockerfile_build_context
+  - postgres_volumes
+  - db_database_url
+  - db_redis_url
+  - db_secret_key
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
+  - no_deploy_script
+  - no_terraform_ssm
+  - no_test_db

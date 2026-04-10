@@ -25,12 +25,8 @@ repo:
               return token
     auth/lockout.py: |
       from constants import MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_SECONDS
-      GARBAGE_DEP_009_LOCKOUT_IMPORT_C = "lockout_module"
-      GARBAGE_DEP_009_LOCKOUT_VER_D = "1.2"
 
       class LoginLockout:
-          GARBAGE_DEP_009_LOCKOUT_CLASS_E = True
-
           def __init__(self):
               self.attempts = {}
               self.max_attempts = MAX_LOGIN_ATTEMPTS
@@ -42,40 +38,36 @@ repo:
           def is_locked(self, user_id: int) -> bool:
               return self.attempts.get(user_id, 0) >= MAX_LOGIN_ATTEMPTS
     config/password_policy.py: |
-      GARBAGE_DEP_009_POLICY_MODULE_F = "password_policy"
-      GARBAGE_DEP_009_POLICY_VER_G = "strict"
-
       MIN_PASSWORD_LENGTH = 12
       MAX_PASSWORD_LENGTH = 64
       PASSWORD_SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|"
-      GARBAGE_DEP_009_POLICY_ENTROPY_H = 3.5
+      MINIMUM_ENTROPY = 3.5
 
       def validate(password: str) -> dict:
-          GARBAGE_DEP_009_POLICY_VALID_I = True
           errors = []
           if len(password) < MIN_PASSWORD_LENGTH:
               errors.append("too short")
           return {"valid": len(errors) == 0, "errors": errors}
-    garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py: |
-      def mohs_hardness_GARBAGE_DEP_009_GEOLOGY_A(mineral: str) -> float:
+    utils/geology.py: |
+      def mohs_hardness(mineral: str) -> float:
           scale = {"talc": 1, "gypsum": 2, "quartz": 7, "diamond": 10}
           return scale.get(mineral, 5.0)
 
-      def rock_density_GARBAGE_DEP_009_GEOLOGY_A(mass: float, volume: float) -> float:
+      def rock_density(mass: float, volume: float) -> float:
           return mass / volume if volume > 0 else 0.0
 
-      class MineralSample_GARBAGE_DEP_009_GEOLOGY_A:
+      class MineralSample:
           def __init__(self, name: str, hardness: float):
               self.name = name
               self.hardness = hardness
-    garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py: |
-      def yarn_needed_GARBAGE_DEP_009_KNITTING_B(width_cm: float, length_cm: float, gauge: float) -> float:
+    utils/knitting.py: |
+      def yarn_needed(width_cm: float, length_cm: float, gauge: float) -> float:
           return width_cm * length_cm * gauge * 0.01
 
-      def stitch_count_GARBAGE_DEP_009_KNITTING_B(width_cm: float, gauge_per_cm: float) -> int:
+      def stitch_count(width_cm: float, gauge_per_cm: float) -> int:
           return int(width_cm * gauge_per_cm)
 
-      class KnittingPattern_GARBAGE_DEP_009_KNITTING_B:
+      class KnittingPattern:
           def __init__(self, name: str):
               self.name = name
               self.rows = []
@@ -116,12 +108,8 @@ repo:
               return token
     auth/lockout.py: |
       from constants import MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_SECONDS
-      GARBAGE_DEP_009_LOCKOUT_IMPORT_C = "lockout_module"
-      GARBAGE_DEP_009_LOCKOUT_VER_D = "1.2"
 
       class LoginLockout:
-          GARBAGE_DEP_009_LOCKOUT_CLASS_E = True
-
           def __init__(self):
               self.attempts = {}
               self.max_attempts = MAX_LOGIN_ATTEMPTS
@@ -133,40 +121,36 @@ repo:
           def is_locked(self, user_id: int) -> bool:
               return self.attempts.get(user_id, 0) >= MAX_LOGIN_ATTEMPTS
     config/password_policy.py: |
-      GARBAGE_DEP_009_POLICY_MODULE_F = "password_policy"
-      GARBAGE_DEP_009_POLICY_VER_G = "strict"
-
       MIN_PASSWORD_LENGTH = 12
       MAX_PASSWORD_LENGTH = 64
       PASSWORD_SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|"
-      GARBAGE_DEP_009_POLICY_ENTROPY_H = 3.5
+      MINIMUM_ENTROPY = 3.5
 
       def validate(password: str) -> dict:
-          GARBAGE_DEP_009_POLICY_VALID_I = True
           errors = []
           if len(password) < MIN_PASSWORD_LENGTH:
               errors.append("too short")
           return {"valid": len(errors) == 0, "errors": errors}
-    garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py: |
-      def mohs_hardness_GARBAGE_DEP_009_GEOLOGY_A(mineral: str) -> float:
+    utils/geology.py: |
+      def mohs_hardness(mineral: str) -> float:
           scale = {"talc": 1, "gypsum": 2, "quartz": 7, "diamond": 10}
           return scale.get(mineral, 5.0)
 
-      def rock_density_GARBAGE_DEP_009_GEOLOGY_A(mass: float, volume: float) -> float:
+      def rock_density(mass: float, volume: float) -> float:
           return mass / volume if volume > 0 else 0.0
 
-      class MineralSample_GARBAGE_DEP_009_GEOLOGY_A:
+      class MineralSample:
           def __init__(self, name: str, hardness: float):
               self.name = name
               self.hardness = hardness
-    garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py: |
-      def yarn_needed_GARBAGE_DEP_009_KNITTING_B(width_cm: float, length_cm: float, gauge: float) -> float:
+    utils/knitting.py: |
+      def yarn_needed(width_cm: float, length_cm: float, gauge: float) -> float:
           return width_cm * length_cm * gauge * 0.01
 
-      def stitch_count_GARBAGE_DEP_009_KNITTING_B(width_cm: float, gauge_per_cm: float) -> int:
+      def stitch_count(width_cm: float, gauge_per_cm: float) -> int:
           return int(width_cm * gauge_per_cm)
 
-      class KnittingPattern_GARBAGE_DEP_009_KNITTING_B:
+      class KnittingPattern:
           def __init__(self, name: str):
               self.name = name
               self.rows = []
@@ -175,26 +159,30 @@ repo:
               self.rows.append(instructions)
   commit_message: Update files
 fragments:
-- id: validator
+- id: validator_import
   selector:
     path: validator.py
     anchor: from constants import MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, PASSWORD_SPECIAL_CHARS
-- id: validator_1
+- id: validator_function
   selector:
     path: validator.py
-    anchor: 'def validate(password: str) -> dict:'
-- id: validator_2
+    anchor: "def validate(password: str) -> dict:"
+- id: validator_min_check
   selector:
     path: validator.py
     anchor: len(password) < MIN_PASSWORD_LENGTH
-- id: validator_3
+- id: validator_max_check
   selector:
     path: validator.py
     anchor: len(password) > MAX_PASSWORD_LENGTH
-- id: validator_4
+- id: validator_special_check
   selector:
     path: validator.py
     anchor: PASSWORD_SPECIAL_CHARS
+- id: constants_min_def
+  selector:
+    path: constants.py
+    anchor: MIN_PASSWORD_LENGTH = 8
 - id: no_lockout
   selector:
     path: auth/lockout.py
@@ -204,59 +192,40 @@ fragments:
 - id: no_session
   selector:
     path: auth/session.py
-- id: no_geology_garbage_dep_009_geology_a
+- id: no_geology
   selector:
-    path: garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py
-- id: no_knitting_garbage_dep_009_knitting_b
+    path: utils/geology.py
+- id: no_knitting
   selector:
-    path: garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py
-- id: no_global_0
+    path: utils/knitting.py
+- id: no_mohs_hardness
   selector:
-    anchor: GARBAGE_DEP_009_GEOLOGY_A
-- id: no_global_1
+    anchor: mohs_hardness
+- id: no_yarn_needed
   selector:
-    anchor: GARBAGE_DEP_009_KNITTING_B
-- id: no_global_2
+    anchor: yarn_needed
+- id: no_lockout_class
   selector:
-    anchor: GARBAGE_DEP_009_LOCKOUT_IMPORT_C
-- id: no_global_3
+    anchor: LoginLockout
+- id: no_policy_entropy
   selector:
-    anchor: GARBAGE_DEP_009_LOCKOUT_VER_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP_009_LOCKOUT_CLASS_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP_009_POLICY_MODULE_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_DEP_009_POLICY_VER_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_DEP_009_POLICY_ENTROPY_H
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_DEP_009_POLICY_VALID_I
+    anchor: MINIMUM_ENTROPY
 oracle:
   required:
-  - validator
-  - validator_1
-  - validator_2
-  - validator_3
-  - validator_4
+  - validator_import
+  - validator_function
+  - validator_min_check
+  - validator_max_check
+  - validator_special_check
+  - constants_min_def
   allowed: []
   forbidden:
   - no_lockout
   - no_password_policy
   - no_session
-  - no_geology_garbage_dep_009_geology_a
-  - no_knitting_garbage_dep_009_knitting_b
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_geology
+  - no_knitting
+  - no_mohs_hardness
+  - no_yarn_needed
+  - no_lockout_class
+  - no_policy_entropy

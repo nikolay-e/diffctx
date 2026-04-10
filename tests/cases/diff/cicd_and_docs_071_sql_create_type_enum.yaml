@@ -1,4 +1,6 @@
 name: cicd_and_docs_071_sql_create_type_enum
+xfail:
+  category: sql-cross-file-discovery
 repo:
   initial_files:
     sql/types/order_status.sql: |
@@ -8,6 +10,13 @@ repo:
           'shipped',
           'delivered'
       );
+    sql/types/payment_status.sql: |
+      CREATE TYPE payment_status AS ENUM (
+          'unpaid',
+          'authorized',
+          'captured',
+          'refunded'
+      );
     migrations/001_create_orders.sql: |
       CREATE TABLE orders (
           id SERIAL PRIMARY KEY,
@@ -36,50 +45,61 @@ repo:
           status: OrderStatus
           total: Decimal
           created_at: Optional[datetime] = None
-    garbage_enum_mapper.ts: |
-      const GARBAGE_CICD_DOCS_071_ENUM_MARKER_A = "postgres";
-      const GARBAGE_CICD_DOCS_071_CAST_MARKER_B = "explicit";
+    src/services/order_service.py: |
+      from src.models.order import Order, OrderStatus
 
-      class GarbageEnumMapper {
-        static GARBAGE_CICD_DOCS_071_VALIDATE_MARKER_C = true;
-        map(): void {}
-      }
-    garbage_type_handler.ts: |
-      const GARBAGE_CICD_DOCS_071_TYPE_MARKER_D = "custom";
-      const GARBAGE_CICD_DOCS_071_DOMAIN_MARKER_E = "constrained";
+      class OrderService:
+          def transition(self, order: Order, new_status: OrderStatus) -> bool:
+              valid = {
+                  OrderStatus.PENDING: {OrderStatus.CONFIRMED},
+                  OrderStatus.CONFIRMED: {OrderStatus.SHIPPED},
+                  OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+              }
+              if new_status not in valid.get(order.status, set()):
+                  return False
+              order.status = new_status
+              return True
+    src/api/order_handlers.py: |
+      from src.models.order import OrderStatus
 
-      class GarbageTypeHandler {
-        static GARBAGE_CICD_DOCS_071_COERCE_MARKER_F = false;
-        handle(): void {}
-      }
+      VALID_STATUSES = [s.value for s in OrderStatus]
+
+      def is_valid_status(s: str) -> bool:
+          return s in VALID_STATUSES
+    src/models/payment.py: |
+      from enum import Enum
+      from dataclasses import dataclass
+      from decimal import Decimal
+
+      class PaymentStatus(Enum):
+          UNPAID = 'unpaid'
+          AUTHORIZED = 'authorized'
+          CAPTURED = 'captured'
+          REFUNDED = 'refunded'
+
+      @dataclass
+      class Payment:
+          id: int
+          order_id: int
+          amount: Decimal
+          status: PaymentStatus
+    src/utils/format.py: |
+      from decimal import Decimal
+
+      def format_money(amount: Decimal) -> str:
+          return f"${amount:.2f}"
   changed_files:
     sql/types/order_status.sql: |
-      -- Add new values to existing enum type
-      -- Note: In PostgreSQL, enum values can only be added, not removed
-
       ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'processing' AFTER 'pending';
       ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'cancelled' AFTER 'delivered';
       ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'refunded' AFTER 'cancelled';
-      ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'on_hold' AFTER 'confirmed';
-
-      -- Create a helper function to check valid transitions
-      CREATE OR REPLACE FUNCTION is_valid_status_transition(
-          old_status order_status,
-          new_status order_status
-      ) RETURNS BOOLEAN AS $$
-      BEGIN
-          -- Define valid transitions
-          RETURN CASE
-              WHEN old_status = 'pending' AND new_status IN ('processing', 'cancelled') THEN TRUE
-              WHEN old_status = 'processing' AND new_status IN ('confirmed', 'cancelled') THEN TRUE
-              WHEN old_status = 'confirmed' AND new_status IN ('on_hold', 'shipped', 'cancelled') THEN TRUE
-              WHEN old_status = 'on_hold' AND new_status IN ('confirmed', 'cancelled') THEN TRUE
-              WHEN old_status = 'shipped' AND new_status IN ('delivered', 'cancelled') THEN TRUE
-              WHEN old_status = 'delivered' AND new_status = 'refunded' THEN TRUE
-              ELSE FALSE
-          END;
-      END;
-      $$ LANGUAGE plpgsql IMMUTABLE;
+    sql/types/payment_status.sql: |
+      CREATE TYPE payment_status AS ENUM (
+          'unpaid',
+          'authorized',
+          'captured',
+          'refunded'
+      );
     migrations/001_create_orders.sql: |
       CREATE TABLE orders (
           id SERIAL PRIMARY KEY,
@@ -108,65 +128,73 @@ repo:
           status: OrderStatus
           total: Decimal
           created_at: Optional[datetime] = None
-    garbage_enum_mapper.ts: |
-      const GARBAGE_CICD_DOCS_071_ENUM_MARKER_A = "postgres";
-      const GARBAGE_CICD_DOCS_071_CAST_MARKER_B = "explicit";
+    src/services/order_service.py: |
+      from src.models.order import Order, OrderStatus
 
-      class GarbageEnumMapper {
-        static GARBAGE_CICD_DOCS_071_VALIDATE_MARKER_C = true;
-        map(): void {}
-      }
-    garbage_type_handler.ts: |
-      const GARBAGE_CICD_DOCS_071_TYPE_MARKER_D = "custom";
-      const GARBAGE_CICD_DOCS_071_DOMAIN_MARKER_E = "constrained";
+      class OrderService:
+          def transition(self, order: Order, new_status: OrderStatus) -> bool:
+              valid = {
+                  OrderStatus.PENDING: {OrderStatus.CONFIRMED},
+                  OrderStatus.CONFIRMED: {OrderStatus.SHIPPED},
+                  OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+              }
+              if new_status not in valid.get(order.status, set()):
+                  return False
+              order.status = new_status
+              return True
+    src/api/order_handlers.py: |
+      from src.models.order import OrderStatus
 
-      class GarbageTypeHandler {
-        static GARBAGE_CICD_DOCS_071_COERCE_MARKER_F = false;
-        handle(): void {}
-      }
-  commit_message: Update files
+      VALID_STATUSES = [s.value for s in OrderStatus]
+
+      def is_valid_status(s: str) -> bool:
+          return s in VALID_STATUSES
+    src/models/payment.py: |
+      from enum import Enum
+      from dataclasses import dataclass
+      from decimal import Decimal
+
+      class PaymentStatus(Enum):
+          UNPAID = 'unpaid'
+          AUTHORIZED = 'authorized'
+          CAPTURED = 'captured'
+          REFUNDED = 'refunded'
+
+      @dataclass
+      class Payment:
+          id: int
+          order_id: int
+          amount: Decimal
+          status: PaymentStatus
+    src/utils/format.py: |
+      from decimal import Decimal
+
+      def format_money(amount: Decimal) -> str:
+          return f"${amount:.2f}"
+  commit_message: "db: add processing/cancelled/refunded values to order_status enum"
 fragments:
-- id: order_status_file
-  selector:
-    path: sql/types/order_status.sql
-- id: req_global_0
-  selector:
-    anchor: -- Add new values to existing enum type
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_CAST_MARKER_B
-- id: no_global_1
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_COERCE_MARKER_F
-- id: no_global_2
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_DOMAIN_MARKER_E
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_ENUM_MARKER_A
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_TYPE_MARKER_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_071_VALIDATE_MARKER_C
-- id: no_global_6
-  selector:
-    anchor: garbage_enum_mapper.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_type_handler.ts
+  - id: enum_changed
+    selector: { path: sql/types/order_status.sql }
+  - id: order_model_must_sync
+    selector: { path: src/models/order.py }
+  - id: order_service_transitions
+    selector: { path: src/services/order_service.py }
+  - id: order_handler_validation
+    selector: { path: src/api/order_handlers.py }
+  - id: payment_status_unrelated_enum
+    selector: { path: sql/types/payment_status.sql }
+  - id: payment_model_unrelated
+    selector: { path: src/models/payment.py }
+  - id: format_unrelated
+    selector: { path: src/utils/format.py }
 oracle:
   required:
-  - order_status_file
-  - req_global_0
+    - enum_changed
+    - order_model_must_sync
+    - order_service_transitions
+    - order_handler_validation
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+    - payment_status_unrelated_enum
+    - payment_model_unrelated
+    - format_unrelated

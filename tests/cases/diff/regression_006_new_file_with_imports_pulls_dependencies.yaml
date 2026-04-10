@@ -374,6 +374,30 @@ fragments:
 - id: req_global_3
   selector:
     anchor: normalize_values
+- id: loader_load_dataset
+  selector:
+    path: src/data/loader.py
+    anchor: def load_dataset
+- id: loader_validate_schema
+  selector:
+    path: src/data/loader.py
+    anchor: def validate_schema
+- id: transform_normalize
+  selector:
+    path: src/data/transform.py
+    anchor: def normalize_values
+- id: transform_apply_filters
+  selector:
+    path: src/data/transform.py
+    anchor: def apply_filters
+- id: settings_report_format
+  selector:
+    path: src/config/settings.py
+    anchor: REPORT_FORMAT
+- id: settings_max_rows
+  selector:
+    path: src/config/settings.py
+    anchor: MAX_ROWS
 - id: no_middleware
   selector:
     path: src/auth/middleware.py
@@ -398,6 +422,14 @@ fragments:
 - id: no_global_5
   selector:
     anchor: flush_all
+- id: no_loader_parse_csv
+  selector:
+    path: src/data/loader.py
+    anchor: def parse_csv_row
+- id: no_transform_pivot
+  selector:
+    path: src/data/transform.py
+    anchor: def pivot_data
 oracle:
   required:
   - generator_file
@@ -405,6 +437,12 @@ oracle:
   - req_global_1
   - req_global_2
   - req_global_3
+  - loader_load_dataset
+  - loader_validate_schema
+  - transform_normalize
+  - transform_apply_filters
+  - settings_report_format
+  - settings_max_rows
   allowed: []
   forbidden:
   - no_middleware
@@ -415,3 +453,5 @@ oracle:
   - no_global_3
   - no_global_4
   - no_global_5
+  - no_loader_parse_csv
+  - no_transform_pivot

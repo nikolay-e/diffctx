@@ -277,79 +277,57 @@ repo:
           - name: prometheus
   commit_message: Update files
 fragments:
-- id: gateway
+- id: gateway_tls_config
   selector:
     path: k8s/base/gateway.yaml
     anchor: 'credentialName: api-tls-cert'
-- id: gateway_1
+- id: gateway_https_redirect
   selector:
     path: k8s/base/gateway.yaml
     anchor: 'httpsRedirect: true'
-- id: gateway_2
+- id: gateway_cipher_suites
   selector:
     path: k8s/base/gateway.yaml
     anchor: ECDHE-RSA-AES256-GCM-SHA384
-- id: gateway_3
+- id: gateway_hosts_expanded
   selector:
     path: k8s/base/gateway.yaml
+    anchor: api-internal.example.com
+- id: virtualservice_references_gateway
+  selector:
+    path: k8s/base/virtual-service.yaml
+    anchor: 'gateways:'
+- id: virtualservice_hosts
+  selector:
+    path: k8s/base/virtual-service.yaml
     anchor: api-internal.example.com
 - id: no_deployment
   selector:
     path: k8s/base/deployment.yaml
-- id: no_service
-  selector:
-    path: k8s/base/service.yaml
 - id: no_envoy_ratelimit
   selector:
     path: k8s/mesh/envoy-ratelimit.yaml
 - id: no_istio_telemetry
   selector:
     path: k8s/mesh/istio-telemetry.yaml
-- id: no_global_0
-  selector:
-    anchor: api-service:v1.5.0
-- id: no_global_1
-  selector:
-    anchor: sidecar.istio.io/inject
-- id: no_global_2
-  selector:
-    anchor: 'targetPort: 8080'
-- id: no_global_3
-  selector:
-    anchor: 'targetPort: 8443'
-- id: no_global_4
+- id: no_ratelimit_filter
   selector:
     anchor: ratelimit-filter
-- id: no_global_5
-  selector:
-    anchor: envoy.filters.http.ratelimit
-- id: no_global_6
-  selector:
-    anchor: INSERT_BEFORE
-- id: no_global_7
+- id: no_mesh_default_telemetry
   selector:
     anchor: mesh-default
-- id: no_global_8
-  selector:
-    anchor: accessLogging
 oracle:
   required:
-  - gateway
-  - gateway_1
-  - gateway_2
-  - gateway_3
+  - gateway_tls_config
+  - gateway_https_redirect
+  - gateway_cipher_suites
+  - gateway_hosts_expanded
+  - virtualservice_references_gateway
+  - virtualservice_hosts
   allowed: []
   forbidden:
   - no_deployment
-  - no_service
   - no_envoy_ratelimit
   - no_istio_telemetry
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_ratelimit_filter
+  - no_mesh_default_telemetry

@@ -101,16 +101,21 @@ def extract_identifiers(
     *,
     skip_stopwords: bool = False,
     use_nlp: bool = False,
+    extra_stopwords: frozenset[str] | None = None,
+    min_length: int | None = None,
 ) -> frozenset[str]:
     if use_nlp and profile != "code":
         return _extract_tokens_nlp(text, profile=profile, use_nlp=True)
 
     raw = _IDENT_RE.findall(text)
-    min_len = TokenProfile.get_min_len(profile)
+    min_len = min_length if min_length is not None else TokenProfile.get_min_len(profile)
+    stopwords: frozenset[str] = frozenset()
     if skip_stopwords:
         stopwords = TokenProfile.get_stopwords(profile)
+    if extra_stopwords:
+        stopwords = stopwords | extra_stopwords
+    if stopwords:
         return frozenset({ident.lower() for ident in raw if len(ident) >= min_len and ident.lower() not in stopwords})
-    # Normalize to lowercase to match concepts (also lowercase)
     return frozenset({ident.lower() for ident in raw if len(ident) >= min_len})
 
 

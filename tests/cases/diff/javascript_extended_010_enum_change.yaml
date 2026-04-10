@@ -158,70 +158,47 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: enums
+- id: enum_definition
   selector:
     path: enums.ts
     anchor: enum Status {
-- id: enums_1
+- id: cancelled_variant
   selector:
     path: enums.ts
     anchor: Cancelled = 'CANCELLED'
-- id: enums_2
+- id: onhold_variant
   selector:
     path: enums.ts
     anchor: OnHold = 'ON_HOLD'
-- id: no_taskservice
-  selector:
-    path: src/services/taskService.ts
-- id: no_statustransitions
+- id: status_transitions_map
   selector:
     path: src/services/statusTransitions.ts
-- id: no_statusformatter
+    anchor: "ALLOWED_TRANSITIONS: Record<Status, Status[]>"
+- id: status_labels_map
   selector:
     path: src/utils/statusFormatter.ts
-- id: no_global_0
+    anchor: "STATUS_LABELS: Record<Status, string>"
+- id: status_color_switch
   selector:
+    path: src/utils/statusFormatter.ts
+    anchor: getStatusColor(status
+- id: no_task_service
+  selector:
+    path: src/services/taskService.ts
     anchor: addTask
-- id: no_global_1
+- id: no_count_by_status
   selector:
-    anchor: getTasksByStatus
-- id: no_global_2
-  selector:
+    path: src/services/taskService.ts
     anchor: countByStatus
-- id: no_global_3
-  selector:
-    anchor: ALLOWED_TRANSITIONS
-- id: no_global_4
-  selector:
-    anchor: canTransition
-- id: no_global_5
-  selector:
-    anchor: getNextStatuses
-- id: no_global_6
-  selector:
-    anchor: STATUS_LABELS
-- id: no_global_7
-  selector:
-    anchor: formatStatus
-- id: no_global_8
-  selector:
-    anchor: getStatusColor
 oracle:
   required:
-  - enums
-  - enums_1
-  - enums_2
+  - enum_definition
+  - cancelled_variant
+  - onhold_variant
+  - status_transitions_map
+  - status_labels_map
+  - status_color_switch
   allowed: []
   forbidden:
-  - no_taskservice
-  - no_statustransitions
-  - no_statusformatter
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_task_service
+  - no_count_by_status

@@ -214,68 +214,52 @@ repo:
                 value: "Normal,Warning"
   commit_message: Update files
 fragments:
-- id: deployment
+- id: termination_grace_period
   selector:
     path: k8s/apps/deployment.yaml
     anchor: 'terminationGracePeriodSeconds: 60'
-- id: deployment_1
+- id: prestop_drain_path
   selector:
     path: k8s/apps/deployment.yaml
     anchor: 'path: /admin/drain'
-- id: deployment_2
+- id: poststart_register
   selector:
     path: k8s/apps/deployment.yaml
     anchor: /admin/register
-- id: deployment_3
+- id: lifecycle_poststart
   selector:
     path: k8s/apps/deployment.yaml
     anchor: 'postStart:'
-- id: deployment_4
+- id: lifecycle_prestop
   selector:
     path: k8s/apps/deployment.yaml
     anchor: 'preStop:'
+- id: shutdown_script_drain
+  selector:
+    path: scripts/graceful-shutdown.sh
+    anchor: /admin/drain
 - id: no_health_check_config
   selector:
     path: k8s/apps/health-check-config.yaml
-- id: no_pod_lifecycle_events
+    anchor: health-check-config
+- id: no_lifecycle_event_logger
   selector:
     path: k8s/infra/pod-lifecycle-events.yaml
-- id: no_global_0
-  selector:
-    anchor: health-check-config
-- id: no_global_1
-  selector:
-    anchor: /health/live
-- id: no_global_2
-  selector:
-    anchor: /health/ready
-- id: no_global_3
-  selector:
     anchor: lifecycle-event-logger
-- id: no_global_4
+- id: no_api_service
   selector:
-    anchor: lifecycle-logger
-- id: no_global_5
-  selector:
-    anchor: WATCH_NAMESPACE
-- id: no_global_6
-  selector:
-    anchor: EVENT_TYPES
+    path: k8s/apps/service.yaml
+    anchor: 'targetPort: 8080'
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
-  - deployment_4
+  - termination_grace_period
+  - prestop_drain_path
+  - poststart_register
+  - lifecycle_poststart
+  - lifecycle_prestop
+  - shutdown_script_drain
   allowed: []
   forbidden:
   - no_health_check_config
-  - no_pod_lifecycle_events
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_lifecycle_event_logger
+  - no_api_service

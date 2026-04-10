@@ -230,7 +230,7 @@ repo:
           response = handler.list_products()
           result = json.loads(response.to_json())
           assert len(result["data"]["products"]) == 2
-  commit_message: Update files
+  commit_message: "Add snapshot tests for API response serialization"
 fragments:
 - id: test_api_handlers
   selector:
@@ -239,11 +239,11 @@ fragments:
 - id: test_api_handlers_1
   selector:
     path: tests/test_api_handlers.py
-    anchor: 'def test_get_user_success_snapshot():'
+    anchor: "def test_get_user_success_snapshot():"
 - id: api_handlers
   selector:
     path: src/api_handlers.py
-    anchor: 'def to_json(self) -> str:'
+    anchor: "def to_json(self) -> str:"
 - id: no_product_api_handler
   selector:
     path: src/product_api_handler.py

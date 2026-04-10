@@ -95,22 +95,14 @@ repo:
       import java.util.List;
 
       public class FraudDetectionService {
-          public static final String GARBAGE_JAVA_FRAUD_701 = "fraud_marker_omega";
-          private static final String GARBAGE_JAVA_ALERT_702 = "alert_marker_alpha2";
-
           private final List<SuspiciousActivity> flaggedActivities = new ArrayList<>();
 
           public boolean checkTransaction(String accountNumber, BigDecimal amount) {
               if (amount.compareTo(new BigDecimal("10000")) > 0) {
                   flaggedActivities.add(new SuspiciousActivity(accountNumber, amount, "Large transaction"));
-                  logGarbageMarkers();
                   return true;
               }
               return false;
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_FRAUD_701 + GARBAGE_JAVA_ALERT_702);
           }
 
           private record SuspiciousActivity(String accountNumber, BigDecimal amount, String reason) {}
@@ -123,15 +115,11 @@ repo:
       import java.util.Map;
 
       public class ComplianceReporter {
-          public static final String GARBAGE_JAVA_COMPLIANCE_703 = "compliance_marker_beta2";
-
           private final Map<String, Object> reportData = new HashMap<>();
 
           public void generateReport(LocalDate reportDate) {
               reportData.put("date", reportDate);
               reportData.put("type", "DAILY_COMPLIANCE");
-              String GARBAGE_JAVA_REPORT_704 = "report_marker_gamma2";
-              System.out.println(GARBAGE_JAVA_COMPLIANCE_703 + GARBAGE_JAVA_REPORT_704);
           }
 
           public Map<String, Object> getReportData() {
@@ -366,22 +354,14 @@ repo:
       import java.util.List;
 
       public class FraudDetectionService {
-          public static final String GARBAGE_JAVA_FRAUD_701 = "fraud_marker_omega";
-          private static final String GARBAGE_JAVA_ALERT_702 = "alert_marker_alpha2";
-
           private final List<SuspiciousActivity> flaggedActivities = new ArrayList<>();
 
           public boolean checkTransaction(String accountNumber, BigDecimal amount) {
               if (amount.compareTo(new BigDecimal("10000")) > 0) {
                   flaggedActivities.add(new SuspiciousActivity(accountNumber, amount, "Large transaction"));
-                  logGarbageMarkers();
                   return true;
               }
               return false;
-          }
-
-          private void logGarbageMarkers() {
-              System.out.println(GARBAGE_JAVA_FRAUD_701 + GARBAGE_JAVA_ALERT_702);
           }
 
           private record SuspiciousActivity(String accountNumber, BigDecimal amount, String reason) {}
@@ -394,15 +374,11 @@ repo:
       import java.util.Map;
 
       public class ComplianceReporter {
-          public static final String GARBAGE_JAVA_COMPLIANCE_703 = "compliance_marker_beta2";
-
           private final Map<String, Object> reportData = new HashMap<>();
 
           public void generateReport(LocalDate reportDate) {
               reportData.put("date", reportDate);
               reportData.put("type", "DAILY_COMPLIANCE");
-              String GARBAGE_JAVA_REPORT_704 = "report_marker_gamma2";
-              System.out.println(GARBAGE_JAVA_COMPLIANCE_703 + GARBAGE_JAVA_REPORT_704);
           }
 
           public Map<String, Object> getReportData() {
@@ -444,42 +420,40 @@ fragments:
 - id: transactionfailedexception_file
   selector:
     path: src/main/java/com/banking/service/TransactionFailedException.java
-- id: req_global_0
+- id: insufficientfundsexception_file
   selector:
-    anchor: import com.banking.model.Transaction;
-- id: req_global_1
+    path: src/main/java/com/banking/service/InsufficientFundsException.java
+- id: transactional_annotations
   selector:
     anchor: '@Transactional('
-- id: no_global_0
+- id: transaction_model_import
   selector:
-    anchor: GARBAGE_JAVA_ALERT_702
-- id: no_global_1
+    anchor: import com.banking.model.Transaction;
+- id: no_fraud_detection
   selector:
-    anchor: GARBAGE_JAVA_COMPLIANCE_703
-- id: no_global_2
+    path: src/main/java/com/banking/unrelated/FraudDetectionService.java
+    anchor: class FraudDetectionService
+- id: no_compliance_reporter
   selector:
-    anchor: GARBAGE_JAVA_FRAUD_701
-- id: no_global_3
+    path: src/main/java/com/banking/unrelated/ComplianceReporter.java
+    anchor: class ComplianceReporter
+- id: no_check_transaction
   selector:
-    anchor: GARBAGE_JAVA_REPORT_704
-- id: no_global_4
+    anchor: checkTransaction
+- id: no_generate_report
   selector:
-    anchor: ComplianceReporter.java
-- id: no_global_5
-  selector:
-    anchor: FraudDetectionService.java
+    anchor: generateReport
 oracle:
   required:
   - accountservice_file
   - optimisticlockingexception_file
   - transactionfailedexception_file
-  - req_global_0
-  - req_global_1
+  - insufficientfundsexception_file
+  - transactional_annotations
+  - transaction_model_import
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_fraud_detection
+  - no_compliance_reporter
+  - no_check_transaction
+  - no_generate_report

@@ -107,35 +107,42 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: usecounter_file
+- id: usecounter_hook
   selector:
     path: hooks/useCounter.ts
-- id: req_global_0
+    anchor: "export function useCounter(initial = 0, step = 1)"
+- id: usecounter_useCallback
   selector:
-    anchor: import { useState, useCallback } from 'react';
-- id: req_global_1
+    path: hooks/useCounter.ts
+    anchor: useCallback
+- id: usecounter_reset
   selector:
-    anchor: '[count, setCount] = useState(initial)'
-- id: no_global_0
+    path: hooks/useCounter.ts
+    anchor: "const reset = useCallback"
+- id: counter_imports_hook
   selector:
+    path: components/Counter.tsx
+    anchor: "import { useCounter } from '../hooks/useCounter'"
+- id: counter_uses_hook
+  selector:
+    path: components/Counter.tsx
+    anchor: "useCounter(0)"
+- id: uselocalstorage_hook
+  selector:
+    path: hooks/useLocalStorage.ts
     anchor: useLocalStorage
-- id: no_global_1
+- id: counter_display_component
   selector:
-    anchor: localStorage.getItem
-- id: no_global_2
-  selector:
+    path: components/CounterDisplay.tsx
     anchor: CounterDisplay
-- id: no_global_3
-  selector:
-    anchor: CounterDisplayProps
 oracle:
   required:
-  - usecounter_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+  - usecounter_hook
+  - usecounter_useCallback
+  - usecounter_reset
+  - counter_imports_hook
+  allowed:
+  - counter_uses_hook
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - uselocalstorage_hook
+  - counter_display_component

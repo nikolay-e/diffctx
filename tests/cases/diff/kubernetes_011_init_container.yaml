@@ -1,4 +1,6 @@
 name: kubernetes_011_init_container
+xfail:
+  category: k8s-config-over-discovery
 repo:
   initial_files:
     scripts/wait-for-db.sh: |

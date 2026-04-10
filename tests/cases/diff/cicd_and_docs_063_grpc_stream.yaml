@@ -36,22 +36,21 @@ repo:
       def store_data(data_id: str, data: bytes) -> bool:
           storage.set(data_id, data)
           return True
-    garbage_stream_handler.ts: |
-      const GARBAGE_CICD_DOCS_063_STREAM_MARKER_A = "server";
-      const GARBAGE_CICD_DOCS_063_BUFFER_MARKER_B = 65536;
+    src/grpc/health_service.py: |
+      import grpc
+      from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-      class GarbageStreamHandler {
-        static GARBAGE_CICD_DOCS_063_FLOW_MARKER_C = "controlled";
-        handle(): void {}
-      }
-    garbage_stream_processor.ts: |
-      const GARBAGE_CICD_DOCS_063_PROCESS_MARKER_D = "async";
-      const GARBAGE_CICD_DOCS_063_BATCH_MARKER_E = 100;
-
-      class GarbageStreamProcessor {
-        static GARBAGE_CICD_DOCS_063_PARALLEL_MARKER_F = true;
-        process(): void {}
-      }
+      class HealthServicer(health_pb2_grpc.HealthServicer):
+          def Check(self, request, context):
+              return health_pb2.HealthCheckResponse(
+                  status=health_pb2.HealthCheckResponse.SERVING
+              )
+    src/config/server_config.py: |
+      GRPC_PORT = 50051
+      MAX_WORKERS = 10
+      MAX_MESSAGE_LENGTH = 4 * 1024 * 1024
+      KEEPALIVE_TIME_MS = 30000
+      KEEPALIVE_TIMEOUT_MS = 5000
   changed_files:
     proto/stream.proto: |
       syntax = "proto3";
@@ -92,84 +91,37 @@ repo:
         bool success = 3;
         string error_message = 4;
       }
-    src/grpc/stream_service.py: |
-      import grpc
-      from proto import stream_pb2, stream_pb2_grpc
-
-      class DataServiceServicer(stream_pb2_grpc.DataServiceServicer):
-          def GetData(self, request, context):
-              data = get_data_from_storage(request.id)
-              if not data:
-                  context.abort(grpc.StatusCode.NOT_FOUND, "Data not found")
-              return stream_pb2.DataResponse(data=data)
-    src/storage/data_store.py: |
-      from typing import Optional
-
-      def get_data_from_storage(data_id: str) -> Optional[bytes]:
-          return storage.get(data_id)
-
-      def store_data(data_id: str, data: bytes) -> bool:
-          storage.set(data_id, data)
-          return True
-    garbage_stream_handler.ts: |
-      const GARBAGE_CICD_DOCS_063_STREAM_MARKER_A = "server";
-      const GARBAGE_CICD_DOCS_063_BUFFER_MARKER_B = 65536;
-
-      class GarbageStreamHandler {
-        static GARBAGE_CICD_DOCS_063_FLOW_MARKER_C = "controlled";
-        handle(): void {}
-      }
-    garbage_stream_processor.ts: |
-      const GARBAGE_CICD_DOCS_063_PROCESS_MARKER_D = "async";
-      const GARBAGE_CICD_DOCS_063_BATCH_MARKER_E = 100;
-
-      class GarbageStreamProcessor {
-        static GARBAGE_CICD_DOCS_063_PARALLEL_MARKER_F = true;
-        process(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Add streaming RPCs to DataService proto"
 fragments:
-- id: stream_file
+- id: stream_proto
   selector:
     path: proto/stream.proto
-- id: req_global_0
+- id: new_stream_rpc
   selector:
     anchor: rpc StreamData(StreamDataRequest) returns (stream DataChunk);
-- id: no_global_0
+- id: servicer_impl
   selector:
-    anchor: GARBAGE_CICD_DOCS_063_BATCH_MARKER_E
-- id: no_global_1
+    path: src/grpc/stream_service.py
+    anchor: class DataServiceServicer
+- id: data_store
   selector:
-    anchor: GARBAGE_CICD_DOCS_063_BUFFER_MARKER_B
-- id: no_global_2
+    path: src/storage/data_store.py
+    anchor: def get_data_from_storage
+- id: no_health_service
   selector:
-    anchor: GARBAGE_CICD_DOCS_063_FLOW_MARKER_C
-- id: no_global_3
+    path: src/grpc/health_service.py
+    anchor: class HealthServicer
+- id: no_server_config
   selector:
-    anchor: GARBAGE_CICD_DOCS_063_PARALLEL_MARKER_F
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_063_PROCESS_MARKER_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_063_STREAM_MARKER_A
-- id: no_global_6
-  selector:
-    anchor: garbage_stream_handler.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_stream_processor.ts
+    path: src/config/server_config.py
+    anchor: GRPC_PORT
 oracle:
   required:
-  - stream_file
-  - req_global_0
-  allowed: []
+  - stream_proto
+  - new_stream_rpc
+  - servicer_impl
+  allowed:
+  - data_store
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_health_service
+  - no_server_config

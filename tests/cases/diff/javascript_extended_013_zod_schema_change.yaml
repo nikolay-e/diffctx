@@ -124,71 +124,52 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: schemas
+- id: schema_definition
   selector:
     path: schemas.ts
     anchor: UserSchema = z.object({
-- id: schemas_1
+- id: uuid_constraint
   selector:
     path: schemas.ts
     anchor: z.string().uuid()
-- id: schemas_2
+- id: role_enum
   selector:
     path: schemas.ts
     anchor: z.enum(['admin', 'user', 'guest'])
-- id: schemas_3
+- id: user_type
   selector:
     path: schemas.ts
     anchor: type User = z.infer<typeof UserSchema>
-- id: no_productschema
+- id: validator_consumer
   selector:
-    path: src/schemas/productSchema.ts
-- id: no_userrepository
+    path: validator.ts
+    anchor: UserSchema.parse(data)
+- id: user_repository_consumer
   selector:
     path: src/services/userRepository.ts
-- id: no_usercontroller
+    anchor: "import { User } from '../schemas'"
+- id: no_product_schema
+  selector:
+    path: src/schemas/productSchema.ts
+    anchor: ProductSchema = z.object({
+- id: no_validate_product
+  selector:
+    path: src/schemas/productSchema.ts
+    anchor: validateProduct
+- id: no_user_controller
   selector:
     path: src/controllers/userController.ts
-- id: no_global_0
-  selector:
-    anchor: ProductSchema
-- id: no_global_1
-  selector:
-    anchor: validateProduct
-- id: no_global_2
-  selector:
-    anchor: Product = z.infer
-- id: no_global_3
-  selector:
-    anchor: saveUser
-- id: no_global_4
-  selector:
-    anchor: findUserById
-- id: no_global_5
-  selector:
-    anchor: findUsersByRole
-- id: no_global_6
-  selector:
     anchor: createUserHandler
-- id: no_global_7
-  selector:
-    anchor: Validation failed
 oracle:
   required:
-  - schemas
-  - schemas_1
-  - schemas_2
-  - schemas_3
+  - schema_definition
+  - uuid_constraint
+  - role_enum
+  - user_type
+  - validator_consumer
+  - user_repository_consumer
   allowed: []
   forbidden:
-  - no_productschema
-  - no_userrepository
-  - no_usercontroller
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_product_schema
+  - no_validate_product
+  - no_user_controller

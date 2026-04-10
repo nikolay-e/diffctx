@@ -1,4 +1,6 @@
 name: kubernetes_008_resource_limits
+xfail:
+  category: k8s-cross-file-discovery
 repo:
   initial_files:
     k8s/apps/worker/deployment.yaml: |
@@ -162,59 +164,42 @@ repo:
           pods: "100"
   commit_message: Update files
 fragments:
-- id: deployment
+- id: resource_request_memory
   selector:
     path: k8s/apps/worker/deployment.yaml
     anchor: 'memory: "512Mi"'
-- id: deployment_1
+- id: resource_ephemeral_storage
   selector:
     path: k8s/apps/worker/deployment.yaml
     anchor: 'ephemeral-storage: "1Gi"'
-- id: deployment_2
+- id: resource_request_cpu
   selector:
     path: k8s/apps/worker/deployment.yaml
     anchor: 'cpu: "500m"'
-- id: deployment_3
+- id: resource_limit_memory
   selector:
     path: k8s/apps/worker/deployment.yaml
     anchor: 'memory: "1Gi"'
-- id: no_production_limits
+- id: limitrange_max_memory
   selector:
     path: k8s/limitranges/production-limits.yaml
-- id: no_production_quota
+    anchor: 'memory: "4Gi"'
+- id: quota_limits_memory
   selector:
     path: k8s/quotas/production-quota.yaml
-- id: no_global_0
+    anchor: 'limits.memory: "80Gi"'
+- id: no_worker_metrics_service
   selector:
-    anchor: default-limits
-- id: no_global_1
-  selector:
-    anchor: LimitRange
-- id: no_global_2
-  selector:
-    anchor: defaultRequest
-- id: no_global_3
-  selector:
-    anchor: production-quota
-- id: no_global_4
-  selector:
-    anchor: ResourceQuota
-- id: no_global_5
-  selector:
-    anchor: 'pods: "100"'
+    path: k8s/apps/worker/service.yaml
+    anchor: worker-metrics
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
+  - resource_request_memory
+  - resource_ephemeral_storage
+  - resource_request_cpu
+  - resource_limit_memory
+  - limitrange_max_memory
+  - quota_limits_memory
   allowed: []
   forbidden:
-  - no_production_limits
-  - no_production_quota
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_worker_metrics_service

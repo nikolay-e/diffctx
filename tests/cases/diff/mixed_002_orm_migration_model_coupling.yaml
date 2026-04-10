@@ -1,0 +1,173 @@
+name: mixed_002_orm_migration_model_coupling
+repo:
+  initial_files:
+    db/migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id BIGSERIAL PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    db/migrations/002_create_orders.sql: |
+      CREATE TABLE orders (
+          id BIGSERIAL PRIMARY KEY,
+          user_id BIGINT REFERENCES users(id),
+          total NUMERIC(10, 2) NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    db/migrations/003_create_products.sql: |
+      CREATE TABLE products (
+          id BIGSERIAL PRIMARY KEY,
+          sku TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          price NUMERIC(10, 2) NOT NULL
+      );
+    app/models/user.py: |
+      from sqlalchemy import Column, BigInteger, Text, DateTime, func
+      from sqlalchemy.orm import declarative_base
+
+      Base = declarative_base()
+
+      class User(Base):
+          __tablename__ = "users"
+
+          id = Column(BigInteger, primary_key=True)
+          email = Column(Text, nullable=False, unique=True)
+          name = Column(Text, nullable=False)
+          created_at = Column(DateTime(timezone=True), server_default=func.now())
+    app/models/order.py: |
+      from sqlalchemy import Column, BigInteger, Numeric, DateTime, ForeignKey, func
+      from app.models.user import Base
+
+      class Order(Base):
+          __tablename__ = "orders"
+
+          id = Column(BigInteger, primary_key=True)
+          user_id = Column(BigInteger, ForeignKey("users.id"))
+          total = Column(Numeric(10, 2), nullable=False)
+          created_at = Column(DateTime(timezone=True), server_default=func.now())
+    app/models/product.py: |
+      from sqlalchemy import Column, BigInteger, Text, Numeric
+      from app.models.user import Base
+
+      class Product(Base):
+          __tablename__ = "products"
+
+          id = Column(BigInteger, primary_key=True)
+          sku = Column(Text, nullable=False, unique=True)
+          name = Column(Text, nullable=False)
+          price = Column(Numeric(10, 2), nullable=False)
+    app/services/user_service.py: |
+      from app.models.user import User
+
+      class UserService:
+          def find(self, uid: int) -> User | None:
+              return None
+    app/services/order_service.py: |
+      from app.models.order import Order
+
+      class OrderService:
+          def list_for_user(self, uid: int) -> list[Order]:
+              return []
+  changed_files:
+    db/migrations/001_create_users.sql: |
+      CREATE TABLE users (
+          id BIGSERIAL PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    db/migrations/002_create_orders.sql: |
+      CREATE TABLE orders (
+          id BIGSERIAL PRIMARY KEY,
+          user_id BIGINT REFERENCES users(id),
+          total NUMERIC(10, 2) NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    db/migrations/003_create_products.sql: |
+      CREATE TABLE products (
+          id BIGSERIAL PRIMARY KEY,
+          sku TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          price NUMERIC(10, 2) NOT NULL
+      );
+    db/migrations/004_add_user_phone.sql: |
+      ALTER TABLE users
+          ADD COLUMN phone TEXT,
+          ADD COLUMN phone_verified_at TIMESTAMPTZ;
+
+      CREATE INDEX idx_users_phone ON users(phone) WHERE phone IS NOT NULL;
+    app/models/user.py: |
+      from sqlalchemy import Column, BigInteger, Text, DateTime, func
+      from sqlalchemy.orm import declarative_base
+
+      Base = declarative_base()
+
+      class User(Base):
+          __tablename__ = "users"
+
+          id = Column(BigInteger, primary_key=True)
+          email = Column(Text, nullable=False, unique=True)
+          name = Column(Text, nullable=False)
+          created_at = Column(DateTime(timezone=True), server_default=func.now())
+    app/models/order.py: |
+      from sqlalchemy import Column, BigInteger, Numeric, DateTime, ForeignKey, func
+      from app.models.user import Base
+
+      class Order(Base):
+          __tablename__ = "orders"
+
+          id = Column(BigInteger, primary_key=True)
+          user_id = Column(BigInteger, ForeignKey("users.id"))
+          total = Column(Numeric(10, 2), nullable=False)
+          created_at = Column(DateTime(timezone=True), server_default=func.now())
+    app/models/product.py: |
+      from sqlalchemy import Column, BigInteger, Text, Numeric
+      from app.models.user import Base
+
+      class Product(Base):
+          __tablename__ = "products"
+
+          id = Column(BigInteger, primary_key=True)
+          sku = Column(Text, nullable=False, unique=True)
+          name = Column(Text, nullable=False)
+          price = Column(Numeric(10, 2), nullable=False)
+    app/services/user_service.py: |
+      from app.models.user import User
+
+      class UserService:
+          def find(self, uid: int) -> User | None:
+              return None
+    app/services/order_service.py: |
+      from app.models.order import Order
+
+      class OrderService:
+          def list_for_user(self, uid: int) -> list[Order]:
+              return []
+  commit_message: "db: add phone column to users table"
+fragments:
+  - id: migration_added
+    selector: { path: db/migrations/004_add_user_phone.sql }
+  - id: user_model_must_update
+    selector: { path: app/models/user.py }
+  - id: user_service_consumer
+    selector: { path: app/services/user_service.py }
+  - id: order_model_unrelated
+    selector: { path: app/models/order.py }
+  - id: product_model_unrelated
+    selector: { path: app/models/product.py }
+  - id: order_service_unrelated
+    selector: { path: app/services/order_service.py }
+  - id: previous_user_migration
+    selector: { path: db/migrations/001_create_users.sql }
+oracle:
+  required:
+    - migration_added
+    - user_model_must_update
+  allowed:
+    - previous_user_migration
+    - user_service_consumer
+  forbidden:
+    - order_model_unrelated
+    - product_model_unrelated
+    - order_service_unrelated

@@ -3,11 +3,12 @@ repo:
   initial_files:
     src/lib.rs: |
       pub mod animal;
+      pub mod dog;
+      pub mod cat;
+      pub mod parrot;
       pub mod habitat;
       pub mod feeding;
     src/animal.rs: |
-      use std::fmt;
-
       pub trait Animal {
           fn speak(&self) -> String;
           fn species(&self) -> &str;
@@ -16,12 +17,9 @@ repo:
               format!("I am a {} and I say: {}", self.species(), self.speak())
           }
       }
+    src/dog.rs: |
+      use crate::animal::Animal;
 
-      pub trait Domesticated: Animal {
-          fn owner(&self) -> Option<&str>;
-      }
-
-      #[derive(Debug, Clone)]
       pub struct Dog {
           pub name: String,
           age: u8,
@@ -29,129 +27,7 @@ repo:
 
       impl Dog {
           pub fn new(name: &str, age: u8) -> Self {
-              Self {
-                  name: name.to_string(),
-                  age,
-              }
-          }
-
-          pub fn age(&self) -> u8 {
-              self.age
-          }
-      }
-
-      impl fmt::Display for Dog {
-          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-              write!(f, "Dog: {} (age {})", self.name, self.age)
-          }
-      }
-    src/habitat.rs: |
-      #[derive(Debug, Clone)]
-      pub enum Biome {
-          Forest,
-          Desert,
-          Aquatic,
-          Arctic,
-          Grassland,
-      }
-
-      pub struct Habitat {
-          name: String,
-          biome: Biome,
-          area_sq_km: f64,
-      }
-
-      impl Habitat {
-          pub fn new(name: &str, biome: Biome, area: f64) -> Self {
-              Self {
-                  name: name.to_string(),
-                  biome,
-                  area_sq_km: area,
-              }
-          }
-
-          pub fn biome(&self) -> &Biome {
-              &self.biome
-          }
-
-          pub fn is_large(&self) -> bool {
-              self.area_sq_km > 1000.0
-          }
-      }
-    src/feeding.rs: |
-      use std::time::Duration;
-
-      pub struct FeedingSchedule {
-          interval: Duration,
-          portion_grams: u32,
-          food_type: String,
-      }
-
-      impl FeedingSchedule {
-          pub fn new(hours: u64, portion_grams: u32, food_type: &str) -> Self {
-              Self {
-                  interval: Duration::from_secs(hours * 3600),
-                  portion_grams,
-                  food_type: food_type.to_string(),
-              }
-          }
-
-          pub fn daily_intake(&self) -> u32 {
-              let feedings_per_day = (24 * 3600) / self.interval.as_secs() as u32;
-              feedings_per_day * self.portion_grams
-          }
-
-          pub fn food_type(&self) -> &str {
-              &self.food_type
-          }
-      }
-  changed_files:
-    src/lib.rs: |
-      pub mod animal;
-      pub mod habitat;
-      pub mod feeding;
-    src/animal.rs: |
-      use std::fmt;
-
-      pub trait Animal {
-          fn speak(&self) -> String;
-          fn species(&self) -> &str;
-
-          fn introduce(&self) -> String {
-              format!("I am a {} and I say: {}", self.species(), self.speak())
-          }
-      }
-
-      pub trait Domesticated: Animal {
-          fn owner(&self) -> Option<&str>;
-      }
-
-      #[derive(Debug, Clone)]
-      pub struct Dog {
-          pub name: String,
-          age: u8,
-          owner_name: Option<String>,
-      }
-
-      impl Dog {
-          pub fn new(name: &str, age: u8) -> Self {
-              Self {
-                  name: name.to_string(),
-                  age,
-                  owner_name: None,
-              }
-          }
-
-          pub fn with_owner(name: &str, age: u8, owner: &str) -> Self {
-              Self {
-                  name: name.to_string(),
-                  age,
-                  owner_name: Some(owner.to_string()),
-              }
-          }
-
-          pub fn age(&self) -> u8 {
-              self.age
+              Self { name: name.to_string(), age }
           }
       }
 
@@ -164,20 +40,9 @@ repo:
               "dog"
           }
       }
+    src/cat.rs: |
+      use crate::animal::Animal;
 
-      impl Domesticated for Dog {
-          fn owner(&self) -> Option<&str> {
-              self.owner_name.as_deref()
-          }
-      }
-
-      impl fmt::Display for Dog {
-          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-              write!(f, "Dog: {} (age {})", self.name, self.age)
-          }
-      }
-
-      #[derive(Debug, Clone)]
       pub struct Cat {
           pub name: String,
           indoor: bool,
@@ -185,14 +50,7 @@ repo:
 
       impl Cat {
           pub fn new(name: &str, indoor: bool) -> Self {
-              Self {
-                  name: name.to_string(),
-                  indoor,
-              }
-          }
-
-          pub fn is_indoor(&self) -> bool {
-              self.indoor
+              Self { name: name.to_string(), indoor }
           }
       }
 
@@ -205,44 +63,44 @@ repo:
               "cat"
           }
       }
+    src/parrot.rs: |
+      use crate::animal::Animal;
 
-      impl fmt::Display for Cat {
-          fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-              let location = if self.indoor { "indoor" } else { "outdoor" };
-              write!(f, "Cat: {} ({})", self.name, location)
+      pub struct Parrot {
+          pub name: String,
+          vocabulary: Vec<String>,
+      }
+
+      impl Parrot {
+          pub fn new(name: &str) -> Self {
+              Self { name: name.to_string(), vocabulary: vec![] }
+          }
+      }
+
+      impl Animal for Parrot {
+          fn speak(&self) -> String {
+              format!("{} says hello!", self.name)
+          }
+
+          fn species(&self) -> &str {
+              "parrot"
           }
       }
     src/habitat.rs: |
-      #[derive(Debug, Clone)]
       pub enum Biome {
           Forest,
           Desert,
           Aquatic,
-          Arctic,
-          Grassland,
       }
 
       pub struct Habitat {
           name: String,
           biome: Biome,
-          area_sq_km: f64,
       }
 
       impl Habitat {
-          pub fn new(name: &str, biome: Biome, area: f64) -> Self {
-              Self {
-                  name: name.to_string(),
-                  biome,
-                  area_sq_km: area,
-              }
-          }
-
-          pub fn biome(&self) -> &Biome {
-              &self.biome
-          }
-
-          pub fn is_large(&self) -> bool {
-              self.area_sq_km > 1000.0
+          pub fn new(name: &str, biome: Biome) -> Self {
+              Self { name: name.to_string(), biome }
           }
       }
     src/feeding.rs: |
@@ -251,66 +109,156 @@ repo:
       pub struct FeedingSchedule {
           interval: Duration,
           portion_grams: u32,
-          food_type: String,
       }
 
       impl FeedingSchedule {
-          pub fn new(hours: u64, portion_grams: u32, food_type: &str) -> Self {
-              Self {
-                  interval: Duration::from_secs(hours * 3600),
-                  portion_grams,
-                  food_type: food_type.to_string(),
-              }
-          }
-
-          pub fn daily_intake(&self) -> u32 {
-              let feedings_per_day = (24 * 3600) / self.interval.as_secs() as u32;
-              feedings_per_day * self.portion_grams
-          }
-
-          pub fn food_type(&self) -> &str {
-              &self.food_type
+          pub fn new(hours: u64, portion_grams: u32) -> Self {
+              Self { interval: Duration::from_secs(hours * 3600), portion_grams }
           }
       }
-  commit_message: Update files
+  changed_files:
+    src/lib.rs: |
+      pub mod animal;
+      pub mod dog;
+      pub mod cat;
+      pub mod parrot;
+      pub mod habitat;
+      pub mod feeding;
+    src/animal.rs: |
+      pub trait Animal {
+          fn speak(&self) -> String;
+          fn species(&self) -> &str;
+
+          fn legs(&self) -> u8;
+
+          fn introduce(&self) -> String {
+              format!("I am a {} with {} legs and I say: {}", self.species(), self.legs(), self.speak())
+          }
+      }
+    src/dog.rs: |
+      use crate::animal::Animal;
+
+      pub struct Dog {
+          pub name: String,
+          age: u8,
+      }
+
+      impl Dog {
+          pub fn new(name: &str, age: u8) -> Self {
+              Self { name: name.to_string(), age }
+          }
+      }
+
+      impl Animal for Dog {
+          fn speak(&self) -> String {
+              format!("{} says woof!", self.name)
+          }
+
+          fn species(&self) -> &str {
+              "dog"
+          }
+
+          fn legs(&self) -> u8 {
+              4
+          }
+      }
+    src/cat.rs: |
+      use crate::animal::Animal;
+
+      pub struct Cat {
+          pub name: String,
+          indoor: bool,
+      }
+
+      impl Cat {
+          pub fn new(name: &str, indoor: bool) -> Self {
+              Self { name: name.to_string(), indoor }
+          }
+      }
+
+      impl Animal for Cat {
+          fn speak(&self) -> String {
+              format!("{} says meow!", self.name)
+          }
+
+          fn species(&self) -> &str {
+              "cat"
+          }
+      }
+    src/parrot.rs: |
+      use crate::animal::Animal;
+
+      pub struct Parrot {
+          pub name: String,
+          vocabulary: Vec<String>,
+      }
+
+      impl Parrot {
+          pub fn new(name: &str) -> Self {
+              Self { name: name.to_string(), vocabulary: vec![] }
+          }
+      }
+
+      impl Animal for Parrot {
+          fn speak(&self) -> String {
+              format!("{} says hello!", self.name)
+          }
+
+          fn species(&self) -> &str {
+              "parrot"
+          }
+      }
+    src/habitat.rs: |
+      pub enum Biome {
+          Forest,
+          Desert,
+          Aquatic,
+      }
+
+      pub struct Habitat {
+          name: String,
+          biome: Biome,
+      }
+
+      impl Habitat {
+          pub fn new(name: &str, biome: Biome) -> Self {
+              Self { name: name.to_string(), biome }
+          }
+      }
+    src/feeding.rs: |
+      use std::time::Duration;
+
+      pub struct FeedingSchedule {
+          interval: Duration,
+          portion_grams: u32,
+      }
+
+      impl FeedingSchedule {
+          pub fn new(hours: u64, portion_grams: u32) -> Self {
+              Self { interval: Duration::from_secs(hours * 3600), portion_grams }
+          }
+      }
+  commit_message: "animal: add legs() to Animal trait, implement on Dog"
 fragments:
-- id: animal_file
-  selector:
-    path: src/animal.rs
-- id: req_global_0
-  selector:
-    anchor: 'pub fn with_owner(name: &str, age: u8, owner: &str) -> Self {'
-- id: req_global_1
-  selector:
-    anchor: fn speak(&self) -> String {
-- id: no_habitat
-  selector:
-    path: src/habitat.rs
-- id: no_feeding
-  selector:
-    path: src/feeding.rs
-- id: no_global_0
-  selector:
-    anchor: Biome
-- id: no_global_1
-  selector:
-    anchor: FeedingSchedule
-- id: no_global_2
-  selector:
-    anchor: habitat.rs
-- id: no_global_3
-  selector:
-    anchor: feeding.rs
+  - id: animal_changed
+    selector: { path: src/animal.rs }
+  - id: dog_updated
+    selector: { path: src/dog.rs }
+  - id: cat_must_implement
+    selector: { path: src/cat.rs }
+  - id: parrot_must_implement
+    selector: { path: src/parrot.rs }
+  - id: habitat_unrelated_same_crate
+    selector: { path: src/habitat.rs }
+  - id: feeding_unrelated_same_crate
+    selector: { path: src/feeding.rs }
 oracle:
   required:
-  - animal_file
-  - req_global_0
-  - req_global_1
-  allowed: []
+    - animal_changed
+    - cat_must_implement
+    - parrot_must_implement
+  allowed:
+    - dog_updated
   forbidden:
-  - no_habitat
-  - no_feeding
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+    - habitat_unrelated_same_crate
+    - feeding_unrelated_same_crate

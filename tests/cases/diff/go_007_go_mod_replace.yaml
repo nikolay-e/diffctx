@@ -69,29 +69,46 @@ repo:
       func (l *Logger) Error(msg string) {
           log.Printf("[ERROR] %s: %s", l.prefix, msg)
       }
-    internal/unrelated/experimental/feature.go: |
-      package experimental
+    internal/api/handler.go: |
+      package api
 
-      const GARBAGE_GO_EXPERIMENTAL_FEAT_001 = "experimental_garbage"
+      import (
+          "myproject/pkg/shared"
+      )
 
-      type GARBAGE_GO_TYPE_FEATURE_002 struct {
-          name string
+      type Handler struct {
+          config shared.Config
       }
 
-      func GARBAGE_GO_FUNC_FEATURE_003() string {
-          return "GARBAGE_GO_FEATURE_UNUSED_004"
-      }
-    internal/unrelated/deprecated/legacy.go: |
-      package deprecated
-
-      const GARBAGE_GO_DEPRECATED_LEGACY_005 = "deprecated_garbage"
-
-      type GARBAGE_GO_TYPE_LEGACY_006 struct {
-          version int
+      func NewHandler(cfg shared.Config) *Handler {
+          return &Handler{config: cfg}
       }
 
-      func GARBAGE_GO_FUNC_LEGACY_007() {
-          println("GARBAGE_GO_LEGACY_OUTPUT_008")
+      func (h *Handler) Success(data interface{}) shared.Response {
+          return shared.NewSuccessResponse(data)
+      }
+
+      func (h *Handler) Error(msg string) shared.Response {
+          return shared.NewErrorResponse(msg)
+      }
+    internal/notifier/email.go: |
+      package notifier
+
+      import "fmt"
+
+      type EmailNotifier struct {
+          smtpHost string
+          smtpPort int
+          from     string
+      }
+
+      func NewEmailNotifier(host string, port int, from string) *EmailNotifier {
+          return &EmailNotifier{smtpHost: host, smtpPort: port, from: from}
+      }
+
+      func (n *EmailNotifier) Send(to, subject, body string) error {
+          fmt.Printf("Sending email to %s: %s", to, subject)
+          return nil
       }
   changed_files:
     go.mod: |
@@ -211,81 +228,90 @@ repo:
       func (l *Logger) Error(msg string) {
           log.Printf("[ERROR] %s: %s", l.prefix, msg)
       }
-    internal/unrelated/experimental/feature.go: |
-      package experimental
+    internal/api/handler.go: |
+      package api
 
-      const GARBAGE_GO_EXPERIMENTAL_FEAT_001 = "experimental_garbage"
+      import (
+          "myproject/pkg/shared"
+      )
 
-      type GARBAGE_GO_TYPE_FEATURE_002 struct {
-          name string
+      type Handler struct {
+          config shared.Config
       }
 
-      func GARBAGE_GO_FUNC_FEATURE_003() string {
-          return "GARBAGE_GO_FEATURE_UNUSED_004"
-      }
-    internal/unrelated/deprecated/legacy.go: |
-      package deprecated
-
-      const GARBAGE_GO_DEPRECATED_LEGACY_005 = "deprecated_garbage"
-
-      type GARBAGE_GO_TYPE_LEGACY_006 struct {
-          version int
+      func NewHandler(cfg shared.Config) *Handler {
+          return &Handler{config: cfg}
       }
 
-      func GARBAGE_GO_FUNC_LEGACY_007() {
-          println("GARBAGE_GO_LEGACY_OUTPUT_008")
+      func (h *Handler) Success(data interface{}) shared.Response {
+          return shared.NewSuccessResponse(data)
       }
-  commit_message: Update files
+
+      func (h *Handler) Error(msg string) shared.Response {
+          return shared.NewErrorResponse(msg)
+      }
+    internal/notifier/email.go: |
+      package notifier
+
+      import "fmt"
+
+      type EmailNotifier struct {
+          smtpHost string
+          smtpPort int
+          from     string
+      }
+
+      func NewEmailNotifier(host string, port int, from string) *EmailNotifier {
+          return &EmailNotifier{smtpHost: host, smtpPort: port, from: from}
+      }
+
+      func (n *EmailNotifier) Send(to, subject, body string) error {
+          fmt.Printf("Sending email to %s: %s", to, subject)
+          return nil
+      }
+  commit_message: "feat(shared): expand Config, Response types and add helpers"
 fragments:
-- id: helpers_file
-  selector:
-    path: pkg/shared/helpers.go
-- id: types_file
+- id: changed_types
   selector:
     path: pkg/shared/types.go
-- id: req_global_0
+- id: changed_helpers
   selector:
-    anchor: var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-- id: req_global_1
+    path: pkg/shared/helpers.go
+- id: new_validate_email
   selector:
     anchor: func ValidateEmail(email string) bool {
-- id: no_global_0
+- id: changed_success_response_sig
   selector:
-    anchor: GARBAGE_GO_DEPRECATED_LEGACY_005
-- id: no_global_1
+    anchor: func NewSuccessResponse(data interface{}, requestID string) Response {
+- id: changed_error_response_sig
   selector:
-    anchor: GARBAGE_GO_EXPERIMENTAL_FEAT_001
-- id: no_global_2
+    anchor: func NewErrorResponse(err string, requestID string) Response {
+- id: caller_handler_success
   selector:
-    anchor: GARBAGE_GO_FUNC_FEATURE_003
-- id: no_global_3
+    anchor: return shared.NewSuccessResponse(data)
+- id: caller_handler_error
   selector:
-    anchor: GARBAGE_GO_FUNC_LEGACY_007
-- id: no_global_4
+    anchor: return shared.NewErrorResponse(msg)
+- id: caller_handler_config
   selector:
-    anchor: GARBAGE_GO_TYPE_FEATURE_002
-- id: no_global_5
+    anchor: "config shared.Config"
+- id: unrelated_email_notifier
   selector:
-    anchor: GARBAGE_GO_TYPE_LEGACY_006
-- id: no_global_6
+    anchor: func (n *EmailNotifier) Send(to, subject, body string) error {
+- id: unrelated_logger
   selector:
-    anchor: feature.go
-- id: no_global_7
-  selector:
-    anchor: legacy.go
+    anchor: func (l *Logger) Info(msg string) {
 oracle:
   required:
-  - helpers_file
-  - types_file
-  - req_global_0
-  - req_global_1
+  - changed_types
+  - changed_helpers
+  - new_validate_email
+  - changed_success_response_sig
+  - changed_error_response_sig
+  - caller_handler_success
+  - caller_handler_error
+  - caller_handler_config
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_email_notifier
+  - unrelated_logger

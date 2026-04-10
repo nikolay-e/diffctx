@@ -1,0 +1,248 @@
+name: precision_001_namespace_collision
+repo:
+  initial_files:
+    pkg/httpclient/client.go: |
+      package httpclient
+
+      import (
+          "net/http"
+          "time"
+      )
+
+      type Client struct {
+          base    string
+          timeout time.Duration
+          inner   *http.Client
+      }
+
+      func NewClient(base string) *Client {
+          return &Client{
+              base:    base,
+              timeout: 30 * time.Second,
+              inner:   &http.Client{Timeout: 30 * time.Second},
+          }
+      }
+
+      func (c *Client) Get(path string) (*http.Response, error) {
+          return c.inner.Get(c.base + path)
+      }
+    pkg/httpclient/retry.go: |
+      package httpclient
+
+      import "time"
+
+      type RetryPolicy struct {
+          MaxAttempts int
+          Backoff     time.Duration
+      }
+
+      func DefaultRetryPolicy() RetryPolicy {
+          return RetryPolicy{MaxAttempts: 3, Backoff: time.Second}
+      }
+    pkg/grpcclient/client.go: |
+      package grpcclient
+
+      import "context"
+
+      type Client struct {
+          target string
+          conn   interface{}
+      }
+
+      func NewClient(target string) *Client {
+          return &Client{target: target}
+      }
+
+      func (c *Client) Call(ctx context.Context, method string, req interface{}) (interface{}, error) {
+          return nil, nil
+      }
+    pkg/grpcclient/interceptor.go: |
+      package grpcclient
+
+      type Interceptor func(method string, req interface{}) error
+
+      func LoggingInterceptor() Interceptor {
+          return func(method string, req interface{}) error {
+              return nil
+          }
+      }
+    pkg/dbclient/client.go: |
+      package dbclient
+
+      import "database/sql"
+
+      type Client struct {
+          db *sql.DB
+      }
+
+      func NewClient(dsn string) (*Client, error) {
+          db, err := sql.Open("postgres", dsn)
+          if err != nil {
+              return nil, err
+          }
+          return &Client{db: db}, nil
+      }
+    services/api_caller.go: |
+      package services
+
+      import "example.com/app/pkg/httpclient"
+
+      type APICaller struct {
+          client *httpclient.Client
+      }
+
+      func NewAPICaller(base string) *APICaller {
+          return &APICaller{client: httpclient.NewClient(base)}
+      }
+    services/grpc_caller.go: |
+      package services
+
+      import "example.com/app/pkg/grpcclient"
+
+      type GRPCCaller struct {
+          client *grpcclient.Client
+      }
+
+      func NewGRPCCaller(target string) *GRPCCaller {
+          return &GRPCCaller{client: grpcclient.NewClient(target)}
+      }
+  changed_files:
+    pkg/httpclient/client.go: |
+      package httpclient
+
+      import (
+          "net/http"
+          "time"
+      )
+
+      type Client struct {
+          base       string
+          timeout    time.Duration
+          inner      *http.Client
+          userAgent  string
+      }
+
+      func NewClient(base string) *Client {
+          return &Client{
+              base:      base,
+              timeout:   30 * time.Second,
+              inner:     &http.Client{Timeout: 30 * time.Second},
+              userAgent: "app/1.0",
+          }
+      }
+
+      func (c *Client) Get(path string) (*http.Response, error) {
+          req, err := http.NewRequest("GET", c.base+path, nil)
+          if err != nil {
+              return nil, err
+          }
+          req.Header.Set("User-Agent", c.userAgent)
+          return c.inner.Do(req)
+      }
+    pkg/httpclient/retry.go: |
+      package httpclient
+
+      import "time"
+
+      type RetryPolicy struct {
+          MaxAttempts int
+          Backoff     time.Duration
+      }
+
+      func DefaultRetryPolicy() RetryPolicy {
+          return RetryPolicy{MaxAttempts: 3, Backoff: time.Second}
+      }
+    pkg/grpcclient/client.go: |
+      package grpcclient
+
+      import "context"
+
+      type Client struct {
+          target string
+          conn   interface{}
+      }
+
+      func NewClient(target string) *Client {
+          return &Client{target: target}
+      }
+
+      func (c *Client) Call(ctx context.Context, method string, req interface{}) (interface{}, error) {
+          return nil, nil
+      }
+    pkg/grpcclient/interceptor.go: |
+      package grpcclient
+
+      type Interceptor func(method string, req interface{}) error
+
+      func LoggingInterceptor() Interceptor {
+          return func(method string, req interface{}) error {
+              return nil
+          }
+      }
+    pkg/dbclient/client.go: |
+      package dbclient
+
+      import "database/sql"
+
+      type Client struct {
+          db *sql.DB
+      }
+
+      func NewClient(dsn string) (*Client, error) {
+          db, err := sql.Open("postgres", dsn)
+          if err != nil {
+              return nil, err
+          }
+          return &Client{db: db}, nil
+      }
+    services/api_caller.go: |
+      package services
+
+      import "example.com/app/pkg/httpclient"
+
+      type APICaller struct {
+          client *httpclient.Client
+      }
+
+      func NewAPICaller(base string) *APICaller {
+          return &APICaller{client: httpclient.NewClient(base)}
+      }
+    services/grpc_caller.go: |
+      package services
+
+      import "example.com/app/pkg/grpcclient"
+
+      type GRPCCaller struct {
+          client *grpcclient.Client
+      }
+
+      func NewGRPCCaller(target string) *GRPCCaller {
+          return &GRPCCaller{client: grpcclient.NewClient(target)}
+      }
+  commit_message: "httpclient: add User-Agent header to all requests"
+fragments:
+  - id: http_client_changed
+    selector: { path: pkg/httpclient/client.go }
+  - id: api_caller_user
+    selector: { path: services/api_caller.go }
+  - id: http_retry_same_package
+    selector: { path: pkg/httpclient/retry.go }
+  - id: grpc_client_collision
+    selector: { path: pkg/grpcclient/client.go }
+  - id: grpc_interceptor_collision
+    selector: { path: pkg/grpcclient/interceptor.go }
+  - id: db_client_collision
+    selector: { path: pkg/dbclient/client.go }
+  - id: grpc_caller_unrelated
+    selector: { path: services/grpc_caller.go }
+oracle:
+  required:
+    - http_client_changed
+    - api_caller_user
+  allowed:
+    - http_retry_same_package
+  forbidden:
+    - grpc_client_collision
+    - grpc_interceptor_collision
+    - db_client_collision
+    - grpc_caller_unrelated

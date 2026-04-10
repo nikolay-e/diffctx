@@ -129,7 +129,7 @@ repo:
         static GARBAGE_CICD_DOCS_052_STRIP_MARKER_F = false;
         validate(): boolean { return true; }
       }
-  commit_message: Update files
+  commit_message: "Expand OpenAPI request body with required fields and OrderItem schema"
 fragments:
 - id: openapi_file
   selector:
@@ -139,10 +139,10 @@ fragments:
     path: src/validators/order_validator.py
 - id: req_global_0
   selector:
-    anchor: 'required: true'
+    anchor: "required: true"
 - id: req_global_1
   selector:
-    anchor: 'type: integer'
+    anchor: "type: integer"
 - id: no_global_0
   selector:
     anchor: GARBAGE_CICD_DOCS_052_ABORT_MARKER_E

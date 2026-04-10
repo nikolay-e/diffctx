@@ -140,16 +140,35 @@ fragments:
 - id: orderservice_file
   selector:
     path: src/services/orderService.ts
-- id: req_global_0
+- id: type_imports
   selector:
     anchor: import { Order, OrderStatus, OrderItem } from '../types/order';
-- id: req_global_1
+- id: state_transition_type
   selector:
     anchor: type StateTransition = {
+- id: order_status_type
+  selector:
+    path: src/types/order.ts
+    anchor: type OrderStatus =
+- id: order_interface
+  selector:
+    path: src/types/order.ts
+    anchor: interface Order {
+- id: no_vendor_notification
+  selector:
+    path: vendor/notification-sdk/index.ts
+- id: no_audit_docs
+  selector:
+    path: docs/audit/README.md
+    anchor: Audit Documentation
 oracle:
   required:
   - orderservice_file
-  - req_global_0
-  - req_global_1
+  - type_imports
+  - state_transition_type
+  - order_status_type
+  - order_interface
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_vendor_notification
+  - no_audit_docs

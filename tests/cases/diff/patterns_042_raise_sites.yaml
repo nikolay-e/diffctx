@@ -191,7 +191,7 @@ repo:
           sid = mgr.create_session("user1")
           mock_time.return_value = 2000.0
           assert mgr.validate_session(sid) is False
-  commit_message: Update files
+  commit_message: "Add expiration check to verify_token and expand auth test coverage"
 fragments:
 - id: auth_service
   selector:

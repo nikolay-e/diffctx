@@ -61,6 +61,29 @@ repo:
           Offset int
           SortBy string
       }
+    internal/handler/user_handler.go: |
+      package handler
+
+      import (
+          "context"
+          "mymodule/internal/repository"
+      )
+
+      type UserHandler struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserHandler(repo *repository.UserRepository) *UserHandler {
+          return &UserHandler{repo: repo}
+      }
+
+      func (h *UserHandler) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+          return h.repo.FindByID(ctx, id)
+      }
+
+      func (h *UserHandler) CreateUser(ctx context.Context, user *repository.User) error {
+          return h.repo.Create(ctx, user)
+      }
     internal/database/connection.go: |
       package database
 
@@ -73,38 +96,24 @@ repo:
       func (c *Connection) Query(query string) (*sql.Rows, error) {
           return c.db.Query(query)
       }
-    internal/unrelated/cache/redis_cache.go: |
-      package cache
+    internal/middleware/logging.go: |
+      package middleware
 
-      import "time"
+      import (
+          "log"
+          "time"
+      )
 
-      const GARBAGE_GO_REDIS_CACHE_001 = "redis_cache_garbage"
-
-      type GARBAGE_GO_TYPE_REDIS_002 struct {
-          host string
-          port int
+      type RequestLogger struct {
+          logger *log.Logger
       }
 
-      func GARBAGE_GO_FUNC_CACHE_003() string {
-          return "GARBAGE_GO_CACHE_UNUSED_004"
+      func NewRequestLogger(logger *log.Logger) *RequestLogger {
+          return &RequestLogger{logger: logger}
       }
 
-      type CacheEntry struct {
-          Key       string
-          Value     interface{}
-          ExpiresAt time.Time
-      }
-    internal/unrelated/queue/message_queue.go: |
-      package queue
-
-      const GARBAGE_GO_QUEUE_MESSAGE_005 = "queue_garbage_marker"
-
-      type GARBAGE_GO_TYPE_QUEUE_006 struct {
-          name string
-      }
-
-      func GARBAGE_GO_FUNC_QUEUE_007() {
-          println("GARBAGE_GO_QUEUE_OUTPUT_008")
+      func (rl *RequestLogger) LogRequest(method, path string, duration time.Duration) {
+          rl.logger.Printf("%s %s took %v", method, path, duration)
       }
   changed_files:
     internal/repository/user_repository.go: |
@@ -210,6 +219,29 @@ repo:
           Offset int
           SortBy string
       }
+    internal/handler/user_handler.go: |
+      package handler
+
+      import (
+          "context"
+          "mymodule/internal/repository"
+      )
+
+      type UserHandler struct {
+          repo *repository.UserRepository
+      }
+
+      func NewUserHandler(repo *repository.UserRepository) *UserHandler {
+          return &UserHandler{repo: repo}
+      }
+
+      func (h *UserHandler) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+          return h.repo.FindByID(ctx, id)
+      }
+
+      func (h *UserHandler) CreateUser(ctx context.Context, user *repository.User) error {
+          return h.repo.Create(ctx, user)
+      }
     internal/database/connection.go: |
       package database
 
@@ -222,86 +254,60 @@ repo:
       func (c *Connection) Query(query string) (*sql.Rows, error) {
           return c.db.Query(query)
       }
-    internal/unrelated/cache/redis_cache.go: |
-      package cache
+    internal/middleware/logging.go: |
+      package middleware
 
-      import "time"
+      import (
+          "log"
+          "time"
+      )
 
-      const GARBAGE_GO_REDIS_CACHE_001 = "redis_cache_garbage"
-
-      type GARBAGE_GO_TYPE_REDIS_002 struct {
-          host string
-          port int
+      type RequestLogger struct {
+          logger *log.Logger
       }
 
-      func GARBAGE_GO_FUNC_CACHE_003() string {
-          return "GARBAGE_GO_CACHE_UNUSED_004"
+      func NewRequestLogger(logger *log.Logger) *RequestLogger {
+          return &RequestLogger{logger: logger}
       }
 
-      type CacheEntry struct {
-          Key       string
-          Value     interface{}
-          ExpiresAt time.Time
+      func (rl *RequestLogger) LogRequest(method, path string, duration time.Duration) {
+          rl.logger.Printf("%s %s took %v", method, path, duration)
       }
-    internal/unrelated/queue/message_queue.go: |
-      package queue
-
-      const GARBAGE_GO_QUEUE_MESSAGE_005 = "queue_garbage_marker"
-
-      type GARBAGE_GO_TYPE_QUEUE_006 struct {
-          name string
-      }
-
-      func GARBAGE_GO_FUNC_QUEUE_007() {
-          println("GARBAGE_GO_QUEUE_OUTPUT_008")
-      }
-  commit_message: Update files
+  commit_message: "feat(repository): add FindAll, FindByEmail, Update, Delete methods"
 fragments:
-- id: user_repository_file
+- id: changed_user_repository
   selector:
     path: internal/repository/user_repository.go
-- id: req_global_0
+- id: new_find_all_method
   selector:
     anchor: func (r *UserRepository) FindAll(ctx context.Context, opts QueryOptions) ([]*User, error) {
-- id: req_global_1
+- id: new_find_by_email_method
   selector:
     anchor: func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
-- id: no_global_0
+- id: types_query_options
   selector:
-    anchor: GARBAGE_GO_FUNC_CACHE_003
-- id: no_global_1
+    anchor: type QueryOptions struct {
+- id: types_user_struct
   selector:
-    anchor: GARBAGE_GO_FUNC_QUEUE_007
-- id: no_global_2
+    anchor: type User struct {
+- id: handler_uses_repository
   selector:
-    anchor: GARBAGE_GO_QUEUE_MESSAGE_005
-- id: no_global_3
+    anchor: func (h *UserHandler) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+- id: unrelated_database_connection
   selector:
-    anchor: GARBAGE_GO_REDIS_CACHE_001
-- id: no_global_4
+    anchor: func (c *Connection) Query(query string) (*sql.Rows, error) {
+- id: unrelated_logging_middleware
   selector:
-    anchor: GARBAGE_GO_TYPE_QUEUE_006
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_TYPE_REDIS_002
-- id: no_global_6
-  selector:
-    anchor: message_queue.go
-- id: no_global_7
-  selector:
-    anchor: redis_cache.go
+    anchor: func (rl *RequestLogger) LogRequest(method, path string, duration time.Duration) {
 oracle:
   required:
-  - user_repository_file
-  - req_global_0
-  - req_global_1
+  - changed_user_repository
+  - new_find_all_method
+  - new_find_by_email_method
+  - types_query_options
+  - types_user_struct
+  - handler_uses_repository
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_database_connection
+  - unrelated_logging_middleware

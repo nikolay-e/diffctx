@@ -49,29 +49,63 @@ repo:
           rows, _ := s.conn.Query("SELECT * FROM users")
           defer rows.Close()
       }
-    internal/unrelated/cleanup/garbage_collector.go: |
-      package cleanup
+    cmd/main.go: |
+      package main
 
-      const GARBAGE_GO_CLEANUP_GC_001 = "cleanup_garbage"
+      import (
+          "log"
+          "myproject/internal/database"
+          "myproject/internal/service"
+      )
 
-      type GARBAGE_GO_TYPE_CLEANUP_002 struct {
-          interval int
+      func main() {
+          conn, err := database.NewConnection("postgres://localhost/mydb")
+          if err != nil {
+              log.Fatal(err)
+          }
+          defer conn.Close()
+
+          svc := service.NewUserService(conn)
+          _ = svc
+      }
+    internal/cache/redis.go: |
+      package cache
+
+      import "time"
+
+      type RedisCache struct {
+          host string
+          port int
+          ttl  time.Duration
       }
 
-      func GARBAGE_GO_FUNC_CLEANUP_003() string {
-          return "GARBAGE_GO_CLEANUP_UNUSED_004"
-      }
-    internal/unrelated/shutdown/graceful.go: |
-      package shutdown
-
-      const GARBAGE_GO_SHUTDOWN_GRACE_005 = "shutdown_garbage"
-
-      type GARBAGE_GO_TYPE_SHUTDOWN_006 struct {
-          timeout int
+      func NewRedisCache(host string, port int, ttl time.Duration) *RedisCache {
+          return &RedisCache{host: host, port: port, ttl: ttl}
       }
 
-      func GARBAGE_GO_FUNC_SHUTDOWN_007() {
-          println("GARBAGE_GO_SHUTDOWN_OUTPUT_008")
+      func (rc *RedisCache) Get(key string) (string, error) {
+          return "", nil
+      }
+
+      func (rc *RedisCache) Set(key, value string) error {
+          return nil
+      }
+    internal/queue/worker.go: |
+      package queue
+
+      import "context"
+
+      type QueueWorker struct {
+          concurrency int
+          handler     func(ctx context.Context, msg []byte) error
+      }
+
+      func NewQueueWorker(concurrency int, handler func(ctx context.Context, msg []byte) error) *QueueWorker {
+          return &QueueWorker{concurrency: concurrency, handler: handler}
+      }
+
+      func (w *QueueWorker) Start(ctx context.Context) error {
+          return nil
       }
   changed_files:
     internal/database/connection.go: |
@@ -166,77 +200,103 @@ repo:
           rows, _ := s.conn.Query("SELECT * FROM users")
           defer rows.Close()
       }
-    internal/unrelated/cleanup/garbage_collector.go: |
-      package cleanup
+    cmd/main.go: |
+      package main
 
-      const GARBAGE_GO_CLEANUP_GC_001 = "cleanup_garbage"
+      import (
+          "log"
+          "myproject/internal/database"
+          "myproject/internal/service"
+      )
 
-      type GARBAGE_GO_TYPE_CLEANUP_002 struct {
-          interval int
+      func main() {
+          conn, err := database.NewConnection("postgres://localhost/mydb")
+          if err != nil {
+              log.Fatal(err)
+          }
+          defer conn.Close()
+
+          svc := service.NewUserService(conn)
+          _ = svc
+      }
+    internal/cache/redis.go: |
+      package cache
+
+      import "time"
+
+      type RedisCache struct {
+          host string
+          port int
+          ttl  time.Duration
       }
 
-      func GARBAGE_GO_FUNC_CLEANUP_003() string {
-          return "GARBAGE_GO_CLEANUP_UNUSED_004"
-      }
-    internal/unrelated/shutdown/graceful.go: |
-      package shutdown
-
-      const GARBAGE_GO_SHUTDOWN_GRACE_005 = "shutdown_garbage"
-
-      type GARBAGE_GO_TYPE_SHUTDOWN_006 struct {
-          timeout int
+      func NewRedisCache(host string, port int, ttl time.Duration) *RedisCache {
+          return &RedisCache{host: host, port: port, ttl: ttl}
       }
 
-      func GARBAGE_GO_FUNC_SHUTDOWN_007() {
-          println("GARBAGE_GO_SHUTDOWN_OUTPUT_008")
+      func (rc *RedisCache) Get(key string) (string, error) {
+          return "", nil
       }
-  commit_message: Update files
+
+      func (rc *RedisCache) Set(key, value string) error {
+          return nil
+      }
+    internal/queue/worker.go: |
+      package queue
+
+      import "context"
+
+      type QueueWorker struct {
+          concurrency int
+          handler     func(ctx context.Context, msg []byte) error
+      }
+
+      func NewQueueWorker(concurrency int, handler func(ctx context.Context, msg []byte) error) *QueueWorker {
+          return &QueueWorker{concurrency: concurrency, handler: handler}
+      }
+
+      func (w *QueueWorker) Start(ctx context.Context) error {
+          return nil
+      }
+  commit_message: "refactor(database): add logger param, connection pooling, transactions"
 fragments:
-- id: connection_file
+- id: changed_connection
   selector:
     path: internal/database/connection.go
-- id: req_global_0
+- id: new_connection_signature
   selector:
     anchor: func NewConnection(dsn string, logger *log.Logger) (*Connection, error) {
-- id: req_global_1
+- id: new_transaction_method
   selector:
-    anchor: c.logger.Println("Closing database connection")
-- id: no_global_0
+    anchor: func (c *Connection) Transaction(ctx context.Context, fn func(*sql.Tx) error) error {
+- id: defer_rollback_on_panic
   selector:
-    anchor: GARBAGE_GO_CLEANUP_GC_001
-- id: no_global_1
+    anchor: c.logger.Printf("Transaction rolled back due to panic
+- id: caller_service_uses_connection
   selector:
-    anchor: GARBAGE_GO_FUNC_CLEANUP_003
-- id: no_global_2
+    anchor: "conn *database.Connection"
+- id: caller_service_defers_close
   selector:
-    anchor: GARBAGE_GO_FUNC_SHUTDOWN_007
-- id: no_global_3
+    anchor: defer s.conn.Close()
+- id: caller_main_creates_connection
   selector:
-    anchor: GARBAGE_GO_SHUTDOWN_GRACE_005
-- id: no_global_4
+    anchor: conn, err := database.NewConnection("postgres://localhost/mydb")
+- id: unrelated_redis_cache
   selector:
-    anchor: GARBAGE_GO_TYPE_CLEANUP_002
-- id: no_global_5
+    anchor: func NewRedisCache(host string, port int, ttl time.Duration) *RedisCache {
+- id: unrelated_queue_worker
   selector:
-    anchor: GARBAGE_GO_TYPE_SHUTDOWN_006
-- id: no_global_6
-  selector:
-    anchor: garbage_collector.go
-- id: no_global_7
-  selector:
-    anchor: graceful.go
+    anchor: func (w *QueueWorker) Start(ctx context.Context) error {
 oracle:
   required:
-  - connection_file
-  - req_global_0
-  - req_global_1
+  - changed_connection
+  - new_connection_signature
+  - new_transaction_method
+  - defer_rollback_on_panic
+  - caller_service_uses_connection
+  - caller_service_defers_close
+  - caller_main_creates_connection
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_redis_cache
+  - unrelated_queue_worker

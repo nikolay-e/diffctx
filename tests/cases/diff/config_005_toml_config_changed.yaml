@@ -57,30 +57,40 @@ repo:
           data = [i * 2 for i in range(1000)]
           assert len(data) == 1000
           assert data[-1] == 1998
-    unrelated/benchmarks.py: |
-      # GARBAGE_CFG_005_MARKER_A
-      GARBAGE_CFG_005_BENCH_B = "unrelated-benchmark-suite"
+    benchmarks/runner.py: |
+      import time
+      from typing import Callable
 
-      def run_benchmark(iterations: int = 1000) -> float:
-          total = sum(range(iterations))
-          return total / iterations
+
+      def run_benchmark(func: Callable, iterations: int = 1000) -> float:
+          start = time.perf_counter()
+          for _ in range(iterations):
+              func()
+          elapsed = time.perf_counter() - start
+          return elapsed / iterations
+
 
       def compare_results(baseline: float, current: float) -> str:
           diff = ((current - baseline) / baseline) * 100
           return f"{diff:+.2f}%"
+    scripts/seed_data.py: |
+      import random
+      import string
 
-      GARBAGE_CFG_005_RESULT_C = "unused-benchmark-result"
-    unrelated/seed_data.py: |
-      # GARBAGE_CFG_005_MARKER_D
-      GARBAGE_CFG_005_SEED_E = "unrelated-seed-data"
 
       class DataSeeder:
-          def __init__(self):
-              self.records = []
+          def __init__(self, db_url: str):
+              self.db_url = db_url
+              self.records: list[dict] = []
 
           def seed_users(self, count: int = 10):
               for i in range(count):
-                  self.records.append({"id": i, "name": f"user_{i}"})
+                  name = "".join(random.choices(string.ascii_lowercase, k=8))
+                  self.records.append({"id": i, "name": name, "active": True})
+
+          def seed_products(self, count: int = 50):
+              for i in range(count):
+                  self.records.append({"id": i, "sku": f"SKU-{i:04d}", "price": round(random.uniform(5, 500), 2)})
 
           def clear(self):
               self.records.clear()
@@ -141,30 +151,40 @@ repo:
           data = [i * 2 for i in range(1000)]
           assert len(data) == 1000
           assert data[-1] == 1998
-    unrelated/benchmarks.py: |
-      # GARBAGE_CFG_005_MARKER_A
-      GARBAGE_CFG_005_BENCH_B = "unrelated-benchmark-suite"
+    benchmarks/runner.py: |
+      import time
+      from typing import Callable
 
-      def run_benchmark(iterations: int = 1000) -> float:
-          total = sum(range(iterations))
-          return total / iterations
+
+      def run_benchmark(func: Callable, iterations: int = 1000) -> float:
+          start = time.perf_counter()
+          for _ in range(iterations):
+              func()
+          elapsed = time.perf_counter() - start
+          return elapsed / iterations
+
 
       def compare_results(baseline: float, current: float) -> str:
           diff = ((current - baseline) / baseline) * 100
           return f"{diff:+.2f}%"
+    scripts/seed_data.py: |
+      import random
+      import string
 
-      GARBAGE_CFG_005_RESULT_C = "unused-benchmark-result"
-    unrelated/seed_data.py: |
-      # GARBAGE_CFG_005_MARKER_D
-      GARBAGE_CFG_005_SEED_E = "unrelated-seed-data"
 
       class DataSeeder:
-          def __init__(self):
-              self.records = []
+          def __init__(self, db_url: str):
+              self.db_url = db_url
+              self.records: list[dict] = []
 
           def seed_users(self, count: int = 10):
               for i in range(count):
-                  self.records.append({"id": i, "name": f"user_{i}"})
+                  name = "".join(random.choices(string.ascii_lowercase, k=8))
+                  self.records.append({"id": i, "name": name, "active": True})
+
+          def seed_products(self, count: int = 50):
+              for i in range(count):
+                  self.records.append({"id": i, "sku": f"SKU-{i:04d}", "price": round(random.uniform(5, 500), 2)})
 
           def clear(self):
               self.records.clear()
@@ -173,40 +193,42 @@ fragments:
 - id: pyproject_file
   selector:
     path: pyproject.toml
-- id: req_global_0
+- id: strict_markers_added
   selector:
     anchor: addopts = "-v --tb=short --strict-markers"
-- id: no_global_0
+- id: timeout_increased
   selector:
-    anchor: GARBAGE_CFG_005_BENCH_B
-- id: no_global_1
+    anchor: timeout = 60
+- id: conftest_markers
   selector:
-    anchor: GARBAGE_CFG_005_MARKER_A
-- id: no_global_2
+    path: tests/conftest.py
+    anchor: pytest_configure
+- id: slow_test_uses_timeout
   selector:
-    anchor: GARBAGE_CFG_005_MARKER_D
-- id: no_global_3
+    path: tests/test_slow.py
+    anchor: test_slow_operation
+- id: no_benchmarks
   selector:
-    anchor: GARBAGE_CFG_005_RESULT_C
-- id: no_global_4
+    path: benchmarks/runner.py
+- id: no_seed_data
   selector:
-    anchor: GARBAGE_CFG_005_SEED_E
-- id: no_global_5
+    path: scripts/seed_data.py
+- id: no_run_benchmark
   selector:
-    anchor: benchmarks.py
-- id: no_global_6
+    anchor: run_benchmark
+- id: no_data_seeder
   selector:
-    anchor: seed_data.py
+    anchor: DataSeeder
 oracle:
   required:
   - pyproject_file
-  - req_global_0
+  - strict_markers_added
+  - timeout_increased
+  - conftest_markers
+  - slow_test_uses_timeout
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_benchmarks
+  - no_seed_data
+  - no_run_benchmark
+  - no_data_seeder

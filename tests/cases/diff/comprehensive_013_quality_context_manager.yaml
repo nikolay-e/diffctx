@@ -32,22 +32,44 @@ repo:
 
       def format_results(raw_data):
           return [str(item) for item in raw_data]
-    garbage_session_store.py: |
-      GARBAGE_COMP_013_STORAGE_BACKEND_A = "memcached"
-      GARBAGE_COMP_013_SERIALIZER_B = "msgpack"
+    src/session_store.py: |
+      from typing import Dict, Optional
 
-      class GarbageSessionStore:
-          GARBAGE_COMP_013_EXPIRY_POLICY_C = True
-          def store(self):
-              pass
-    garbage_token_bucket.py: |
-      GARBAGE_COMP_013_REFILL_INTERVAL_D = "milliseconds"
-      GARBAGE_COMP_013_BURST_CAPACITY_E = "overflow"
+      class SessionStore:
+          def __init__(self, backend: str = "memory"):
+              self.backend = backend
+              self.sessions: Dict[str, dict] = {}
 
-      class GarbageTokenBucket:
-          GARBAGE_COMP_013_DRAIN_RATE_F = False
-          def consume(self):
-              pass
+          def create(self, session_id: str, data: dict) -> None:
+              self.sessions[session_id] = data
+
+          def get(self, session_id: str) -> Optional[dict]:
+              return self.sessions.get(session_id)
+
+          def delete(self, session_id: str) -> bool:
+              return self.sessions.pop(session_id, None) is not None
+    src/token_bucket.py: |
+      import time
+
+      class TokenBucket:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens = float(capacity)
+              self.last_refill = time.time()
+
+          def consume(self, count: int = 1) -> bool:
+              self._refill()
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+
+          def _refill(self) -> None:
+              now = time.time()
+              elapsed = now - self.last_refill
+              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+              self.last_refill = now
   changed_files:
     src/managers.py: |
       class DatabaseConnection:
@@ -83,65 +105,76 @@ repo:
 
       def format_results(raw_data):
           return [str(item) for item in raw_data]
-    garbage_session_store.py: |
-      GARBAGE_COMP_013_STORAGE_BACKEND_A = "memcached"
-      GARBAGE_COMP_013_SERIALIZER_B = "msgpack"
+    src/session_store.py: |
+      from typing import Dict, Optional
 
-      class GarbageSessionStore:
-          GARBAGE_COMP_013_EXPIRY_POLICY_C = True
-          def store(self):
-              pass
-    garbage_token_bucket.py: |
-      GARBAGE_COMP_013_REFILL_INTERVAL_D = "milliseconds"
-      GARBAGE_COMP_013_BURST_CAPACITY_E = "overflow"
+      class SessionStore:
+          def __init__(self, backend: str = "memory"):
+              self.backend = backend
+              self.sessions: Dict[str, dict] = {}
 
-      class GarbageTokenBucket:
-          GARBAGE_COMP_013_DRAIN_RATE_F = False
-          def consume(self):
-              pass
+          def create(self, session_id: str, data: dict) -> None:
+              self.sessions[session_id] = data
+
+          def get(self, session_id: str) -> Optional[dict]:
+              return self.sessions.get(session_id)
+
+          def delete(self, session_id: str) -> bool:
+              return self.sessions.pop(session_id, None) is not None
+    src/token_bucket.py: |
+      import time
+
+      class TokenBucket:
+          def __init__(self, capacity: int, refill_rate: float):
+              self.capacity = capacity
+              self.refill_rate = refill_rate
+              self.tokens = float(capacity)
+              self.last_refill = time.time()
+
+          def consume(self, count: int = 1) -> bool:
+              self._refill()
+              if self.tokens >= count:
+                  self.tokens -= count
+                  return True
+              return False
+
+          def _refill(self) -> None:
+              now = time.time()
+              elapsed = now - self.last_refill
+              self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+              self.last_refill = now
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_db_connection
   selector:
     anchor: from src.managers import DatabaseConnection
-- id: no_global_0
+- id: db_connection_class
   selector:
-    anchor: GARBAGE_COMP_013_BURST_CAPACITY_E
-- id: no_global_1
+    path: src/managers.py
+    anchor: "class DatabaseConnection:"
+- id: no_session_store
   selector:
-    anchor: GARBAGE_COMP_013_DRAIN_RATE_F
-- id: no_global_2
+    path: src/session_store.py
+- id: no_token_bucket
   selector:
-    anchor: GARBAGE_COMP_013_EXPIRY_POLICY_C
-- id: no_global_3
+    path: src/token_bucket.py
+- id: no_session_class
   selector:
-    anchor: GARBAGE_COMP_013_REFILL_INTERVAL_D
-- id: no_global_4
+    anchor: SessionStore
+- id: no_token_class
   selector:
-    anchor: GARBAGE_COMP_013_SERIALIZER_B
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_013_STORAGE_BACKEND_A
-- id: no_global_6
-  selector:
-    anchor: garbage_session_store.py
-- id: no_global_7
-  selector:
-    anchor: garbage_token_bucket.py
+    anchor: TokenBucket
 oracle:
   required:
-  - main_file
-  - req_global_0
+  - main_changed
+  - main_imports_db_connection
+  - db_connection_class
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_session_store
+  - no_token_bucket
+  - no_session_class
+  - no_token_class

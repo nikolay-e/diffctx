@@ -2,13 +2,6 @@ name: typescript_003_generic_repository_pattern
 repo:
   initial_files:
     src/database/connection.ts: |
-      export interface DatabaseConfig {
-        host: string;
-        port: number;
-        database: string;
-        poolSize: number;
-      }
-
       export interface QueryResult<T> {
         rows: T[];
         rowCount: number;
@@ -16,117 +9,47 @@ repo:
 
       export interface DatabaseConnection {
         query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
-        close(): Promise<void>;
-      }
-
-      export class PostgresConnection implements DatabaseConnection {
-        constructor(private config: DatabaseConfig) {}
-
-        async query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
-          console.log('Executing:', sql, params);
-          return { rows: [], rowCount: 0 };
-        }
-
-        async close(): Promise<void> {
-          console.log('Connection closed');
-        }
       }
     src/types/entity.ts: |
       export interface BaseEntity {
         id: string;
         createdAt: Date;
-        updatedAt: Date;
       }
 
       export interface User extends BaseEntity {
         email: string;
         name: string;
-        role: 'admin' | 'user';
       }
 
       export interface Post extends BaseEntity {
         title: string;
         content: string;
         authorId: string;
-        published: boolean;
-      }
-    src/repositories/userRepository.ts: |
-      console.log('placeholder');
-    vendor/cache-lib/index.ts: |2
-
-      }
-    docs/api/metrics.md: |
-      # Metrics API
-  changed_files:
-    src/database/connection.ts: |
-      export interface DatabaseConfig {
-        host: string;
-        port: number;
-        database: string;
-        poolSize: number;
       }
 
-      export interface QueryResult<T> {
-        rows: T[];
-        rowCount: number;
+      export interface Comment extends BaseEntity {
+        body: string;
+        postId: string;
       }
-
-      export interface DatabaseConnection {
-        query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
-        close(): Promise<void>;
-      }
-
-      export class PostgresConnection implements DatabaseConnection {
-        constructor(private config: DatabaseConfig) {}
-
-        async query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
-          console.log('Executing:', sql, params);
-          return { rows: [], rowCount: 0 };
-        }
-
-        async close(): Promise<void> {
-          console.log('Connection closed');
-        }
-      }
-    src/types/entity.ts: |
-      export interface BaseEntity {
-        id: string;
-        createdAt: Date;
-        updatedAt: Date;
-      }
-
-      export interface User extends BaseEntity {
-        email: string;
-        name: string;
-        role: 'admin' | 'user';
-      }
-
-      export interface Post extends BaseEntity {
-        title: string;
-        content: string;
-        authorId: string;
-        published: boolean;
-      }
-    src/repositories/userRepository.ts: |
-      import { DatabaseConnection, QueryResult } from '../database/connection';
-      import { User, BaseEntity } from '../types/entity';
+    src/repositories/repository.ts: |
+      import { BaseEntity } from '../types/entity';
 
       export interface Repository<T extends BaseEntity> {
         findById(id: string): Promise<T | null>;
         findAll(): Promise<T[]>;
         create(data: Omit<T, keyof BaseEntity>): Promise<T>;
-        update(id: string, data: Partial<Omit<T, keyof BaseEntity>>): Promise<T | null>;
         delete(id: string): Promise<boolean>;
       }
+    src/repositories/userRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { User, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
 
       export class UserRepository implements Repository<User> {
         constructor(private connection: DatabaseConnection) {}
 
         async findById(id: string): Promise<User | null> {
-          const result = await this.connection.query<User>(
-            'SELECT * FROM users WHERE id = $1',
-            [id]
-          );
+          const result = await this.connection.query<User>('SELECT * FROM users WHERE id = $1', [id]);
           return result.rows[0] || null;
         }
 
@@ -137,8 +60,167 @@ repo:
 
         async create(data: Omit<User, keyof BaseEntity>): Promise<User> {
           const result = await this.connection.query<User>(
-            'INSERT INTO users (email, name, role) VALUES ($1, $2, $3) RETURNING *',
-            [data.email, data.name, data.role]
+            'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING *',
+            [data.email, data.name]
+          );
+          return result.rows[0];
+        }
+
+        async delete(id: string): Promise<boolean> {
+          const result = await this.connection.query('DELETE FROM users WHERE id = $1', [id]);
+          return result.rowCount > 0;
+        }
+      }
+    src/repositories/postRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { Post, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
+
+      export class PostRepository implements Repository<Post> {
+        constructor(private connection: DatabaseConnection) {}
+
+        async findById(id: string): Promise<Post | null> {
+          const result = await this.connection.query<Post>('SELECT * FROM posts WHERE id = $1', [id]);
+          return result.rows[0] || null;
+        }
+
+        async findAll(): Promise<Post[]> {
+          const result = await this.connection.query<Post>('SELECT * FROM posts');
+          return result.rows;
+        }
+
+        async create(data: Omit<Post, keyof BaseEntity>): Promise<Post> {
+          const result = await this.connection.query<Post>(
+            'INSERT INTO posts (title, content, authorId) VALUES ($1, $2, $3) RETURNING *',
+            [data.title, data.content, data.authorId]
+          );
+          return result.rows[0];
+        }
+
+        async delete(id: string): Promise<boolean> {
+          const result = await this.connection.query('DELETE FROM posts WHERE id = $1', [id]);
+          return result.rowCount > 0;
+        }
+      }
+    src/repositories/commentRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { Comment, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
+
+      export class CommentRepository implements Repository<Comment> {
+        constructor(private connection: DatabaseConnection) {}
+
+        async findById(id: string): Promise<Comment | null> {
+          const result = await this.connection.query<Comment>('SELECT * FROM comments WHERE id = $1', [id]);
+          return result.rows[0] || null;
+        }
+
+        async findAll(): Promise<Comment[]> {
+          const result = await this.connection.query<Comment>('SELECT * FROM comments');
+          return result.rows;
+        }
+
+        async create(data: Omit<Comment, keyof BaseEntity>): Promise<Comment> {
+          const result = await this.connection.query<Comment>(
+            'INSERT INTO comments (body, postId) VALUES ($1, $2) RETURNING *',
+            [data.body, data.postId]
+          );
+          return result.rows[0];
+        }
+
+        async delete(id: string): Promise<boolean> {
+          const result = await this.connection.query('DELETE FROM comments WHERE id = $1', [id]);
+          return result.rowCount > 0;
+        }
+      }
+    src/repositories/auditLog.ts: |
+      import { DatabaseConnection } from '../database/connection';
+
+      export class AuditLog {
+        constructor(private connection: DatabaseConnection) {}
+
+        async log(action: string, userId: string): Promise<void> {
+          await this.connection.query(
+            'INSERT INTO audit_log (action, user_id) VALUES ($1, $2)',
+            [action, userId]
+          );
+        }
+      }
+    src/services/cacheService.ts: |
+      export class CacheService {
+        private cache = new Map<string, unknown>();
+
+        get<T>(key: string): T | undefined {
+          return this.cache.get(key) as T | undefined;
+        }
+
+        set<T>(key: string, value: T): void {
+          this.cache.set(key, value);
+        }
+      }
+  changed_files:
+    src/database/connection.ts: |
+      export interface QueryResult<T> {
+        rows: T[];
+        rowCount: number;
+      }
+
+      export interface DatabaseConnection {
+        query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
+      }
+    src/types/entity.ts: |
+      export interface BaseEntity {
+        id: string;
+        createdAt: Date;
+      }
+
+      export interface User extends BaseEntity {
+        email: string;
+        name: string;
+      }
+
+      export interface Post extends BaseEntity {
+        title: string;
+        content: string;
+        authorId: string;
+      }
+
+      export interface Comment extends BaseEntity {
+        body: string;
+        postId: string;
+      }
+    src/repositories/repository.ts: |
+      import { BaseEntity } from '../types/entity';
+
+      export interface Repository<T extends BaseEntity> {
+        findById(id: string): Promise<T | null>;
+        findAll(): Promise<T[]>;
+        create(data: Omit<T, keyof BaseEntity>): Promise<T>;
+        update(id: string, data: Partial<Omit<T, keyof BaseEntity>>): Promise<T | null>;
+        delete(id: string): Promise<boolean>;
+      }
+    src/repositories/userRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { User, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
+
+      export class UserRepository implements Repository<User> {
+        constructor(private connection: DatabaseConnection) {}
+
+        async findById(id: string): Promise<User | null> {
+          const result = await this.connection.query<User>('SELECT * FROM users WHERE id = $1', [id]);
+          return result.rows[0] || null;
+        }
+
+        async findAll(): Promise<User[]> {
+          const result = await this.connection.query<User>('SELECT * FROM users');
+          return result.rows;
+        }
+
+        async create(data: Omit<User, keyof BaseEntity>): Promise<User> {
+          const result = await this.connection.query<User>(
+            'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING *',
+            [data.email, data.name]
           );
           return result.rows[0];
         }
@@ -152,41 +234,118 @@ repo:
         }
 
         async delete(id: string): Promise<boolean> {
-          const result = await this.connection.query(
-            'DELETE FROM users WHERE id = $1',
-            [id]
-          );
+          const result = await this.connection.query('DELETE FROM users WHERE id = $1', [id]);
           return result.rowCount > 0;
         }
+      }
+    src/repositories/postRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { Post, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
 
-        async findByEmail(email: string): Promise<User | null> {
-          const result = await this.connection.query<User>(
-            'SELECT * FROM users WHERE email = $1',
-            [email]
-          );
+      export class PostRepository implements Repository<Post> {
+        constructor(private connection: DatabaseConnection) {}
+
+        async findById(id: string): Promise<Post | null> {
+          const result = await this.connection.query<Post>('SELECT * FROM posts WHERE id = $1', [id]);
           return result.rows[0] || null;
         }
-      }
-    vendor/cache-lib/index.ts: |2
 
+        async findAll(): Promise<Post[]> {
+          const result = await this.connection.query<Post>('SELECT * FROM posts');
+          return result.rows;
+        }
+
+        async create(data: Omit<Post, keyof BaseEntity>): Promise<Post> {
+          const result = await this.connection.query<Post>(
+            'INSERT INTO posts (title, content, authorId) VALUES ($1, $2, $3) RETURNING *',
+            [data.title, data.content, data.authorId]
+          );
+          return result.rows[0];
+        }
+
+        async delete(id: string): Promise<boolean> {
+          const result = await this.connection.query('DELETE FROM posts WHERE id = $1', [id]);
+          return result.rowCount > 0;
+        }
       }
-    docs/api/metrics.md: |
-      # Metrics API
-  commit_message: Update files
+    src/repositories/commentRepository.ts: |
+      import { DatabaseConnection } from '../database/connection';
+      import { Comment, BaseEntity } from '../types/entity';
+      import { Repository } from './repository';
+
+      export class CommentRepository implements Repository<Comment> {
+        constructor(private connection: DatabaseConnection) {}
+
+        async findById(id: string): Promise<Comment | null> {
+          const result = await this.connection.query<Comment>('SELECT * FROM comments WHERE id = $1', [id]);
+          return result.rows[0] || null;
+        }
+
+        async findAll(): Promise<Comment[]> {
+          const result = await this.connection.query<Comment>('SELECT * FROM comments');
+          return result.rows;
+        }
+
+        async create(data: Omit<Comment, keyof BaseEntity>): Promise<Comment> {
+          const result = await this.connection.query<Comment>(
+            'INSERT INTO comments (body, postId) VALUES ($1, $2) RETURNING *',
+            [data.body, data.postId]
+          );
+          return result.rows[0];
+        }
+
+        async delete(id: string): Promise<boolean> {
+          const result = await this.connection.query('DELETE FROM comments WHERE id = $1', [id]);
+          return result.rowCount > 0;
+        }
+      }
+    src/repositories/auditLog.ts: |
+      import { DatabaseConnection } from '../database/connection';
+
+      export class AuditLog {
+        constructor(private connection: DatabaseConnection) {}
+
+        async log(action: string, userId: string): Promise<void> {
+          await this.connection.query(
+            'INSERT INTO audit_log (action, user_id) VALUES ($1, $2)',
+            [action, userId]
+          );
+        }
+      }
+    src/services/cacheService.ts: |
+      export class CacheService {
+        private cache = new Map<string, unknown>();
+
+        get<T>(key: string): T | undefined {
+          return this.cache.get(key) as T | undefined;
+        }
+
+        set<T>(key: string, value: T): void {
+          this.cache.set(key, value);
+        }
+      }
+  commit_message: "repository: add update() method to Repository<T> interface, implement on UserRepository"
 fragments:
-- id: userrepository_file
-  selector:
-    path: src/repositories/userRepository.ts
-- id: req_global_0
-  selector:
-    anchor: import { DatabaseConnection, QueryResult } from '../database/connection';
-- id: req_global_1
-  selector:
-    anchor: interface Repository<T extends BaseEntity> {
+  - id: repository_interface_changed
+    selector: { path: src/repositories/repository.ts }
+  - id: user_repo_updated
+    selector: { path: src/repositories/userRepository.ts }
+  - id: post_repo_must_implement
+    selector: { path: src/repositories/postRepository.ts }
+  - id: comment_repo_must_implement
+    selector: { path: src/repositories/commentRepository.ts }
+  - id: audit_log_unrelated_same_dir
+    selector: { path: src/repositories/auditLog.ts }
+  - id: cache_service_unrelated
+    selector: { path: src/services/cacheService.ts }
 oracle:
   required:
-  - userrepository_file
-  - req_global_0
-  - req_global_1
-  allowed: []
-  forbidden: []
+    - repository_interface_changed
+    - post_repo_must_implement
+    - comment_repo_must_implement
+  allowed:
+    - user_repo_updated
+  forbidden:
+    - audit_log_unrelated_same_dir
+    - cache_service_unrelated

@@ -1,0 +1,252 @@
+name: recall_001_transitive_caller_chain
+repo:
+  initial_files:
+    pkg/billing/calculator.go: |
+      package billing
+
+      import "fmt"
+
+      type LineItem struct {
+          SKU      string
+          Quantity int
+          UnitCost int64
+      }
+
+      func ComputeSubtotal(items []LineItem) int64 {
+          var total int64
+          for _, it := range items {
+              total += it.UnitCost * int64(it.Quantity)
+          }
+          return total
+      }
+
+      func FormatCost(cents int64) string {
+          return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      type Invoice struct {
+          ID       string
+          Items    []LineItem
+          Subtotal int64
+      }
+
+      func BuildInvoice(id string, items []LineItem) *Invoice {
+          return &Invoice{
+              ID:       id,
+              Items:    items,
+              Subtotal: ComputeSubtotal(items),
+          }
+      }
+    pkg/checkout/session.go: |
+      package checkout
+
+      import "example.com/app/pkg/billing"
+
+      type Session struct {
+          UserID  string
+          Cart    []billing.LineItem
+          Invoice *billing.Invoice
+      }
+
+      func (s *Session) Finalize() {
+          s.Invoice = billing.BuildInvoice(s.UserID+"-inv", s.Cart)
+      }
+    pkg/api/checkout_handler.go: |
+      package api
+
+      import (
+          "encoding/json"
+          "net/http"
+
+          "example.com/app/pkg/checkout"
+      )
+
+      func HandleCheckout(w http.ResponseWriter, r *http.Request) {
+          sess := &checkout.Session{UserID: r.URL.Query().Get("uid")}
+          sess.Finalize()
+          json.NewEncoder(w).Encode(sess.Invoice)
+      }
+    pkg/billing/discount.go: |
+      package billing
+
+      type Discount struct {
+          Code    string
+          Percent int
+      }
+
+      func ApplyDiscount(amount int64, d Discount) int64 {
+          return amount - (amount*int64(d.Percent))/100
+      }
+    pkg/billing/tax.go: |
+      package billing
+
+      func ComputeTax(amount int64, rate float64) int64 {
+          return int64(float64(amount) * rate)
+      }
+    pkg/reports/sales.go: |
+      package reports
+
+      import "time"
+
+      type SalesReport struct {
+          Period time.Time
+          Total  int64
+      }
+
+      func GenerateMonthly() *SalesReport {
+          return &SalesReport{Period: time.Now()}
+      }
+    pkg/notifications/email.go: |
+      package notifications
+
+      type EmailSender struct {
+          From string
+      }
+
+      func (e *EmailSender) Send(to, subject, body string) error {
+          return nil
+      }
+  changed_files:
+    pkg/billing/calculator.go: |
+      package billing
+
+      import "fmt"
+
+      type LineItem struct {
+          SKU      string
+          Quantity int
+          UnitCost int64
+      }
+
+      // ComputeSubtotal now requires a currency context to handle multi-currency carts.
+      func ComputeSubtotal(items []LineItem, currency string) int64 {
+          var total int64
+          for _, it := range items {
+              total += it.UnitCost * int64(it.Quantity)
+          }
+          if currency == "JPY" {
+              return total
+          }
+          return total
+      }
+
+      func FormatCost(cents int64) string {
+          return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+      }
+    pkg/billing/invoice.go: |
+      package billing
+
+      type Invoice struct {
+          ID       string
+          Items    []LineItem
+          Subtotal int64
+      }
+
+      func BuildInvoice(id string, items []LineItem) *Invoice {
+          return &Invoice{
+              ID:       id,
+              Items:    items,
+              Subtotal: ComputeSubtotal(items, "USD"),
+          }
+      }
+    pkg/checkout/session.go: |
+      package checkout
+
+      import "example.com/app/pkg/billing"
+
+      type Session struct {
+          UserID  string
+          Cart    []billing.LineItem
+          Invoice *billing.Invoice
+      }
+
+      func (s *Session) Finalize() {
+          s.Invoice = billing.BuildInvoice(s.UserID+"-inv", s.Cart)
+      }
+    pkg/api/checkout_handler.go: |
+      package api
+
+      import (
+          "encoding/json"
+          "net/http"
+
+          "example.com/app/pkg/checkout"
+      )
+
+      func HandleCheckout(w http.ResponseWriter, r *http.Request) {
+          sess := &checkout.Session{UserID: r.URL.Query().Get("uid")}
+          sess.Finalize()
+          json.NewEncoder(w).Encode(sess.Invoice)
+      }
+    pkg/billing/discount.go: |
+      package billing
+
+      type Discount struct {
+          Code    string
+          Percent int
+      }
+
+      func ApplyDiscount(amount int64, d Discount) int64 {
+          return amount - (amount*int64(d.Percent))/100
+      }
+    pkg/billing/tax.go: |
+      package billing
+
+      func ComputeTax(amount int64, rate float64) int64 {
+          return int64(float64(amount) * rate)
+      }
+    pkg/reports/sales.go: |
+      package reports
+
+      import "time"
+
+      type SalesReport struct {
+          Period time.Time
+          Total  int64
+      }
+
+      func GenerateMonthly() *SalesReport {
+          return &SalesReport{Period: time.Now()}
+      }
+    pkg/notifications/email.go: |
+      package notifications
+
+      type EmailSender struct {
+          From string
+      }
+
+      func (e *EmailSender) Send(to, subject, body string) error {
+          return nil
+      }
+  commit_message: "billing: ComputeSubtotal accepts currency parameter"
+fragments:
+  - id: calculator_changed
+    selector: { path: pkg/billing/calculator.go }
+  - id: invoice_changed
+    selector: { path: pkg/billing/invoice.go }
+  - id: session_indirect_caller
+    selector: { path: pkg/checkout/session.go }
+  - id: handler_two_hops_away
+    selector: { path: pkg/api/checkout_handler.go }
+  - id: discount_unrelated
+    selector: { path: pkg/billing/discount.go }
+  - id: tax_unrelated
+    selector: { path: pkg/billing/tax.go }
+  - id: sales_unrelated
+    selector: { path: pkg/reports/sales.go }
+  - id: email_unrelated
+    selector: { path: pkg/notifications/email.go }
+oracle:
+  required:
+    - calculator_changed
+    - invoice_changed
+    - session_indirect_caller
+  allowed:
+    - handler_two_hops_away
+  forbidden:
+    - discount_unrelated
+    - tax_unrelated
+    - sales_unrelated
+    - email_unrelated

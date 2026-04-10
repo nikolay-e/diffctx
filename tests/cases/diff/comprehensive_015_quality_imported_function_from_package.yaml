@@ -23,22 +23,34 @@ repo:
 
       def display_result(result):
           print(f"Result: {result}")
-    garbage_math_extension.py: |
-      GARBAGE_COMP_015_PRECISION_MODE_A = "arbitrary"
-      GARBAGE_COMP_015_ROUNDING_RULE_B = "banker"
+    src/math_extensions.py: |
+      import math
 
-      class GarbageMathExtension:
-          GARBAGE_COMP_015_OVERFLOW_CHECK_C = True
-          def extend(self):
-              pass
-    garbage_numeric_parser.py: |
-      GARBAGE_COMP_015_LOCALE_FORMAT_D = "decimal_comma"
-      GARBAGE_COMP_015_SCIENTIFIC_E = "notation"
+      def fast_inverse_sqrt(x: float) -> float:
+          return 1.0 / math.sqrt(x) if x > 0 else 0.0
 
-      class GarbageNumericParser:
-          GARBAGE_COMP_015_STRICT_MODE_F = False
-          def parse(self):
-              pass
+      def lerp(a: float, b: float, t: float) -> float:
+          return a + (b - a) * t
+
+      def remap(value: float, low1: float, high1: float, low2: float, high2: float) -> float:
+          return low2 + (value - low1) * (high2 - low2) / (high1 - low1)
+    src/numeric_parser.py: |
+      from typing import Optional
+
+      def parse_int(text: str) -> Optional[int]:
+          try:
+              return int(text.strip())
+          except ValueError:
+              return None
+
+      def parse_float(text: str) -> Optional[float]:
+          try:
+              return float(text.strip().replace(',', '.'))
+          except ValueError:
+              return None
+
+      def is_numeric(text: str) -> bool:
+          return parse_float(text) is not None
   changed_files:
     pkg/__init__.py: |
       from .helpers import compute_square, compute_cube
@@ -64,65 +76,71 @@ repo:
 
       def display_result(result):
           print(f"Result: {result}")
-    garbage_math_extension.py: |
-      GARBAGE_COMP_015_PRECISION_MODE_A = "arbitrary"
-      GARBAGE_COMP_015_ROUNDING_RULE_B = "banker"
+    src/math_extensions.py: |
+      import math
 
-      class GarbageMathExtension:
-          GARBAGE_COMP_015_OVERFLOW_CHECK_C = True
-          def extend(self):
-              pass
-    garbage_numeric_parser.py: |
-      GARBAGE_COMP_015_LOCALE_FORMAT_D = "decimal_comma"
-      GARBAGE_COMP_015_SCIENTIFIC_E = "notation"
+      def fast_inverse_sqrt(x: float) -> float:
+          return 1.0 / math.sqrt(x) if x > 0 else 0.0
 
-      class GarbageNumericParser:
-          GARBAGE_COMP_015_STRICT_MODE_F = False
-          def parse(self):
-              pass
+      def lerp(a: float, b: float, t: float) -> float:
+          return a + (b - a) * t
+
+      def remap(value: float, low1: float, high1: float, low2: float, high2: float) -> float:
+          return low2 + (value - low1) * (high2 - low2) / (high1 - low1)
+    src/numeric_parser.py: |
+      from typing import Optional
+
+      def parse_int(text: str) -> Optional[int]:
+          try:
+              return int(text.strip())
+          except ValueError:
+              return None
+
+      def parse_float(text: str) -> Optional[float]:
+          try:
+              return float(text.strip().replace(',', '.'))
+          except ValueError:
+              return None
+
+      def is_numeric(text: str) -> bool:
+          return parse_float(text) is not None
   commit_message: Update files
 fragments:
-- id: main_file
+- id: main_changed
   selector:
     path: src/main.py
-- id: req_global_0
+- id: main_imports_helpers
   selector:
     anchor: from pkg.helpers import compute_square, compute_cube
-- id: no_global_0
+- id: helpers_square_def
   selector:
-    anchor: GARBAGE_COMP_015_LOCALE_FORMAT_D
-- id: no_global_1
+    path: pkg/helpers.py
+    anchor: def compute_square(x)
+- id: helpers_cube_def
   selector:
-    anchor: GARBAGE_COMP_015_OVERFLOW_CHECK_C
-- id: no_global_2
+    path: pkg/helpers.py
+    anchor: def compute_cube(x)
+- id: no_math_extensions
   selector:
-    anchor: GARBAGE_COMP_015_PRECISION_MODE_A
-- id: no_global_3
+    path: src/math_extensions.py
+- id: no_numeric_parser
   selector:
-    anchor: GARBAGE_COMP_015_ROUNDING_RULE_B
-- id: no_global_4
+    path: src/numeric_parser.py
+- id: no_inverse_sqrt
   selector:
-    anchor: GARBAGE_COMP_015_SCIENTIFIC_E
-- id: no_global_5
+    anchor: fast_inverse_sqrt
+- id: no_parse_int
   selector:
-    anchor: GARBAGE_COMP_015_STRICT_MODE_F
-- id: no_global_6
-  selector:
-    anchor: garbage_math_extension.py
-- id: no_global_7
-  selector:
-    anchor: garbage_numeric_parser.py
+    anchor: parse_int
 oracle:
   required:
-  - main_file
-  - req_global_0
+  - main_changed
+  - main_imports_helpers
+  - helpers_square_def
+  - helpers_cube_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_math_extensions
+  - no_numeric_parser
+  - no_inverse_sqrt
+  - no_parse_int

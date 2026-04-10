@@ -179,7 +179,6 @@ class DbtEdgeBuilder(EdgeBuilder):
         for name in _extract_schema_model_names(content):
             refs.add(name.lower())
             refs.add(f"{name}.sql")
-        source_tables.update(_extract_source_table_names(content))
 
     def discover_related_files(
         self,

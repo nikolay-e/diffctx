@@ -62,24 +62,30 @@ repo:
           @property
           def item_count(self) -> int:
               return sum(item.quantity for item in self.items)
-    unrelated/notifications.py: |
-      # GARBAGE_CFG_002_MARKER_A
-      GARBAGE_CFG_002_NOTIFY_B = "unrelated-notification-config"
+    notifications/email.py: |
+      from typing import Optional
 
-      def send_sms(phone: str, message: str) -> bool:
-          return len(phone) > 0 and len(message) > 0
 
-      def send_push(device_token: str, title: str, body: str) -> bool:
-          return len(device_token) > 0
+      def send_order_confirmation(email: str, order_id: str) -> bool:
+          return len(email) > 0 and len(order_id) > 0
 
-      GARBAGE_CFG_002_CHANNEL_C = "unused-channel"
-    unrelated/migrations.py: |
-      # GARBAGE_CFG_002_MARKER_D
-      GARBAGE_CFG_002_MIGRATION_E = "unrelated-migration-tracker"
+
+      def send_password_reset(email: str, reset_token: str, expiry_minutes: int = 30) -> dict:
+          return {"to": email, "token": reset_token, "expires_in": expiry_minutes}
+
+
+      def format_email_subject(template: str, context: Optional[dict] = None) -> str:
+          if context:
+              return template.format(**context)
+          return template
+    db/migrations.py: |
+      from datetime import datetime
+
 
       class MigrationRunner:
-          def __init__(self):
-              self.applied = []
+          def __init__(self, db_url: str):
+              self.db_url = db_url
+              self.applied: list[str] = []
 
           def run(self, migration_name: str):
               self.applied.append(migration_name)
@@ -87,6 +93,9 @@ repo:
           def rollback(self):
               if self.applied:
                   self.applied.pop()
+
+          def get_pending(self, all_migrations: list[str]) -> list[str]:
+              return [m for m in all_migrations if m not in self.applied]
   changed_files:
     config.yaml: |
       app:
@@ -153,24 +162,30 @@ repo:
           @property
           def item_count(self) -> int:
               return sum(item.quantity for item in self.items)
-    unrelated/notifications.py: |
-      # GARBAGE_CFG_002_MARKER_A
-      GARBAGE_CFG_002_NOTIFY_B = "unrelated-notification-config"
+    notifications/email.py: |
+      from typing import Optional
 
-      def send_sms(phone: str, message: str) -> bool:
-          return len(phone) > 0 and len(message) > 0
 
-      def send_push(device_token: str, title: str, body: str) -> bool:
-          return len(device_token) > 0
+      def send_order_confirmation(email: str, order_id: str) -> bool:
+          return len(email) > 0 and len(order_id) > 0
 
-      GARBAGE_CFG_002_CHANNEL_C = "unused-channel"
-    unrelated/migrations.py: |
-      # GARBAGE_CFG_002_MARKER_D
-      GARBAGE_CFG_002_MIGRATION_E = "unrelated-migration-tracker"
+
+      def send_password_reset(email: str, reset_token: str, expiry_minutes: int = 30) -> dict:
+          return {"to": email, "token": reset_token, "expires_in": expiry_minutes}
+
+
+      def format_email_subject(template: str, context: Optional[dict] = None) -> str:
+          if context:
+              return template.format(**context)
+          return template
+    db/migrations.py: |
+      from datetime import datetime
+
 
       class MigrationRunner:
-          def __init__(self):
-              self.applied = []
+          def __init__(self, db_url: str):
+              self.db_url = db_url
+              self.applied: list[str] = []
 
           def run(self, migration_name: str):
               self.applied.append(migration_name)
@@ -178,45 +193,49 @@ repo:
           def rollback(self):
               if self.applied:
                   self.applied.pop()
+
+          def get_pending(self, all_migrations: list[str]) -> list[str]:
+              return [m for m in all_migrations if m not in self.applied]
   commit_message: Update files
 fragments:
 - id: config_file
   selector:
     path: config.yaml
-- id: req_global_0
+- id: feature_flags_section
   selector:
     anchor: 'feature_flags:'
-- id: no_global_0
+- id: config_loader
   selector:
-    anchor: GARBAGE_CFG_002_CHANNEL_C
-- id: no_global_1
+    path: checkout/views.py
+    anchor: load_app_config
+- id: no_email_notifications
   selector:
-    anchor: GARBAGE_CFG_002_MARKER_A
-- id: no_global_2
+    path: notifications/email.py
+- id: no_migrations
   selector:
-    anchor: GARBAGE_CFG_002_MARKER_D
-- id: no_global_3
+    path: db/migrations.py
+- id: no_checkout_models
   selector:
-    anchor: GARBAGE_CFG_002_MIGRATION_E
-- id: no_global_4
+    path: checkout/models.py
+- id: no_send_order_confirmation
   selector:
-    anchor: GARBAGE_CFG_002_NOTIFY_B
-- id: no_global_5
+    anchor: send_order_confirmation
+- id: no_migration_runner
   selector:
-    anchor: migrations.py
-- id: no_global_6
+    anchor: MigrationRunner
+- id: no_cart_item_dataclass
   selector:
-    anchor: notifications.py
+    anchor: 'class CartItem'
 oracle:
   required:
   - config_file
-  - req_global_0
+  - feature_flags_section
+  - config_loader
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
+  - no_email_notifications
+  - no_migrations
+  - no_checkout_models
+  - no_send_order_confirmation
+  - no_migration_runner
+  - no_cart_item_dataclass

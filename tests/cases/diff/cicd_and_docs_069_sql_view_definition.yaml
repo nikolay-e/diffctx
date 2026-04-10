@@ -11,6 +11,16 @@ repo:
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
       GROUP BY u.id, u.name;
+    sql/views/product_sales_view.sql: |
+      CREATE OR REPLACE VIEW product_sales_summary AS
+      SELECT
+          p.id AS product_id,
+          p.name AS product_name,
+          COUNT(oi.id) AS times_sold,
+          SUM(oi.quantity) AS total_quantity
+      FROM products p
+      LEFT JOIN order_items oi ON p.id = oi.product_id
+      GROUP BY p.id, p.name;
     src/reports/user_report.py: |
       from typing import Dict, List, Optional
       from dataclasses import dataclass
@@ -39,22 +49,27 @@ repo:
           def get_all_summaries(self) -> List[UserOrdersSummary]:
               results = self.db.query("SELECT * FROM user_orders_summary")
               return [UserOrdersSummary(**r) for r in results]
-    garbage_view_manager.ts: |
-      const GARBAGE_CICD_DOCS_069_VIEW_MARKER_A = "materialized";
-      const GARBAGE_CICD_DOCS_069_REFRESH_MARKER_B = "concurrent";
+    src/reports/product_report.py: |
+      from typing import List
+      from dataclasses import dataclass
 
-      class GarbageViewManager {
-        static GARBAGE_CICD_DOCS_069_CACHE_MARKER_C = 3600;
-        manage(): void {}
-      }
-    garbage_view_optimizer.ts: |
-      const GARBAGE_CICD_DOCS_069_OPTIMIZE_MARKER_D = "analyze";
-      const GARBAGE_CICD_DOCS_069_INDEX_MARKER_E = "btree";
+      @dataclass
+      class ProductSalesSummary:
+          product_id: int
+          product_name: str
+          times_sold: int
+          total_quantity: int
 
-      class GarbageViewOptimizer {
-        static GARBAGE_CICD_DOCS_069_VACUUM_MARKER_F = false;
-        optimize(): void {}
-      }
+      class ProductReport:
+          def __init__(self, db):
+              self.db = db
+
+          def get_top_sellers(self, limit: int = 10) -> List[ProductSalesSummary]:
+              results = self.db.query(
+                  "SELECT * FROM product_sales_summary ORDER BY times_sold DESC LIMIT %s",
+                  [limit]
+              )
+              return [ProductSalesSummary(**r) for r in results]
   changed_files:
     sql/views/user_orders_view.sql: |
       CREATE OR REPLACE VIEW user_orders_summary AS
@@ -79,6 +94,16 @@ repo:
       -- Create index on the underlying table for view performance
       CREATE INDEX IF NOT EXISTS idx_orders_user_status
           ON orders(user_id, status);
+    sql/views/product_sales_view.sql: |
+      CREATE OR REPLACE VIEW product_sales_summary AS
+      SELECT
+          p.id AS product_id,
+          p.name AS product_name,
+          COUNT(oi.id) AS times_sold,
+          SUM(oi.quantity) AS total_quantity
+      FROM products p
+      LEFT JOIN order_items oi ON p.id = oi.product_id
+      GROUP BY p.id, p.name;
     src/reports/user_report.py: |
       from typing import Dict, List, Optional
       from dataclasses import dataclass
@@ -107,65 +132,58 @@ repo:
           def get_all_summaries(self) -> List[UserOrdersSummary]:
               results = self.db.query("SELECT * FROM user_orders_summary")
               return [UserOrdersSummary(**r) for r in results]
-    garbage_view_manager.ts: |
-      const GARBAGE_CICD_DOCS_069_VIEW_MARKER_A = "materialized";
-      const GARBAGE_CICD_DOCS_069_REFRESH_MARKER_B = "concurrent";
+    src/reports/product_report.py: |
+      from typing import List
+      from dataclasses import dataclass
 
-      class GarbageViewManager {
-        static GARBAGE_CICD_DOCS_069_CACHE_MARKER_C = 3600;
-        manage(): void {}
-      }
-    garbage_view_optimizer.ts: |
-      const GARBAGE_CICD_DOCS_069_OPTIMIZE_MARKER_D = "analyze";
-      const GARBAGE_CICD_DOCS_069_INDEX_MARKER_E = "btree";
+      @dataclass
+      class ProductSalesSummary:
+          product_id: int
+          product_name: str
+          times_sold: int
+          total_quantity: int
 
-      class GarbageViewOptimizer {
-        static GARBAGE_CICD_DOCS_069_VACUUM_MARKER_F = false;
-        optimize(): void {}
-      }
-  commit_message: Update files
+      class ProductReport:
+          def __init__(self, db):
+              self.db = db
+
+          def get_top_sellers(self, limit: int = 10) -> List[ProductSalesSummary]:
+              results = self.db.query(
+                  "SELECT * FROM product_sales_summary ORDER BY times_sold DESC LIMIT %s",
+                  [limit]
+              )
+              return [ProductSalesSummary(**r) for r in results]
+  commit_message: "db: expand user_orders_summary view with email, tier, and date fields"
 fragments:
-- id: user_orders_view_file
+- id: view_changed
   selector:
     path: sql/views/user_orders_view.sql
-- id: req_global_0
+- id: new_email_column
   selector:
-    anchor: u.email AS user_email,
-- id: no_global_0
+    anchor: u.email AS user_email
+- id: outdated_report_model
   selector:
-    anchor: GARBAGE_CICD_DOCS_069_CACHE_MARKER_C
-- id: no_global_1
+    path: src/reports/user_report.py
+    anchor: SELECT * FROM user_orders_summary
+- id: stale_dataclass
   selector:
-    anchor: GARBAGE_CICD_DOCS_069_INDEX_MARKER_E
-- id: no_global_2
+    path: src/reports/user_report.py
+    anchor: "class UserOrdersSummary"
+- id: no_product_sales_view
   selector:
-    anchor: GARBAGE_CICD_DOCS_069_OPTIMIZE_MARKER_D
-- id: no_global_3
+    path: sql/views/product_sales_view.sql
+    anchor: product_sales_summary
+- id: no_product_report
   selector:
-    anchor: GARBAGE_CICD_DOCS_069_REFRESH_MARKER_B
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_069_VACUUM_MARKER_F
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_069_VIEW_MARKER_A
-- id: no_global_6
-  selector:
-    anchor: garbage_view_manager.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_view_optimizer.ts
+    path: src/reports/product_report.py
+    anchor: ProductReport
 oracle:
   required:
-  - user_orders_view_file
-  - req_global_0
-  allowed: []
+  - view_changed
+  - new_email_column
+  - outdated_report_model
+  allowed:
+  - stale_dataclass
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_product_sales_view
+  - no_product_report

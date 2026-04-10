@@ -1,4 +1,6 @@
 name: go_030_constructor_pattern
+xfail:
+  category: go-cross-file-discovery
 repo:
   initial_files:
     pkg/config/config.go: |
@@ -53,55 +55,20 @@ repo:
       func NewNoopLogger() Logger {
           return &noopLogger{}
       }
-    internal/unrelated/migration/runner.go: |
-      package migration
+    pkg/server/routes.go: |
+      package server
 
-      const GARBAGE_GO_030_MIGRATION_RUNNER_A = "migration_runner_marker"
+      import "net/http"
 
-      type GarbageMigrationRunner030 struct {
-          version  int
-          executed []string
-      }
-
-      func GARBAGE_GO_030_NewMigrationRunner() *GarbageMigrationRunner030 {
-          return &GarbageMigrationRunner030{
-              version:  0,
-              executed: make([]string, 0),
-          }
-      }
-
-      func (r *GarbageMigrationRunner030) Run(name string) error {
-          r.executed = append(r.executed, name)
-          r.version++
-          return nil
-      }
-
-      func (r *GarbageMigrationRunner030) Version() int {
-          return r.version
-      }
-    internal/unrelated/backup/archiver.go: |
-      package backup
-
-      const GARBAGE_GO_030_BACKUP_ARCHIVER_B = "backup_archiver_marker"
-
-      type GarbageArchiver030 struct {
-          destination string
-          compressed  bool
-      }
-
-      func GARBAGE_GO_030_NewArchiver(dest string) *GarbageArchiver030 {
-          return &GarbageArchiver030{
-              destination: dest,
-              compressed:  true,
-          }
-      }
-
-      func (a *GarbageArchiver030) Archive(path string) error {
-          return nil
-      }
-
-      func (a *GarbageArchiver030) IsCompressed() bool {
-          return a.compressed
+      func RegisterHealthRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+              w.Write([]byte("ok"))
+          })
+          mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+              w.Write([]byte("ready"))
+          })
       }
   changed_files:
     pkg/config/config.go: |
@@ -196,95 +163,59 @@ repo:
       func NewNoopLogger() Logger {
           return &noopLogger{}
       }
-    internal/unrelated/migration/runner.go: |
-      package migration
+    pkg/server/routes.go: |
+      package server
 
-      const GARBAGE_GO_030_MIGRATION_RUNNER_A = "migration_runner_marker"
+      import "net/http"
 
-      type GarbageMigrationRunner030 struct {
-          version  int
-          executed []string
-      }
-
-      func GARBAGE_GO_030_NewMigrationRunner() *GarbageMigrationRunner030 {
-          return &GarbageMigrationRunner030{
-              version:  0,
-              executed: make([]string, 0),
-          }
-      }
-
-      func (r *GarbageMigrationRunner030) Run(name string) error {
-          r.executed = append(r.executed, name)
-          r.version++
-          return nil
-      }
-
-      func (r *GarbageMigrationRunner030) Version() int {
-          return r.version
-      }
-    internal/unrelated/backup/archiver.go: |
-      package backup
-
-      const GARBAGE_GO_030_BACKUP_ARCHIVER_B = "backup_archiver_marker"
-
-      type GarbageArchiver030 struct {
-          destination string
-          compressed  bool
-      }
-
-      func GARBAGE_GO_030_NewArchiver(dest string) *GarbageArchiver030 {
-          return &GarbageArchiver030{
-              destination: dest,
-              compressed:  true,
-          }
-      }
-
-      func (a *GarbageArchiver030) Archive(path string) error {
-          return nil
-      }
-
-      func (a *GarbageArchiver030) IsCompressed() bool {
-          return a.compressed
+      func RegisterHealthRoutes(mux *http.ServeMux) {
+          mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+              w.Write([]byte("ok"))
+          })
+          mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+              w.WriteHeader(http.StatusOK)
+              w.Write([]byte("ready"))
+          })
       }
   commit_message: Update files
 fragments:
 - id: server_file
   selector:
     path: pkg/server/server.go
-- id: req_global_0
+- id: server_imports_config
   selector:
     anchor: '"myapp/pkg/config"'
-- id: req_global_1
+- id: server_uses_config_pointer
   selector:
     anchor: config *config.Config
-- id: no_global_0
+- id: config_struct
   selector:
-    anchor: GARBAGE_GO_030_BACKUP_ARCHIVER_B
-- id: no_global_1
+    path: pkg/config/config.go
+    anchor: type Config struct {
+- id: config_address_method
   selector:
-    anchor: GARBAGE_GO_030_MIGRATION_RUNNER_A
-- id: no_global_2
+    anchor: func (c *Config) Address() string {
+- id: logger_interface
   selector:
-    anchor: GARBAGE_GO_030_NewArchiver(dest
-- id: no_global_3
+    path: pkg/server/logger.go
+    anchor: type Logger interface {
+- id: logger_noop_fallback
   selector:
-    anchor: GARBAGE_GO_030_NewMigrationRunner
-- id: no_global_4
+    anchor: func NewNoopLogger() Logger {
+- id: no_routes
   selector:
-    anchor: archiver.go
-- id: no_global_5
-  selector:
-    anchor: runner.go
+    path: pkg/server/routes.go
+    anchor: func RegisterHealthRoutes(mux *http.ServeMux) {
 oracle:
   required:
   - server_file
-  - req_global_0
-  - req_global_1
+  - server_imports_config
+  - server_uses_config_pointer
+  - config_struct
+  - config_address_method
+  - logger_interface
+  - logger_noop_fallback
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_routes

@@ -92,7 +92,7 @@ repo:
           console.log('Cancelled');
       }
       </script>
-  commit_message: Update files
+  commit_message: "Implement Modal with defineEmits and integrate into App"
 fragments:
 - id: app_file
   selector:
@@ -106,11 +106,19 @@ fragments:
 - id: req_global_1
   selector:
     anchor: function handleCancel() {
+- id: req_global_2
+  selector:
+    anchor: const emit = defineEmits
+- id: no_garbage_marker
+  selector:
+    anchor: vue_garbage_marker_005
 oracle:
   required:
   - app_file
   - modal_file
   - req_global_0
   - req_global_1
+  - req_global_2
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_garbage_marker

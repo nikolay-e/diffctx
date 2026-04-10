@@ -149,7 +149,7 @@ def build_project_graph(
     combined_spec = get_ignore_specs(root_dir, ignore_file, no_default_ignores, None)
     wl_spec = get_whitelist_spec(whitelist_file, root_dir)
 
-    all_candidate_files, _ = _collect_candidate_files(root_dir, set(), combined_spec)
+    all_candidate_files = _collect_candidate_files(root_dir, set(), combined_spec)
     all_candidate_files = _filter_whitelist(all_candidate_files, root_dir, wl_spec)
 
     logger.info("project_graph: found %d candidate files", len(all_candidate_files))

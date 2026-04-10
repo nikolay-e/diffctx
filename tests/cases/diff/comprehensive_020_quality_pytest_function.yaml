@@ -21,22 +21,46 @@ repo:
 
       def test_another():
           pass
-    garbage_benchmark_runner.py: |
-      GARBAGE_COMP_020_WARMUP_ROUNDS_A = "iterations"
-      GARBAGE_COMP_020_STATS_METHOD_B = "percentile"
+    src/benchmark_runner.py: |
+      import time
+      from typing import Callable, Dict
 
-      class GarbageBenchmarkRunner:
-          GARBAGE_COMP_020_TIMER_PRECISION_C = True
-          def benchmark(self):
-              pass
-    garbage_coverage_reporter.py: |
-      GARBAGE_COMP_020_BRANCH_COVERAGE_D = "instrumented"
-      GARBAGE_COMP_020_REPORT_FORMAT_E = "cobertura"
+      class BenchmarkRunner:
+          def __init__(self, warmup_rounds: int = 3):
+              self.warmup_rounds = warmup_rounds
+              self.results: Dict[str, float] = {}
 
-      class GarbageCoverageReporter:
-          GARBAGE_COMP_020_MERGE_RESULTS_F = False
-          def report(self):
-              pass
+          def run(self, name: str, func: Callable, iterations: int = 100) -> float:
+              for _ in range(self.warmup_rounds):
+                  func()
+              start = time.perf_counter()
+              for _ in range(iterations):
+                  func()
+              elapsed = time.perf_counter() - start
+              self.results[name] = elapsed / iterations
+              return self.results[name]
+
+          def report(self) -> str:
+              lines = [f"{name}: {ms*1000:.3f}ms" for name, ms in self.results.items()]
+              return "\n".join(lines)
+    src/coverage_reporter.py: |
+      from typing import Dict, Set
+
+      class CoverageReporter:
+          def __init__(self):
+              self.covered_lines: Dict[str, Set[int]] = {}
+              self.total_lines: Dict[str, int] = {}
+
+          def record(self, filename: str, line: int) -> None:
+              self.covered_lines.setdefault(filename, set()).add(line)
+
+          def set_total(self, filename: str, total: int) -> None:
+              self.total_lines[filename] = total
+
+          def percentage(self, filename: str) -> float:
+              covered = len(self.covered_lines.get(filename, set()))
+              total = self.total_lines.get(filename, 1)
+              return (covered / total) * 100
   changed_files:
     src/calculator.py: |
       def add(a, b):
@@ -68,69 +92,87 @@ repo:
       def test_divide_by_zero():
           with pytest.raises(ValueError):
               divide(1, 0)
-    garbage_benchmark_runner.py: |
-      GARBAGE_COMP_020_WARMUP_ROUNDS_A = "iterations"
-      GARBAGE_COMP_020_STATS_METHOD_B = "percentile"
+    src/benchmark_runner.py: |
+      import time
+      from typing import Callable, Dict
 
-      class GarbageBenchmarkRunner:
-          GARBAGE_COMP_020_TIMER_PRECISION_C = True
-          def benchmark(self):
-              pass
-    garbage_coverage_reporter.py: |
-      GARBAGE_COMP_020_BRANCH_COVERAGE_D = "instrumented"
-      GARBAGE_COMP_020_REPORT_FORMAT_E = "cobertura"
+      class BenchmarkRunner:
+          def __init__(self, warmup_rounds: int = 3):
+              self.warmup_rounds = warmup_rounds
+              self.results: Dict[str, float] = {}
 
-      class GarbageCoverageReporter:
-          GARBAGE_COMP_020_MERGE_RESULTS_F = False
-          def report(self):
-              pass
+          def run(self, name: str, func: Callable, iterations: int = 100) -> float:
+              for _ in range(self.warmup_rounds):
+                  func()
+              start = time.perf_counter()
+              for _ in range(iterations):
+                  func()
+              elapsed = time.perf_counter() - start
+              self.results[name] = elapsed / iterations
+              return self.results[name]
+
+          def report(self) -> str:
+              lines = [f"{name}: {ms*1000:.3f}ms" for name, ms in self.results.items()]
+              return "\n".join(lines)
+    src/coverage_reporter.py: |
+      from typing import Dict, Set
+
+      class CoverageReporter:
+          def __init__(self):
+              self.covered_lines: Dict[str, Set[int]] = {}
+              self.total_lines: Dict[str, int] = {}
+
+          def record(self, filename: str, line: int) -> None:
+              self.covered_lines.setdefault(filename, set()).add(line)
+
+          def set_total(self, filename: str, total: int) -> None:
+              self.total_lines[filename] = total
+
+          def percentage(self, filename: str) -> float:
+              covered = len(self.covered_lines.get(filename, set()))
+              total = self.total_lines.get(filename, 1)
+              return (covered / total) * 100
   commit_message: Update files
 fragments:
-- id: test_calculator_file
+- id: test_calculator_changed
   selector:
     path: tests/test_calculator.py
-- id: req_global_0
+- id: test_imports_calculator
   selector:
-    anchor: import pytest
-- id: req_global_1
+    anchor: from src.calculator import add, subtract, divide
+- id: test_add_positive
   selector:
-    anchor: 'def test_add_positive():'
-- id: no_global_0
+    anchor: "def test_add_positive():"
+- id: calculator_add_def
   selector:
-    anchor: GARBAGE_COMP_020_BRANCH_COVERAGE_D
-- id: no_global_1
+    path: src/calculator.py
+    anchor: def add(a, b)
+- id: calculator_divide_def
   selector:
-    anchor: GARBAGE_COMP_020_MERGE_RESULTS_F
-- id: no_global_2
+    path: src/calculator.py
+    anchor: def divide(a, b)
+- id: no_benchmark_runner
   selector:
-    anchor: GARBAGE_COMP_020_REPORT_FORMAT_E
-- id: no_global_3
+    path: src/benchmark_runner.py
+- id: no_coverage_reporter
   selector:
-    anchor: GARBAGE_COMP_020_STATS_METHOD_B
-- id: no_global_4
+    path: src/coverage_reporter.py
+- id: no_benchmark_class
   selector:
-    anchor: GARBAGE_COMP_020_TIMER_PRECISION_C
-- id: no_global_5
+    anchor: BenchmarkRunner
+- id: no_coverage_class
   selector:
-    anchor: GARBAGE_COMP_020_WARMUP_ROUNDS_A
-- id: no_global_6
-  selector:
-    anchor: garbage_benchmark_runner.py
-- id: no_global_7
-  selector:
-    anchor: garbage_coverage_reporter.py
+    anchor: CoverageReporter
 oracle:
   required:
-  - test_calculator_file
-  - req_global_0
-  - req_global_1
+  - test_calculator_changed
+  - test_imports_calculator
+  - test_add_positive
+  - calculator_add_def
+  - calculator_divide_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_benchmark_runner
+  - no_coverage_reporter
+  - no_benchmark_class
+  - no_coverage_class

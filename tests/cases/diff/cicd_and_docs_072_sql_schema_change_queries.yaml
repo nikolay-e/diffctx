@@ -9,6 +9,15 @@ repo:
       FROM orders o
       WHERE o.user_id = :user_id
       ORDER BY o.created_at DESC;
+    sql/queries/get_product_reviews.sql: |
+      SELECT
+          r.id,
+          r.rating,
+          r.comment,
+          r.created_at
+      FROM reviews r
+      WHERE r.product_id = :product_id
+      ORDER BY r.created_at DESC;
     src/repositories/order_repository.py: |
       from typing import List
       from models.order import Order
@@ -23,22 +32,20 @@ repo:
                   {'user_id': user_id}
               )
               return [Order(**r) for r in results]
-    garbage_query_builder.ts: |
-      const GARBAGE_CICD_DOCS_072_BUILDER_MARKER_A = "sqlalchemy";
-      const GARBAGE_CICD_DOCS_072_DIALECT_MARKER_B = "postgresql";
+    src/repositories/review_repository.py: |
+      from typing import List
+      from models.review import Review
 
-      class GarbageQueryBuilder {
-        static GARBAGE_CICD_DOCS_072_ESCAPE_MARKER_C = true;
-        build(): void {}
-      }
-    garbage_query_optimizer.ts: |
-      const GARBAGE_CICD_DOCS_072_OPTIMIZE_MARKER_D = "explain";
-      const GARBAGE_CICD_DOCS_072_PLAN_MARKER_E = "analyze";
+      class ReviewRepository:
+          def __init__(self, db):
+              self.db = db
 
-      class GarbageQueryOptimizer {
-        static GARBAGE_CICD_DOCS_072_CACHE_MARKER_F = false;
-        optimize(): void {}
-      }
+          def get_product_reviews(self, product_id: int) -> List[Review]:
+              results = self.db.execute_file(
+                  'sql/queries/get_product_reviews.sql',
+                  {'product_id': product_id}
+              )
+              return [Review(**r) for r in results]
   changed_files:
     sql/queries/get_user_orders.sql: |
       SELECT
@@ -68,6 +75,15 @@ repo:
         AND (:status IS NULL OR o.status = :status)
         AND (:start_date IS NULL OR o.created_at >= :start_date)
         AND (:end_date IS NULL OR o.created_at <= :end_date);
+    sql/queries/get_product_reviews.sql: |
+      SELECT
+          r.id,
+          r.rating,
+          r.comment,
+          r.created_at
+      FROM reviews r
+      WHERE r.product_id = :product_id
+      ORDER BY r.created_at DESC;
     src/repositories/order_repository.py: |
       from typing import List
       from models.order import Order
@@ -82,73 +98,54 @@ repo:
                   {'user_id': user_id}
               )
               return [Order(**r) for r in results]
-    garbage_query_builder.ts: |
-      const GARBAGE_CICD_DOCS_072_BUILDER_MARKER_A = "sqlalchemy";
-      const GARBAGE_CICD_DOCS_072_DIALECT_MARKER_B = "postgresql";
+    src/repositories/review_repository.py: |
+      from typing import List
+      from models.review import Review
 
-      class GarbageQueryBuilder {
-        static GARBAGE_CICD_DOCS_072_ESCAPE_MARKER_C = true;
-        build(): void {}
-      }
-    garbage_query_optimizer.ts: |
-      const GARBAGE_CICD_DOCS_072_OPTIMIZE_MARKER_D = "explain";
-      const GARBAGE_CICD_DOCS_072_PLAN_MARKER_E = "analyze";
+      class ReviewRepository:
+          def __init__(self, db):
+              self.db = db
 
-      class GarbageQueryOptimizer {
-        static GARBAGE_CICD_DOCS_072_CACHE_MARKER_F = false;
-        optimize(): void {}
-      }
-  commit_message: Update files
+          def get_product_reviews(self, product_id: int) -> List[Review]:
+              results = self.db.execute_file(
+                  'sql/queries/get_product_reviews.sql',
+                  {'product_id': product_id}
+              )
+              return [Review(**r) for r in results]
+  commit_message: "db: expand get_user_orders query with filtering, pagination, and item counts"
 fragments:
-- id: count_user_orders_file
-  selector:
-    path: sql/queries/count_user_orders.sql
-- id: get_user_orders_file
+- id: query_changed
   selector:
     path: sql/queries/get_user_orders.sql
-- id: req_global_0
-  selector:
-    anchor: SELECT COUNT(*) AS total_count
-- id: req_global_1
+- id: new_columns
   selector:
     anchor: o.shipping_address,
-- id: no_global_0
+- id: count_query_added
   selector:
-    anchor: GARBAGE_CICD_DOCS_072_BUILDER_MARKER_A
-- id: no_global_1
+    path: sql/queries/count_user_orders.sql
+- id: count_query_anchor
   selector:
-    anchor: GARBAGE_CICD_DOCS_072_CACHE_MARKER_F
-- id: no_global_2
+    anchor: SELECT COUNT(*) AS total_count
+- id: stale_repository_call
   selector:
-    anchor: GARBAGE_CICD_DOCS_072_DIALECT_MARKER_B
-- id: no_global_3
+    path: src/repositories/order_repository.py
+    anchor: "{'user_id': user_id}"
+- id: no_reviews_query
   selector:
-    anchor: GARBAGE_CICD_DOCS_072_ESCAPE_MARKER_C
-- id: no_global_4
+    path: sql/queries/get_product_reviews.sql
+    anchor: r.product_id = :product_id
+- id: no_review_repository
   selector:
-    anchor: GARBAGE_CICD_DOCS_072_OPTIMIZE_MARKER_D
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_072_PLAN_MARKER_E
-- id: no_global_6
-  selector:
-    anchor: garbage_query_builder.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_query_optimizer.ts
+    path: src/repositories/review_repository.py
+    anchor: ReviewRepository
 oracle:
   required:
-  - count_user_orders_file
-  - get_user_orders_file
-  - req_global_0
-  - req_global_1
+  - query_changed
+  - new_columns
+  - count_query_added
+  - count_query_anchor
+  - stale_repository_call
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_reviews_query
+  - no_review_repository

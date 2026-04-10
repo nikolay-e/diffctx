@@ -86,6 +86,14 @@ fragments:
   selector:
     path: tests/conftest.py
     anchor: '@pytest.fixture'
+- id: test_client_uses_fixture
+  selector:
+    path: tests/test_client.py
+    anchor: "def test_fetch(mock_api):"
+- id: test_sync_uses_fixture
+  selector:
+    path: tests/test_sync.py
+    anchor: "def test_sync(mock_api):"
 - id: no_conftest
   selector:
     path: tests/integration/conftest.py
@@ -127,6 +135,8 @@ oracle:
   - conftest
   - conftest_1
   - conftest_2
+  - test_client_uses_fixture
+  - test_sync_uses_fixture
   allowed: []
   forbidden:
   - no_conftest

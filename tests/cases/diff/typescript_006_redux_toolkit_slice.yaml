@@ -57,36 +57,32 @@ repo:
     src/store/authSlice.ts: |
       console.log('placeholder');
     src/unrelated/storage.ts: |
-      // GARBAGE_TS_006_STORAGE_001 - storage utilities
-      export const GARBAGE_TS_006_STORAGE_KEY_002 = 'app_storage_';
+      export const STORAGE_KEY = 'app_storage_';
 
-      export class GARBAGE_TS_006_StorageManager_003 {
-        private readonly GARBAGE_TS_006_VERSION_004 = 1;
-
+      export class StorageManager {
         set<T>(key: string, value: T): void {
-          localStorage.setItem(GARBAGE_TS_006_STORAGE_KEY_002 + key, JSON.stringify(value));
+          localStorage.setItem(STORAGE_KEY + key, JSON.stringify(value));
         }
 
         get<T>(key: string): T | null {
-          const raw = localStorage.getItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+          const raw = localStorage.getItem(STORAGE_KEY + key);
           return raw ? JSON.parse(raw) : null;
         }
 
         remove(key: string): void {
-          localStorage.removeItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+          localStorage.removeItem(STORAGE_KEY + key);
         }
       }
 
-      export const GARBAGE_TS_006_storageManager_005 = new GARBAGE_TS_006_StorageManager_003();
+      export const storageManager = new StorageManager();
     src/unrelated/i18n.ts: |
-      // GARBAGE_TS_006_I18N_006 - internationalization
-      export type GARBAGE_TS_006_Locale_007 = 'en' | 'es' | 'fr' | 'de';
+      export type Locale = 'en' | 'es' | 'fr' | 'de';
 
-      export class GARBAGE_TS_006_I18n_008 {
-        private translations = new Map<GARBAGE_TS_006_Locale_007, Record<string, string>>();
-        private currentLocale: GARBAGE_TS_006_Locale_007 = 'en';
+      export class I18n {
+        private translations = new Map<Locale, Record<string, string>>();
+        private currentLocale: Locale = 'en';
 
-        setLocale(locale: GARBAGE_TS_006_Locale_007): void {
+        setLocale(locale: Locale): void {
           this.currentLocale = locale;
         }
 
@@ -95,7 +91,7 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_006_i18n_009 = new GARBAGE_TS_006_I18n_008();
+      export const i18n = new I18n();
   changed_files:
     src/types/auth.ts: |
       export interface User {
@@ -227,36 +223,32 @@ repo:
       export const selectUser = (state: { auth: AuthState }) => state.auth.user;
       export const selectIsAuthenticated = (state: { auth: AuthState }) => state.auth.isAuthenticated;
     src/unrelated/storage.ts: |
-      // GARBAGE_TS_006_STORAGE_001 - storage utilities
-      export const GARBAGE_TS_006_STORAGE_KEY_002 = 'app_storage_';
+      export const STORAGE_KEY = 'app_storage_';
 
-      export class GARBAGE_TS_006_StorageManager_003 {
-        private readonly GARBAGE_TS_006_VERSION_004 = 1;
-
+      export class StorageManager {
         set<T>(key: string, value: T): void {
-          localStorage.setItem(GARBAGE_TS_006_STORAGE_KEY_002 + key, JSON.stringify(value));
+          localStorage.setItem(STORAGE_KEY + key, JSON.stringify(value));
         }
 
         get<T>(key: string): T | null {
-          const raw = localStorage.getItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+          const raw = localStorage.getItem(STORAGE_KEY + key);
           return raw ? JSON.parse(raw) : null;
         }
 
         remove(key: string): void {
-          localStorage.removeItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+          localStorage.removeItem(STORAGE_KEY + key);
         }
       }
 
-      export const GARBAGE_TS_006_storageManager_005 = new GARBAGE_TS_006_StorageManager_003();
+      export const storageManager = new StorageManager();
     src/unrelated/i18n.ts: |
-      // GARBAGE_TS_006_I18N_006 - internationalization
-      export type GARBAGE_TS_006_Locale_007 = 'en' | 'es' | 'fr' | 'de';
+      export type Locale = 'en' | 'es' | 'fr' | 'de';
 
-      export class GARBAGE_TS_006_I18n_008 {
-        private translations = new Map<GARBAGE_TS_006_Locale_007, Record<string, string>>();
-        private currentLocale: GARBAGE_TS_006_Locale_007 = 'en';
+      export class I18n {
+        private translations = new Map<Locale, Record<string, string>>();
+        private currentLocale: Locale = 'en';
 
-        setLocale(locale: GARBAGE_TS_006_Locale_007): void {
+        setLocale(locale: Locale): void {
           this.currentLocale = locale;
         }
 
@@ -265,66 +257,57 @@ repo:
         }
       }
 
-      export const GARBAGE_TS_006_i18n_009 = new GARBAGE_TS_006_I18n_008();
+      export const i18n = new I18n();
   commit_message: Update files
 fragments:
 - id: authslice_file
   selector:
     path: src/store/authSlice.ts
-- id: req_global_0
+- id: slice_imports
   selector:
     anchor: import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-- id: req_global_1
+- id: initial_state
   selector:
     anchor: 'initialState: AuthState = {'
-- id: no_global_0
+- id: auth_types
   selector:
-    anchor: GARBAGE_TS_006_I18N_006
-- id: no_global_1
+    path: src/types/auth.ts
+    anchor: interface User {
+- id: auth_tokens_type
   selector:
-    anchor: GARBAGE_TS_006_I18n_008
-- id: no_global_2
+    path: src/types/auth.ts
+    anchor: interface AuthTokens {
+- id: login_api_function
   selector:
-    anchor: GARBAGE_TS_006_Locale_007
-- id: no_global_3
+    path: src/api/authApi.ts
+    anchor: async function loginApi(credentials
+- id: auth_response_type
   selector:
-    anchor: GARBAGE_TS_006_STORAGE_001
-- id: no_global_4
+    path: src/api/authApi.ts
+    anchor: interface AuthResponse {
+- id: no_storage_manager
   selector:
-    anchor: GARBAGE_TS_006_STORAGE_KEY_002
-- id: no_global_5
+    path: src/unrelated/storage.ts
+    anchor: class StorageManager {
+- id: no_i18n_class
   selector:
-    anchor: GARBAGE_TS_006_StorageManager_003
-- id: no_global_6
+    path: src/unrelated/i18n.ts
+    anchor: class I18n {
+- id: no_locale_type
   selector:
-    anchor: GARBAGE_TS_006_VERSION_004
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_TS_006_i18n_009
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_TS_006_storageManager_005
-- id: no_global_9
-  selector:
-    anchor: i18n.ts
-- id: no_global_10
-  selector:
-    anchor: storage.ts
+    path: src/unrelated/i18n.ts
+    anchor: type Locale =
 oracle:
   required:
   - authslice_file
-  - req_global_0
-  - req_global_1
+  - slice_imports
+  - initial_state
+  - auth_types
+  - auth_tokens_type
+  - login_api_function
+  - auth_response_type
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
+  - no_storage_manager
+  - no_i18n_class
+  - no_locale_type

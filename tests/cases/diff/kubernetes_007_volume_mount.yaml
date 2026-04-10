@@ -238,49 +238,42 @@ repo:
             storage: 100Gi
   commit_message: Update files
 fragments:
-- id: deployment
+- id: volume_mounts
   selector:
     path: k8s/deployment.yaml
     anchor: 'volumeMounts:'
-- id: deployment_1
+- id: config_mount_path
   selector:
     path: k8s/deployment.yaml
     anchor: 'mountPath: /app/config'
+- id: configmap_volume_ref
+  selector:
+    path: k8s/deployment.yaml
+    anchor: 'name: app-config'
+- id: configmap_definition
+  selector:
+    path: k8s/configmap.yaml
+    anchor: 'name: app-config'
 - id: no_nfs_provisioner
   selector:
     path: k8s/storage/nfs-provisioner.yaml
-- id: no_data_volume
+    anchor: nfs-client-provisioner
+- id: no_elasticsearch_volume
   selector:
     path: k8s/apps/elasticsearch/data-volume.yaml
-- id: no_global_0
-  selector:
-    anchor: nfs-client-provisioner
-- id: no_global_1
-  selector:
-    anchor: nfs-subdir-external-provisioner
-- id: no_global_2
-  selector:
-    anchor: /persistentvolumes
-- id: no_global_3
-  selector:
     anchor: elasticsearch-data
-- id: no_global_4
+- id: no_myapp_service
   selector:
-    anchor: gp3-encrypted
-- id: no_global_5
-  selector:
-    anchor: 'storage: 100Gi'
+    path: k8s/service.yaml
+    anchor: 'targetPort: 8080'
 oracle:
   required:
-  - deployment
-  - deployment_1
+  - volume_mounts
+  - config_mount_path
+  - configmap_volume_ref
+  - configmap_definition
   allowed: []
   forbidden:
   - no_nfs_provisioner
-  - no_data_volume
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_elasticsearch_volume
+  - no_myapp_service

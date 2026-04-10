@@ -60,66 +60,29 @@ repo:
       func Find(id int) (interface{}, error) {
           return nil, nil
       }
-    internal/unrelated/telemetry/opentelemetry.go: |
-      package telemetry
+    internal/errors/format.go: |
+      package errors
 
-      import "context"
+      import (
+          "fmt"
+          "strings"
+      )
 
-      const GARBAGE_GO_OTEL_TRACER_A1B2C3 = "opentelemetry_garbage_marker"
-
-      type GARBAGE_GO_TYPE_SPAN_D4E5F6 struct {
-          traceID string
-          spanID  string
+      func FormatError(err error) string {
+          if err == nil {
+              return ""
+          }
+          return strings.TrimSpace(fmt.Sprintf("error: %v", err))
       }
 
-      func GARBAGE_GO_FUNC_OTEL_G7H8I9() string {
-          return "GARBAGE_GO_OTEL_UNUSED_J0K1L2"
-      }
-
-      type TracerConfig struct {
-          ServiceName    string
-          Endpoint       string
-          SamplingRate   float64
-      }
-
-      func GARBAGE_GO_FUNC_START_SPAN_M3N4O5(ctx context.Context, name string) (context.Context, error) {
-          println("GARBAGE_GO_OTEL_OUTPUT_P6Q7R8")
-          return ctx, nil
-      }
-    internal/unrelated/telemetry/jaeger.go: |
-      package telemetry
-
-      const GARBAGE_GO_JAEGER_CLIENT_S9T0U1 = "jaeger_garbage"
-
-      type GARBAGE_GO_TYPE_JAEGER_V2W3X4 struct {
-          agentHost string
-          agentPort int
-      }
-
-      func GARBAGE_GO_FUNC_JAEGER_Y5Z6A7() {
-          println("GARBAGE_GO_JAEGER_OUTPUT_B8C9D0")
-      }
-
-      type JaegerConfig struct {
-          AgentHost     string
-          AgentPort     int
-          CollectorURL  string
-      }
-
-      func GARBAGE_GO_FUNC_JAEGER_REPORT_E1F2G3(spans []interface{}) error {
-          return nil
-      }
-    internal/unrelated/telemetry/zipkin.go: |
-      package telemetry
-
-      const GARBAGE_GO_ZIPKIN_CLIENT_H4I5J6 = "zipkin_garbage"
-
-      type GARBAGE_GO_TYPE_ZIPKIN_K7L8M9 struct {
-          endpoint string
-      }
-
-      func GARBAGE_GO_FUNC_ZIPKIN_N0O1P2() {
-          println("GARBAGE_GO_ZIPKIN_OUTPUT_Q3R4S5")
+      func FormatChain(errs []error) string {
+          parts := make([]string, 0, len(errs))
+          for _, err := range errs {
+              if err != nil {
+                  parts = append(parts, err.Error())
+              }
+          }
+          return strings.Join(parts, " -> ")
       }
   changed_files:
     internal/errors/sentinel.go: |
@@ -343,138 +306,67 @@ repo:
       func Find(id int) (interface{}, error) {
           return nil, nil
       }
-    internal/unrelated/telemetry/opentelemetry.go: |
-      package telemetry
+    internal/errors/format.go: |
+      package errors
 
-      import "context"
+      import (
+          "fmt"
+          "strings"
+      )
 
-      const GARBAGE_GO_OTEL_TRACER_A1B2C3 = "opentelemetry_garbage_marker"
-
-      type GARBAGE_GO_TYPE_SPAN_D4E5F6 struct {
-          traceID string
-          spanID  string
+      func FormatError(err error) string {
+          if err == nil {
+              return ""
+          }
+          return strings.TrimSpace(fmt.Sprintf("error: %v", err))
       }
 
-      func GARBAGE_GO_FUNC_OTEL_G7H8I9() string {
-          return "GARBAGE_GO_OTEL_UNUSED_J0K1L2"
-      }
-
-      type TracerConfig struct {
-          ServiceName    string
-          Endpoint       string
-          SamplingRate   float64
-      }
-
-      func GARBAGE_GO_FUNC_START_SPAN_M3N4O5(ctx context.Context, name string) (context.Context, error) {
-          println("GARBAGE_GO_OTEL_OUTPUT_P6Q7R8")
-          return ctx, nil
-      }
-    internal/unrelated/telemetry/jaeger.go: |
-      package telemetry
-
-      const GARBAGE_GO_JAEGER_CLIENT_S9T0U1 = "jaeger_garbage"
-
-      type GARBAGE_GO_TYPE_JAEGER_V2W3X4 struct {
-          agentHost string
-          agentPort int
-      }
-
-      func GARBAGE_GO_FUNC_JAEGER_Y5Z6A7() {
-          println("GARBAGE_GO_JAEGER_OUTPUT_B8C9D0")
-      }
-
-      type JaegerConfig struct {
-          AgentHost     string
-          AgentPort     int
-          CollectorURL  string
-      }
-
-      func GARBAGE_GO_FUNC_JAEGER_REPORT_E1F2G3(spans []interface{}) error {
-          return nil
-      }
-    internal/unrelated/telemetry/zipkin.go: |
-      package telemetry
-
-      const GARBAGE_GO_ZIPKIN_CLIENT_H4I5J6 = "zipkin_garbage"
-
-      type GARBAGE_GO_TYPE_ZIPKIN_K7L8M9 struct {
-          endpoint string
-      }
-
-      func GARBAGE_GO_FUNC_ZIPKIN_N0O1P2() {
-          println("GARBAGE_GO_ZIPKIN_OUTPUT_Q3R4S5")
+      func FormatChain(errs []error) string {
+          parts := make([]string, 0, len(errs))
+          for _, err := range errs {
+              if err != nil {
+                  parts = append(parts, err.Error())
+              }
+          }
+          return strings.Join(parts, " -> ")
       }
   commit_message: Update files
 fragments:
 - id: sentinel_file
   selector:
     path: internal/errors/sentinel.go
-- id: req_global_0
+- id: app_error_uses_error_code
   selector:
-    anchor: ErrUnauthorized  = errors.New("unauthorized")
-- id: req_global_1
+    anchor: Code       ErrorCode
+- id: is_client_error_func
   selector:
     anchor: func IsClientError(err error) bool {
-- id: no_global_0
+- id: codes_error_code_type
   selector:
-    anchor: GARBAGE_GO_FUNC_JAEGER_REPORT_E1F2G3(spans
-- id: no_global_1
+    path: internal/errors/codes.go
+    anchor: type ErrorCode int
+- id: codes_constants
   selector:
-    anchor: GARBAGE_GO_FUNC_JAEGER_Y5Z6A7
-- id: no_global_2
+    anchor: CodeNotFound
+- id: codes_string_method
   selector:
-    anchor: GARBAGE_GO_FUNC_OTEL_G7H8I9
-- id: no_global_3
+    anchor: func (c ErrorCode) String() string {
+- id: no_format_error
   selector:
-    anchor: GARBAGE_GO_FUNC_START_SPAN_M3N4O5(ctx
-- id: no_global_4
+    path: internal/errors/format.go
+    anchor: func FormatError(err error) string {
+- id: no_format_chain
   selector:
-    anchor: GARBAGE_GO_FUNC_ZIPKIN_N0O1P2
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_GO_JAEGER_CLIENT_S9T0U1
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_GO_OTEL_TRACER_A1B2C3
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_GO_TYPE_JAEGER_V2W3X4
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_GO_TYPE_SPAN_D4E5F6
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_GO_TYPE_ZIPKIN_K7L8M9
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_GO_ZIPKIN_CLIENT_H4I5J6
-- id: no_global_11
-  selector:
-    anchor: jaeger.go
-- id: no_global_12
-  selector:
-    anchor: opentelemetry.go
-- id: no_global_13
-  selector:
-    anchor: zipkin.go
+    anchor: func FormatChain(errs []error) string {
 oracle:
   required:
   - sentinel_file
-  - req_global_0
-  - req_global_1
+  - app_error_uses_error_code
+  - is_client_error_func
+  - codes_error_code_type
+  - codes_constants
+  - codes_string_method
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
+  - no_format_error
+  - no_format_chain

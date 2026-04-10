@@ -9,14 +9,15 @@ from typing import TYPE_CHECKING
 
 from .config.limits import UTILITY
 from .edges.structural.testing import _is_test_file
-from .stopwords import CODE_STOPWORDS
+from .stopwords import _DOCS_STOPWORDS, CODE_STOPWORDS
 from .tokenizer import extract_tokens
-from .types import Fragment, FragmentId
+from .types import Fragment, FragmentId, extract_identifiers
+
+_EXPANSION_STOPWORDS = CODE_STOPWORDS | _DOCS_STOPWORDS
 
 if TYPE_CHECKING:
     from .graph import Graph
 
-_CONCEPT_RE = re.compile(r"[A-Za-z_]\w*")
 _CALL_RE = re.compile(r"(\w+)\s*\(")
 _TYPE_REF_RE = re.compile(r"(?::|->)\s*([A-Z]\w+)")
 _GENERIC_TYPE_RE = re.compile(r"[\[<,]\s*([A-Z]\w*)")
@@ -263,15 +264,13 @@ def concepts_from_diff_text(
     if use_nlp and profile != "code":
         return extract_tokens(text, profile=profile, use_nlp=True)
 
-    raw = _CONCEPT_RE.findall(text)
-    result: set[str] = set()
-    for ident in raw:
-        if len(ident) < 3:
-            continue
-        low = ident.lower()
-        if low not in CODE_STOPWORDS and low not in _LANGUAGE_BUILTINS:
-            result.add(low)
-    return frozenset(result)
+    return extract_identifiers(
+        text,
+        profile=profile,
+        skip_stopwords=True,
+        extra_stopwords=_EXPANSION_STOPWORDS | _LANGUAGE_BUILTINS,
+        min_length=3,
+    )
 
 
 _CLOSURE_EDGE_CATEGORIES = frozenset({"structural", "semantic"})

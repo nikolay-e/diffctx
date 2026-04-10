@@ -39,22 +39,35 @@ repo:
 
       def validate_non_empty(data: List) -> bool:
           return len(data) > 0
-    garbage_feature_flag.py: |
-      GARBAGE_COMP_003_ROLLOUT_PERCENT_A = "gradual"
-      GARBAGE_COMP_003_EXPERIMENT_GROUP_B = "control"
+    src/feature_flags.py: |
+      from typing import Dict, Optional
 
-      class GarbageFeatureFlagService:
-          GARBAGE_COMP_003_STICKY_SESSION_C = True
-          def evaluate(self):
-              pass
-    garbage_ab_testing.py: |
-      GARBAGE_COMP_003_VARIANT_ALLOCATION_D = "random"
-      GARBAGE_COMP_003_SIGNIFICANCE_LEVEL_E = "p_value"
+      class FeatureFlagService:
+          def __init__(self):
+              self.flags: Dict[str, bool] = {}
 
-      class GarbageABTestRunner:
-          GARBAGE_COMP_003_SAMPLE_SIZE_F = 1000
-          def run(self):
-              pass
+          def is_enabled(self, flag_name: str) -> bool:
+              return self.flags.get(flag_name, False)
+
+          def set_flag(self, flag_name: str, enabled: bool) -> None:
+              self.flags[flag_name] = enabled
+    src/ab_testing.py: |
+      import random
+      from typing import Dict
+
+      class ABTestRunner:
+          def __init__(self, variants: Dict[str, float]):
+              self.variants = variants
+
+          def assign_variant(self, user_id: str) -> str:
+              random.seed(hash(user_id))
+              roll = random.random()
+              cumulative = 0.0
+              for variant, weight in self.variants.items():
+                  cumulative += weight
+                  if roll <= cumulative:
+                      return variant
+              return list(self.variants.keys())[-1]
   changed_files:
     src/math_utils.py: |
       from typing import List
@@ -95,69 +108,84 @@ repo:
 
       def validate_non_empty(data: List) -> bool:
           return len(data) > 0
-    garbage_feature_flag.py: |
-      GARBAGE_COMP_003_ROLLOUT_PERCENT_A = "gradual"
-      GARBAGE_COMP_003_EXPERIMENT_GROUP_B = "control"
+    src/feature_flags.py: |
+      from typing import Dict, Optional
 
-      class GarbageFeatureFlagService:
-          GARBAGE_COMP_003_STICKY_SESSION_C = True
-          def evaluate(self):
-              pass
-    garbage_ab_testing.py: |
-      GARBAGE_COMP_003_VARIANT_ALLOCATION_D = "random"
-      GARBAGE_COMP_003_SIGNIFICANCE_LEVEL_E = "p_value"
+      class FeatureFlagService:
+          def __init__(self):
+              self.flags: Dict[str, bool] = {}
 
-      class GarbageABTestRunner:
-          GARBAGE_COMP_003_SAMPLE_SIZE_F = 1000
-          def run(self):
-              pass
+          def is_enabled(self, flag_name: str) -> bool:
+              return self.flags.get(flag_name, False)
+
+          def set_flag(self, flag_name: str, enabled: bool) -> None:
+              self.flags[flag_name] = enabled
+    src/ab_testing.py: |
+      import random
+      from typing import Dict
+
+      class ABTestRunner:
+          def __init__(self, variants: Dict[str, float]):
+              self.variants = variants
+
+          def assign_variant(self, user_id: str) -> str:
+              random.seed(hash(user_id))
+              roll = random.random()
+              cumulative = 0.0
+              for variant, weight in self.variants.items():
+                  cumulative += weight
+                  if roll <= cumulative:
+                      return variant
+              return list(self.variants.keys())[-1]
   commit_message: Update files
 fragments:
-- id: processor_file
+- id: processor_changed
   selector:
     path: src/processor.py
-- id: req_global_0
+- id: processor_import_product
   selector:
     anchor: from src.math_utils import calculate_average, calculate_product
-- id: req_global_1
+- id: processor_uses_average
   selector:
     anchor: avg = calculate_average(data)
-- id: no_global_0
+- id: math_utils_product_def
   selector:
-    anchor: GARBAGE_COMP_003_EXPERIMENT_GROUP_B
-- id: no_global_1
+    path: src/math_utils.py
+    anchor: "def calculate_product(a: float, b: float) -> float:"
+- id: math_utils_average_def
   selector:
-    anchor: GARBAGE_COMP_003_ROLLOUT_PERCENT_A
-- id: no_global_2
+    path: src/math_utils.py
+    anchor: "def calculate_average(numbers: List[float]) -> float:"
+- id: no_validator
   selector:
-    anchor: GARBAGE_COMP_003_SAMPLE_SIZE_F
-- id: no_global_3
+    path: src/validator.py
+- id: no_feature_flags
   selector:
-    anchor: GARBAGE_COMP_003_SIGNIFICANCE_LEVEL_E
-- id: no_global_4
+    path: src/feature_flags.py
+- id: no_ab_testing
   selector:
-    anchor: GARBAGE_COMP_003_STICKY_SESSION_C
-- id: no_global_5
+    path: src/ab_testing.py
+- id: no_validate_numeric
   selector:
-    anchor: GARBAGE_COMP_003_VARIANT_ALLOCATION_D
-- id: no_global_6
+    anchor: validate_numeric_input
+- id: no_feature_flag_service
   selector:
-    anchor: garbage_ab_testing.py
-- id: no_global_7
+    anchor: FeatureFlagService
+- id: no_ab_test_runner
   selector:
-    anchor: garbage_feature_flag.py
+    anchor: ABTestRunner
 oracle:
   required:
-  - processor_file
-  - req_global_0
-  - req_global_1
+  - processor_changed
+  - processor_import_product
+  - processor_uses_average
+  - math_utils_product_def
+  - math_utils_average_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_validator
+  - no_feature_flags
+  - no_ab_testing
+  - no_validate_numeric
+  - no_feature_flag_service
+  - no_ab_test_runner

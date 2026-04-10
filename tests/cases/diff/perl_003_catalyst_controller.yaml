@@ -66,8 +66,6 @@ repo:
 
       1;
     lib/MyApp/Controller/Admin.pm: |
-      my $GARBAGE_PERL_003_A = "noise_marker_admin_ctrl";
-
       package MyApp::Controller::Admin;
       use strict;
       use warnings;
@@ -94,8 +92,6 @@ repo:
 
       1;
     lib/MyApp/View/JSON.pm: |
-      my $GARBAGE_PERL_003_B = "noise_marker_json_view";
-
       package MyApp::View::JSON;
       use strict;
       use warnings;
@@ -192,8 +188,6 @@ repo:
 
       1;
     lib/MyApp/Controller/Admin.pm: |
-      my $GARBAGE_PERL_003_A = "noise_marker_admin_ctrl";
-
       package MyApp::Controller::Admin;
       use strict;
       use warnings;
@@ -220,8 +214,6 @@ repo:
 
       1;
     lib/MyApp/View/JSON.pm: |
-      my $GARBAGE_PERL_003_B = "noise_marker_json_view";
-
       package MyApp::View::JSON;
       use strict;
       use warnings;
@@ -236,19 +228,19 @@ repo:
       1;
   commit_message: Update files
 fragments:
-- id: user
+- id: controller_search_action
   selector:
     path: lib/MyApp/Controller/User.pm
     anchor: sub search
-- id: user_1
+- id: controller_calls_search_by_name
   selector:
     path: lib/MyApp/Controller/User.pm
     anchor: search_by_name
-- id: user_2
+- id: model_search_by_name
   selector:
     path: lib/MyApp/Model/User.pm
     anchor: sub search_by_name
-- id: user_3
+- id: model_ilike_query
   selector:
     path: lib/MyApp/Model/User.pm
     anchor: ILIKE
@@ -258,45 +250,42 @@ fragments:
 - id: no_json
   selector:
     path: lib/MyApp/View/JSON.pm
-- id: no_global_0
-  selector:
-    anchor: GARBAGE_PERL_003_A
-- id: no_global_1
-  selector:
-    anchor: noise_marker_admin_ctrl
-- id: no_global_2
+- id: no_admin_dashboard
   selector:
     anchor: sub dashboard
-- id: no_global_3
+- id: no_admin_settings
+  selector:
+    anchor: sub settings
+- id: no_admin_audit_log
   selector:
     anchor: sub audit_log
-- id: no_global_4
+- id: no_admin_count_active
   selector:
-    anchor: GARBAGE_PERL_003_B
-- id: no_global_5
+    path: lib/MyApp/Controller/Admin.pm
+    anchor: count_active
+- id: no_json_view
   selector:
-    anchor: noise_marker_json_view
-- id: no_global_6
+    anchor: "Catalyst::View::JSON"
+- id: no_json_expose_stash
   selector:
     anchor: expose_stash
-- id: no_global_7
+- id: no_json_encoder
   selector:
     anchor: json_encoder
 oracle:
   required:
-  - user
-  - user_1
-  - user_2
-  - user_3
+  - controller_search_action
+  - controller_calls_search_by_name
+  - model_search_by_name
+  - model_ilike_query
   allowed: []
   forbidden:
   - no_admin
   - no_json
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_admin_dashboard
+  - no_admin_settings
+  - no_admin_audit_log
+  - no_admin_count_active
+  - no_json_view
+  - no_json_expose_stash
+  - no_json_encoder

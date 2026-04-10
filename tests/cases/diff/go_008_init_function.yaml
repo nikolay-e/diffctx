@@ -71,29 +71,57 @@ repo:
               config.Config.Environment,
               config.Config.Port)
       }
-    internal/unrelated/bootstrap/initializer.go: |
-      package bootstrap
+    internal/server/server.go: |
+      package server
 
-      const GARBAGE_GO_BOOTSTRAP_INIT_001 = "bootstrap_garbage"
+      import (
+          "fmt"
+          "myproject/internal/config"
+          "net/http"
+      )
 
-      type GARBAGE_GO_TYPE_BOOTSTRAP_002 struct {
-          order int
+      type Server struct {
+          cfg *config.AppConfig
       }
 
-      func GARBAGE_GO_FUNC_BOOTSTRAP_003() string {
-          return "GARBAGE_GO_BOOTSTRAP_UNUSED_004"
-      }
-    internal/unrelated/setup/database.go: |
-      package setup
-
-      const GARBAGE_GO_SETUP_DATABASE_005 = "setup_garbage"
-
-      type GARBAGE_GO_TYPE_SETUP_006 struct {
-          dsn string
+      func NewServer() *Server {
+          return &Server{cfg: config.Config}
       }
 
-      func GARBAGE_GO_FUNC_SETUP_007() {
-          println("GARBAGE_GO_SETUP_OUTPUT_008")
+      func (s *Server) ListenAndServe() error {
+          addr := fmt.Sprintf(":%d", s.cfg.Port)
+          return http.ListenAndServe(addr, nil)
+      }
+    internal/health/checker.go: |
+      package health
+
+      import "time"
+
+      type HealthChecker struct {
+          interval time.Duration
+          checks   []Check
+      }
+
+      type Check struct {
+          Name    string
+          Healthy bool
+      }
+
+      func NewHealthChecker(interval time.Duration) *HealthChecker {
+          return &HealthChecker{interval: interval}
+      }
+
+      func (hc *HealthChecker) AddCheck(name string) {
+          hc.checks = append(hc.checks, Check{Name: name, Healthy: true})
+      }
+
+      func (hc *HealthChecker) IsHealthy() bool {
+          for _, c := range hc.checks {
+              if !c.Healthy {
+                  return false
+              }
+          }
+          return true
       }
   changed_files:
     internal/config/config.go: |
@@ -103,6 +131,7 @@ repo:
           "log"
           "os"
           "strconv"
+          "strings"
           "time"
       )
 
@@ -213,77 +242,97 @@ repo:
               config.Config.Environment,
               config.Config.Port)
       }
-    internal/unrelated/bootstrap/initializer.go: |
-      package bootstrap
+    internal/server/server.go: |
+      package server
 
-      const GARBAGE_GO_BOOTSTRAP_INIT_001 = "bootstrap_garbage"
+      import (
+          "fmt"
+          "myproject/internal/config"
+          "net/http"
+      )
 
-      type GARBAGE_GO_TYPE_BOOTSTRAP_002 struct {
-          order int
+      type Server struct {
+          cfg *config.AppConfig
       }
 
-      func GARBAGE_GO_FUNC_BOOTSTRAP_003() string {
-          return "GARBAGE_GO_BOOTSTRAP_UNUSED_004"
-      }
-    internal/unrelated/setup/database.go: |
-      package setup
-
-      const GARBAGE_GO_SETUP_DATABASE_005 = "setup_garbage"
-
-      type GARBAGE_GO_TYPE_SETUP_006 struct {
-          dsn string
+      func NewServer() *Server {
+          return &Server{cfg: config.Config}
       }
 
-      func GARBAGE_GO_FUNC_SETUP_007() {
-          println("GARBAGE_GO_SETUP_OUTPUT_008")
+      func (s *Server) ListenAndServe() error {
+          addr := fmt.Sprintf(":%d", s.cfg.Port)
+          return http.ListenAndServe(addr, nil)
       }
-  commit_message: Update files
+    internal/health/checker.go: |
+      package health
+
+      import "time"
+
+      type HealthChecker struct {
+          interval time.Duration
+          checks   []Check
+      }
+
+      type Check struct {
+          Name    string
+          Healthy bool
+      }
+
+      func NewHealthChecker(interval time.Duration) *HealthChecker {
+          return &HealthChecker{interval: interval}
+      }
+
+      func (hc *HealthChecker) AddCheck(name string) {
+          hc.checks = append(hc.checks, Check{Name: name, Healthy: true})
+      }
+
+      func (hc *HealthChecker) IsHealthy() bool {
+          for _, c := range hc.checks {
+              if !c.Healthy {
+                  return false
+              }
+          }
+          return true
+      }
+  commit_message: "feat(config): expand AppConfig with database, redis, JWT, CORS, rate limit"
 fragments:
-- id: config_file
+- id: changed_config
   selector:
     path: internal/config/config.go
-- id: req_global_0
+- id: new_database_url_field
   selector:
-    anchor: Environment  string
-- id: req_global_1
+    anchor: "DatabaseURL  string"
+- id: init_sets_database_url
   selector:
-    anchor: 'Environment:  getEnv("APP_ENV", "development"),'
-- id: no_global_0
+    anchor: 'DatabaseURL:  getEnvRequired("DATABASE_URL"),'
+- id: new_validate_config
   selector:
-    anchor: GARBAGE_GO_BOOTSTRAP_INIT_001
-- id: no_global_1
+    anchor: func validateConfig() {
+- id: consumer_main_reads_config
   selector:
-    anchor: GARBAGE_GO_FUNC_BOOTSTRAP_003
-- id: no_global_2
+    anchor: config.Config.Environment,
+- id: consumer_server_reads_config
   selector:
-    anchor: GARBAGE_GO_FUNC_SETUP_007
-- id: no_global_3
+    anchor: "cfg *config.AppConfig"
+- id: server_uses_port
   selector:
-    anchor: GARBAGE_GO_SETUP_DATABASE_005
-- id: no_global_4
+    anchor: addr := fmt.Sprintf(":%d", s.cfg.Port)
+- id: unrelated_health_checker
   selector:
-    anchor: GARBAGE_GO_TYPE_BOOTSTRAP_002
-- id: no_global_5
+    anchor: func (hc *HealthChecker) IsHealthy() bool {
+- id: unrelated_health_file
   selector:
-    anchor: GARBAGE_GO_TYPE_SETUP_006
-- id: no_global_6
-  selector:
-    anchor: database.go
-- id: no_global_7
-  selector:
-    anchor: initializer.go
+    anchor: checker.go
 oracle:
   required:
-  - config_file
-  - req_global_0
-  - req_global_1
+  - changed_config
+  - new_database_url_field
+  - init_sets_database_url
+  - new_validate_config
+  - consumer_main_reads_config
+  - consumer_server_reads_config
+  - server_uses_port
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - unrelated_health_checker
+  - unrelated_health_file

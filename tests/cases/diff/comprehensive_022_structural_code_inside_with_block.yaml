@@ -34,22 +34,45 @@ repo:
 
       def db_update(key, data):
           pass
-    garbage_lock_manager.py: |
-      GARBAGE_COMP_022_LOCK_TYPE_A = "distributed"
-      GARBAGE_COMP_022_LEASE_DURATION_B = "seconds"
+    src/lock_manager.py: |
+      import threading
+      from typing import Optional
 
-      class GarbageLockManager:
-          GARBAGE_COMP_022_REENTRANT_C = True
-          def acquire(self):
-              pass
-    garbage_saga_coordinator.py: |
-      GARBAGE_COMP_022_COMPENSATION_D = "rollback"
-      GARBAGE_COMP_022_STEP_TIMEOUT_E = "bounded"
+      class LockManager:
+          def __init__(self):
+              self.locks: dict = {}
+              self.mutex = threading.Lock()
 
-      class GarbageSagaCoordinator:
-          GARBAGE_COMP_022_IDEMPOTENT_F = False
-          def coordinate(self):
-              pass
+          def acquire(self, resource: str, timeout: float = 30.0) -> bool:
+              with self.mutex:
+                  if resource not in self.locks:
+                      self.locks[resource] = threading.Lock()
+              return self.locks[resource].acquire(timeout=timeout)
+
+          def release(self, resource: str) -> None:
+              if resource in self.locks:
+                  self.locks[resource].release()
+    src/saga_coordinator.py: |
+      from typing import Callable, List, Tuple
+
+      class SagaCoordinator:
+          def __init__(self):
+              self.steps: List[Tuple[Callable, Callable]] = []
+
+          def add_step(self, action: Callable, compensate: Callable) -> None:
+              self.steps.append((action, compensate))
+
+          def execute(self) -> bool:
+              completed = []
+              for action, compensate in self.steps:
+                  try:
+                      action()
+                      completed.append(compensate)
+                  except Exception:
+                      for comp in reversed(completed):
+                          comp()
+                      return False
+              return True
   changed_files:
     src/db.py: |
       class Transaction:
@@ -93,69 +116,76 @@ repo:
 
       def rollback_changes():
           pass
-    garbage_lock_manager.py: |
-      GARBAGE_COMP_022_LOCK_TYPE_A = "distributed"
-      GARBAGE_COMP_022_LEASE_DURATION_B = "seconds"
+    src/lock_manager.py: |
+      import threading
+      from typing import Optional
 
-      class GarbageLockManager:
-          GARBAGE_COMP_022_REENTRANT_C = True
-          def acquire(self):
-              pass
-    garbage_saga_coordinator.py: |
-      GARBAGE_COMP_022_COMPENSATION_D = "rollback"
-      GARBAGE_COMP_022_STEP_TIMEOUT_E = "bounded"
+      class LockManager:
+          def __init__(self):
+              self.locks: dict = {}
+              self.mutex = threading.Lock()
 
-      class GarbageSagaCoordinator:
-          GARBAGE_COMP_022_IDEMPOTENT_F = False
-          def coordinate(self):
-              pass
+          def acquire(self, resource: str, timeout: float = 30.0) -> bool:
+              with self.mutex:
+                  if resource not in self.locks:
+                      self.locks[resource] = threading.Lock()
+              return self.locks[resource].acquire(timeout=timeout)
+
+          def release(self, resource: str) -> None:
+              if resource in self.locks:
+                  self.locks[resource].release()
+    src/saga_coordinator.py: |
+      from typing import Callable, List, Tuple
+
+      class SagaCoordinator:
+          def __init__(self):
+              self.steps: List[Tuple[Callable, Callable]] = []
+
+          def add_step(self, action: Callable, compensate: Callable) -> None:
+              self.steps.append((action, compensate))
+
+          def execute(self) -> bool:
+              completed = []
+              for action, compensate in self.steps:
+                  try:
+                      action()
+                      completed.append(compensate)
+                  except Exception:
+                      for comp in reversed(completed):
+                          comp()
+                      return False
+              return True
   commit_message: Update files
 fragments:
-- id: db_file
+- id: db_changed
   selector:
     path: src/db.py
-- id: req_global_0
+- id: db_calls_validate
   selector:
     anchor: validate(data)
-- id: req_global_1
+- id: db_validate_def
   selector:
-    anchor: 'def validate(data):'
-- id: no_global_0
+    anchor: "def validate(data):"
+- id: no_lock_manager
   selector:
-    anchor: GARBAGE_COMP_022_COMPENSATION_D
-- id: no_global_1
+    path: src/lock_manager.py
+- id: no_saga_coordinator
   selector:
-    anchor: GARBAGE_COMP_022_IDEMPOTENT_F
-- id: no_global_2
+    path: src/saga_coordinator.py
+- id: no_lock_class
   selector:
-    anchor: GARBAGE_COMP_022_LEASE_DURATION_B
-- id: no_global_3
+    anchor: LockManager
+- id: no_saga_class
   selector:
-    anchor: GARBAGE_COMP_022_LOCK_TYPE_A
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_COMP_022_REENTRANT_C
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_COMP_022_STEP_TIMEOUT_E
-- id: no_global_6
-  selector:
-    anchor: garbage_lock_manager.py
-- id: no_global_7
-  selector:
-    anchor: garbage_saga_coordinator.py
+    anchor: SagaCoordinator
 oracle:
   required:
-  - db_file
-  - req_global_0
-  - req_global_1
+  - db_changed
+  - db_calls_validate
+  - db_validate_def
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_lock_manager
+  - no_saga_coordinator
+  - no_lock_class
+  - no_saga_class

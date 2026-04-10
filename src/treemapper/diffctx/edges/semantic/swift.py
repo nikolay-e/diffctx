@@ -290,6 +290,8 @@ class SwiftEdgeBuilder(EdgeBuilder):
 
     def _add_same_module_edges(self, sf: Fragment, idx: _SwiftIndex, edges: EdgeDict) -> None:
         current_module = sf.path.parent.name.lower()
+        if not current_module:
+            return
         for fid in idx.module_to_frags.get(current_module, []):
             if fid != sf.id:
                 self.add_edge(edges, sf.id, fid, self.same_module_weight)

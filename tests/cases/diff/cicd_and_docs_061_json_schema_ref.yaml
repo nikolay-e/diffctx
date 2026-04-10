@@ -32,22 +32,29 @@ repo:
           resolver = RefResolver(f"file://schemas/", schema)
           validate(data, schema, resolver=resolver)
           return True
-    garbage_schema_loader.ts: |
-      const GARBAGE_CICD_DOCS_061_LOADER_MARKER_A = "ajv";
-      const GARBAGE_CICD_DOCS_061_CACHE_MARKER_B = true;
-
-      class GarbageSchemaLoader {
-        static GARBAGE_CICD_DOCS_061_BUNDLE_MARKER_C = "flat";
-        load(): void {}
+    schemas/product.json: |
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://example.com/schemas/product.json",
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"},
+          "name": {"type": "string"},
+          "price": {"type": "number", "minimum": 0}
+        }
       }
-    garbage_schema_resolver.ts: |
-      const GARBAGE_CICD_DOCS_061_RESOLVER_MARKER_D = "json-refs";
-      const GARBAGE_CICD_DOCS_061_CIRCULAR_MARKER_E = "ignore";
+    src/api/routes.py: |
+      from flask import Flask, request, jsonify
 
-      class GarbageSchemaResolver {
-        static GARBAGE_CICD_DOCS_061_DEREFERENCE_MARKER_F = false;
-        resolve(): void {}
-      }
+      app = Flask(__name__)
+
+      @app.route("/api/users", methods=["GET"])
+      def list_users():
+          return jsonify({"users": []})
+
+      @app.route("/api/users/<int:user_id>", methods=["GET"])
+      def get_user(user_id):
+          return jsonify({"id": user_id, "name": "placeholder"})
   changed_files:
     schemas/user.json: |
       {
@@ -76,95 +83,41 @@ repo:
           "postal_code": {"type": "string"}
         }
       }
-    schemas/order.json: |
-      {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "properties": {
-          "id": {"type": "integer"},
-          "user": {"$ref": "user.json"}
-        }
-      }
-    src/validators/schema_validator.py: |
-      import json
-      from jsonschema import validate, RefResolver
-
-      def load_schema(schema_path: str) -> dict:
-          with open(schema_path) as f:
-              return json.load(f)
-
-      def validate_data(data: dict, schema_name: str) -> bool:
-          schema = load_schema(f"schemas/{schema_name}")
-          resolver = RefResolver(f"file://schemas/", schema)
-          validate(data, schema, resolver=resolver)
-          return True
-    garbage_schema_loader.ts: |
-      const GARBAGE_CICD_DOCS_061_LOADER_MARKER_A = "ajv";
-      const GARBAGE_CICD_DOCS_061_CACHE_MARKER_B = true;
-
-      class GarbageSchemaLoader {
-        static GARBAGE_CICD_DOCS_061_BUNDLE_MARKER_C = "flat";
-        load(): void {}
-      }
-    garbage_schema_resolver.ts: |
-      const GARBAGE_CICD_DOCS_061_RESOLVER_MARKER_D = "json-refs";
-      const GARBAGE_CICD_DOCS_061_CIRCULAR_MARKER_E = "ignore";
-
-      class GarbageSchemaResolver {
-        static GARBAGE_CICD_DOCS_061_DEREFERENCE_MARKER_F = false;
-        resolve(): void {}
-      }
-  commit_message: Update files
+  commit_message: "Harden user schema with refs to address and preferences"
 fragments:
-- id: address_file
-  selector:
-    path: schemas/address.json
-- id: user_file
+- id: user_schema
   selector:
     path: schemas/user.json
-- id: req_global_0
+- id: address_schema
   selector:
-    anchor: '"$schema": "http://json-schema.org/draft-07/schema#",'
-- id: req_global_1
+    path: schemas/address.json
+- id: address_ref_in_user
   selector:
-    anchor: '"$id": "https://example.com/schemas/address.json",'
-- id: no_global_0
+    anchor: '"address": {"$ref": "address.json"}'
+- id: order_refs_user
   selector:
-    anchor: GARBAGE_CICD_DOCS_061_BUNDLE_MARKER_C
-- id: no_global_1
+    path: schemas/order.json
+    anchor: '"user": {"$ref": "user.json"}'
+- id: schema_validator
   selector:
-    anchor: GARBAGE_CICD_DOCS_061_CACHE_MARKER_B
-- id: no_global_2
+    path: src/validators/schema_validator.py
+    anchor: def validate_data
+- id: no_product_schema
   selector:
-    anchor: GARBAGE_CICD_DOCS_061_CIRCULAR_MARKER_E
-- id: no_global_3
+    path: schemas/product.json
+    anchor: '"sku": {"type": "string"}'
+- id: no_api_routes
   selector:
-    anchor: GARBAGE_CICD_DOCS_061_DEREFERENCE_MARKER_F
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_CICD_DOCS_061_LOADER_MARKER_A
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_CICD_DOCS_061_RESOLVER_MARKER_D
-- id: no_global_6
-  selector:
-    anchor: garbage_schema_loader.ts
-- id: no_global_7
-  selector:
-    anchor: garbage_schema_resolver.ts
+    path: src/api/routes.py
+    anchor: def list_users
 oracle:
   required:
-  - address_file
-  - user_file
-  - req_global_0
-  - req_global_1
+  - user_schema
+  - address_schema
+  - address_ref_in_user
+  - order_refs_user
+  - schema_validator
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
+  - no_product_schema
+  - no_api_routes

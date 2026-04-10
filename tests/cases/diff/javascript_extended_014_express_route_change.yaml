@@ -123,32 +123,41 @@ fragments:
 - id: routes_file
   selector:
     path: src/routes/routes.ts
-- id: req_global_0
+- id: router_declaration
   selector:
     anchor: userRouter = Router()
-- id: req_global_1
+- id: route_handler
   selector:
     anchor: (req, res) => {
-- id: no_global_0
+- id: auth_middleware
   selector:
-    anchor: requireAuth
-- id: no_global_1
+    path: src/middleware/auth.ts
+    anchor: requireAuth(req
+- id: validate_create_user
   selector:
+    path: src/validators/user-validator.ts
+    anchor: validateCreateUser(body
+- id: no_require_admin
+  selector:
+    path: src/middleware/auth.ts
     anchor: requireAdmin
-- id: no_global_2
+- id: no_validate_update
   selector:
-    anchor: validateCreateUser
-- id: no_global_3
-  selector:
+    path: src/validators/user-validator.ts
     anchor: validateUpdateUser
+- id: no_setup_routes
+  selector:
+    path: src/routes/middleware.ts
+    anchor: setupRoutes
 oracle:
   required:
   - routes_file
-  - req_global_0
-  - req_global_1
+  - router_declaration
+  - route_handler
+  - auth_middleware
+  - validate_create_user
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
+  - no_require_admin
+  - no_validate_update
+  - no_setup_routes

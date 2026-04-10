@@ -25,33 +25,33 @@ repo:
           print(f"Tracking login for {user.id}")
     handlers/audit_handler.py: |
       from app.signals import user_logged_out
-      GARBAGE_DEP029_AUDIT_HANDLER_A = "audit_module"
-      GARBAGE_DEP029_AUDIT_LOG_B = True
 
       @user_logged_out.connect
       def audit_logout(sender, user, **kwargs):
-          GARBAGE_DEP029_AUDIT_WRITE_C = "writing"
           print(f"Audit: user {user.id} logged out")
+
+      def format_audit_entry(user_id: int, action: str) -> dict:
+          return {"user_id": user_id, "action": action}
     app/notifications.py: |
       from blinker import signal
-      GARBAGE_DEP029_NOTIF_SIGNAL_D = "notification_signals"
-      GARBAGE_DEP029_NOTIF_EMIT_E = True
 
       order_placed = signal('order-placed')
       order_shipped = signal('order-shipped')
 
       def emit_order_placed(sender, order, **kwargs):
-          GARBAGE_DEP029_NOTIF_DISPATCH_F = "dispatching"
           order_placed.send(sender, order=order)
+
+      def emit_order_shipped(sender, order, tracking_number=None):
+          order_shipped.send(sender, order=order, tracking=tracking_number)
     handlers/cache_handler.py: |
       from app.notifications import order_placed
-      GARBAGE_DEP029_CACHE_HANDLER_G = "cache_invalidation"
-      GARBAGE_DEP029_CACHE_TTL_H = 3600
 
       @order_placed.connect
       def invalidate_cache(sender, order, **kwargs):
-          GARBAGE_DEP029_CACHE_CLEAR_I = "clearing"
           print(f"Cache invalidated for order {order.id}")
+
+      def warm_cache(keys: list) -> int:
+          return len(keys)
   changed_files:
     app/signals.py: |
       from blinker import signal
@@ -85,47 +85,55 @@ repo:
           print(f"Tracking login for {user.id}")
     handlers/audit_handler.py: |
       from app.signals import user_logged_out
-      GARBAGE_DEP029_AUDIT_HANDLER_A = "audit_module"
-      GARBAGE_DEP029_AUDIT_LOG_B = True
 
       @user_logged_out.connect
       def audit_logout(sender, user, **kwargs):
-          GARBAGE_DEP029_AUDIT_WRITE_C = "writing"
           print(f"Audit: user {user.id} logged out")
+
+      def format_audit_entry(user_id: int, action: str) -> dict:
+          return {"user_id": user_id, "action": action}
     app/notifications.py: |
       from blinker import signal
-      GARBAGE_DEP029_NOTIF_SIGNAL_D = "notification_signals"
-      GARBAGE_DEP029_NOTIF_EMIT_E = True
 
       order_placed = signal('order-placed')
       order_shipped = signal('order-shipped')
 
       def emit_order_placed(sender, order, **kwargs):
-          GARBAGE_DEP029_NOTIF_DISPATCH_F = "dispatching"
           order_placed.send(sender, order=order)
+
+      def emit_order_shipped(sender, order, tracking_number=None):
+          order_shipped.send(sender, order=order, tracking=tracking_number)
     handlers/cache_handler.py: |
       from app.notifications import order_placed
-      GARBAGE_DEP029_CACHE_HANDLER_G = "cache_invalidation"
-      GARBAGE_DEP029_CACHE_TTL_H = 3600
 
       @order_placed.connect
       def invalidate_cache(sender, order, **kwargs):
-          GARBAGE_DEP029_CACHE_CLEAR_I = "clearing"
           print(f"Cache invalidated for order {order.id}")
+
+      def warm_cache(keys: list) -> int:
+          return len(keys)
   commit_message: Update files
 fragments:
-- id: signals
+- id: signals_new_profile_signal
   selector:
     path: app/signals.py
     anchor: user_profile_updated = signal('user-profile-updated')
-- id: signals_1
+- id: signals_emit_registered
   selector:
     path: app/signals.py
-    anchor: 'def emit_user_registered(sender, user, source=''web''):'
-- id: signals_2
+    anchor: "def emit_user_registered(sender, user, source='web'):"
+- id: signals_new_password_signal
   selector:
     path: app/signals.py
     anchor: user_password_changed = signal('user-password-changed')
+- id: email_handler_connects_registered
+  selector:
+    path: handlers/email_handler.py
+    anchor: "@user_registered.connect"
+- id: metrics_handler_connects_registered
+  selector:
+    path: handlers/metrics_handler.py
+    anchor: "@user_registered.connect"
 - id: no_audit_handler
   selector:
     path: handlers/audit_handler.py
@@ -135,49 +143,27 @@ fragments:
 - id: no_cache_handler
   selector:
     path: handlers/cache_handler.py
-- id: no_global_0
+- id: no_order_placed
   selector:
-    anchor: GARBAGE_DEP029_AUDIT_HANDLER_A
-- id: no_global_1
+    anchor: order_placed
+- id: no_warm_cache
   selector:
-    anchor: GARBAGE_DEP029_AUDIT_LOG_B
-- id: no_global_2
+    anchor: warm_cache
+- id: no_format_audit
   selector:
-    anchor: GARBAGE_DEP029_AUDIT_WRITE_C
-- id: no_global_3
-  selector:
-    anchor: GARBAGE_DEP029_NOTIF_SIGNAL_D
-- id: no_global_4
-  selector:
-    anchor: GARBAGE_DEP029_NOTIF_EMIT_E
-- id: no_global_5
-  selector:
-    anchor: GARBAGE_DEP029_NOTIF_DISPATCH_F
-- id: no_global_6
-  selector:
-    anchor: GARBAGE_DEP029_CACHE_HANDLER_G
-- id: no_global_7
-  selector:
-    anchor: GARBAGE_DEP029_CACHE_TTL_H
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_DEP029_CACHE_CLEAR_I
+    anchor: format_audit_entry
 oracle:
   required:
-  - signals
-  - signals_1
-  - signals_2
+  - signals_new_profile_signal
+  - signals_emit_registered
+  - signals_new_password_signal
+  - email_handler_connects_registered
+  - metrics_handler_connects_registered
   allowed: []
   forbidden:
   - no_audit_handler
   - no_notifications
   - no_cache_handler
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
+  - no_order_placed
+  - no_warm_cache
+  - no_format_audit

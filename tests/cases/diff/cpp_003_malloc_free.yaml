@@ -61,16 +61,13 @@ repo:
       }
 
       }
-    include/unrelated/font_renderer.hpp: |
+    include/rendering/font_renderer.hpp: |
       #pragma once
-      // GARBAGE_CPP_FONT_243_001
-      #define GARBAGE_CPP_FONT_SIZE_243_002 16
+      #include <cstdint>
 
-      namespace app::unrelated::font {
+      namespace app::rendering {
 
-      // GARBAGE_CPP_FONT_STRUCT_243_003
       struct GlyphMetrics {
-          // GARBAGE_CPP_FONT_GLYPH_243_004
           int width;
           int height;
           int bearingX;
@@ -78,47 +75,37 @@ repo:
           int advance;
       };
 
-      // GARBAGE_CPP_FONT_RENDERER_243_005
       class FontRenderer {
       public:
-          // GARBAGE_CPP_FONT_RENDER_243_006
           void renderGlyph(char c, unsigned char* buffer, int bufferWidth) {
-              // GARBAGE_CPP_FONT_IMPL_243_007
           }
 
-          // GARBAGE_CPP_FONT_METRICS_243_008
           GlyphMetrics getGlyphMetrics(char c) const {
               return GlyphMetrics{};
           }
 
       private:
-          // GARBAGE_CPP_FONT_PRIVATE_243_009
-          int fontSize_ = GARBAGE_CPP_FONT_SIZE_243_002;
+          int fontSize_ = 16;
       };
 
       }
-    src/unrelated/physics_simulator.cpp: |
-      // GARBAGE_CPP_PHYSICS_243_010
-      namespace app::unrelated::physics {
+    src/physics/physics_simulator.cpp: |
+      #include <cmath>
 
-      // GARBAGE_CPP_PHYSICS_BODY_243_011
+      namespace app::physics {
+
       struct RigidBody {
           float mass;
           float velocity[3];
           float position[3];
       };
 
-      // GARBAGE_CPP_PHYSICS_SIM_243_012
       class PhysicsSimulator {
       public:
-          // GARBAGE_CPP_PHYSICS_STEP_243_013
           void stepSimulation(float deltaTime) {
-              // GARBAGE_CPP_PHYSICS_UPDATE_243_014
           }
 
-          // GARBAGE_CPP_PHYSICS_ADD_243_015
           void addBody(const RigidBody& body) {
-              // GARBAGE_CPP_PHYSICS_ADD_IMPL_243_016
           }
       };
 
@@ -187,16 +174,13 @@ repo:
       }
 
       }
-    include/unrelated/font_renderer.hpp: |
+    include/rendering/font_renderer.hpp: |
       #pragma once
-      // GARBAGE_CPP_FONT_243_001
-      #define GARBAGE_CPP_FONT_SIZE_243_002 16
+      #include <cstdint>
 
-      namespace app::unrelated::font {
+      namespace app::rendering {
 
-      // GARBAGE_CPP_FONT_STRUCT_243_003
       struct GlyphMetrics {
-          // GARBAGE_CPP_FONT_GLYPH_243_004
           int width;
           int height;
           int bearingX;
@@ -204,47 +188,37 @@ repo:
           int advance;
       };
 
-      // GARBAGE_CPP_FONT_RENDERER_243_005
       class FontRenderer {
       public:
-          // GARBAGE_CPP_FONT_RENDER_243_006
           void renderGlyph(char c, unsigned char* buffer, int bufferWidth) {
-              // GARBAGE_CPP_FONT_IMPL_243_007
           }
 
-          // GARBAGE_CPP_FONT_METRICS_243_008
           GlyphMetrics getGlyphMetrics(char c) const {
               return GlyphMetrics{};
           }
 
       private:
-          // GARBAGE_CPP_FONT_PRIVATE_243_009
-          int fontSize_ = GARBAGE_CPP_FONT_SIZE_243_002;
+          int fontSize_ = 16;
       };
 
       }
-    src/unrelated/physics_simulator.cpp: |
-      // GARBAGE_CPP_PHYSICS_243_010
-      namespace app::unrelated::physics {
+    src/physics/physics_simulator.cpp: |
+      #include <cmath>
 
-      // GARBAGE_CPP_PHYSICS_BODY_243_011
+      namespace app::physics {
+
       struct RigidBody {
           float mass;
           float velocity[3];
           float position[3];
       };
 
-      // GARBAGE_CPP_PHYSICS_SIM_243_012
       class PhysicsSimulator {
       public:
-          // GARBAGE_CPP_PHYSICS_STEP_243_013
           void stepSimulation(float deltaTime) {
-              // GARBAGE_CPP_PHYSICS_UPDATE_243_014
           }
 
-          // GARBAGE_CPP_PHYSICS_ADD_243_015
           void addBody(const RigidBody& body) {
-              // GARBAGE_CPP_PHYSICS_ADD_IMPL_243_016
           }
       };
 
@@ -363,91 +337,62 @@ repo:
       }
   commit_message: Update files
 fragments:
-- id: array_file
+- id: array_dynamic_array_class
   selector:
     path: src/array.c
-- id: req_global_0
+    anchor: "class DynamicArray {"
+- id: array_push_back
   selector:
-    anchor: void push_back(const T& value) {
-- id: req_global_1
+    path: src/array.c
+    anchor: "void push_back(const T& value) {"
+- id: array_pop_back
   selector:
-    anchor: void pop_back() {
-- id: no_global_0
+    path: src/array.c
+    anchor: "void pop_back() {"
+- id: array_calls_safe_malloc
   selector:
-    anchor: GARBAGE_CPP_FONT_243_001
-- id: no_global_1
+    path: src/array.c
+    anchor: "app::memory::safeMalloc(newCapacity * sizeof(T))"
+- id: array_uses_allocator_stats
   selector:
-    anchor: GARBAGE_CPP_FONT_GLYPH_243_004
-- id: no_global_2
+    path: src/array.c
+    anchor: "app::memory::AllocatorStats stats_"
+- id: allocator_safe_malloc
   selector:
-    anchor: GARBAGE_CPP_FONT_IMPL_243_007
-- id: no_global_3
+    path: include/memory/allocator.hpp
+    anchor: "inline void* safeMalloc(size_t size)"
+- id: allocator_stats_record
   selector:
-    anchor: GARBAGE_CPP_FONT_METRICS_243_008
-- id: no_global_4
+    path: include/memory/allocator.hpp
+    anchor: "void recordAllocation(size_t bytes)"
+- id: no_font_renderer_class
   selector:
-    anchor: GARBAGE_CPP_FONT_PRIVATE_243_009
-- id: no_global_5
+    path: include/rendering/font_renderer.hpp
+    anchor: "class FontRenderer {"
+- id: no_font_glyph_metrics
   selector:
-    anchor: GARBAGE_CPP_FONT_RENDERER_243_005
-- id: no_global_6
+    path: include/rendering/font_renderer.hpp
+    anchor: "struct GlyphMetrics {"
+- id: no_physics_simulator
   selector:
-    anchor: GARBAGE_CPP_FONT_RENDER_243_006
-- id: no_global_7
+    path: src/physics/physics_simulator.cpp
+    anchor: "class PhysicsSimulator {"
+- id: no_physics_rigid_body
   selector:
-    anchor: GARBAGE_CPP_FONT_SIZE_243_002
-- id: no_global_8
-  selector:
-    anchor: GARBAGE_CPP_FONT_STRUCT_243_003
-- id: no_global_9
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_243_010
-- id: no_global_10
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_ADD_243_015
-- id: no_global_11
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_ADD_IMPL_243_016
-- id: no_global_12
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_BODY_243_011
-- id: no_global_13
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_SIM_243_012
-- id: no_global_14
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_STEP_243_013
-- id: no_global_15
-  selector:
-    anchor: GARBAGE_CPP_PHYSICS_UPDATE_243_014
-- id: no_global_16
-  selector:
-    anchor: font_renderer.hpp
-- id: no_global_17
-  selector:
-    anchor: physics_simulator.cpp
+    path: src/physics/physics_simulator.cpp
+    anchor: "struct RigidBody {"
 oracle:
   required:
-  - array_file
-  - req_global_0
-  - req_global_1
+  - array_dynamic_array_class
+  - array_push_back
+  - array_pop_back
+  - array_calls_safe_malloc
+  - array_uses_allocator_stats
+  - allocator_safe_malloc
+  - allocator_stats_record
   allowed: []
   forbidden:
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
-  - no_global_6
-  - no_global_7
-  - no_global_8
-  - no_global_9
-  - no_global_10
-  - no_global_11
-  - no_global_12
-  - no_global_13
-  - no_global_14
-  - no_global_15
-  - no_global_16
-  - no_global_17
+  - no_font_renderer_class
+  - no_font_glyph_metrics
+  - no_physics_simulator
+  - no_physics_rigid_body

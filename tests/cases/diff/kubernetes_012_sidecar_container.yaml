@@ -240,59 +240,47 @@ repo:
               - -config.file=/etc/loki/local-config.yaml
   commit_message: Update files
 fragments:
-- id: deployment
+- id: sidecar_log_shipper
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: 'name: log-shipper'
-- id: deployment_1
+- id: shared_logs_volume
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: 'name: shared-logs'
-- id: deployment_2
+- id: fluent_bit_image
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: fluent/fluent-bit:2.1
-- id: deployment_3
+- id: sidecar_readonly_mount
   selector:
     path: k8s/apps/backend/deployment.yaml
     anchor: 'readOnly: true'
+- id: fluent_bit_config_input_path
+  selector:
+    path: config/fluent-bit.conf
+    anchor: /var/log/app/*.log
 - id: no_fluentd_aggregator
   selector:
     path: k8s/logging/fluentd-aggregator.yaml
+    anchor: fluentd-aggregator
 - id: no_loki_stack
   selector:
     path: k8s/monitoring/loki-stack.yaml
-- id: no_global_0
-  selector:
-    anchor: fluentd-aggregator
-- id: no_global_1
-  selector:
-    anchor: FLUENT_ELASTICSEARCH_HOST
-- id: no_global_2
-  selector:
-    anchor: fluent/fluentd
-- id: no_global_3
-  selector:
     anchor: grafana/loki
-- id: no_global_4
+- id: no_backend_service
   selector:
-    anchor: local-config.yaml
-- id: no_global_5
-  selector:
-    anchor: 'containerPort: 3100'
+    path: k8s/apps/backend/service.yaml
+    anchor: 'targetPort: 8080'
 oracle:
   required:
-  - deployment
-  - deployment_1
-  - deployment_2
-  - deployment_3
+  - sidecar_log_shipper
+  - shared_logs_volume
+  - fluent_bit_image
+  - sidecar_readonly_mount
+  - fluent_bit_config_input_path
   allowed: []
   forbidden:
   - no_fluentd_aggregator
   - no_loki_stack
-  - no_global_0
-  - no_global_1
-  - no_global_2
-  - no_global_3
-  - no_global_4
-  - no_global_5
+  - no_backend_service

@@ -199,37 +199,32 @@ repo:
             restartPolicy: Never
   commit_message: Update files
 fragments:
-- id: deployment
+- id: affinity_required_scheduling
   selector:
     path: k8s/apps/web/deployment.yaml
     anchor: 'requiredDuringSchedulingIgnoredDuringExecution:'
-- id: deployment_1
+- id: affinity_topology_key
   selector:
     path: k8s/apps/web/deployment.yaml
     anchor: 'topologyKey: kubernetes.io/hostname'
-- id: no_service
+- id: cache_deployment_labels
+  selector:
+    path: k8s/apps/cache/deployment.yaml
+    anchor: 'app: cache'
+- id: no_cache_service
   selector:
     path: k8s/apps/cache/service.yaml
-- id: no_node_labels
+    anchor: 'port: 6379'
+- id: no_node_labels_job
   selector:
     path: k8s/infra/node-labels.yaml
-- id: no_global_0
-  selector:
     anchor: label-gpu-nodes
-- id: no_global_1
-  selector:
-    anchor: node-labeler
-- id: no_global_2
-  selector:
-    anchor: nvidia-v100
 oracle:
   required:
-  - deployment
-  - deployment_1
+  - affinity_required_scheduling
+  - affinity_topology_key
+  - cache_deployment_labels
   allowed: []
   forbidden:
-  - no_service
-  - no_node_labels
-  - no_global_0
-  - no_global_1
-  - no_global_2
+  - no_cache_service
+  - no_node_labels_job

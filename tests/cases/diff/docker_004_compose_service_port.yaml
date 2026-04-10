@@ -200,16 +200,46 @@ fragments:
 - id: docker_compose_file
   selector:
     path: docker-compose.yml
-- id: req_global_0
+- id: dockerfile_build_context
   selector:
     anchor: 'dockerfile: Dockerfile'
-- id: req_global_1
+- id: network_bridge
   selector:
     anchor: 'driver: bridge'
+- id: server_port_binding
+  selector:
+    path: src/server.js
+    anchor: "const PORT = parseInt(process.env.PORT"
+- id: server_listen
+  selector:
+    path: src/server.js
+    anchor: "server.listen(PORT, HOST"
+- id: dockerfile_expose
+  selector:
+    path: Dockerfile
+    anchor: 'CMD ["node", "src/server.js"]'
+- id: no_config_js
+  selector:
+    path: src/config.js
+    anchor: "nodeEnv: process.env.NODE_ENV"
+- id: no_integration_tests
+  selector:
+    path: tests/integration.test.js
+    anchor: "should respond on port"
+- id: no_k8s_service
+  selector:
+    path: k8s/service.yaml
+    anchor: "apiVersion: v1"
 oracle:
   required:
   - docker_compose_file
-  - req_global_0
-  - req_global_1
+  - dockerfile_build_context
+  - network_bridge
+  - server_port_binding
+  - server_listen
+  - dockerfile_expose
   allowed: []
-  forbidden: []
+  forbidden:
+  - no_config_js
+  - no_integration_tests
+  - no_k8s_service

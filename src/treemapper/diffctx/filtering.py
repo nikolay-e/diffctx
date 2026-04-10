@@ -15,7 +15,7 @@ _PROXIMITY_HALF_DECAY = 50
 _DEFINITION_PROXIMITY_HALF_DECAY = 5
 _HUB_REVERSE_THRESHOLD = 2
 _MAX_CONTEXT_FRAGMENTS_PER_FILE = 10
-_LOW_RELEVANCE_THRESHOLD = 0.02
+_LOW_RELEVANCE_THRESHOLD = 0.015
 _SIZE_PENALTY_BASE_TOKENS = 100
 _SIZE_PENALTY_EXPONENT = 0.5
 
@@ -94,12 +94,15 @@ def _find_hub_noise_paths(
 ) -> set[Path]:
     reverse_deps, direct_edge_paths = _classify_semantic_edges(graph, changed_paths)
 
+    changed_dirs = {p.parent for p in changed_paths}
     noise_counts: dict[Path, int] = {}
-    for deps in reverse_deps.values():
+    for hub_path, deps in reverse_deps.items():
+        if hub_path in changed_paths:
+            continue
         if len(deps) >= _HUB_REVERSE_THRESHOLD:
             for dep in deps:
                 noise_counts[dep] = noise_counts.get(dep, 0) + 1
-    return {p for p, count in noise_counts.items() if count >= 1 and p not in direct_edge_paths}
+    return {p for p, count in noise_counts.items() if count >= 1 and p not in direct_edge_paths and p.parent not in changed_dirs}
 
 
 def _find_config_generic_code_files(
