@@ -116,7 +116,8 @@ def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:
             continue
         src_id = node_ids[edge.source]
         dst_id = node_ids[edge.target]
-        top_cat = max(edge.categories, key=lambda k: edge.categories[k]) if edge.categories else "?"
+        cats = edge.categories
+        top_cat = max(cats, key=lambda k: cats[k]) if cats else "?"
         weight = int(edge.weight) if edge.weight == int(edge.weight) else round(edge.weight, 1)
         lines.append(f'    {src_id} -->|"{top_cat}: {weight}"| {dst_id}')
 
@@ -124,7 +125,7 @@ def to_mermaid(qg: QuotientGraph, top_n: int = 20) -> str:
 
 
 def _tarjan_scc(adjacency: dict[str, set[str]]) -> list[list[str]]:
-    g = nx.DiGraph()
+    g: nx.DiGraph[str] = nx.DiGraph()
     for node, neighbors in adjacency.items():
         g.add_node(node)
         for nbr in neighbors:

@@ -16,9 +16,19 @@ from .core import _compute_seed_weights, _identify_core_fragments
 from .file_importance import compute_file_importance
 from .fragmentation import _process_files_for_fragments
 from .git import CatFileBatch, GitError, split_diff_range
+from .mode import PipelineConfig, ScoringMode
 from .postpass import _coherence_post_pass, _ensure_changed_files_represented
 from .render import build_diff_context_output
-from .scoring import DiscoveryContext, EnsembleDiscovery, PPRScoring, ScoringStrategy
+from .scoring import (
+    BM25Discovery,
+    DefaultDiscovery,
+    DiscoveryContext,
+    DiscoveryStrategy,
+    EgoGraphScoring,
+    EnsembleDiscovery,
+    PPRScoring,
+    ScoringStrategy,
+)
 from .select import lazy_greedy_select
 from .signatures import _generate_signature_variants
 from .types import Fragment, FragmentId
@@ -37,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 _OVERHEAD_PER_FRAGMENT = LIMITS.overhead_per_fragment
 _UNLIMITED_BUDGET = 10_000_000
+_MAX_CACHE_BYTES = 200 * 1024 * 1024
 
 
 def _build_preferred_revs(base_rev: str | None, head_rev: str | None) -> list[str]:
@@ -73,6 +84,7 @@ def _score_and_select(
     repo_root: Path | None = None,
     seed_weights: dict[FragmentId, float] | None = None,
     scoring_strategy: ScoringStrategy | None = None,
+    discovered_paths: set[Path] | None = None,
 ) -> tuple[list[Fragment], Any]:
     strategy = scoring_strategy or PPRScoring()
 
@@ -84,21 +96,27 @@ def _score_and_select(
         repo_root=repo_root,
         seed_weights=seed_weights,
         dump_scores_file=dump_scores,
+        discovered_paths=discovered_paths,
     )
 
     needs = needs_from_diff(scoring_result.filtered_fragments, core_ids, scoring_result.graph, diff_text)
     file_importance = compute_file_importance(scoring_result.filtered_fragments)
     effective_budget = budget_tokens if budget_tokens is not None else _UNLIMITED_BUDGET
 
-    result = lazy_greedy_select(
-        fragments=scoring_result.filtered_fragments,
-        core_ids=core_ids,
-        rel=scoring_result.rel_scores,
-        needs=needs,
-        budget_tokens=effective_budget,
-        tau=tau,
-        file_importance=file_importance,
-    )
+    if os.environ.get("DIFFCTX_NO_SUBMODULAR"):
+        from .select import _topk_select
+
+        result = _topk_select(scoring_result.filtered_fragments, core_ids, scoring_result.rel_scores, effective_budget)
+    else:
+        result = lazy_greedy_select(
+            fragments=scoring_result.filtered_fragments,
+            core_ids=core_ids,
+            rel=scoring_result.rel_scores,
+            needs=needs,
+            budget_tokens=effective_budget,
+            tau=tau,
+            file_importance=file_importance,
+        )
 
     selected = _coherence_post_pass(result, scoring_result.filtered_fragments, scoring_result.graph, effective_budget)
     return selected.selected, selected
@@ -149,6 +167,12 @@ def _log_ppr_mode(
     )
 
 
+def _create_discovery(config: PipelineConfig) -> DiscoveryStrategy:
+    if config.discovery == "ensemble":
+        return EnsembleDiscovery([DefaultDiscovery(), BM25Discovery(top_k=config.bm25_top_k)])
+    return DefaultDiscovery()
+
+
 def _empty_tree(root_dir: Path) -> dict[str, Any]:
     return {
         "name": root_dir.name,
@@ -156,6 +180,22 @@ def _empty_tree(root_dir: Path) -> dict[str, Any]:
         "fragment_count": 0,
         "fragments": [],
     }
+
+
+def _build_file_cache(candidate_files: list[Path]) -> dict[Path, str]:
+    cache: dict[Path, str] = {}
+    cache_bytes = 0
+    for f in candidate_files:
+        if cache_bytes > _MAX_CACHE_BYTES:
+            break
+        try:
+            if f.stat().st_size <= 100_000:
+                content = f.read_text(encoding="utf-8")
+                cache_bytes += len(content.encode("utf-8", errors="replace"))
+                cache[f] = content
+        except (OSError, UnicodeDecodeError):
+            continue
+    return cache
 
 
 def build_diff_context(
@@ -169,6 +209,7 @@ def build_diff_context(
     no_default_ignores: bool = False,
     full: bool = False,
     whitelist_file: Path | None = None,
+    scoring_mode: str = "auto",
 ) -> dict[str, Any]:
     _validate_inputs(root_dir, alpha, tau, budget_tokens)
     root_dir = root_dir.resolve()
@@ -185,6 +226,7 @@ def build_diff_context(
         hunks.extend(_synthetic_hunks(untracked))
 
     if not hunks:
+        logger.warning("no diff hunks found — empty diff or parse failure")
         return _empty_tree(root_dir)
 
     diff_text = _git.get_diff_text(root_dir, diff_range)
@@ -207,13 +249,10 @@ def build_diff_context(
 
         t1 = time.perf_counter()
 
-        file_cache: dict[Path, str] = {}
-        for f in all_candidate_files:
-            try:
-                if f.stat().st_size <= 100_000:
-                    file_cache[f] = f.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
+        file_cache = _build_file_cache(all_candidate_files)
+
+        mode = ScoringMode(os.environ.get("DIFFCTX_SCORING", scoring_mode))
+        config = PipelineConfig.from_mode(mode, n_candidate_files=len(all_candidate_files))
 
         discovery_ctx = DiscoveryContext(
             root_dir=root_dir,
@@ -222,9 +261,9 @@ def build_diff_context(
             diff_text=diff_text,
             expansion_concepts=frozenset(expansion_concepts),
             file_cache=file_cache,
+            combined_spec=combined_spec,
         )
-        discovery_strategy = EnsembleDiscovery()
-        discovered_files = discovery_strategy.discover(discovery_ctx)
+        discovered_files = _create_discovery(config).discover(discovery_ctx)
         discovered_files = [_normalize_path(p, root_dir) for p in discovered_files]
         all_fragments.extend(
             _process_files_for_fragments(discovered_files, root_dir, preferred_revs, seen_frag_ids, batch_reader)
@@ -253,9 +292,10 @@ def build_diff_context(
 
     core_ids = _identify_core_fragments(hunks, all_fragments)
 
-    signature_frags = _generate_signature_variants(all_fragments)
-    _assign_token_counts(signature_frags)
-    all_fragments.extend(signature_frags)
+    if not os.environ.get("DIFFCTX_DISABLE_SIGNATURES"):
+        signature_frags = _generate_signature_variants(all_fragments)
+        _assign_token_counts(signature_frags)
+        all_fragments.extend(signature_frags)
 
     t4 = time.perf_counter()
 
@@ -273,7 +313,10 @@ def build_diff_context(
             hunks=hunks,
             repo_root=root_dir,
             seed_weights=seed_weights,
-            scoring_strategy=PPRScoring(alpha=alpha),
+            scoring_strategy=(
+                EgoGraphScoring(max_depth=config.ego_depth) if config.scoring == "ego" else PPRScoring(alpha=config.ppr_alpha)
+            ),
+            discovered_paths=set(discovered_files),
         )
         effective_budget = budget_tokens if budget_tokens is not None else _UNLIMITED_BUDGET
         remaining = effective_budget - result.used_tokens
@@ -294,4 +337,12 @@ def build_diff_context(
         for frag in selected:
             frag.content = ""
 
-    return build_diff_context_output(root_dir, selected)
+    output = build_diff_context_output(root_dir, selected)
+    output["latency"] = {
+        "fragmentation_ms": round((t1 - t0) * 1000, 1),
+        "discovery_ms": round((t2 - t1) * 1000, 1),
+        "tokenization_ms": round((t4 - t2) * 1000, 1),
+        "scoring_selection_ms": round((t5 - t4) * 1000, 1),
+        "total_ms": round((t5 - t0) * 1000, 1),
+    }
+    return output

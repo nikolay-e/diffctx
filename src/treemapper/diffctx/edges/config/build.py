@@ -95,6 +95,7 @@ class BuildSystemEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         make_files = [f for f in changed_files if _is_makefile(f)]
         cmake_files = [f for f in changed_files if _is_cmake(f)]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from pathlib import Path
@@ -9,6 +10,8 @@ from .constants import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
 
 if TYPE_CHECKING:
     from spacy.language import Language
+
+logger = logging.getLogger(__name__)
 
 _FALLBACK_WORD_RE = re.compile(r"\b[a-zA-Z]\w*\b")
 _MIN_TOKEN_LEN = 3
@@ -36,7 +39,8 @@ def _get_nlp() -> Language | None:
                 except ImportError:
                     _nlp_available = False
                     return None
-                except Exception:
+                except Exception as e:
+                    logger.warning("failed to initialize spacy NLP: %s", e)
                     _nlp_available = False
                     return None
 

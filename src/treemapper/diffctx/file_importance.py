@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config.limits import UTILITY
+from .fragmentation import _GENERATED_PATH_SEGMENTS
 from .types import Fragment
 
 _PERIPHERAL_DIRS = frozenset(
@@ -46,20 +47,6 @@ _PERIPHERAL_DIRS = frozenset(
 _PERIPHERAL_STEMS = ("example_", "demo_", "sample_")
 _PERIPHERAL_SUFFIXES = ("_example", "_demo", "_sample")
 
-_GENERATED_DIRS = frozenset(
-    {
-        "generated",
-        "__generated__",
-        "autogen",
-        "codegen",
-        "gen-java",
-        "gen-go",
-        "gen-py",
-        "gen-cpp",
-        "gen-swift",
-    }
-)
-
 
 def _is_peripheral_file(path: Path) -> bool:
     parts_lower = {p.lower() for p in path.parts}
@@ -77,7 +64,7 @@ def _is_peripheral_file(path: Path) -> bool:
 
 def _is_generated_path(path: Path) -> bool:
     parts_lower = {p.lower() for p in path.parts}
-    return bool(parts_lower & _GENERATED_DIRS)
+    return bool(parts_lower & _GENERATED_PATH_SEGMENTS)
 
 
 def compute_file_importance(

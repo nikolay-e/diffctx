@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import networkx as nx
+import numpy as np
 
 from .config import LIMITS
 from .edges import collect_all_edges
@@ -14,107 +17,136 @@ from .types import Fragment, FragmentId
 
 logger = logging.getLogger(__name__)
 
+_NDArray = Any
+
+
+@dataclass
+class CSRGraph:
+    n: int
+    indptr: _NDArray
+    indices: _NDArray
+    weights: _NDArray
+    out_weight_sum: _NDArray
+    node_to_idx: dict[FragmentId, int] = field(repr=False)
+    idx_to_node: list[FragmentId] = field(repr=False)
+
 
 class Graph:
     def __init__(self) -> None:
-        self._g = nx.DiGraph()
+        self._nodes: set[FragmentId] = set()
+        self._fwd: dict[FragmentId, dict[FragmentId, float]] = {}
+        self._rev: dict[FragmentId, dict[FragmentId, float]] = {}
         self.edge_categories: dict[tuple[FragmentId, FragmentId], str] = {}
-        self._adj_cache: dict[FragmentId, dict[FragmentId, float]] | None = None
-        self._rev_cache: dict[FragmentId, dict[FragmentId, float]] | None = None
-
-    def _invalidate_cache(self) -> None:
-        self._adj_cache = None
-        self._rev_cache = None
+        self._csr_cache: tuple[CSRGraph, CSRGraph] | None = None
 
     @property
     def nodes(self) -> set[FragmentId]:
-        return set(self._g.nodes)
+        return self._nodes
 
     @property
     def adjacency(self) -> dict[FragmentId, dict[FragmentId, float]]:
-        if self._adj_cache is not None:
-            return self._adj_cache
-        result: dict[FragmentId, dict[FragmentId, float]] = {}
-        for src in self._g:
-            nbrs = {}
-            for dst, data in self._g[src].items():
-                nbrs[dst] = data.get("weight", 0.0)
-            if nbrs:
-                result[src] = nbrs
-        self._adj_cache = result
-        return result
+        return self._fwd
 
     @property
     def reverse_adjacency(self) -> dict[FragmentId, dict[FragmentId, float]]:
-        if self._rev_cache is not None:
-            return self._rev_cache
-        result: dict[FragmentId, dict[FragmentId, float]] = {}
-        for dst in self._g:
-            preds = {}
-            for src in self._g.predecessors(dst):
-                preds[src] = self._g[src][dst].get("weight", 0.0)
-            if preds:
-                result[dst] = preds
-        self._rev_cache = result
-        return result
+        return self._rev
 
     def add_node(self, node: FragmentId) -> None:
-        self._g.add_node(node)
+        self._nodes.add(node)
 
     def add_edge(self, src: FragmentId, dst: FragmentId, weight: float) -> None:
         if math.isnan(weight) or math.isinf(weight) or weight <= 0:
             logger.debug("Dropping edge %s -> %s: invalid weight %r", src, dst, weight)
             return
-        existing = self._g[src][dst]["weight"] if self._g.has_edge(src, dst) else 0.0
-        self._g.add_edge(src, dst, weight=max(existing, weight))
-        self._invalidate_cache()
+        fwd_nbrs = self._fwd.get(src)
+        if fwd_nbrs is None:
+            fwd_nbrs = {}
+            self._fwd[src] = fwd_nbrs
+        existing = fwd_nbrs.get(dst, 0.0)
+        new_weight = max(existing, weight)
+        fwd_nbrs[dst] = new_weight
+
+        rev_nbrs = self._rev.get(dst)
+        if rev_nbrs is None:
+            rev_nbrs = {}
+            self._rev[dst] = rev_nbrs
+        rev_nbrs[src] = new_weight
 
     def neighbors(self, node: FragmentId) -> dict[FragmentId, float]:
-        if node not in self._g:
-            return {}
-        return {dst: self._g[node][dst].get("weight", 0.0) for dst in self._g.successors(node)}
+        return self._fwd.get(node, {})
+
+    def to_csr(self) -> tuple[CSRGraph, CSRGraph]:
+        if self._csr_cache is not None:
+            return self._csr_cache
+
+        nodes = sorted(self._nodes)
+        node_to_idx = {n: i for i, n in enumerate(nodes)}
+        n = len(nodes)
+
+        def _build_one(adj: dict[FragmentId, dict[FragmentId, float]]) -> CSRGraph:
+            total_edges = sum(len(v) for v in adj.values())
+            indptr = np.zeros(n + 1, dtype=np.int32)
+            indices = np.empty(total_edges, dtype=np.int32)
+            weights = np.empty(total_edges, dtype=np.float64)
+            k = 0
+            for i in range(n):
+                nbrs = adj.get(nodes[i])
+                if nbrs:
+                    for dst, w in nbrs.items():
+                        dst_idx = node_to_idx.get(dst)
+                        if dst_idx is not None:
+                            indices[k] = dst_idx
+                            weights[k] = w
+                            k += 1
+                indptr[i + 1] = k
+            if k < total_edges:
+                indices = indices[:k]  # type: ignore[assignment,unused-ignore]
+                weights = weights[:k]  # type: ignore[assignment,unused-ignore]
+            out_sum = np.zeros(n, dtype=np.float64)
+            for i in range(n):
+                s, e = indptr[i], indptr[i + 1]
+                if e > s:
+                    out_sum[i] = weights[s:e].sum()
+            return CSRGraph(n, indptr, indices, weights, out_sum, node_to_idx, nodes)
+
+        result = _build_one(self._fwd), _build_one(self._rev)
+        self._csr_cache = result
+        return result
 
     @property
-    def nx(self) -> nx.DiGraph:
-        return self._g
+    def nx(self) -> nx.DiGraph[FragmentId]:
+        g: nx.DiGraph[FragmentId] = nx.DiGraph()
+        g.add_nodes_from(self._nodes)
+        for src, nbrs in self._fwd.items():
+            for dst, w in nbrs.items():
+                g.add_edge(src, dst, weight=w)
+        return g
 
     def ego_graph(self, seeds: set[FragmentId], radius: int = 2) -> dict[FragmentId, float]:
         scores: dict[FragmentId, float] = {}
+        if not self._nodes:
+            return scores
         for seed in seeds:
-            if seed not in self._g:
+            if seed not in self._nodes:
                 continue
-            undirected = self._g.to_undirected(as_view=True)
-            ego = nx.ego_graph(undirected, seed, radius=radius)
-            for node in ego.nodes:
-                dist = nx.shortest_path_length(undirected, seed, node)
+            frontier = {seed: 0}
+            visited: dict[FragmentId, int] = {seed: 0}
+            for _step in range(radius):
+                next_frontier: dict[FragmentId, int] = {}
+                for node, dist in frontier.items():
+                    for nbr in self._fwd.get(node, {}):
+                        if nbr not in visited:
+                            visited[nbr] = dist + 1
+                            next_frontier[nbr] = dist + 1
+                    for nbr in self._rev.get(node, {}):
+                        if nbr not in visited:
+                            visited[nbr] = dist + 1
+                            next_frontier[nbr] = dist + 1
+                frontier = next_frontier
+            for node, dist in visited.items():
                 hop_score = 1.0 / (1 + dist) if dist > 0 else 1.0
                 scores[node] = max(scores.get(node, 0.0), hop_score)
         return scores
-
-    def pagerank(
-        self, seeds: set[FragmentId], alpha: float = 0.6, seed_weights: dict[FragmentId, float] | None = None
-    ) -> dict[FragmentId, float]:
-        if not self._g.nodes:
-            return {}
-        valid_seeds = seeds & set(self._g.nodes)
-        if not valid_seeds:
-            return {n: 1.0 / len(self._g) for n in self._g}
-        personalization: dict[FragmentId, float] = {}
-        if seed_weights:
-            total = sum(seed_weights.get(s, 1.0) for s in valid_seeds)
-            for s in valid_seeds:
-                personalization[s] = seed_weights.get(s, 1.0) / total if total > 0 else 1.0 / len(valid_seeds)
-        else:
-            for s in valid_seeds:
-                personalization[s] = 1.0 / len(valid_seeds)
-        try:
-            scores: dict[FragmentId, float] = nx.pagerank(
-                self._g, alpha=1 - alpha, personalization=personalization, max_iter=200, tol=1e-6
-            )
-            return scores
-        except nx.PowerIterationFailedConvergence:
-            logger.warning("PageRank failed to converge, falling back to uniform")
-            return {n: 1.0 / len(self._g) for n in self._g}
 
 
 def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Graph:
@@ -145,9 +177,20 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
 
     all_edges = _apply_hub_suppression(all_edges, edge_categories)
 
-    for (src, dst), weight in all_edges.items():
-        graph.add_edge(src, dst, weight)
-
+    for frag in fragments:
+        graph.add_node(frag.id)
+    for (src, dst), w in all_edges.items():
+        if w > 0:
+            fwd_nbrs = graph._fwd.get(src)
+            if fwd_nbrs is None:
+                fwd_nbrs = {}
+                graph._fwd[src] = fwd_nbrs
+            fwd_nbrs[dst] = w
+            rev_nbrs = graph._rev.get(dst)
+            if rev_nbrs is None:
+                rev_nbrs = {}
+                graph._rev[dst] = rev_nbrs
+            rev_nbrs[src] = w
     graph.edge_categories = edge_categories
 
     return graph
@@ -155,45 +198,7 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
 
 _SUPPRESSION_EXEMPT = frozenset({"semantic", "structural", "test_edge"})
 
-
 _HUB_OUT_DEGREE_THRESHOLD = 3
-
-
-def _suppress_high_in_degree(
-    edges: dict[tuple[FragmentId, FragmentId], float],
-    edge_categories: dict[tuple[FragmentId, FragmentId], str],
-) -> dict[tuple[FragmentId, FragmentId], float]:
-    in_degree: dict[FragmentId, int] = {}
-    for _src, dst in edges:
-        in_degree[dst] = in_degree.get(dst, 0) + 1
-
-    degrees = sorted(in_degree.values())
-    mid = len(degrees) // 2
-    d_median = (degrees[mid] + degrees[~mid]) / 2.0
-
-    suppressed: dict[tuple[FragmentId, FragmentId], float] = {}
-    for (src, dst), weight in edges.items():
-        deg = in_degree.get(dst, 0)
-        if deg > d_median and edge_categories.get((src, dst), "generic") not in _SUPPRESSION_EXEMPT:
-            weight = weight / max(1.0, math.log(1 + deg))
-        suppressed[(src, dst)] = weight
-    return suppressed
-
-
-def _suppress_semantic_hubs(
-    edges: dict[tuple[FragmentId, FragmentId], float],
-    edge_categories: dict[tuple[FragmentId, FragmentId], str],
-) -> dict[tuple[FragmentId, FragmentId], float]:
-    sem_out_files: dict[FragmentId, set[Path]] = {}
-    for (src, dst), cat in edge_categories.items():
-        if cat == "semantic":
-            sem_out_files.setdefault(src, set()).add(dst.path)
-
-    for src, dst in list(edges):
-        out_file_deg = len(sem_out_files.get(src, set()))
-        if out_file_deg >= _HUB_OUT_DEGREE_THRESHOLD and edge_categories.get((src, dst)) == "semantic":
-            edges[(src, dst)] = edges[(src, dst)] / math.sqrt(out_file_deg)
-    return edges
 
 
 def _apply_hub_suppression(
@@ -202,5 +207,63 @@ def _apply_hub_suppression(
 ) -> dict[tuple[FragmentId, FragmentId], float]:
     if not edges:
         return edges
-    suppressed = _suppress_high_in_degree(edges, edge_categories)
-    return _suppress_semantic_hubs(suppressed, edge_categories)
+
+    edge_list = list(edges.items())
+    n_edges = len(edge_list)
+
+    node_set: dict[FragmentId, int] = {}
+    for (src, dst), _w in edge_list:
+        if src not in node_set:
+            node_set[src] = len(node_set)
+        if dst not in node_set:
+            node_set[dst] = len(node_set)
+
+    n_nodes = len(node_set)
+    src_idx = np.empty(n_edges, dtype=np.int32)
+    dst_idx = np.empty(n_edges, dtype=np.int32)
+    weights = np.empty(n_edges, dtype=np.float64)
+    is_semantic = np.zeros(n_edges, dtype=np.bool_)
+    is_exempt = np.zeros(n_edges, dtype=np.bool_)
+
+    for i, ((src, dst), w) in enumerate(edge_list):
+        src_idx[i] = node_set[src]
+        dst_idx[i] = node_set[dst]
+        weights[i] = w
+        cat = edge_categories.get((src, dst), "generic")
+        if cat == "semantic":
+            is_semantic[i] = True
+        if cat in _SUPPRESSION_EXEMPT:
+            is_exempt[i] = True
+
+    # --- Phase 1: suppress high in-degree (non-exempt edges) ---
+    in_degree = np.bincount(dst_idx, minlength=n_nodes)
+    degrees_sorted = np.sort(in_degree[in_degree > 0])
+    mid = len(degrees_sorted) // 2
+    d_median = (degrees_sorted[mid] + degrees_sorted[~mid]) / 2.0
+
+    dst_deg = in_degree[dst_idx]
+    suppress_mask = (dst_deg > d_median) & ~is_exempt
+    log_factors = np.where(suppress_mask, np.maximum(1.0, np.log(1.0 + dst_deg)), 1.0)
+    weights /= log_factors
+
+    # --- Phase 2: suppress semantic hubs (out-degree by unique file count) ---
+    sem_out_files: dict[int, set[Path]] = {}
+    for i, ((src, dst), _w) in enumerate(edge_list):
+        if is_semantic[i]:
+            si = src_idx[i]
+            sem_out_files.setdefault(si, set()).add(dst.path)
+
+    if sem_out_files:
+        sem_file_deg = np.zeros(n_nodes, dtype=np.int32)
+        for si, files in sem_out_files.items():
+            sem_file_deg[si] = len(files)
+        src_sem_deg = sem_file_deg[src_idx]
+        sem_hub_mask = is_semantic & (src_sem_deg >= _HUB_OUT_DEGREE_THRESHOLD)
+        sqrt_factors = np.where(sem_hub_mask, np.sqrt(src_sem_deg.astype(np.float64)), 1.0)
+        weights /= sqrt_factors
+
+    # --- Rebuild dict ---
+    result: dict[tuple[FragmentId, FragmentId], float] = {}
+    for i, ((src, dst), _w) in enumerate(edge_list):
+        result[(src, dst)] = float(weights[i])
+    return result

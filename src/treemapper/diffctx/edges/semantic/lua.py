@@ -146,6 +146,7 @@ class LuaEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         lua_changed = [f for f in changed_files if _is_lua_file(f)]
         if not lua_changed:

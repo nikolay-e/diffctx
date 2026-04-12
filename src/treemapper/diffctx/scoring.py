@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .graph import Graph
 from .types import DiffHunk, Fragment, FragmentId
@@ -16,6 +17,7 @@ class DiscoveryContext:
     diff_text: str
     expansion_concepts: frozenset[str]
     file_cache: dict[Path, str] | None = None
+    combined_spec: Any | None = None
 
     def read_file(self, path: Path) -> str | None:
         if self.file_cache is not None and path in self.file_cache:
@@ -36,17 +38,20 @@ class DefaultDiscovery(DiscoveryStrategy):
         from .edges import discover_all_related_files
         from .universe import _expand_universe_by_rare_identifiers
 
-        edge_discovered = discover_all_related_files(ctx.changed_files, ctx.all_candidate_files, ctx.root_dir)
+        edge_discovered = discover_all_related_files(
+            ctx.changed_files, ctx.all_candidate_files, ctx.root_dir, file_cache=ctx.file_cache
+        )
 
         from ..ignore import get_ignore_specs
 
-        combined_spec = get_ignore_specs(ctx.root_dir, None, False, None)
+        combined_spec = ctx.combined_spec or get_ignore_specs(ctx.root_dir, None, False, None)
         expanded = _expand_universe_by_rare_identifiers(
             ctx.root_dir,
             ctx.expansion_concepts,
             ctx.changed_files + edge_discovered,
             combined_spec,
             candidate_files=ctx.all_candidate_files,
+            file_cache=ctx.file_cache,
         )
 
         return list(dict.fromkeys(edge_discovered + expanded))
@@ -138,6 +143,7 @@ class ScoringStrategy(ABC):
         repo_root: Path | None = None,
         seed_weights: dict[FragmentId, float] | None = None,
         dump_scores_file: str | None = None,
+        discovered_paths: set[Path] | None = None,
     ) -> ScoringResult: ...
 
 
@@ -153,6 +159,7 @@ class PPRScoring(ScoringStrategy):
         repo_root: Path | None = None,
         seed_weights: dict[FragmentId, float] | None = None,
         dump_scores_file: str | None = None,
+        discovered_paths: set[Path] | None = None,
     ) -> ScoringResult:
         from .filtering import (
             _apply_hunk_proximity_bonus,
@@ -251,14 +258,16 @@ class EgoGraphScoring(ScoringStrategy):
         repo_root: Path | None = None,
         seed_weights: dict[FragmentId, float] | None = None,
         dump_scores_file: str | None = None,
+        discovered_paths: set[Path] | None = None,
     ) -> ScoringResult:
-        from .filtering import _cap_context_fragments
+        from .filtering import _cap_context_fragments, _filter_unrelated_fragments
         from .graph import build_graph
 
         graph = build_graph(all_fragments, repo_root=repo_root)
         rel_scores = graph.ego_graph(core_ids, radius=self.max_depth)
 
-        filtered = [f for f in all_fragments if f.id in core_ids or rel_scores.get(f.id, 0.0) > 0]
+        filtered = _filter_unrelated_fragments(all_fragments, core_ids, graph)
+        filtered = [f for f in filtered if f.id in core_ids or rel_scores.get(f.id, 0.0) > 0]
         filtered = _cap_context_fragments(filtered, core_ids, rel_scores)
 
         return ScoringResult(rel_scores=rel_scores, filtered_fragments=filtered, graph=graph)

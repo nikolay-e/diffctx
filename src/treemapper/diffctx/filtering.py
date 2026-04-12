@@ -198,5 +198,7 @@ def _filter_low_relevance_fragments(
     kept = [f for f in fragments if f.id in core_ids or rel.get(f.id, 0.0) >= _effective_relevance_threshold(f.token_count)]
     removed = len(fragments) - len(kept)
     if removed:
-        logger.debug("diffctx: filtered %d low-relevance fragments (threshold=%.4f)", removed, _LOW_RELEVANCE_THRESHOLD)
+        thresholds = [_effective_relevance_threshold(f.token_count) for f in fragments if f.id not in core_ids]
+        actual_threshold = min(thresholds) if thresholds else _LOW_RELEVANCE_THRESHOLD
+        logger.debug("diffctx: filtered %d low-relevance fragments (min_threshold=%.4f)", removed, actual_threshold)
     return kept

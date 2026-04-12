@@ -81,6 +81,7 @@ class PrismaEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         prisma_changed = [f for f in changed_files if _is_prisma_file(f)]
         client_changed = [f for f in changed_files if _is_client_file(f)]

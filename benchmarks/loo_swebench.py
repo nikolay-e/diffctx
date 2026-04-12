@@ -11,8 +11,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-REPOS_DIR = Path(tempfile.gettempdir()) / "contextbench_repos"
-REPOS_DIR.mkdir(exist_ok=True)
+REPOS_DIR = Path(os.environ.get("LOO_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
+REPOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def run_cmd(cmd, cwd=None, check=True, timeout=120):
@@ -37,16 +37,18 @@ def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
     lines = patch_text.split("\n")
     result = []
     skip = False
+    hidden_markers = {f"a/{file_to_hide}", f"b/{file_to_hide}"}
     for line in lines:
         if line.startswith("diff --git "):
-            skip = f"a/{file_to_hide}" in line or f"b/{file_to_hide}" in line
+            parts = line.split()
+            skip = any(p.strip('"') in hidden_markers or p.lstrip('"') in hidden_markers for p in parts[2:])
         if not skip:
             result.append(line)
     return "\n".join(result)
 
 
-def ensure_repo(repo_url: str, repo_name: str, base_commit: str) -> Path | None:
-    repo_dir = REPOS_DIR / repo_name.replace("/", "__")
+def ensure_repo(repo_url: str, repo_name: str, base_commit: str, repos_dir: Path = REPOS_DIR) -> Path | None:
+    repo_dir = repos_dir / repo_name.replace("/", "__")
     if not repo_dir.exists():
         r = run_cmd(["git", "clone", "--quiet", repo_url, str(repo_dir)], check=False, timeout=600)
         if r.returncode != 0:
@@ -78,17 +80,55 @@ def apply_partial_patch(repo_dir: Path, partial_patch: str) -> bool:
         os.unlink(patch_path)
 
 
-def run_diffctx(repo_dir: Path, budget: int) -> set[str]:
+def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "auto") -> set[str]:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
-        output = build_diff_context(repo_dir, "HEAD~1..HEAD", budget_tokens=budget)
+        output = build_diff_context(repo_dir, "HEAD~1..HEAD", budget_tokens=budget, scoring_mode=scoring_mode)
         return {f["path"] for f in output.get("fragments", [])}
     except Exception:
         return set()
 
 
-def evaluate_loo(inst: dict, budget: int) -> list[dict]:
+_VENDOR_SEGMENTS = frozenset({"vendor/", "node_modules/", "third_party/", "generated/", "__generated__/", ".pb.go", "_pb2.py"})
+
+
+def is_mechanical_change(patch_text: str) -> bool:
+    if "similarity index 100%" in patch_text:
+        return True
+    if patch_text.count("diff --git") > 30:
+        return True
+    changes = [ln for ln in patch_text.splitlines() if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))]
+    if not changes:
+        return True
+    whitespace_only = sum(1 for ln in changes if not ln[1:].strip())
+    return whitespace_only / len(changes) > 0.8
+
+
+def is_vendor_or_generated(file_path: str) -> bool:
+    return any(seg in file_path for seg in _VENDOR_SEGMENTS)
+
+
+def _pick_distractor(repo_dir: Path, hidden: str) -> str | None:
+    suffix = Path(hidden).suffix
+    if not suffix:
+        return None
+    r = run_cmd(["find", str(repo_dir), "-name", f"*{suffix}", "-type", "f"], check=False, timeout=10)
+    candidates = [line for line in r.stdout.splitlines() if line.strip() and hidden not in line]
+    if not candidates:
+        return None
+    import hashlib
+
+    seed = int(hashlib.md5(hidden.encode()).hexdigest()[:8], 16)  # NOSONAR — deterministic, not crypto
+    rng = random.Random(seed)
+    pick = rng.choice(candidates[:50])
+    try:
+        return str(Path(pick).relative_to(repo_dir))
+    except ValueError:
+        return None
+
+
+def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "auto", repos_dir: Path = REPOS_DIR) -> list[dict]:
     iid = inst["instance_id"]
     all_patch_files = patch_files(inst["patch"])
 
@@ -96,7 +136,7 @@ def evaluate_loo(inst: dict, budget: int) -> list[dict]:
         return []
 
     repo_url = inst.get("repo_url") or f"https://github.com/{inst['repo']}.git"
-    repo_dir = ensure_repo(repo_url, inst["repo"], inst["base_commit"])
+    repo_dir = ensure_repo(repo_url, inst["repo"], inst["base_commit"], repos_dir)
     if not repo_dir:
         return []
 
@@ -113,14 +153,19 @@ def evaluate_loo(inst: dict, budget: int) -> list[dict]:
         if not apply_partial_patch(repo_dir, partial):
             continue
 
-        selected = run_diffctx(repo_dir, budget)
+        selected = run_diffctx(repo_dir, budget, scoring_mode)
         found = hidden in selected
+
+        distractor = _pick_distractor(repo_dir, hidden)
+        found_distractor = distractor in selected if distractor else False
 
         results.append(
             {
                 "instance_id": iid,
                 "hidden_file": hidden,
                 "found": found,
+                "distractor": distractor,
+                "found_distractor": found_distractor,
                 "n_patch_files": len(all_patch_files),
                 "n_remaining": len(remaining_files),
                 "n_selected": len(selected),
@@ -134,6 +179,38 @@ def evaluate_loo(inst: dict, budget: int) -> list[dict]:
     return results
 
 
+def _run_one(run_args: tuple[int, dict, int, str, int]) -> list[dict]:
+    i, inst, budget, scoring, timeout = run_args
+    iid = inst["instance_id"]
+    n_files = len(patch_files(inst["patch"]))
+    worker_dir = REPOS_DIR / f"w{os.getpid()}"
+    worker_dir.mkdir(exist_ok=True)
+    print(f"[{i}] {iid} ({n_files} files)", flush=True)
+    try:
+        import signal
+
+        def _timeout_handler(_sig: int, _frame: object) -> None:
+            raise TimeoutError
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+        try:
+            results = evaluate_loo(inst, budget, scoring, repos_dir=worker_dir)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+        hits = sum(1 for r in results if r["found"])
+        total = len(results)
+        print(f"  LOO: {hits}/{total} found ({100 * hits / max(1, total):.0f}%)", flush=True)
+        return results
+    except TimeoutError:
+        print(f"  TIMEOUT ({timeout}s): {iid}", flush=True)
+        return []
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}", flush=True)
+        return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=50)
@@ -142,6 +219,9 @@ def main():
     ap.add_argument("--dataset", default="Contextbench/ContextBench")
     ap.add_argument("--split", default="contextbench_verified")
     ap.add_argument("--output", type=str, default=None)
+    ap.add_argument("--workers", type=int, default=11)
+    ap.add_argument("--scoring", type=str, default="auto", choices=["auto", "precise", "discover"])
+    ap.add_argument("--timeout", type=int, default=300)
     args = ap.parse_args()
 
     from datasets import load_dataset
@@ -149,10 +229,16 @@ def main():
     ds = load_dataset(args.dataset, args.split, split="train")
     insts = list(ds)
 
-    multi_file = [i for i in insts if len(patch_files(i["patch"])) >= 2]
-    print(f"Total instances: {len(insts)}, multi-file: {len(multi_file)}")
+    multi_file = [
+        i
+        for i in insts
+        if len(patch_files(i["patch"])) >= 2
+        and not is_mechanical_change(i["patch"])
+        and not any(is_vendor_or_generated(f) for f in patch_files(i["patch"]))
+    ]
+    print(f"Total instances: {len(insts)}, multi-file (filtered): {len(multi_file)}")
 
-    rng = random.Random(args.seed)
+    rng = random.Random(args.seed)  # NOSONAR — deterministic PRNG for reproducible benchmarks
     rng.shuffle(multi_file)
     multi_file = multi_file[: args.limit]
 
@@ -162,19 +248,18 @@ def main():
     all_results: list[dict] = []
     t0 = time.time()
 
-    for i, inst in enumerate(multi_file, 1):
-        iid = inst["instance_id"]
-        n_files = len(patch_files(inst["patch"]))
-        print(f"[{i}/{len(multi_file)}] {iid} ({n_files} files)")
+    run_args = [(i, inst, args.budget, args.scoring, args.timeout) for i, inst in enumerate(multi_file, 1)]
 
-        try:
-            results = evaluate_loo(inst, args.budget)
-            hits = sum(1 for r in results if r["found"])
-            total = len(results)
-            print(f"  LOO: {hits}/{total} found ({100 * hits / max(1, total):.0f}%)")
-            all_results.extend(results)
-        except Exception as e:
-            print(f"  ERROR: {type(e).__name__}: {e}")
+    if args.workers > 1:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = {pool.submit(_run_one, a): a[0] for a in run_args}
+            for future in as_completed(futures):
+                all_results.extend(future.result())
+    else:
+        for a in run_args:
+            all_results.extend(_run_one(a))
 
     elapsed = time.time() - t0
     print()
@@ -188,8 +273,12 @@ def main():
 
     total = len(all_results)
     found = sum(1 for r in all_results if r["found"])
+    distractor_found = sum(1 for r in all_results if r.get("found_distractor"))
+    distractor_total = sum(1 for r in all_results if r.get("distractor"))
     print(f"Total LOO trials: {total}")
     print(f"Found hidden file: {found}/{total} ({100 * found / total:.1f}%)")
+    if distractor_total:
+        print(f"Found distractor:  {distractor_found}/{distractor_total} ({100 * distractor_found / distractor_total:.1f}%)")
     print()
 
     by_repo: dict[str, list[dict]] = defaultdict(list)

@@ -1,4 +1,5 @@
 from treemapper.clipboard import clipboard_available
+from treemapper.diffctx.edges.base import EdgeBuilder
 from treemapper.diffctx.edges.semantic import (
     AnsibleEdgeBuilder,
     BazelEdgeBuilder,
@@ -27,9 +28,11 @@ from treemapper.diffctx.edges.semantic import (
 )
 from treemapper.diffctx.graph import Graph
 from treemapper.diffctx.graph_analytics import QuotientNode
+from treemapper.diffctx.mode import PipelineConfig, ScoringMode
 from treemapper.diffctx.project_graph import ProjectGraph
 from treemapper.diffctx.scoring import EgoGraphScoring
 from treemapper.diffctx.tokenizer import detect_profile, is_nlp_available
+from treemapper.mcp.server import get_diff_context, run_server
 
 clipboard_available
 detect_profile
@@ -63,4 +66,9 @@ RLangEdgeBuilder
 SqlEdgeBuilder
 ZigEdgeBuilder
 blast_radius = graph_analytics.blast_radius
+ScoringMode.AUTO
+PipelineConfig.low_relevance
+_ = EdgeBuilder._read_file
 EgoGraphScoring
+get_diff_context
+run_server

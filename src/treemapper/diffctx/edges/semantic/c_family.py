@@ -17,7 +17,7 @@ _INCLUDE_RE = re.compile(r'^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]', re.MU
 
 _FUNC_DEF_RE = re.compile(
     r"^\s*(?:static\s+|inline\s+|virtual\s+|explicit\s+|constexpr\s+)*"
-    r"(?:[\w:]{1,80}\s{1,10}){1,10}"
+    r"(?:[\w:]+\s+){0,10}"
     r"(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:override\s*)?(?:final\s*)?"
     r"(?:noexcept(?:\([^)]*\))?\s*)?"
     r"\s*\{",
@@ -190,6 +190,7 @@ class CFamilyEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         c_changed = [f for f in changed_files if _is_c_family(f)]
         if not c_changed:

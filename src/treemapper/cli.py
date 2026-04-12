@@ -114,8 +114,7 @@ def _resolve_whitelist_file(whitelist_file_arg: str | None, root_dir: Path) -> P
         return found
     resolved = Path(whitelist_file_arg).resolve()
     if not resolved.is_file():
-        logger.warning("Whitelist file '%s' does not exist, skipping", whitelist_file_arg)
-        return None
+        _exit_error(f"Whitelist file '{whitelist_file_arg}' does not exist")
     return resolved
 
 
@@ -145,6 +144,7 @@ class ParsedArgs:
     budget: int | None = None
     alpha: float = 0.60
     tau: float = 0.08
+    scoring: str = "auto"
     full_diff: bool = False
     command: str | None = None
     graph: GraphArgs | None = None
@@ -312,6 +312,12 @@ def _build_main_parser() -> argparse.ArgumentParser:
         help="Minimum relevance to include a fragment (default: 0.08, lower = more context)",
     )
     diff_group.add_argument(
+        "--scoring",
+        choices=["auto", "precise", "discover"],
+        default="auto",
+        help="Scoring mode: auto (adapts to repo size), precise (PPR, best for small repos), discover (ego-graph, best for cross-file)",
+    )
+    diff_group.add_argument(
         "--full",
         action="store_true",
         help="Include all changed code (skip smart selection algorithm)",
@@ -331,6 +337,8 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--tau")
     if args.full:
         used.append("--full")
+    if args.scoring != "auto":
+        used.append("--scoring")
     if used:
         flags = ", ".join(used)
         print(f"Warning: diff-mode flags ignored without --diff: {flags}", file=sys.stderr)
@@ -399,6 +407,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         budget=args.budget,
         alpha=args.alpha,
         tau=args.tau,
+        scoring=args.scoring,
         full_diff=args.full,
     )
 

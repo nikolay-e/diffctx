@@ -13,7 +13,7 @@ _TF_EXTENSIONS = {".tf", ".hcl"}
 # Matches any top-level HCL block header: identifier optionally followed by quoted labels, then {
 # Covers: resource, variable, data, output, module, locals, terraform, provider,
 #         moved, import, check, removed, and any future HCL block types.
-_TF_BLOCK_HEADER_RE = re.compile(r'^\w[\w-]*(?:\s+"[^"]*")*\s*\{')
+_TF_BLOCK_HEADER_RE = re.compile(r"^(resource|data|module|variable|output|locals|terraform|provider)\s+")
 
 _TF_COMPOUND_REF_RE = re.compile(r"(?<![.\w])([a-zA-Z]\w*)\.(\w+)(?:\[\*?\w*\])?\.[\w\[\]*]+")
 _TF_COMPOUND_REF_SKIP = frozenset({"var", "local", "data", "module", "path", "terraform", "count", "each", "self"})
@@ -77,7 +77,7 @@ def _collect_tf_blocks(lines: list[str]) -> list[tuple[int, int, str | None]]:
     blocks: list[tuple[int, int, str | None]] = []
     i = 0
     while i < len(lines):
-        if _TF_BLOCK_HEADER_RE.match(lines[i].strip()):
+        if _TF_BLOCK_HEADER_RE.match(lines[i]):
             end_i = _tf_find_block_end(lines, i)
             sym = _tf_block_symbol(lines[i].strip())
             blocks.append((i, end_i, sym))

@@ -15,7 +15,7 @@ IMPORT_PATTERNS = {
     "javascript_export_from": re.compile(r"""export\s{1,10}[^'"]{0,500}\s{1,10}from\s{1,10}['"]([^'"]{1,500})['"]"""),
     "java_import": re.compile(r"^\s*import\s+(?:static\s+)?([a-zA-Z_][\w.]*)\s*;", re.MULTILINE),
     "java_package": re.compile(r"^\s*package\s+([a-zA-Z_][\w.]*)\s*;", re.MULTILINE),
-    "csharp_using": re.compile(r"^\s*using\s+(?:static\s+)?([A-Z][\w.]*)\s*;", re.MULTILINE),
+    "csharp_using": re.compile(r"^\s*using\s+(?:static\s+)?([A-Za-z][\w.]*)\s*;", re.MULTILINE),
     "c_include": re.compile(r'^\s*#include\s*[<"]([^>"]+)[>"]', re.MULTILINE),
     "ruby_require": re.compile(r"""^\s*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.MULTILINE),
     "php_use": re.compile(r"^\s*use\s+([A-Z][\w\\]*)", re.MULTILINE),

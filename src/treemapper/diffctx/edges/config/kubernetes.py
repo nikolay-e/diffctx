@@ -181,6 +181,7 @@ class KubernetesEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         k8s_files = _find_k8s_files(changed_files)
         if not k8s_files:

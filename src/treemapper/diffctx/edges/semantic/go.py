@@ -8,7 +8,7 @@ from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
-_GO_IMPORT_SINGLE_RE = re.compile(r'^\s*import\s+"([^"]+)"', re.MULTILINE)
+_GO_IMPORT_SINGLE_RE = re.compile(r'^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"', re.MULTILINE)
 _GO_IMPORT_BLOCK_RE = re.compile(r"import\s*\((.*?)\)", re.DOTALL)
 _GO_IMPORT_LINE_RE = re.compile(r'^\s*(?:(?:\w+|\.)\s+)?"([^"]+)"', re.MULTILINE)
 
@@ -151,6 +151,7 @@ class GoEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         changed_set = set(changed_files)
         discovered: set[Path] = set()

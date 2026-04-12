@@ -119,6 +119,7 @@ class GraphqlEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         gql_changed = [f for f in changed_files if _is_graphql_file(f)]
         if not gql_changed:

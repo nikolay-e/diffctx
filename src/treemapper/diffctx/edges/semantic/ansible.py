@@ -104,6 +104,7 @@ class AnsibleEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         ansible_changed = [f for f in changed_files if _is_ansible_file(f)]
         if not ansible_changed:

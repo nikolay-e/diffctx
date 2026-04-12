@@ -14,6 +14,7 @@ _NAMESPACE_IMPORT_RE = re.compile(r"import\s*\*\s*as\s+(\w+)\s+from\s*['\"]([^'\
 _SIDE_EFFECT_IMPORT_RE = re.compile(r"import\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
 _DYNAMIC_IMPORT_RE = re.compile(r"import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", re.MULTILINE)
 _TYPE_IMPORT_RE = re.compile(r"import\s+type\s+\{([^}]+)\}\s*from\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+_TYPE_DEFAULT_IMPORT_RE = re.compile(r"^import\s+type\s+(\w+)\s+from\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
 _REQUIRE_RE = re.compile(
     r"(?:const|let|var)\s+(?:\{([^}]+)\}|(\w+))\s*=\s*require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)",
     re.MULTILINE,
@@ -329,6 +330,9 @@ def _extract_type_imports(code: str, sources: set[str], names: set[str]) -> None
     for match in _TYPE_IMPORT_RE.finditer(code):
         sources.add(match.group(2))
         names.update(_parse_names_from_str(match.group(1)))
+    for match in _TYPE_DEFAULT_IMPORT_RE.finditer(code):
+        names.add(match.group(1))
+        sources.add(match.group(2))
 
 
 def _extract_require_imports(code: str, sources: set[str], names: set[str]) -> None:

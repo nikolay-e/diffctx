@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 import ast
+import logging
+import os
+import re
+import shutil
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,6 +14,12 @@ from ...config.weights import LANG_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, _strip_source_prefix, path_to_module
 from .python_semantics import PyFragmentInfo, analyze_python_fragment
+
+logger = logging.getLogger(__name__)
+
+_RG_BIN = None if os.environ.get("DIFFCTX_NO_RIPGREP") else shutil.which("rg")
+
+_IMPORT_LINE_RE = re.compile(r"^\s*(?:from\s+(\.+)?([\w.]*)\s+import|import\s+([\w.]+(?:\s*,\s*[\w.]+)*))")
 
 _PYTHON_EXTS = {".py", ".pyi", ".pyw"}
 
@@ -52,8 +63,12 @@ def _resolve_relative(name: str, source_path: Path, repo_root: Path | None) -> s
 
 def _extract_imports_from_content(content: str, source_path: Path | None = None, repo_root: Path | None = None) -> set[str]:
     imports: set[str] = set()
+    import warnings
+
     try:
-        tree = ast.parse(content)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            tree = ast.parse(content)
     except SyntaxError:
         return imports
 
@@ -76,6 +91,77 @@ def _extract_imports_from_content(content: str, source_path: Path | None = None,
     return imports
 
 
+def _resolve_relative_rg(source_path: Path, repo_root: Path, level: int, module: str) -> str | None:
+    try:
+        rel = source_path.relative_to(repo_root)
+    except ValueError:
+        return None
+    parts = _strip_source_prefix(list(rel.parent.parts))
+    if parts and parts[-1] == "__pycache__":
+        parts = parts[:-1]
+    if level > len(parts):
+        return None
+    base_parts = parts[: len(parts) - level + 1]
+    if module:
+        base_parts.extend(module.split("."))
+    return ".".join(base_parts) if base_parts else None
+
+
+def _build_import_index_rg(
+    repo_root: Path,
+    candidate_set: set[Path],
+) -> dict[Path, set[str]]:
+    r = subprocess.run(
+        [
+            _RG_BIN or "rg",
+            "--no-heading",
+            "--with-filename",
+            r"^\s*(?:from\s+\.*[\w.]*\s+import|import\s+[\w.])",
+            "--type",
+            "py",
+            str(repo_root),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    file_to_imports: dict[Path, set[str]] = defaultdict(set)
+    for line in r.stdout.splitlines():
+        idx = line.find(":")
+        if idx < 0:
+            continue
+        path_str = line[:idx]
+        rest = line[idx + 1 :]
+        idx2 = rest.find(":")
+        if idx2 >= 0 and rest[:idx2].isdigit():
+            content = rest[idx2 + 1 :]
+        else:
+            content = rest
+
+        path = Path(path_str)
+        if path not in candidate_set:
+            continue
+
+        m = _IMPORT_LINE_RE.match(content.strip())
+        if not m:
+            continue
+
+        dots, module, simple_import = m.groups()
+        if simple_import:
+            for name in simple_import.split(","):
+                name = name.split(" as ")[0].strip()
+                if name:
+                    _add_import_with_prefixes(file_to_imports[path], name)
+        elif dots:
+            resolved = _resolve_relative_rg(path, repo_root, len(dots), module or "")
+            if resolved:
+                _add_import_with_prefixes(file_to_imports[path], resolved)
+        elif module:
+            _add_import_with_prefixes(file_to_imports[path], module)
+
+    return file_to_imports
+
+
 class PythonEdgeBuilder(EdgeBuilder):
     weight = 0.70
     reverse_weight_factor = 0.5
@@ -87,12 +173,15 @@ class PythonEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         py_changed = [f for f in changed_files if _is_python_file(f)]
         if not py_changed:
             return []
 
-        file_to_module, module_to_files, file_to_imports = self._build_import_index(all_candidate_files, repo_root)
+        fc = kwargs.get("file_cache")
+        cache: dict[Path, str] | None = fc if isinstance(fc, dict) else None
+        file_to_module, module_to_files, file_to_imports = self._build_import_index(all_candidate_files, repo_root, cache)
 
         changed_set = set(changed_files)
         discovered: set[Path] = set()
@@ -131,11 +220,13 @@ class PythonEdgeBuilder(EdgeBuilder):
         return list(discovered)
 
     def _build_import_index(
-        self, all_candidate_files: list[Path], repo_root: Path | None
+        self,
+        all_candidate_files: list[Path],
+        repo_root: Path | None,
+        file_cache: dict[Path, str] | None = None,
     ) -> tuple[dict[Path, str], dict[str, list[Path]], dict[Path, set[str]]]:
         file_to_module: dict[Path, str] = {}
         module_to_files: dict[str, list[Path]] = defaultdict(list)
-        file_to_imports: dict[Path, set[str]] = {}
 
         for f in all_candidate_files:
             if not _is_python_file(f):
@@ -148,13 +239,28 @@ class PythonEdgeBuilder(EdgeBuilder):
                 for i in range(1, len(parts)):
                     prefix = ".".join(parts[:i])
                     module_to_files[prefix].append(f)
-            try:
-                content = f.read_text(encoding="utf-8")
-                file_to_imports[f] = _extract_imports_from_content(content, f, repo_root)
-            except (OSError, UnicodeDecodeError):
-                continue
 
-        return file_to_module, dict(module_to_files), file_to_imports
+        if _RG_BIN and repo_root:
+            candidate_set = {f for f in all_candidate_files if _is_python_file(f)}
+            try:
+                file_to_imports = _build_import_index_rg(repo_root, candidate_set)
+                return file_to_module, dict(module_to_files), dict(file_to_imports)
+            except (subprocess.TimeoutExpired, OSError):
+                logger.debug("ripgrep import index failed, falling back to ast")
+
+        file_to_imports_ast: dict[Path, set[str]] = {}
+        for f in all_candidate_files:
+            if not _is_python_file(f):
+                continue
+            content = file_cache.get(f) if file_cache else None
+            if content is None:
+                try:
+                    content = f.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+            file_to_imports_ast[f] = _extract_imports_from_content(content, f, repo_root)
+
+        return file_to_module, dict(module_to_files), file_to_imports_ast
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         py_frags = [f for f in fragments if _is_python_file(f.path)]

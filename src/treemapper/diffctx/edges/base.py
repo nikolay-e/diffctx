@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import functools
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 
 from ..config.extensions import CODE_EXTENSIONS
 from ..types import Fragment, FragmentId
+
+
+@functools.lru_cache(maxsize=16384)
+def _cached_relative_to(path: Path, root: Path) -> Path | None:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return None
+
 
 EdgeDict = dict[tuple[FragmentId, FragmentId], float]
 
@@ -31,10 +41,9 @@ def _strip_file_extension(stem: str) -> str:
 
 def path_to_module(path: Path, repo_root: Path | None = None) -> str:
     if repo_root and path.is_absolute():
-        try:
-            path = path.relative_to(repo_root)
-        except ValueError:
-            pass
+        rel = _cached_relative_to(path, repo_root)
+        if rel is not None:
+            path = rel
 
     parts = _strip_source_prefix(list(path.parts))
 
@@ -51,11 +60,9 @@ def build_path_to_frags(fragments: list[Fragment], repo_root: Path | None = None
     for f in fragments:
         path_to_frags[f.path].append(f.id)
         if repo_root:
-            try:
-                rel = f.path.relative_to(repo_root)
+            rel = _cached_relative_to(f.path, repo_root)
+            if rel is not None:
                 path_to_frags[rel].append(f.id)
-            except ValueError:
-                pass
     return path_to_frags
 
 
@@ -69,12 +76,10 @@ class FragmentIndex:
             self.by_path[str(f.path)].append(f.id)
 
             if repo_root:
-                try:
-                    rel = f.path.relative_to(repo_root)
+                rel = _cached_relative_to(f.path, repo_root)
+                if rel is not None:
                     self.by_path[str(rel)].append(f.id)
                     self.by_path[rel.as_posix()].append(f.id)
-                except ValueError:
-                    pass
 
 
 _MIN_REF_LENGTH_FOR_PATH_MATCH = 3
@@ -83,10 +88,8 @@ _MIN_REF_LENGTH_FOR_PATH_MATCH = 3
 def _candidate_rel_path(candidate: Path, repo_root: Path | None) -> str:
     if not repo_root:
         return candidate.name.lower()
-    try:
-        return str(candidate.relative_to(repo_root)).lower()
-    except ValueError:
-        return candidate.name.lower()
+    rel = _cached_relative_to(candidate, repo_root)
+    return str(rel).lower() if rel is not None else candidate.name.lower()
 
 
 def _matches_any_ref(candidate_name: str, candidate_rel: str, refs: set[str]) -> bool:
@@ -181,8 +184,20 @@ class EdgeBuilder(ABC):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         return []
+
+    @staticmethod
+    def _read_file(path: Path, file_cache: dict[Path, str] | None = None) -> str | None:
+        if file_cache is not None:
+            content = file_cache.get(path)
+            if content is not None:
+                return content
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
 
     def add_edge(
         self,
@@ -267,9 +282,7 @@ class EdgeBuilder(ABC):
     ) -> None:
         if not repo_root:
             return
-        try:
-            rel = f.path.relative_to(repo_root)
+        rel = _cached_relative_to(f.path, repo_root)
+        if rel is not None:
             path_index[str(rel)].append(f.id)
             path_index[rel.as_posix()].append(f.id)
-        except ValueError:
-            pass

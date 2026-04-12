@@ -9,7 +9,8 @@
 fragments needed to understand a git change — instead of dumping entire files.
 
 Also exports full codebase structure + contents in YAML/JSON/MD/txt.
-Works with any LLM. 100% local, free, no GitHub dependency.
+Works with any LLM. Available as CLI, Python API, and MCP server.
+100% local, free, no GitHub dependency.
 
 ```bash
 pipx install treemapper
@@ -31,6 +32,7 @@ treemapper . -f md -c           # full export → clipboard in Markdown
 | GitHub required | ✗ | ✗ | ✓ | ✗ |
 | Multiple output formats | ✗ | limited | — | YAML/JSON/MD/txt |
 | Python API | ✗ | ✗ | ✗ | ✓ |
+| MCP server | ✗ | ✗ | ✗ | ✓ |
 
 ## Installation
 
@@ -38,6 +40,7 @@ treemapper . -f md -c           # full export → clipboard in Markdown
 pipx install treemapper                    # recommended: isolated, no venv needed
 pip install treemapper                     # or with pip
 pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
+pip install 'treemapper[mcp]'             # + MCP server for AI assistants
 ```
 
 **Standalone binary** (no Python required): download from the
@@ -188,6 +191,35 @@ ctx = build_diff_context(
 )
 yaml_str = to_yaml(ctx)
 ```
+
+## MCP Server
+
+TreeMapper includes an [MCP](https://modelcontextprotocol.io) server that lets
+AI assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
+automatically during code review.
+
+```bash
+pip install 'treemapper[mcp]'
+```
+
+Add to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "treemapper": {
+      "command": "treemapper-mcp"
+    }
+  }
+}
+```
+
+The server exposes a `get_diff_context` tool. Your AI assistant will
+automatically call it when reviewing PRs, explaining changes, or investigating
+broken tests — no manual invocation needed.
+
+See [`src/treemapper/mcp/README.md`](src/treemapper/mcp/README.md) for configs
+for Cursor, Continue, Windsurf, and Zed.
 
 ## Ignore Patterns
 

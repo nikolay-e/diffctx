@@ -3,10 +3,12 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import re
 import sys
+import tempfile
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TextIO
 
 from .languages import get_language_for_file
@@ -302,7 +304,7 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
     file.write(f"## {header}\n\n")
 
     if frag.get("content"):
-        lang = _infer_language(path.split("/")[-1] if "/" in path else path)
+        lang = _infer_language(PurePosixPath(path).name)
         _write_md_code_block(file, frag["content"], lang, "")
 
 
@@ -368,13 +370,38 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
         raise IsADirectoryError(f"Is a directory: {output_file}")
 
     try:
-        with output_file.open("w", encoding="utf-8") as f:
-            writer(f)
+        fd_int, tmp_path = tempfile.mkstemp(dir=output_file.parent, suffix=".tmp")
     except PermissionError:
         logger.error("Unable to write to file '%s': permission denied", output_file)
         raise
     except OSError as e:
         logger.error("Unable to write to file '%s': %s", output_file, e)
+        raise
+    try:
+        with open(fd_int, "w", encoding="utf-8") as f:
+            writer(f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, output_file)
+    except PermissionError:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        logger.error("Unable to write to file '%s': permission denied", output_file)
+        raise
+    except OSError as e:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        logger.error("Unable to write to file '%s': %s", output_file, e)
+        raise
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
         raise
 
 

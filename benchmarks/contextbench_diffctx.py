@@ -13,8 +13,17 @@ from collections import defaultdict
 from pathlib import Path
 
 LINES_RE = re.compile(r"^(\d+)-(\d+)$")
-REPOS_DIR = Path(tempfile.gettempdir()) / "contextbench_repos"
-REPOS_DIR.mkdir(exist_ok=True)
+_WORKSPACE_PREFIX_RE = re.compile(r"^/workspace/[^/]+/")
+
+
+def normalize_gold_path(path: str) -> str:
+    return _WORKSPACE_PREFIX_RE.sub("", path)
+
+
+_repos_suffix = os.environ.get("CONTEXTBENCH_REPOS_SUFFIX", "")
+_DEFAULT_REPOS = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
+REPOS_DIR = _DEFAULT_REPOS / _repos_suffix if _repos_suffix else _DEFAULT_REPOS
+REPOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def parse_lines_field(lines_str: str) -> tuple[int, int] | None:
@@ -29,7 +38,13 @@ def parse_lines_field(lines_str: str) -> tuple[int, int] | None:
 
 def parse_gold_context(raw: str) -> list[dict]:
     items = json.loads(raw)
-    return [g for g in items if g.get("file") and g.get("start_line") is not None]
+    out = []
+    for g in items:
+        if not g.get("file") or g.get("start_line") is None:
+            continue
+        g["file"] = normalize_gold_path(g["file"])
+        out.append(g)
+    return out
 
 
 def gold_files(gold: list[dict]) -> set[str]:
@@ -37,14 +52,27 @@ def gold_files(gold: list[dict]) -> set[str]:
 
 
 def patch_files(patch: str) -> set[str]:
-    files = set()
+    added, deleted, modified = set(), set(), set()
+    cur_a = cur_b = None
     for line in patch.splitlines():
-        if line.startswith("+++ b/"):
-            files.add(line[6:])
-        elif line.startswith("--- a/"):
-            files.add(line[6:])
-    files.discard("/dev/null")
-    return files
+        if line.startswith("diff --git "):
+            cur_a = cur_b = None
+        elif line.startswith("--- "):
+            p = line[4:]
+            cur_a = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
+        elif line.startswith("+++ "):
+            p = line[4:]
+            cur_b = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
+            if cur_a is None and cur_b is not None:
+                added.add(cur_b)
+            elif cur_a is not None and cur_b is None:
+                deleted.add(cur_a)
+            elif cur_a == cur_b and cur_a is not None:
+                modified.add(cur_a)
+            elif cur_a is not None and cur_b is not None:
+                modified.add(cur_b)
+                modified.add(cur_a)
+    return added | deleted | modified
 
 
 def is_nontrivial(gold: list[dict], patch: str) -> bool:
@@ -53,8 +81,8 @@ def is_nontrivial(gold: list[dict], patch: str) -> bool:
     return bool(gf - pf)
 
 
-def ensure_repo(repo_url: str, repo_name: str, base_commit: str) -> Path | None:
-    repo_dir = REPOS_DIR / repo_name.replace("/", "__")
+def ensure_repo(repo_url: str, repo_name: str, base_commit: str, repos_dir: Path = REPOS_DIR) -> Path | None:
+    repo_dir = repos_dir / repo_name.replace("/", "__")
     if not repo_dir.exists():
         r = subprocess.run(
             ["git", "clone", "--quiet", repo_url, str(repo_dir)],
@@ -124,35 +152,57 @@ def apply_as_commit(repo_dir: Path, patch_text: str) -> bool:
         os.unlink(patch_path)
 
 
-def run_diffctx(repo_dir: Path, budget: int = 8000) -> dict | None:
+def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "auto") -> dict | None:
+    from treemapper.diffctx.pipeline import build_diff_context
+
+    try:
+        return build_diff_context(repo_dir, "HEAD~1..HEAD", budget_tokens=budget, scoring_mode=scoring_mode)
+    except Exception as e:
+        print(f"  DIFFCTX FAIL: {type(e).__name__}: {e}")
+        return None
+
+
+def run_baseline_patch_files(repo_dir: Path, budget: int = 8000) -> dict | None:
+    import tiktoken
+
+    enc = tiktoken.get_encoding("o200k_base")
     r = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "treemapper",
-            str(repo_dir),
-            "--diff",
-            "HEAD~1..HEAD",
-            "--budget",
-            str(budget),
-            "--format",
-            "json",
-            "-q",
-            "-o",
-            "-",
-        ],
+        ["git", "-C", str(repo_dir), "diff", "HEAD~1..HEAD", "--name-only"],
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=30,
     )
-    if r.returncode != 0:
-        print(f"  DIFFCTX FAIL (rc={r.returncode}): {r.stderr[:300]}")
-        return None
-    try:
-        return json.loads(r.stdout)
-    except json.JSONDecodeError:
-        print(f"  DIFFCTX JSON FAIL: {r.stdout[:200]}")
-        return None
+    fragments = []
+    used = 0
+    for rel_path in r.stdout.strip().splitlines():
+        if used >= budget:
+            break
+        full = repo_dir / rel_path
+        if not full.is_file():
+            continue
+        try:
+            content = full.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        tokens = enc.encode(content)
+        available = budget - used
+        truncated = enc.decode(tokens[:available])
+        lines = truncated.splitlines()
+        fragments.append(
+            {
+                "path": rel_path,
+                "lines": f"1-{len(lines)}",
+                "kind": "file",
+                "content": truncated,
+            }
+        )
+        used += min(len(tokens), available)
+    return {
+        "name": repo_dir.name,
+        "type": "diff_context",
+        "fragment_count": len(fragments),
+        "fragments": fragments,
+    }
 
 
 def extract_selected_files(output: dict) -> set[str]:
@@ -191,7 +241,13 @@ def line_overlap(
     }
 
 
-def evaluate_instance(inst: dict, budget: int = 8000) -> dict | None:
+def evaluate_instance(
+    inst: dict,
+    budget: int = 8000,
+    repos_dir: Path = REPOS_DIR,
+    scoring_mode: str = "auto",
+    baseline: str = "treemapper",
+) -> dict | None:
     iid = inst["instance_id"]
     gold = parse_gold_context(inst["gold_context"])
     gf = gold_files(gold)
@@ -206,7 +262,7 @@ def evaluate_instance(inst: dict, budget: int = 8000) -> dict | None:
         print("SKIP: all gold files are in the patch (trivial)")
         return None
 
-    repo_dir = ensure_repo(inst["repo_url"], inst["repo"], inst["base_commit"])
+    repo_dir = ensure_repo(inst["repo_url"], inst["repo"], inst["base_commit"], repos_dir)
     if not repo_dir:
         return {"id": iid, "status": "clone_fail"}
 
@@ -220,7 +276,10 @@ def evaluate_instance(inst: dict, budget: int = 8000) -> dict | None:
         return {"id": iid, "status": "apply_fail"}
 
     t0 = time.time()
-    output = run_diffctx(repo_dir, budget)
+    if baseline == "patch_files":
+        output = run_baseline_patch_files(repo_dir, budget)
+    else:
+        output = run_diffctx(repo_dir, budget, scoring_mode)
     elapsed = time.time() - t0
 
     subprocess.run(
@@ -244,6 +303,10 @@ def evaluate_instance(inst: dict, budget: int = 8000) -> dict | None:
     lo_all = line_overlap(gold, sel_ranges)
     lo_nontrivial = line_overlap(gold, sel_ranges, exclude_files=pf)
 
+    from metrics.def_coverage import def_coverage
+
+    ext_def_cov = def_coverage(inst["patch"], output.get("fragments", []))
+
     result = {
         "id": iid,
         "status": "ok",
@@ -261,6 +324,8 @@ def evaluate_instance(inst: dict, budget: int = 8000) -> dict | None:
         "line_recall_nontrivial": round(lo_nontrivial["line_recall"], 3),
         "gold_lines": lo_all["gold_lines"],
         "covered_lines": lo_all["covered_lines"],
+        "def_coverage": round(ext_def_cov, 3),
+        "latency": output.get("latency"),
     }
 
     diagnostics = []
@@ -305,8 +370,10 @@ def aggregate(results: list[dict]) -> None:
     print(f"AGGREGATE ({len(ok)} instances)")
     print(f"{'='*60}")
 
-    for metric in ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial"]:
-        vals = [r[metric] for r in ok]
+    for metric in ["file_recall", "nontrivial_file_recall", "line_recall", "line_recall_nontrivial", "def_coverage"]:
+        vals = [r[metric] for r in ok if metric in r]
+        if not vals:
+            continue
         avg = sum(vals) / len(vals)
         print(f"  {metric:30s}: {avg:.3f} (min={min(vals):.3f}, max={max(vals):.3f})")
 
@@ -351,23 +418,23 @@ def aggregate(results: list[dict]) -> None:
         print(f"\nFailures: {dict(by_status)}")
 
 
-def _print_threshold_sanity_check():
-    v = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD; print(_LOW_RELEVANCE_THRESHOLD)",
-        ],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    print(f"diffctx _LOW_RELEVANCE_THRESHOLD = {v}", file=sys.stderr)
+def _run_one(args: tuple[int, dict, int, str, str]) -> dict | None:
+    _i, inst, budget, scoring, baseline = args
+    worker_dir = REPOS_DIR / f"w{os.getpid()}"
+    worker_dir.mkdir(exist_ok=True)
+    try:
+        return evaluate_instance(inst, budget, repos_dir=worker_dir, scoring_mode=scoring, baseline=baseline)
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}", flush=True)
+        return None
 
 
 def main():
-    _print_threshold_sanity_check()
-
     import argparse
+
+    from treemapper.diffctx.filtering import _LOW_RELEVANCE_THRESHOLD
+
+    print(f"diffctx _LOW_RELEVANCE_THRESHOLD = {_LOW_RELEVANCE_THRESHOLD}", file=sys.stderr)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3)
@@ -377,6 +444,9 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-shuffle", action="store_true")
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--workers", type=int, default=11)
+    parser.add_argument("--scoring", type=str, default="auto", choices=["auto", "precise", "discover"])
+    parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files"])
     args = parser.parse_args()
 
     from datasets import load_dataset
@@ -400,16 +470,30 @@ def main():
         print(f"Shuffled with seed={args.seed}")
 
     instances = instances[: args.limit]
-    print(f"Evaluating {len(instances)} instances (budget={args.budget})")
+    print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={args.workers}, scoring={args.scoring})")
 
     results = []
-    for inst in instances:
-        try:
-            r = evaluate_instance(inst, args.budget)
+    t0 = time.time()
+
+    run_args = [(i, inst, args.budget, args.scoring, args.baseline) for i, inst in enumerate(instances, 1)]
+
+    if args.workers > 1:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = {pool.submit(_run_one, a): a[0] for a in run_args}
+            for future in as_completed(futures):
+                r = future.result()
+                if r:
+                    results.append(r)
+    else:
+        for a in run_args:
+            r = _run_one(a)
             if r:
                 results.append(r)
-        except Exception as e:
-            print(f"  ERROR: {type(e).__name__}: {e}")
+
+    elapsed = time.time() - t0
+    print(f"\nTotal wall time: {elapsed:.0f}s")
 
     aggregate(results)
 

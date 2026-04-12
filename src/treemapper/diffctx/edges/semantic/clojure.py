@@ -198,6 +198,7 @@ class ClojureEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         clojure_files = [f for f in changed_files if _is_clojure_file(f)]
         if not clojure_files:

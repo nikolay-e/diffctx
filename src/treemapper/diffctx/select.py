@@ -222,8 +222,8 @@ def _find_best_singleton(
     return best_singleton, best_gain
 
 
-def _compute_r_cap(rel: dict[FragmentId, float]) -> float:
-    values = [v for v in rel.values() if v > 0]
+def _compute_r_cap(rel: dict[FragmentId, float], core_ids: set[FragmentId] | None = None) -> float:
+    values = [v for fid, v in rel.items() if v > 0 and (core_ids is None or fid not in core_ids)]
     if len(values) < 2:
         return max(values[0], 0.01) if values else 1.0
     med = statistics.median(values)
@@ -308,11 +308,31 @@ def _init_selection_state(
     file_importance: dict[Path, float] | None,
 ) -> _SelectionState:
     state = _SelectionState(remaining_budget=budget_tokens)
-    state.utility_state.r_cap = _compute_r_cap(rel)
+    state.utility_state.r_cap = _compute_r_cap(rel, core_ids)
     state.utility_state.changed_dirs = frozenset(cid.path.parent for cid in core_ids)
     if file_importance is not None:
         state.utility_state.file_importance = file_importance
     return state
+
+
+def _topk_select(
+    fragments: list[Fragment],
+    core_ids: set[FragmentId],
+    rel: dict[FragmentId, float],
+    budget_tokens: int,
+) -> SelectionResult:
+    sorted_frags = sorted(fragments, key=lambda f: -rel.get(f.id, 0.0))
+    selected: list[Fragment] = []
+    used = 0
+    for f in sorted_frags:
+        if used + f.token_count > budget_tokens:
+            continue
+        selected.append(f)
+        used += f.token_count
+    return _log_and_return(
+        SelectionResult(selected=selected, reason="topk", used_tokens=used, utility=0.0),
+        core_ids,
+    )
 
 
 def lazy_greedy_select(
@@ -339,6 +359,12 @@ def lazy_greedy_select(
     sig_lookup = _build_signature_lookup(fragments, core_fragments)
     state = _init_selection_state(core_ids, rel, budget_tokens, file_importance)
     _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
+
+    selected_core_ids = {f.id for f in state.selected}
+    skipped_core = core_ids - selected_core_ids
+    if skipped_core:
+        non_core_fragments.extend(f for f in core_fragments if f.id in skipped_core)
+        core_ids = selected_core_ids
 
     if state.remaining_budget <= 0:
         used = budget_tokens - state.remaining_budget

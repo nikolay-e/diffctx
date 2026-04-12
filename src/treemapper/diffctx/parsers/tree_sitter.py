@@ -140,10 +140,7 @@ class TreeSitterStrategy:
             ts_lang = ts_lang_module
 
         parser = Parser()
-        if isinstance(ts_lang, Language):
-            parser.language = ts_lang
-        else:
-            parser.language = Language(ts_lang)
+        parser.language = Language(ts_lang)
         self._parsers[lang] = parser
         return parser
 

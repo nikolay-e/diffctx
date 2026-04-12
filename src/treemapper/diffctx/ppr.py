@@ -2,103 +2,104 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from typing import Any
 
-from .graph import Graph
+import numpy as np
+
+from .graph import CSRGraph, Graph
 from .types import FragmentId
 
 logger = logging.getLogger(__name__)
 
 
-class _ReverseView:
-    __slots__ = ("adjacency", "nodes")
-
-    def __init__(self, graph: Graph) -> None:
-        self.nodes = graph.nodes
-        self.adjacency = graph.reverse_adjacency
-
-    def neighbors(self, node: FragmentId) -> dict[FragmentId, float]:
-        return self.adjacency.get(node, {})
-
-
-def _init_seed_residuals(
+def _init_seed_residuals_csr(
     seeds: set[FragmentId],
-    graph_nodes: set[FragmentId],
+    node_to_idx: dict[FragmentId, int],
+    n: int,
     seed_weights: dict[FragmentId, float] | None,
-) -> dict[FragmentId, float]:
-    valid_seeds = seeds & graph_nodes
+) -> Any:
+    residual = np.zeros(n, dtype=np.float64)
+    valid_seeds = [s for s in seeds if s in node_to_idx]
     if not valid_seeds:
-        return {}
+        return residual
 
     if seed_weights:
         epsilon = 0.1
         total_sw = sum(seed_weights.get(s, epsilon) for s in valid_seeds)
         if total_sw <= 0:
-            return dict.fromkeys(valid_seeds, 0.0)
-        return {s: seed_weights.get(s, epsilon) / total_sw for s in valid_seeds}
+            return residual
+        for s in valid_seeds:
+            residual[node_to_idx[s]] = seed_weights.get(s, epsilon) / total_sw
+    else:
+        weight = 1.0 / len(valid_seeds)
+        for s in valid_seeds:
+            residual[node_to_idx[s]] = weight
 
-    weight = 1.0 / len(valid_seeds)
-    return dict.fromkeys(valid_seeds, weight)
-
-
-def _propagate_residual(
-    u: FragmentId,
-    residual: dict[FragmentId, float],
-    estimate: dict[FragmentId, float],
-    graph: Graph | _ReverseView,
-    alpha: float,
-    restart: float,
-    push_threshold: float,
-    queue: deque[FragmentId],
-    in_queue: set[FragmentId],
-) -> None:
-    r_u = residual.get(u, 0.0)
-    if r_u < push_threshold:
-        return
-
-    estimate[u] = estimate.get(u, 0.0) + restart * r_u
-    residual[u] = 0.0
-
-    nbrs = graph.neighbors(u)
-    total_weight = sum(nbrs.values()) if nbrs else 0.0
-    if total_weight <= 0:
-        return
-
-    push_mass = alpha * r_u
-    for v, w in nbrs.items():
-        delta = push_mass * (w / total_weight)
-        old_r = residual.get(v, 0.0)
-        residual[v] = old_r + delta
-        if v not in in_queue and old_r + delta >= push_threshold:
-            queue.append(v)
-            in_queue.add(v)
+    return residual
 
 
-def _personalized_pagerank_sparse(
-    graph: Graph | _ReverseView,
+def _ppr_push_csr(
+    csr: CSRGraph,
     seeds: set[FragmentId],
     alpha: float = 0.60,
     tol: float = 1e-4,
     seed_weights: dict[FragmentId, float] | None = None,
-) -> dict[FragmentId, float]:
-    n = len(graph.nodes)
+) -> Any:
+    n = csr.n
     if n == 0:
-        return {}
+        return np.empty(0, dtype=np.float64)
 
     restart = 1.0 - alpha
     push_threshold = tol
 
-    residual = _init_seed_residuals(seeds, graph.nodes, seed_weights)
-    estimate: dict[FragmentId, float] = {}
+    indptr = csr.indptr
+    indices = csr.indices
+    weights = csr.weights
+    out_sum = csr.out_weight_sum
 
-    queue: deque[FragmentId] = deque(residual.keys())
-    in_queue: set[FragmentId] = set(queue)
+    residual = _init_seed_residuals_csr(seeds, csr.node_to_idx, n, seed_weights)
+    estimate = np.zeros(n, dtype=np.float64)
+    in_queue = np.zeros(n, dtype=np.bool_)
+
+    queue: deque[int] = deque()
+    for i in range(n):
+        if residual[i] >= push_threshold:
+            queue.append(i)
+            in_queue[i] = True
 
     pushes = 0
     max_pushes = min(n * 100, 2_000_000)
+
     while queue and pushes < max_pushes:
         u = queue.popleft()
-        in_queue.discard(u)
-        _propagate_residual(u, residual, estimate, graph, alpha, restart, push_threshold, queue, in_queue)
+        in_queue[u] = False
+
+        r_u = residual[u]
+        if r_u < push_threshold:
+            continue
+
+        estimate[u] += restart * r_u
+        residual[u] = 0.0
+
+        total_w = out_sum[u]
+        if total_w <= 0:
+            pushes += 1
+            continue
+
+        push_mass = alpha * r_u
+        start = indptr[u]
+        end = indptr[u + 1]
+
+        for k in range(start, end):
+            v = indices[k]
+            delta = push_mass * (weights[k] / total_w)
+            old_r = residual[v]
+            new_r = old_r + delta
+            residual[v] = new_r
+            if not in_queue[v] and new_r >= push_threshold:
+                queue.append(v)
+                in_queue[v] = True
+
         pushes += 1
 
     return estimate
@@ -120,25 +121,30 @@ def personalized_pagerank(
         logger.warning("PPR: none of %d seeds found in graph (%d nodes) — returning uniform", len(seeds), len(graph.nodes))
         return {n: 1.0 / len(graph.nodes) for n in graph.nodes}
 
-    forward_scores = _personalized_pagerank_sparse(graph, valid_seeds, alpha, tol, seed_weights)
+    fwd_csr, rev_csr = graph.to_csr()
 
-    reverse_view = _ReverseView(graph)
-    backward_scores = _personalized_pagerank_sparse(reverse_view, valid_seeds, alpha, tol, seed_weights)
+    forward_est = _ppr_push_csr(fwd_csr, valid_seeds, alpha, tol, seed_weights)
+    backward_est = _ppr_push_csr(rev_csr, valid_seeds, alpha, tol, seed_weights)
 
-    combined: dict[FragmentId, float] = {}
-    all_nodes = set(forward_scores) | set(backward_scores)
-    for node in all_nodes:
-        fwd = forward_scores.get(node, 0.0)
-        bwd = backward_scores.get(node, 0.0)
-        combined[node] = lam * fwd + (1 - lam) * bwd
+    combined = lam * forward_est + (1.0 - lam) * backward_est
 
-    total = sum(combined.values())
-    logger.debug(
-        "PPR sparse bidirectional: forward=%d backward=%d combined=%d nodes",
-        len(forward_scores),
-        len(backward_scores),
-        len(combined),
-    )
+    total = combined.sum()
     if total > 0:
-        return {n: s / total for n, s in combined.items()}
-    return combined
+        combined /= total
+
+    idx_to_node = fwd_csr.idx_to_node
+    result: dict[FragmentId, float] = {}
+    for i in range(fwd_csr.n):
+        score = combined[i]
+        if score > 0:
+            result[idx_to_node[i]] = float(score)
+
+    logger.debug(
+        "PPR CSR bidirectional: n=%d forward_nonzero=%d backward_nonzero=%d result=%d nodes",
+        fwd_csr.n,
+        int(np.count_nonzero(forward_est)),
+        int(np.count_nonzero(backward_est)),
+        len(result),
+    )
+
+    return result

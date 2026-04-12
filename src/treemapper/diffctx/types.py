@@ -10,29 +10,30 @@ from .tokenizer import extract_tokens as _extract_tokens_nlp
 _IDENT_RE = re.compile(r"[A-Za-z_]\w*")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FragmentId:
     path: Path
     start_line: int
     end_line: int
+    _path_str: str = field(init=False, repr=False, compare=False)
+    _hash: int = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        path_str = str(self.path)
-        object.__setattr__(self, "_path_str", path_str)
-        object.__setattr__(self, "_hash", hash((path_str, self.start_line, self.end_line)))
+        object.__setattr__(self, "_path_str", str(self.path))
+        object.__setattr__(self, "_hash", hash((self._path_str, self.start_line, self.end_line)))
 
     def __str__(self) -> str:
-        return f"{self._path_str}:{self.start_line}-{self.end_line}"  # type: ignore[attr-defined]
+        return f"{self._path_str}:{self.start_line}-{self.end_line}"
 
     def __hash__(self) -> int:
-        return self._hash  # type: ignore[attr-defined,no-any-return]
+        return self._hash
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FragmentId):
             return NotImplemented
         return (
-            self._hash == other._hash  # type: ignore[attr-defined]
-            and self._path_str == other._path_str  # type: ignore[attr-defined]
+            self._hash == other._hash
+            and self._path_str == other._path_str
             and self.start_line == other.start_line
             and self.end_line == other.end_line
         )
@@ -40,7 +41,7 @@ class FragmentId:
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, FragmentId):
             return NotImplemented
-        return (self._path_str, self.start_line, self.end_line) < (other._path_str, other.start_line, other.end_line)  # type: ignore[attr-defined]
+        return (self._path_str, self.start_line, self.end_line) < (other._path_str, other.start_line, other.end_line)
 
 
 @dataclass

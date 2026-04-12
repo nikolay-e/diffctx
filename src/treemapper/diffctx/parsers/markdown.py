@@ -121,7 +121,7 @@ class MistuneMarkdownStrategy:
 
 class RegexMarkdownStrategy:
     priority = 85
-    _HEADING_RE = re.compile(r"^(#{1,6}) (.+)$")
+    _HEADING_RE = re.compile(r"^(#{1,6})(?:\s(.+))?$")
 
     def can_handle(self, path: Path, _content: str) -> bool:
         return path.suffix.lower() in {".md", ".markdown", ".mdx"}
@@ -135,7 +135,7 @@ class RegexMarkdownStrategy:
         for i, line in enumerate(lines):
             match = self._HEADING_RE.match(line)
             if match:
-                headings.append((i + 1, len(match.group(1)), match.group(2).strip()))
+                headings.append((i + 1, len(match.group(1)), (match.group(2) or "").strip()))
 
         if not headings:
             return []

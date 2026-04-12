@@ -39,12 +39,15 @@ def _count_brackets_outside_strings(line: str) -> tuple[int, int, int, int]:
 
 def _find_signature_end(lines: list[str]) -> int:
     paren_depth = 0
+    seen_open_paren = False
     for i, line in enumerate(lines):
         op, cp, ob, cb = _count_brackets_outside_strings(line)
         paren_depth += op - cp
+        if op > 0:
+            seen_open_paren = True
         if ob - cb > 0:
             return i + 1
-        if paren_depth <= 0 and i > 0:
+        if seen_open_paren and paren_depth <= 0:
             return i + 1
     return min(2, len(lines))
 

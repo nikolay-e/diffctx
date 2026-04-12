@@ -37,7 +37,7 @@ def _pick_best_fragment(candidates: list[Fragment], selected_ids: set[FragmentId
         return None
     sig_candidates = [f for f in candidates if "_signature" in f.kind]
     full_candidates = [f for f in candidates if "_signature" not in f.kind]
-    return next(iter(sig_candidates or full_candidates), None)
+    return next(iter(full_candidates or sig_candidates), None)
 
 
 def _pick_smallest_fitting(
@@ -121,6 +121,9 @@ def _ensure_changed_files_represented(
     added: list[Fragment] = []
     budget_left = remaining_budget
     selected_ids = {f.id for f in selected}
+    interval_idx = _IntervalIndex()
+    for f in selected:
+        interval_idx.add(f.id)
 
     for path in sorted(missing_paths):
         candidates = frags_by_path.get(path, [])
@@ -129,9 +132,10 @@ def _ensure_changed_files_represented(
             candidates = [fallback] if fallback else []
 
         picked = _pick_smallest_fitting(candidates, selected_ids, budget_left)
-        if picked is not None:
+        if picked is not None and not interval_idx.overlaps(picked):
             added.append(picked)
             selected_ids.add(picked.id)
+            interval_idx.add(picked.id)
             budget_left -= picked.token_count
 
     if added:

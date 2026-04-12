@@ -12,8 +12,15 @@ import time
 from pathlib import Path
 
 LINES_RE = re.compile(r"^(\d+)-(\d+)$")
-REPOS_DIR = Path(tempfile.gettempdir()) / "contextbench_repos"
-REPOS_DIR.mkdir(exist_ok=True)
+_WORKSPACE_PREFIX_RE = re.compile(r"^/workspace/[^/]+/")
+
+
+def normalize_gold_path(path: str) -> str:
+    return _WORKSPACE_PREFIX_RE.sub("", path)
+
+
+REPOS_DIR = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
+REPOS_DIR.mkdir(parents=True, exist_ok=True)
 
 RECOGNIZED_EXT = {
     ".py",
@@ -285,6 +292,8 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     print(f"Base: {inst['base_commit'][:12]}")
 
     gold_blocks = json.loads(inst["gold_context"]) if isinstance(inst["gold_context"], str) else inst["gold_context"]
+    for g in gold_blocks:
+        g["file"] = normalize_gold_path(g["file"])
     gold_set = {g["file"] for g in gold_blocks}
     added, deleted, modified = patch_files(inst["patch"])
     p_set = added | deleted | modified
@@ -349,6 +358,13 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     nt_recall = len(nontrivial_hits) / len(nontrivial) if nontrivial else 0.0
     patch_coverage = len(p_set & selected) / len(p_set) if p_set else 0.0
 
+    stage_per_file: dict[str, str] = {}
+    for f in nontrivial:
+        if f in selected:
+            stage_per_file[f] = "selected"
+        else:
+            stage_per_file[f] = _classify_failure_stage(f, sel_dump, fragmented, universe)
+
     return {
         "id": iid,
         "status": "ok",
@@ -360,6 +376,7 @@ def evaluate_one(inst: dict, budget: int) -> dict:
         "patch_coverage": round(patch_coverage, 3),
         "file_recall": round(file_recall, 3),
         "nt_recall": round(nt_recall, 3),
+        "stage_per_file": stage_per_file,
     }
 
 
@@ -393,7 +410,7 @@ def main():
         kept = []
         for i in insts:
             gb = json.loads(i["gold_context"]) if isinstance(i["gold_context"], str) else i["gold_context"]
-            gold = {g["file"] for g in gb}
+            gold = {normalize_gold_path(g["file"]) for g in gb}
             added, deleted, modified = patch_files(i["patch"])
             if gold - (added | deleted | modified):
                 kept.append(i)
@@ -423,6 +440,19 @@ def main():
         print(f"Avg nontrivial:     {sum(r['nt_recall'] for r in ok)/len(ok):.3f}")
         total_deleted = sum(r["n_deleted_in_patch"] for r in ok)
         print(f"Total deleted files across all instances: {total_deleted}")
+
+        stages: dict[str, int] = {}
+        total_nt = 0
+        for r in ok:
+            for _f, stage in r.get("stage_per_file", {}).items():
+                stages[stage] = stages.get(stage, 0) + 1
+                total_nt += 1
+        if total_nt:
+            print(f"\nStage-wise breakdown ({total_nt} nontrivial gold files):")
+            for stage in sorted(stages, key=lambda s: -stages[s]):
+                pct = 100 * stages[stage] / total_nt
+                print(f"  {stage:50s}: {stages[stage]:4d} ({pct:5.1f}%)")
+
         print("\nIf patch_coverage < 0.95: BUG — diffctx is losing files from its own diff input.")
         print("If patch_coverage > 0.95: not a patch-loss bug, look elsewhere.")
 

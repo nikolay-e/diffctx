@@ -88,6 +88,7 @@ class HelmEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         templates = [f for f in changed_files if _is_helm_template(f)]
         values = [f for f in changed_files if _is_helm_values(f)]

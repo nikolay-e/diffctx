@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 _RANGE_RE = re.compile(r"^\s*(\S+?)(\.\.\.?)(\S*?)\s*$")  # NOSONAR(S5852)
 _SAFE_RANGE_RE = re.compile(r"^[a-zA-Z0-9_.^~/@{}\-]+(\.\.\.?[a-zA-Z0-9_.^~/@{}\-]*)?$")
+_SAFE_DIFF_FLAGS = ["--no-textconv", "--no-ext-diff"]
 
 
 class GitError(Exception):
@@ -53,7 +54,7 @@ def is_git_repo(path: Path) -> bool:
 
 def get_diff_text(repo_root: Path, diff_range: str) -> str:
     _validate_diff_range(diff_range)
-    return run_git(repo_root, ["diff", diff_range])
+    return run_git(repo_root, ["diff", *_SAFE_DIFF_FLAGS, diff_range])
 
 
 def _parse_hunk_header(match: re.Match[str], path: Path) -> DiffHunk:
@@ -88,7 +89,7 @@ def _unquote_c_style(quoted: str) -> str:
             if nxt in _C_ESCAPE_MAP:
                 chars.append(_C_ESCAPE_MAP[nxt])
                 i += 2
-            elif nxt in "01234567" and i + 3 < len(raw) and all(c in "01234567" for c in raw[i + 1 : i + 4]):
+            elif nxt in "01234567" and i + 3 <= len(raw) and all(c in "01234567" for c in raw[i + 1 : i + 4]):
                 chars.append(chr(int(raw[i + 1 : i + 4], 8)))
                 i += 4
             else:
@@ -110,19 +111,35 @@ def _parse_path_line(line: str, repo_root: Path) -> tuple[str, Path | None]:
     if line.startswith("+++ /dev/null"):
         return "new", None
     if line.startswith("--- a/"):
-        return "old", repo_root / line.removeprefix("--- a/").strip()
+        rel_path = line.removeprefix("--- a/").strip()
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "old", repo_root / rel_path
     if line.startswith("+++ b/"):
-        return "new", repo_root / line.removeprefix("+++ b/").strip()
+        rel_path = line.removeprefix("+++ b/").strip()
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "new", repo_root / rel_path
     if line.startswith('--- "a/'):
-        return "old", repo_root / _unquote_c_style(line.removeprefix("--- ").strip()).removeprefix("a/")
+        rel_path = _unquote_c_style(line.removeprefix("--- ").strip()).removeprefix("a/")
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "old", repo_root / rel_path
     if line.startswith('+++ "b/'):
-        return "new", repo_root / _unquote_c_style(line.removeprefix("+++ ").strip()).removeprefix("b/")
+        rel_path = _unquote_c_style(line.removeprefix("+++ ").strip()).removeprefix("b/")
+        resolved = (repo_root / rel_path).resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return "", None
+        return "new", repo_root / rel_path
     return "", None
 
 
 def parse_diff(repo_root: Path, diff_range: str) -> list[DiffHunk]:
     _validate_diff_range(diff_range)
-    output = run_git(repo_root, ["diff", "--unified=0", "-M", diff_range])
+    output = run_git(repo_root, ["diff", *_SAFE_DIFF_FLAGS, "--unified=0", "-M", diff_range])
     hunks: list[DiffHunk] = []
     old_path: Path | None = None
     new_path: Path | None = None
@@ -152,7 +169,7 @@ def _run_git_z(repo_root: Path, args: list[str]) -> list[str]:
 
 def get_changed_files(repo_root: Path, diff_range: str) -> list[Path]:
     _validate_diff_range(diff_range)
-    return [repo_root / p for p in _run_git_z(repo_root, ["diff", "--name-only", "-M", "-z", diff_range])]
+    return [repo_root / p for p in _run_git_z(repo_root, ["diff", *_SAFE_DIFF_FLAGS, "--name-only", "-M", "-z", diff_range])]
 
 
 def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
@@ -172,13 +189,13 @@ def get_deleted_files(repo_root: Path, diff_range: str) -> set[Path]:
     _validate_diff_range(diff_range)
     return {
         (repo_root / p).resolve()
-        for p in _run_git_z(repo_root, ["diff", "--diff-filter=D", "--name-only", "-M", "-z", diff_range])
+        for p in _run_git_z(repo_root, ["diff", *_SAFE_DIFF_FLAGS, "--diff-filter=D", "--name-only", "-M", "-z", diff_range])
     }
 
 
 def get_renamed_paths(repo_root: Path, diff_range: str, min_similarity: int = 95) -> tuple[set[Path], set[Path]]:
     _validate_diff_range(diff_range)
-    output = run_git(repo_root, ["diff", "--diff-filter=R", "--name-status", "-M", "-z", diff_range])
+    output = run_git(repo_root, ["diff", *_SAFE_DIFF_FLAGS, "--diff-filter=R", "--name-status", "-M", "-z", diff_range])
     parts = output.split("\0")
     old_paths: set[Path] = set()
     pure_new_paths: set[Path] = set()
@@ -215,7 +232,7 @@ class CatFileBatch:
                 ["git", "-C", str(self._repo_root), "cat-file", "--batch"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
             )
         return self._proc
 

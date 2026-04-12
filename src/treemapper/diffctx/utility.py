@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -196,6 +196,38 @@ def _collect_external_symbols_from_lines(changed_lines: list[str]) -> frozenset[
             if not py_module.startswith("."):
                 symbols.update(_parse_import_names(py_names))
     return frozenset(symbols)
+
+
+_JS_LOCAL_IMPORT_RE = re.compile(r"""import\s+(?:\{([^}]+)\}|([A-Z]\w+))\s+from\s+['"]([^'"]+)['"]""")
+
+
+def _is_local_import(source: str) -> bool:
+    return source.startswith(".") or source.startswith("@/") or source.startswith("~/")
+
+
+def _collect_import_needs(
+    changed_lines: list[str],
+    needs: dict[tuple[str, str], InformationNeed],
+) -> None:
+    for line in changed_lines:
+        for m in _JS_LOCAL_IMPORT_RE.finditer(line):
+            named, default, source = m.group(1), m.group(2), m.group(3)
+            if not _is_local_import(source):
+                continue
+            syms: set[str] = set()
+            if named:
+                syms = _parse_import_names(named)
+            elif default:
+                syms = {default.lower()}
+            for sym in syms:
+                if len(sym) >= 3 and sym not in CODE_STOPWORDS:
+                    needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 0.9))
+        for m in _PY_IMPORT_RE.finditer(line):
+            module, names = m.group(1), m.group(2)
+            if module.startswith("."):
+                for sym in _parse_import_names(names):
+                    if len(sym) >= 3 and sym not in CODE_STOPWORDS:
+                        needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 0.9))
 
 
 def _is_comment_line(line: str) -> bool:
@@ -468,6 +500,7 @@ def needs_from_diff(
 
     core_symbol_names = _collect_core_needs(all_fragments, core_ids, needs)
     _collect_diff_line_needs(diff_text, needs, changed_lines)
+    _collect_import_needs(changed_lines, needs)
     _collect_invariant_needs(diff_text, needs, changed_lines)
     _collect_test_needs(all_fragments, core_symbol_names, needs)
     if _is_terraform_diff(all_fragments, core_ids):
@@ -509,15 +542,10 @@ class UtilityState:
     file_importance: dict[Path, float] = field(default_factory=dict)
 
     def copy(self) -> UtilityState:
-        return UtilityState(
+        return replace(
+            self,
             max_rel=dict(self.max_rel),
             priorities=dict(self.priorities),
-            structural_sum=self.structural_sum,
-            eta=self.eta,
-            gamma=self.gamma,
-            r_cap=self.r_cap,
-            changed_dirs=self.changed_dirs,
-            proximity_decay=self.proximity_decay,
             file_importance=dict(self.file_importance),
         )
 
@@ -527,7 +555,6 @@ def _phi(x: float) -> float:
 
 
 _MIN_REL_FOR_BONUS = 0.03
-_STRONG_REL_THRESHOLD = 0.07
 _RELATEDNESS_BONUS = 0.25
 
 
@@ -559,7 +586,7 @@ def _diversity_bonus(
 ) -> float:
     if not needs or rel_score < _MIN_REL_FOR_BONUS:
         return 0.0
-    if gain <= 0 and rel_score < _STRONG_REL_THRESHOLD:
+    if gain <= 0:
         return 0.0
     total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
     unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))

@@ -10,7 +10,7 @@ _DOCKERFILE_NAMES = {"dockerfile"}
 _COMPOSE_NAMES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
 
 _DOCKERFILE_FROM_RE = re.compile(r"^FROM\s+(\S+)", re.MULTILINE | re.IGNORECASE)
-_DOCKERFILE_COPY_RE = re.compile(r"^(?:COPY|ADD)\s+(?:--[^\s]+\s+)*([^\s]+)\s+", re.MULTILINE | re.IGNORECASE)
+_DOCKERFILE_COPY_RE = re.compile(r"^(?:COPY|ADD)\s+(?:--[^\s]+\s+)*(.+)", re.MULTILINE | re.IGNORECASE)
 _DOCKERFILE_ENV_RE = re.compile(r"^ENV\s+(\w+)", re.MULTILINE | re.IGNORECASE)
 _DOCKERFILE_ARG_RE = re.compile(r"^ARG\s+(\w+)", re.MULTILINE | re.IGNORECASE)
 
@@ -66,11 +66,18 @@ def _collect_docker_refs(docker_files: list[Path]) -> set[str]:
     return refs
 
 
+def _split_copy_sources(raw: str) -> list[str]:
+    tokens = raw.split()
+    if len(tokens) < 2:
+        return []
+    return tokens[:-1]
+
+
 def _collect_dockerfile_refs(content: str, refs: set[str]) -> None:
     for match in _DOCKERFILE_COPY_RE.finditer(content):
-        src = match.group(1)
-        if not src.startswith("--") and not src.startswith("$"):
-            refs.add(_strip_dot_slash(src.strip().strip("'\"")))
+        for src in _split_copy_sources(match.group(1)):
+            if not src.startswith("--") and not src.startswith("$"):
+                refs.add(_strip_dot_slash(src.strip().strip("'\"")))
 
 
 def _collect_compose_refs(content: str, refs: set[str]) -> None:
@@ -91,6 +98,7 @@ class DockerEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         docker_files = [f for f in changed_files if _is_dockerfile(f) or _is_compose_file(f)]
         if not docker_files:
@@ -128,10 +136,10 @@ class DockerEdgeBuilder(EdgeBuilder):
     def _add_copy_edges(self, df: Fragment, path_to_frags: dict[Path, list[FragmentId]], edges: EdgeDict) -> None:
         base_dir = df.path.parent
         for match in _DOCKERFILE_COPY_RE.finditer(df.content):
-            src_path = match.group(1)
-            if src_path.startswith("--") or src_path.startswith("$"):
-                continue
-            self._link_copy_source(df.id, base_dir, src_path, path_to_frags, edges)
+            for src_path in _split_copy_sources(match.group(1)):
+                if src_path.startswith("--") or src_path.startswith("$"):
+                    continue
+                self._link_copy_source(df.id, base_dir, src_path, path_to_frags, edges)
 
     def _link_copy_source(
         self,

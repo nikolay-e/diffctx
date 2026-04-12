@@ -30,19 +30,16 @@ class SiblingEdgeBuilder(EdgeBuilder):
         return by_dir
 
     def _build_file_representative_map(self, fragments: list[Fragment]) -> dict[Path, FragmentId]:
+        frag_by_id: dict[FragmentId, Fragment] = {f.id: f for f in fragments}
         file_to_rep: dict[Path, FragmentId] = {}
         for f in fragments:
-            self._update_file_representative(f, file_to_rep, fragments)
-        return file_to_rep
-
-    def _update_file_representative(self, f: Fragment, file_to_rep: dict[Path, FragmentId], fragments: list[Fragment]) -> None:
-        if f.path not in file_to_rep:
-            file_to_rep[f.path] = f.id
-        elif f.token_count > 0:
-            existing = file_to_rep[f.path]
-            existing_frag = next((fr for fr in fragments if fr.id == existing), None)
-            if existing_frag and f.token_count > existing_frag.token_count:
+            if f.path not in file_to_rep:
                 file_to_rep[f.path] = f.id
+            elif f.token_count > 0:
+                existing = frag_by_id.get(file_to_rep[f.path])
+                if existing and f.token_count > existing.token_count:
+                    file_to_rep[f.path] = f.id
+        return file_to_rep
 
     def _add_sibling_edges_for_dir(self, files: set[Path], file_to_rep: dict[Path, FragmentId], edges: EdgeDict) -> None:
         file_list = sorted(files)

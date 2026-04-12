@@ -177,6 +177,7 @@ class ElixirEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         elixir_changed = [f for f in changed_files if _is_elixir_file(f)]
         if not elixir_changed:

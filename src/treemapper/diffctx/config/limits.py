@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -11,6 +12,7 @@ def _env_int(key: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
+        logging.warning("invalid integer value for %s=%r, using default %d", key, raw, default)
         return default
 
 

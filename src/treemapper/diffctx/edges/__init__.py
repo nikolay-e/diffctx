@@ -71,10 +71,11 @@ def discover_all_related_files(
     changed_files: list[Path],
     all_candidate_files: list[Path],
     repo_root: Path | None = None,
+    file_cache: dict[Path, str] | None = None,
 ) -> list[Path]:
     discovered: set[Path] = set()
     for builder in get_all_builders():
-        for f in builder.discover_related_files(changed_files, all_candidate_files, repo_root):
+        for f in builder.discover_related_files(changed_files, all_candidate_files, repo_root, file_cache=file_cache):
             discovered.add(f)
     return list(discovered)
 

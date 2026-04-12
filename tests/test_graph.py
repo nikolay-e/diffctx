@@ -202,7 +202,7 @@ class TestGraphBuild:
         (tmp_path / "a.py").write_text("from b import Foo\n\ndef use_foo():\n    return Foo()\n")
         pg = _build_graph(tmp_path)
         assert pg.edge_count >= 1
-        categories = {cat for cat in pg.graph.edge_categories.values()}
+        categories = set(pg.graph.edge_categories.values())
         assert "semantic" in categories
 
     def test_medium_project_all_files_present(self, graph_project):

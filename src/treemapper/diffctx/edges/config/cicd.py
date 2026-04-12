@@ -264,6 +264,7 @@ class CICDEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         ci_files = [f for f in changed_files if _is_ci_file(f)]
         if not ci_files:

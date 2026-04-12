@@ -132,17 +132,20 @@ def _collect_candidate_files(root_dir: Path, included_set: set[Path], combined_s
 def _build_ident_index(
     files: list[Path],
     concepts: frozenset[str],
+    file_cache: dict[Path, str] | None = None,
 ) -> dict[str, list[Path]]:
     inverted_index: dict[str, list[Path]] = defaultdict(list)
     for file_path in files:
-        try:
-            content = file_path.read_text(encoding="utf-8")
-            file_idents = extract_identifiers(content, skip_stopwords=False)
-            for ident in file_idents:
-                if ident in concepts:
-                    inverted_index[ident].append(file_path)
-        except (OSError, UnicodeDecodeError):
-            continue
+        content = file_cache.get(file_path) if file_cache else None
+        if content is None:
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="replace")
+            except (OSError, UnicodeDecodeError):
+                continue
+        file_idents = extract_identifiers(content, skip_stopwords=False)
+        for ident in file_idents:
+            if ident in concepts:
+                inverted_index[ident].append(file_path)
     return inverted_index
 
 
@@ -219,6 +222,7 @@ def _expand_universe_by_rare_identifiers(
     already_included: list[Path],
     combined_spec: pathspec.PathSpec,
     candidate_files: list[Path] | None = None,
+    file_cache: dict[Path, str] | None = None,
 ) -> list[Path]:
     if not concepts:
         return []
@@ -228,17 +232,19 @@ def _expand_universe_by_rare_identifiers(
         files = [f for f in candidate_files if f not in included_set]
     else:
         files = _collect_candidate_files(root_dir, included_set, combined_spec)
-    inverted_index = _build_ident_index(files, concepts)
+    inverted_index = _build_ident_index(files, concepts, file_cache=file_cache)
 
     included_concept_counts: dict[str, int] = {}
     for f in already_included:
-        try:
-            content = f.read_text(encoding="utf-8")
-            for ident in extract_identifiers(content, skip_stopwords=False):
-                if ident in concepts:
-                    included_concept_counts[ident] = included_concept_counts.get(ident, 0) + 1
-        except (OSError, UnicodeDecodeError):
-            continue
+        content = file_cache.get(f) if file_cache else None
+        if content is None:
+            try:
+                content = f.read_text(encoding="utf-8", errors="replace")
+            except (OSError, UnicodeDecodeError):
+                continue
+        for ident in extract_identifiers(content, skip_stopwords=False):
+            if ident in concepts:
+                included_concept_counts[ident] = included_concept_counts.get(ident, 0) + 1
 
     return _collect_expansion_files(inverted_index, concepts, included_set, included_concept_counts)
 
@@ -289,7 +295,7 @@ def _synthetic_hunks(files: list[Path]) -> list[DiffHunk]:
     hunks: list[DiffHunk] = []
     for f in files:
         try:
-            content = f.read_text(encoding="utf-8")
+            content = f.read_text(encoding="utf-8", errors="replace")
             line_count = len(content.splitlines())
             if line_count > 0:
                 hunks.append(DiffHunk(path=f, new_start=1, new_len=line_count))
@@ -302,7 +308,7 @@ def _enrich_concepts(concepts: frozenset[str], files: list[Path]) -> frozenset[s
     extra: set[str] = set()
     for f in files:
         try:
-            content = f.read_text(encoding="utf-8")
+            content = f.read_text(encoding="utf-8", errors="replace")
             extra.update(extract_identifiers(content))
         except (OSError, UnicodeDecodeError):
             continue

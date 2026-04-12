@@ -49,6 +49,7 @@ _GENERATED_PATH_SEGMENTS = frozenset(
         "gen-swift",
         "__generated__",
         "autogen",
+        "codegen",
     }
 )
 

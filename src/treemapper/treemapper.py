@@ -32,6 +32,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
             no_default_ignores=args.no_default_ignores,
             full=args.full_diff,
             whitelist_file=args.whitelist_file,
+            scoring_mode=getattr(args, "scoring", "auto"),
         )
     except GitError as e:
         logger.error("%s", e)
@@ -117,7 +118,7 @@ def _format_cycles(g: GraphArgs, pg: Any) -> str:
     return "\n".join(lines)
 
 
-def _format_hotspots(g: GraphArgs, pg: Any) -> str:
+def _format_hotspots(_g: GraphArgs, pg: Any) -> str:
     from .diffctx.graph_analytics import hotspots
 
     hot = hotspots(pg, top=10, edge_types=set(_ARCHITECTURAL_EDGE_TYPES))
@@ -227,7 +228,6 @@ def main() -> None:
         print("\nInterrupted", file=sys.stderr)
         sys.exit(130)
     except BrokenPipeError:
-        sys.stderr.close()
         sys.exit(141)
 
 

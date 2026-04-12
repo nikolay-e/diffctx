@@ -8,7 +8,7 @@ from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
-_RUST_USE_STMT_RE = re.compile(r"^\s*use\s+([^;\n]+?)\s*;", re.MULTILINE)
+_RUST_USE_STMT_RE = re.compile(r"^\s*use\s+(.+?)\s*;", re.DOTALL | re.MULTILINE)
 _RUST_MOD_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*[;{]", re.MULTILINE)
 
 _RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)", re.MULTILINE)
@@ -138,10 +138,11 @@ def _find_matching_brace(inner: str) -> int:
     return 0
 
 
-def _split_brace_items(items_str: str) -> list[str]:
+def _split_brace_items(items_str: str) -> tuple[list[str], bool]:
     items: list[str] = []
     current: list[str] = []
     depth = 0
+    has_self = False
     for ch in items_str:
         if ch == "{":
             depth += 1
@@ -151,15 +152,19 @@ def _split_brace_items(items_str: str) -> list[str]:
             current.append(ch)
         elif ch == "," and depth == 0:
             item = "".join(current).strip()
-            if item and item != "self":
+            if item == "self":
+                has_self = True
+            elif item:
                 items.append(item)
             current = []
         else:
             current.append(ch)
     item = "".join(current).strip()
-    if item and item != "self":
+    if item == "self":
+        has_self = True
+    elif item:
         items.append(item)
-    return items
+    return items, has_self
 
 
 def _parse_use_tree(text: str, _depth: int = 0) -> list[str]:
@@ -172,8 +177,11 @@ def _parse_use_tree(text: str, _depth: int = 0) -> list[str]:
     prefix = text[:brace_pos].rstrip(":")
     inner = text[brace_pos + 1 :]
     end = _find_matching_brace(inner)
+    items, has_self = _split_brace_items(inner[:end])
     results: list[str] = []
-    for item in _split_brace_items(inner[:end]):
+    if has_self and prefix:
+        results.append(prefix)
+    for item in items:
         results.extend(_parse_use_tree(f"{prefix}::{item}" if prefix else item, _depth + 1))
     return results
 
@@ -233,6 +241,7 @@ class RustEdgeBuilder(EdgeBuilder):
         changed_files: list[Path],
         all_candidate_files: list[Path],
         repo_root: Path | None = None,
+        **kwargs: object,
     ) -> list[Path]:
         rust_changed = [f for f in changed_files if _is_rust_file(f)]
         if not rust_changed:
