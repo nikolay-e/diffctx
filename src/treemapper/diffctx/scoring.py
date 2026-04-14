@@ -57,6 +57,34 @@ class DefaultDiscovery(DiscoveryStrategy):
         return list(dict.fromkeys(edge_discovered + expanded))
 
 
+class TestFileDiscovery(DiscoveryStrategy):
+    _TEST_PREFIXES = ("test_", "spec_")
+    _TEST_SUFFIXES = ("_test", "_spec", ".test", ".spec", "-test", "-spec")
+
+    def discover(self, ctx: DiscoveryContext) -> list[Path]:
+        changed_set = set(ctx.changed_files)
+        target_stems: set[str] = set()
+        for f in ctx.changed_files:
+            stem = f.stem.lower()
+            if any(stem.startswith(p) for p in self._TEST_PREFIXES):
+                continue
+            if any(stem.endswith(s) for s in self._TEST_SUFFIXES):
+                continue
+            target_stems.add(stem)
+            for prefix in self._TEST_PREFIXES:
+                target_stems.add(f"{prefix}{stem}")
+            for suffix in self._TEST_SUFFIXES:
+                target_stems.add(f"{stem}{suffix}")
+
+        discovered: list[Path] = []
+        for candidate in ctx.all_candidate_files:
+            if candidate in changed_set:
+                continue
+            if candidate.stem.lower() in target_stems:
+                discovered.append(candidate)
+        return discovered
+
+
 class BM25Discovery(DiscoveryStrategy):
     def __init__(self, top_k: int = 1) -> None:
         self.top_k = top_k
@@ -115,7 +143,7 @@ class BM25Discovery(DiscoveryStrategy):
 
 class EnsembleDiscovery(DiscoveryStrategy):
     def __init__(self, strategies: list[DiscoveryStrategy] | None = None) -> None:
-        self._strategies = strategies or [DefaultDiscovery(), BM25Discovery()]
+        self._strategies = strategies or [DefaultDiscovery(), TestFileDiscovery(), BM25Discovery()]
 
     def discover(self, ctx: DiscoveryContext) -> list[Path]:
         seen: dict[Path, None] = {}
@@ -148,8 +176,9 @@ class ScoringStrategy(ABC):
 
 
 class PPRScoring(ScoringStrategy):
-    def __init__(self, alpha: float = 0.60) -> None:
+    def __init__(self, alpha: float = 0.60, low_relevance_filter: bool = True) -> None:
         self.alpha = alpha
+        self.low_relevance_filter = low_relevance_filter
 
     def score_and_filter(
         self,
@@ -185,7 +214,10 @@ class PPRScoring(ScoringStrategy):
             )
 
         filtered = _filter_unrelated_fragments(all_fragments, core_ids, graph)
-        filtered = _filter_low_relevance_fragments(filtered, core_ids, rel_scores)
+        if self.low_relevance_filter:
+            filtered = _filter_low_relevance_fragments(filtered, core_ids, rel_scores)
+        else:
+            filtered = [f for f in filtered if f.id in core_ids or rel_scores.get(f.id, 0.0) > 0]
         filtered = _cap_context_fragments(filtered, core_ids, rel_scores)
 
         return ScoringResult(rel_scores=rel_scores, filtered_fragments=filtered, graph=graph)

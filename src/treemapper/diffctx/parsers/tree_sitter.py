@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from tree_sitter import Language, Node, Parser
 
 from ..languages import TREE_SITTER_LANGUAGES
 from ..types import Fragment, FragmentId, extract_identifiers
 from .base import MIN_FRAGMENT_LINES, create_code_gap_fragments, create_snippet
+
+_SUB_FRAGMENT_THRESHOLD_LINES = 30
+_SUB_FRAGMENT_TARGET_LINES = 20
+_BODY_FIELD_NAMES = ("body", "block", "consequence")
+_MAX_SUB_DEPTH = 3
 
 _DEFINITION_NODE_TYPES = {
     "python": {"function_definition", "class_definition", "decorated_definition"},
@@ -102,7 +108,43 @@ _LANG_MODULES = {
     "cpp": "tree_sitter_cpp",
     "ruby": "tree_sitter_ruby",
     "c_sharp": "tree_sitter_c_sharp",
+    "csharp": "tree_sitter_c_sharp",
+    "elixir": "tree_sitter_elixir",
+    "lua": "tree_sitter_lua",
+    "ocaml": "tree_sitter_ocaml",
+    "php": "tree_sitter_php",
+    "scala": "tree_sitter_scala",
+    "swift": "tree_sitter_swift",
 }
+
+
+def _import_lang_module(lang: str) -> Any | None:
+    import importlib
+
+    module_name = _LANG_MODULES.get(lang)
+    if not module_name:
+        return None
+    try:
+        return importlib.import_module(module_name)
+    except ImportError:
+        return None
+
+
+def get_ts_language(lang: str) -> Language | None:
+    mod = _import_lang_module(lang)
+    if mod is None:
+        return None
+    if lang == "tsx":
+        return Language(mod.language_tsx())
+    if lang == "typescript":
+        return Language(mod.language_typescript())
+    if lang == "ocaml" and hasattr(mod, "language_ocaml"):
+        return Language(mod.language_ocaml())
+    if lang == "php" and hasattr(mod, "language_php"):
+        return Language(mod.language_php())
+    if hasattr(mod, "language"):
+        return Language(mod.language())
+    return None
 
 
 class TreeSitterStrategy:
@@ -118,29 +160,13 @@ class TreeSitterStrategy:
         if lang in self._parsers:
             raise ValueError(f"Grammar unavailable for language: {lang}")
 
-        if lang not in _LANG_MODULES:
-            raise ValueError(f"Unsupported language: {lang}")
-
-        import importlib
-
-        module_name = _LANG_MODULES[lang]
-        try:
-            ts_lang_module = importlib.import_module(module_name)
-        except ImportError:
+        ts_lang = get_ts_language(lang)
+        if ts_lang is None:
             self._parsers[lang] = None
             raise ValueError(f"Grammar unavailable for language: {lang}")
 
-        if lang == "tsx":
-            ts_lang = ts_lang_module.language_tsx()
-        elif lang == "typescript":
-            ts_lang = ts_lang_module.language_typescript()
-        elif hasattr(ts_lang_module, "language"):
-            ts_lang = ts_lang_module.language()
-        else:
-            ts_lang = ts_lang_module
-
         parser = Parser()
-        parser.language = Language(ts_lang)
+        parser.language = ts_lang
         self._parsers[lang] = parser
         return parser
 
@@ -227,6 +253,8 @@ class TreeSitterStrategy:
             return
 
         self._add_leaf_definition(path, lines, start, end, kind, sym_name, fragments, covered, added_ends)
+        if end - start + 1 > _SUB_FRAGMENT_THRESHOLD_LINES:
+            self._create_sub_fragments(node, path, lines, sym_name, fragments, covered)
         if node.type == "variable_declarator" and self._has_function_child(node):
             return
         self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
@@ -295,6 +323,76 @@ class TreeSitterStrategy:
         )
         covered.add((start, end))
         added_ends.add((kind, end))
+
+    @staticmethod
+    def _find_body_node(node: Node) -> Node | None:
+        for field in _BODY_FIELD_NAMES:
+            child = node.child_by_field_name(field)
+            if child is not None:
+                return child
+        for child in node.children:
+            if child.type in ("block", "statement_block", "compound_statement", "function_body"):
+                return child
+        return None
+
+    @staticmethod
+    def _create_sub_fragments(
+        node: Node,
+        path: Path,
+        lines: list[str],
+        parent_symbol: str | None,
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+        _depth: int = 0,
+    ) -> None:
+        if _depth > _MAX_SUB_DEPTH:
+            return
+        body = TreeSitterStrategy._find_body_node(node)
+        if body is None:
+            return
+        children = [c for c in body.named_children if c.end_point[0] - c.start_point[0] >= 0]
+        if len(children) < 2:
+            return
+
+        chunk_start_line = children[0].start_point[0] + 1
+        chunk_end_line = children[0].end_point[0] + 1
+
+        for child in children[1:]:
+            child_start = child.start_point[0] + 1
+            child_end = child.end_point[0] + 1
+            prospective_end = child_end
+            if prospective_end - chunk_start_line + 1 > _SUB_FRAGMENT_TARGET_LINES:
+                if chunk_end_line >= chunk_start_line:
+                    snippet = create_snippet(lines, chunk_start_line, chunk_end_line)
+                    if snippet and chunk_end_line - chunk_start_line + 1 >= MIN_FRAGMENT_LINES:
+                        fragments.append(
+                            Fragment(
+                                id=FragmentId(path=path, start_line=chunk_start_line, end_line=chunk_end_line),
+                                kind="chunk",
+                                content=snippet,
+                                identifiers=extract_identifiers(snippet, profile="code"),
+                                symbol_name=f"{parent_symbol}[{chunk_start_line}]" if parent_symbol else None,
+                            )
+                        )
+                        covered.add((chunk_start_line, chunk_end_line))
+                chunk_start_line = child_start
+                chunk_end_line = child_end
+            else:
+                chunk_end_line = prospective_end
+
+        if chunk_end_line >= chunk_start_line:
+            snippet = create_snippet(lines, chunk_start_line, chunk_end_line)
+            if snippet and chunk_end_line - chunk_start_line + 1 >= MIN_FRAGMENT_LINES:
+                fragments.append(
+                    Fragment(
+                        id=FragmentId(path=path, start_line=chunk_start_line, end_line=chunk_end_line),
+                        kind="chunk",
+                        content=snippet,
+                        identifiers=extract_identifiers(snippet, profile="code"),
+                        symbol_name=f"{parent_symbol}[{chunk_start_line}]" if parent_symbol else None,
+                    )
+                )
+                covered.add((chunk_start_line, chunk_end_line))
 
     def _recurse_children(
         self,

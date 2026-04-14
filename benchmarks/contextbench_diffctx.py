@@ -2,38 +2,29 @@
 from __future__ import annotations
 
 import json
-import os
 import random
-import re
 import subprocess
 import sys
-import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
 
-LINES_RE = re.compile(r"^(\d+)-(\d+)$")
-_WORKSPACE_PREFIX_RE = re.compile(r"^/workspace/[^/]+/")
+from common import (
+    WORKERS,
+    apply_as_commit,
+    ensure_repo,
+    normalize_gold_path,
+    parse_lines_field,
+    patch_files,
+    repos_dir,
+    reset_to_parent,
+    run_parallel,
+    save_results,
+    warm_cache,
+    worker_dir,
+)
 
-
-def normalize_gold_path(path: str) -> str:
-    return _WORKSPACE_PREFIX_RE.sub("", path)
-
-
-_repos_suffix = os.environ.get("CONTEXTBENCH_REPOS_SUFFIX", "")
-_DEFAULT_REPOS = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
-REPOS_DIR = _DEFAULT_REPOS / _repos_suffix if _repos_suffix else _DEFAULT_REPOS
-REPOS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def parse_lines_field(lines_str: str) -> tuple[int, int] | None:
-    m = LINES_RE.match(lines_str.strip())
-    if not m:
-        return None
-    s, e = int(m.group(1)), int(m.group(2))
-    if s < 1 or e < s:
-        return None
-    return (s, e)
+REPOS_DIR = repos_dir("CB_REPOS_DIR", suffix_var="CONTEXTBENCH_REPOS_SUFFIX")
 
 
 def parse_gold_context(raw: str) -> list[dict]:
@@ -51,108 +42,11 @@ def gold_files(gold: list[dict]) -> set[str]:
     return {g["file"] for g in gold}
 
 
-def patch_files(patch: str) -> set[str]:
-    added, deleted, modified = set(), set(), set()
-    cur_a = cur_b = None
-    for line in patch.splitlines():
-        if line.startswith("diff --git "):
-            cur_a = cur_b = None
-        elif line.startswith("--- "):
-            p = line[4:]
-            cur_a = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
-        elif line.startswith("+++ "):
-            p = line[4:]
-            cur_b = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
-            if cur_a is None and cur_b is not None:
-                added.add(cur_b)
-            elif cur_a is not None and cur_b is None:
-                deleted.add(cur_a)
-            elif cur_a == cur_b and cur_a is not None:
-                modified.add(cur_a)
-            elif cur_a is not None and cur_b is not None:
-                modified.add(cur_b)
-                modified.add(cur_a)
-    return added | deleted | modified
-
-
 def is_nontrivial(gold: list[dict], patch: str) -> bool:
-    gf = gold_files(gold)
-    pf = patch_files(patch)
-    return bool(gf - pf)
+    return bool(gold_files(gold) - patch_files(patch))
 
 
-def ensure_repo(repo_url: str, repo_name: str, base_commit: str, repos_dir: Path = REPOS_DIR) -> Path | None:
-    repo_dir = repos_dir / repo_name.replace("/", "__")
-    if not repo_dir.exists():
-        r = subprocess.run(
-            ["git", "clone", "--quiet", repo_url, str(repo_dir)],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if r.returncode != 0:
-            print(f"  CLONE FAIL: {r.stderr[:200]}")
-            return None
-
-    r = subprocess.run(
-        ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if r.returncode != 0:
-        subprocess.run(
-            ["git", "-C", str(repo_dir), "fetch", "--all", "--quiet"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        r = subprocess.run(
-            ["git", "-C", str(repo_dir), "checkout", "--force", base_commit],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if r.returncode != 0:
-            print(f"  CHECKOUT FAIL: {r.stderr[:200]}")
-            return None
-    return repo_dir
-
-
-def apply_as_commit(repo_dir: Path, patch_text: str) -> bool:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
-        f.write(patch_text)
-        patch_path = f.name
-    try:
-        r = subprocess.run(
-            ["git", "-C", str(repo_dir), "apply", "--index", patch_path],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if r.returncode != 0:
-            r = subprocess.run(
-                ["git", "-C", str(repo_dir), "apply", "--index", "--3way", patch_path],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if r.returncode != 0:
-                print(f"  APPLY FAIL: {r.stderr[:200]}")
-                return False
-
-        subprocess.run(
-            ["git", "-C", str(repo_dir), "commit", "-m", "bench", "--allow-empty", "--no-verify"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return True
-    finally:
-        os.unlink(patch_path)
-
-
-def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "auto") -> dict | None:
+def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "hybrid") -> dict | None:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
@@ -162,26 +56,20 @@ def run_diffctx(repo_dir: Path, budget: int = 8000, scoring_mode: str = "auto") 
         return None
 
 
-def run_baseline_patch_files(repo_dir: Path, budget: int = 8000) -> dict | None:
+def _pack_files_to_fragments(repo_dir: Path, ranked_files: list[str], budget: int) -> dict:
     import tiktoken
 
     enc = tiktoken.get_encoding("o200k_base")
-    r = subprocess.run(
-        ["git", "-C", str(repo_dir), "diff", "HEAD~1..HEAD", "--name-only"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
     fragments = []
     used = 0
-    for rel_path in r.stdout.strip().splitlines():
+    for rel_path in ranked_files:
         if used >= budget:
             break
         full = repo_dir / rel_path
         if not full.is_file():
             continue
         try:
-            content = full.read_text(encoding="utf-8")
+            content = full.read_text(encoding="utf-8", errors="replace")
         except (OSError, UnicodeDecodeError):
             continue
         tokens = enc.encode(content)
@@ -203,6 +91,16 @@ def run_baseline_patch_files(repo_dir: Path, budget: int = 8000) -> dict | None:
         "fragment_count": len(fragments),
         "fragments": fragments,
     }
+
+
+def run_baseline_patch_files(repo_dir: Path, budget: int = 8000) -> dict | None:
+    r = subprocess.run(
+        ["git", "-C", str(repo_dir), "diff", "HEAD~1..HEAD", "--name-only"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return _pack_files_to_fragments(repo_dir, r.stdout.strip().splitlines(), budget)
 
 
 def extract_selected_files(output: dict) -> set[str]:
@@ -245,7 +143,7 @@ def evaluate_instance(
     inst: dict,
     budget: int = 8000,
     repos_dir: Path = REPOS_DIR,
-    scoring_mode: str = "auto",
+    scoring_mode: str = "hybrid",
     baseline: str = "treemapper",
 ) -> dict | None:
     iid = inst["instance_id"]
@@ -275,19 +173,15 @@ def evaluate_instance(
         )
         return {"id": iid, "status": "apply_fail"}
 
-    t0 = time.time()
-    if baseline == "patch_files":
-        output = run_baseline_patch_files(repo_dir, budget)
-    else:
-        output = run_diffctx(repo_dir, budget, scoring_mode)
-    elapsed = time.time() - t0
-
-    subprocess.run(
-        ["git", "-C", str(repo_dir), "reset", "--hard", "HEAD~1"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        t0 = time.time()
+        if baseline == "patch_files":
+            output = run_baseline_patch_files(repo_dir, budget)
+        else:
+            output = run_diffctx(repo_dir, budget, scoring_mode)
+        elapsed = time.time() - t0
+    finally:
+        reset_to_parent(repo_dir)
 
     if not output:
         return {"id": iid, "status": "diffctx_fail"}
@@ -420,13 +314,12 @@ def aggregate(results: list[dict]) -> None:
 
 def _run_one(args: tuple[int, dict, int, str, str]) -> dict | None:
     _i, inst, budget, scoring, baseline = args
-    worker_dir = REPOS_DIR / f"w{os.getpid()}"
-    worker_dir.mkdir(exist_ok=True)
+    wdir = worker_dir(REPOS_DIR)
     try:
-        return evaluate_instance(inst, budget, repos_dir=worker_dir, scoring_mode=scoring, baseline=baseline)
+        return evaluate_instance(inst, budget, repos_dir=wdir, scoring_mode=scoring, baseline=baseline)
     except Exception as e:
         print(f"  ERROR: {type(e).__name__}: {e}", flush=True)
-        return None
+        return {"id": inst["instance_id"], "status": "error"}
 
 
 def main():
@@ -443,9 +336,7 @@ def main():
     parser.add_argument("--nontrivial-only", action="store_true", default=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-shuffle", action="store_true")
-    parser.add_argument("--output", type=str, default=None)
-    parser.add_argument("--workers", type=int, default=11)
-    parser.add_argument("--scoring", type=str, default="auto", choices=["auto", "precise", "discover"])
+    parser.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego"])
     parser.add_argument("--baseline", type=str, default="treemapper", choices=["treemapper", "patch_files"])
     args = parser.parse_args()
 
@@ -470,37 +361,22 @@ def main():
         print(f"Shuffled with seed={args.seed}")
 
     instances = instances[: args.limit]
-    print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={args.workers}, scoring={args.scoring})")
+    print(f"Evaluating {len(instances)} instances (budget={args.budget}, workers={WORKERS}, scoring={args.scoring})")
 
-    results = []
+    warm_cache(instances)
+
     t0 = time.time()
-
     run_args = [(i, inst, args.budget, args.scoring, args.baseline) for i, inst in enumerate(instances, 1)]
-
-    if args.workers > 1:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
-        with ProcessPoolExecutor(max_workers=args.workers) as pool:
-            futures = {pool.submit(_run_one, a): a[0] for a in run_args}
-            for future in as_completed(futures):
-                r = future.result()
-                if r:
-                    results.append(r)
-    else:
-        for a in run_args:
-            r = _run_one(a)
-            if r:
-                results.append(r)
-
+    results = run_parallel(_run_one, run_args, WORKERS)
     elapsed = time.time() - t0
     print(f"\nTotal wall time: {elapsed:.0f}s")
 
     aggregate(results)
 
-    if args.output:
-        with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults saved to {args.output}")
+    tag = f"cb_{args.scoring}_n{args.limit}_b{args.budget}"
+    if args.baseline != "treemapper":
+        tag = f"cb_baseline_{args.baseline}"
+    save_results(results, tag)
 
 
 if __name__ == "__main__":

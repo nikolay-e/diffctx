@@ -66,7 +66,7 @@ RLangEdgeBuilder
 SqlEdgeBuilder
 ZigEdgeBuilder
 blast_radius = graph_analytics.blast_radius
-ScoringMode.AUTO
+ScoringMode.HYBRID
 PipelineConfig.low_relevance
 _ = EdgeBuilder._read_file
 EgoGraphScoring

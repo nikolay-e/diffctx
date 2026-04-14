@@ -32,7 +32,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
             no_default_ignores=args.no_default_ignores,
             full=args.full_diff,
             whitelist_file=args.whitelist_file,
-            scoring_mode=getattr(args, "scoring", "auto"),
+            scoring_mode=getattr(args, "scoring", "hybrid"),
         )
     except GitError as e:
         logger.error("%s", e)

@@ -4,23 +4,22 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 
-LINES_RE = re.compile(r"^(\d+)-(\d+)$")
-_WORKSPACE_PREFIX_RE = re.compile(r"^/workspace/[^/]+/")
+from common import (
+    apply_as_commit,
+    ensure_repo,
+    normalize_gold_path,
+    patch_files_detailed,
+    repos_dir,
+    run_cmd,
+)
 
-
-def normalize_gold_path(path: str) -> str:
-    return _WORKSPACE_PREFIX_RE.sub("", path)
-
-
-REPOS_DIR = Path(os.environ.get("CB_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
-REPOS_DIR.mkdir(parents=True, exist_ok=True)
+REPOS_DIR = repos_dir("CB_REPOS_DIR")
 
 RECOGNIZED_EXT = {
     ".py",
@@ -81,69 +80,6 @@ RECOGNIZED_EXT = {
     ".tf",
     ".hcl",
 }
-
-
-def patch_files(patch: str) -> tuple[set[str], set[str], set[str]]:
-    added, deleted, modified = set(), set(), set()
-    cur_a = cur_b = None
-    for line in patch.splitlines():
-        if line.startswith("diff --git "):
-            cur_a = cur_b = None
-        elif line.startswith("--- "):
-            p = line[4:]
-            cur_a = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
-        elif line.startswith("+++ "):
-            p = line[4:]
-            cur_b = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
-            if cur_a is None and cur_b is not None:
-                added.add(cur_b)
-            elif cur_a is not None and cur_b is None:
-                deleted.add(cur_a)
-            elif cur_a == cur_b and cur_a is not None:
-                modified.add(cur_a)
-            elif cur_a is not None and cur_b is not None:
-                modified.add(cur_b)
-                modified.add(cur_a)
-    return added, deleted, modified
-
-
-def run_cmd(cmd, cwd=None, check=True, timeout=120):
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
-
-
-def ensure_repo(repo_url: str, repo_name: str, base_commit: str) -> Path | None:
-    repo_dir = REPOS_DIR / repo_name.replace("/", "__")
-    if not repo_dir.exists():
-        r = run_cmd(["git", "clone", "--quiet", repo_url, str(repo_dir)], check=False, timeout=600)
-        if r.returncode != 0:
-            print(f"  CLONE FAIL: {r.stderr[:200]}")
-            return None
-    r = run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", base_commit], check=False)
-    if r.returncode != 0:
-        run_cmd(["git", "-C", str(repo_dir), "fetch", "--all", "--quiet"], check=False, timeout=600)
-        r = run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", base_commit], check=False)
-        if r.returncode != 0:
-            print(f"  CHECKOUT FAIL: {r.stderr[:200]}")
-            return None
-    return repo_dir
-
-
-def apply_as_commit(repo_dir: Path, patch_text: str) -> bool:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
-        f.write(patch_text)
-        patch_path = f.name
-    try:
-        r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", patch_path], check=False)
-        if r.returncode != 0:
-            r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--3way", patch_path], check=False)
-            if r.returncode != 0:
-                print(f"  APPLY FAIL: {r.stderr[:300]}")
-                return False
-        run_cmd(["git", "-C", str(repo_dir), "commit", "-m", "bench", "--allow-empty", "--no-verify"], check=False)
-        return True
-    finally:
-        os.unlink(patch_path)
-
 
 DUMP_DIR = Path(tempfile.gettempdir()) / "diffctx_dump"
 SCORES_FILE = Path(tempfile.gettempdir()) / "diffctx_scores.jsonl"
@@ -243,6 +179,16 @@ def _print_patch_coverage(p_set: set[str], selected: set[str], deleted: set[str]
             print(f"    {f}\n        -> {reason}")
 
 
+def _classify_failure_stage(f: str, sel_dump: set[str], fragmented: set[str], universe: set[str]) -> str:
+    if f in sel_dump:
+        return "SELECTED_BUT_PATH_MISMATCH"
+    if f in fragmented:
+        return "FRAGMENTED_BUT_NOT_SELECTED"
+    if f in universe:
+        return "IN_UNIVERSE_BUT_NOT_FRAGMENTED (max_fragments cap?)"
+    return "NOT_IN_UNIVERSE (edge discovery missed it)"
+
+
 def _print_nontrivial_report(
     nontrivial: set[str],
     nontrivial_hits: set[str],
@@ -274,16 +220,6 @@ def _print_nontrivial_report(
         print(f"    HIT: {f}  max_ppr={max_score:.6f}")
 
 
-def _classify_failure_stage(f: str, sel_dump: set[str], fragmented: set[str], universe: set[str]) -> str:
-    if f in sel_dump:
-        return "SELECTED_BUT_PATH_MISMATCH"
-    if f in fragmented:
-        return "FRAGMENTED_BUT_NOT_SELECTED"
-    if f in universe:
-        return "IN_UNIVERSE_BUT_NOT_FRAGMENTED (max_fragments cap?)"
-    return "NOT_IN_UNIVERSE (edge discovery missed it)"
-
-
 def evaluate_one(inst: dict, budget: int) -> dict:
     iid = inst["instance_id"]
     print("\n" + "=" * 78)
@@ -295,7 +231,7 @@ def evaluate_one(inst: dict, budget: int) -> dict:
     for g in gold_blocks:
         g["file"] = normalize_gold_path(g["file"])
     gold_set = {g["file"] for g in gold_blocks}
-    added, deleted, modified = patch_files(inst["patch"])
+    added, deleted, modified = patch_files_detailed(inst["patch"])
     p_set = added | deleted | modified
     nontrivial = gold_set - p_set
 
@@ -312,7 +248,7 @@ def evaluate_one(inst: dict, budget: int) -> dict:
 
     print(f"\n[NONTRIVIAL GOLD] {len(nontrivial):3d} files")
 
-    repo_dir = ensure_repo(inst["repo_url"], inst["repo"], inst["base_commit"])
+    repo_dir = ensure_repo(inst["repo_url"], inst["repo"], inst["base_commit"], REPOS_DIR)
     if not repo_dir:
         return {"id": iid, "status": "clone_fail"}
 
@@ -411,7 +347,7 @@ def main():
         for i in insts:
             gb = json.loads(i["gold_context"]) if isinstance(i["gold_context"], str) else i["gold_context"]
             gold = {normalize_gold_path(g["file"]) for g in gb}
-            added, deleted, modified = patch_files(i["patch"])
+            added, deleted, modified = patch_files_detailed(i["patch"])
             if gold - (added | deleted | modified):
                 kept.append(i)
         insts = kept

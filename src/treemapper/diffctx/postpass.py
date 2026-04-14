@@ -98,6 +98,98 @@ def _coherence_post_pass(
     )
 
 
+_RESCUE_BUDGET_FRACTION = 0.05
+_RESCUE_MIN_SCORE_PERCENTILE = 0.80
+
+
+def _compute_rescue_threshold(
+    all_fragments: list[Fragment],
+    rel_scores: dict[FragmentId, float],
+    core_ids: set[FragmentId],
+) -> float:
+    context_scores = sorted(
+        (rel_scores.get(f.id, 0.0) for f in all_fragments if f.id not in core_ids and rel_scores.get(f.id, 0.0) > 0),
+        reverse=True,
+    )
+    if not context_scores:
+        return float("inf")
+    idx = int(len(context_scores) * (1 - _RESCUE_MIN_SCORE_PERCENTILE))
+    return context_scores[min(idx, len(context_scores) - 1)]
+
+
+def _collect_rescue_candidates(
+    all_fragments: list[Fragment],
+    rel_scores: dict[FragmentId, float],
+    core_ids: set[FragmentId],
+    selected_ids: set[FragmentId],
+    selected_paths: set[Path],
+    min_score: float,
+    max_tokens: int,
+) -> list[Fragment]:
+    changed_paths = {fid.path for fid in core_ids}
+    candidates = [
+        f
+        for f in all_fragments
+        if f.id not in selected_ids
+        and f.id not in core_ids
+        and f.path not in changed_paths
+        and f.path not in selected_paths
+        and rel_scores.get(f.id, 0.0) >= min_score
+        and f.token_count <= max_tokens
+    ]
+    candidates.sort(key=lambda f: rel_scores.get(f.id, 0.0), reverse=True)
+    return candidates
+
+
+def _rescue_nontrivial_context(
+    result: SelectionResult,
+    all_fragments: list[Fragment],
+    rel_scores: dict[FragmentId, float],
+    core_ids: set[FragmentId],
+    budget: int,
+) -> SelectionResult:
+    remaining = budget - result.used_tokens
+    rescue_budget = min(remaining, int(budget * _RESCUE_BUDGET_FRACTION))
+    if rescue_budget <= 0:
+        return result
+
+    min_score = _compute_rescue_threshold(all_fragments, rel_scores, core_ids)
+    if min_score == float("inf"):
+        return result
+
+    selected_ids = {f.id for f in result.selected}
+    selected_paths = {f.path for f in result.selected}
+    candidates = _collect_rescue_candidates(
+        all_fragments, rel_scores, core_ids, selected_ids, selected_paths, min_score, rescue_budget
+    )
+
+    interval_idx = _IntervalIndex()
+    for f in result.selected:
+        interval_idx.add(f.id)
+
+    added: list[Fragment] = []
+    used = 0
+    for cand in candidates:
+        if used + cand.token_count > rescue_budget:
+            continue
+        if interval_idx.overlaps(cand):
+            continue
+        added.append(cand)
+        interval_idx.add(cand.id)
+        used += cand.token_count
+
+    if not added:
+        return result
+
+    logger.debug("diffctx: rescued %d nontrivial context fragments (%d tokens)", len(added), used)
+    return SelectionResult(
+        selected=result.selected + added,
+        reason=result.reason,
+        used_tokens=result.used_tokens + used,
+        utility=result.utility,
+    )
+
+
 def _ensure_changed_files_represented(
     selected: list[Fragment],
     all_fragments: list[Fragment],

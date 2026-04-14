@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import time
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from .file_importance import compute_file_importance
 from .fragmentation import _process_files_for_fragments
 from .git import CatFileBatch, GitError, split_diff_range
 from .mode import PipelineConfig, ScoringMode
-from .postpass import _coherence_post_pass, _ensure_changed_files_represented
+from .postpass import _coherence_post_pass, _ensure_changed_files_represented, _rescue_nontrivial_context
 from .render import build_diff_context_output
 from .scoring import (
     BM25Discovery,
@@ -45,6 +46,12 @@ from .utility import concepts_from_diff_text, needs_from_diff
 
 logger = logging.getLogger(__name__)
 
+
+class DiffContextTimeoutError(Exception):
+    pass
+
+
+_PIPELINE_TIMEOUT = 300
 _OVERHEAD_PER_FRAGMENT = LIMITS.overhead_per_fragment
 _UNLIMITED_BUDGET = 10_000_000
 _MAX_CACHE_BYTES = 200 * 1024 * 1024
@@ -119,6 +126,7 @@ def _score_and_select(
         )
 
     selected = _coherence_post_pass(result, scoring_result.filtered_fragments, scoring_result.graph, effective_budget)
+    selected = _rescue_nontrivial_context(selected, all_fragments, scoring_result.rel_scores, core_ids, effective_budget)
     return selected.selected, selected
 
 
@@ -209,10 +217,69 @@ def build_diff_context(
     no_default_ignores: bool = False,
     full: bool = False,
     whitelist_file: Path | None = None,
-    scoring_mode: str = "auto",
+    scoring_mode: str = "hybrid",
+    timeout: int = _PIPELINE_TIMEOUT,
 ) -> dict[str, Any]:
     _validate_inputs(root_dir, alpha, tau, budget_tokens)
     root_dir = root_dir.resolve()
+
+    import threading
+
+    can_use_alarm = threading.current_thread() is threading.main_thread()
+
+    if can_use_alarm and timeout > 0:
+
+        def _raise_timeout(_sig: int, _frame: object) -> None:
+            raise DiffContextTimeoutError(f"diffctx timed out after {timeout}s")
+
+        prev_handler = signal.signal(signal.SIGALRM, _raise_timeout)
+        signal.alarm(timeout)
+        try:
+            return _build_diff_context_inner(
+                root_dir,
+                diff_range,
+                budget_tokens,
+                alpha,
+                tau,
+                no_content,
+                ignore_file,
+                no_default_ignores,
+                full,
+                whitelist_file,
+                scoring_mode,
+            )
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, prev_handler)
+
+    return _build_diff_context_inner(
+        root_dir,
+        diff_range,
+        budget_tokens,
+        alpha,
+        tau,
+        no_content,
+        ignore_file,
+        no_default_ignores,
+        full,
+        whitelist_file,
+        scoring_mode,
+    )
+
+
+def _build_diff_context_inner(
+    root_dir: Path,
+    diff_range: str,
+    budget_tokens: int | None,
+    alpha: float,
+    tau: float,
+    no_content: bool,
+    ignore_file: Path | None,
+    no_default_ignores: bool,
+    full: bool,
+    whitelist_file: Path | None,
+    scoring_mode: str,
+) -> dict[str, Any]:
 
     hunks = _git.parse_diff(root_dir, diff_range)
 
@@ -314,7 +381,9 @@ def build_diff_context(
             repo_root=root_dir,
             seed_weights=seed_weights,
             scoring_strategy=(
-                EgoGraphScoring(max_depth=config.ego_depth) if config.scoring == "ego" else PPRScoring(alpha=config.ppr_alpha)
+                EgoGraphScoring(max_depth=config.ego_depth)
+                if config.scoring == "ego"
+                else PPRScoring(alpha=config.ppr_alpha, low_relevance_filter=config.low_relevance)
             ),
             discovered_paths=set(discovered_files),
         )

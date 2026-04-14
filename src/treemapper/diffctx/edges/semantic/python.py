@@ -88,6 +88,9 @@ def _extract_imports_from_content(content: str, source_path: Path | None = None,
                         _add_import_with_prefixes(imports, resolved)
             elif module:
                 _add_import_with_prefixes(imports, module)
+                for alias in node.names:
+                    if alias.name and alias.name != "*":
+                        _add_import_with_prefixes(imports, f"{module}.{alias.name}")
     return imports
 
 
@@ -160,6 +163,92 @@ def _build_import_index_rg(
             _add_import_with_prefixes(file_to_imports[path], module)
 
     return file_to_imports
+
+
+_REEXPORT_MAX_DEPTH = 3
+
+
+def _resolve_import_target_dir(node: ast.ImportFrom, pkg_dir: Path, repo_root: Path | None) -> Path | None:
+    source_module = node.module or ""
+    if node.level and node.level > 0:
+        target_dir = pkg_dir
+        for _ in range(node.level - 1):
+            target_dir = target_dir.parent
+        if source_module:
+            target_dir = target_dir / Path(*source_module.split("."))
+        return target_dir
+    if source_module and repo_root:
+        return repo_root / Path(*source_module.split("."))
+    return None
+
+
+def _find_module_file(target_dir: Path) -> Path | None:
+    source_as_file = target_dir.with_suffix(".py")
+    if source_as_file.is_file():
+        return source_as_file
+    source_as_pkg = target_dir / "__init__.py"
+    if source_as_pkg.is_file():
+        return source_as_pkg
+    for ext in (".pyi", ".pyw"):
+        candidate = target_dir.with_suffix(ext)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _resolve_init_reexports(
+    init_path: Path,
+    repo_root: Path | None,
+    file_cache: dict[Path, str] | None = None,
+    _depth: int = 0,
+) -> dict[str, Path]:
+    if _depth >= _REEXPORT_MAX_DEPTH:
+        return {}
+
+    content = file_cache.get(init_path) if file_cache else None
+    if content is None:
+        try:
+            content = init_path.read_text(errors="replace")
+        except OSError:
+            return {}
+
+    import warnings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            tree = ast.parse(content)
+    except SyntaxError:
+        return {}
+
+    result: dict[str, Path] = {}
+    pkg_dir = init_path.parent
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.names:
+            continue
+
+        target_dir = _resolve_import_target_dir(node, pkg_dir, repo_root)
+        if target_dir is None:
+            continue
+
+        resolved_path = _find_module_file(target_dir)
+        if resolved_path is None:
+            continue
+
+        for alias in node.names:
+            _name = alias.asname or alias.name
+            if _name == "*":
+                result[f"*:{resolved_path}"] = resolved_path
+                continue
+            result[_name] = resolved_path
+
+            if resolved_path.name == "__init__.py":
+                nested = _resolve_init_reexports(resolved_path, repo_root, file_cache, _depth + 1)
+                if _name in nested:
+                    result[_name] = nested[_name]
+
+    return result
 
 
 class PythonEdgeBuilder(EdgeBuilder):
@@ -240,6 +329,14 @@ class PythonEdgeBuilder(EdgeBuilder):
                     prefix = ".".join(parts[:i])
                     module_to_files[prefix].append(f)
 
+        self._enrich_with_reexports(
+            all_candidate_files,
+            repo_root,
+            file_cache,
+            file_to_module,
+            module_to_files,
+        )
+
         if _RG_BIN and repo_root:
             candidate_set = {f for f in all_candidate_files if _is_python_file(f)}
             try:
@@ -262,6 +359,51 @@ class PythonEdgeBuilder(EdgeBuilder):
 
         return file_to_module, dict(module_to_files), file_to_imports_ast
 
+    @staticmethod
+    def _enrich_with_reexports(
+        all_candidate_files: list[Path],
+        repo_root: Path | None,
+        file_cache: dict[Path, str] | None,
+        file_to_module: dict[Path, str],
+        module_to_files: dict[str, list[Path]],
+    ) -> None:
+        init_files = [f for f in all_candidate_files if f.name == "__init__.py"]
+        for init_f in init_files:
+            pkg_module = path_to_module(init_f, repo_root)
+            if not pkg_module:
+                continue
+            reexports = _resolve_init_reexports(init_f, repo_root, file_cache)
+            existing = set(module_to_files.get(pkg_module, []))
+            for _name, source_path in reexports.items():
+                if source_path not in existing:
+                    module_to_files[pkg_module].append(source_path)
+                    existing.add(source_path)
+                    if source_path not in file_to_module:
+                        src_module = path_to_module(source_path, repo_root)
+                        if src_module:
+                            file_to_module[source_path] = src_module
+
+    @staticmethod
+    def _enrich_frags_with_reexports(
+        py_frags: list[Fragment],
+        repo_root: Path | None,
+        file_cache: dict[Path, str],
+        module_to_frags: dict[str, list[FragmentId]],
+        path_to_frags: dict[Path, list[FragmentId]],
+    ) -> None:
+        for f in py_frags:
+            if f.path.name != "__init__.py":
+                continue
+            pkg_module = path_to_module(f.path, repo_root)
+            if not pkg_module:
+                continue
+            reexports = _resolve_init_reexports(f.path, repo_root, file_cache)
+            existing = set(module_to_frags.get(pkg_module, []))
+            for _name, source_path in reexports.items():
+                for sf in path_to_frags.get(source_path, []):
+                    if sf not in existing:
+                        module_to_frags[pkg_module].append(sf)
+
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         py_frags = [f for f in fragments if _is_python_file(f.path)]
         if not py_frags:
@@ -281,10 +423,15 @@ class PythonEdgeBuilder(EdgeBuilder):
                 name_to_defs[name].append(f.id)
 
         module_to_frags: dict[str, list[FragmentId]] = defaultdict(list)
+        path_to_frags: dict[Path, list[FragmentId]] = defaultdict(list)
         for f in py_frags:
             module = path_to_module(f.path, repo_root)
             if module:
                 module_to_frags[module].append(f.id)
+            path_to_frags[f.path].append(f.id)
+
+        file_cache: dict[Path, str] = {f.path: f.content for f in py_frags}
+        self._enrich_frags_with_reexports(py_frags, repo_root, file_cache, module_to_frags, path_to_frags)
 
         frag_imports: dict[FragmentId, set[str]] = {}
         for f in py_frags:

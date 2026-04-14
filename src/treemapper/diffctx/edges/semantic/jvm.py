@@ -8,12 +8,17 @@ from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
+_DISCOVERY_MAX_DEPTH = 2
+
 _JAVA_EXTS = {".java"}
 _KOTLIN_EXTS = {".kt", ".kts"}
 _SCALA_EXTS = {".scala", ".sc"}
 _JVM_EXTS = _JAVA_EXTS | _KOTLIN_EXTS | _SCALA_EXTS
 
-_JAVA_IMPORT_RE = re.compile(r"^\s*import\s+(?:static\s+)?([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*)*)", re.MULTILINE)
+_JAVA_IMPORT_RE = re.compile(
+    r"^\s*import\s+(?:static\s+)?([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*|\.\*))",
+    re.MULTILINE,
+)
 _JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)", re.MULTILINE)
 _JAVA_CLASS_RE = re.compile(
     r"^\s*(?:(?:public|private|protected|static|abstract|final|sealed|non-sealed|strictfp)\s+)*(?:class|interface|enum|record)\s+([A-Z]\w*)",
@@ -22,7 +27,10 @@ _JAVA_CLASS_RE = re.compile(
 _JAVA_EXTENDS_RE = re.compile(r"\bextends\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 _JAVA_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 
-_KOTLIN_IMPORT_RE = re.compile(r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*)?)", re.MULTILINE)
+_KOTLIN_IMPORT_RE = re.compile(
+    r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*|\.\*)?)",
+    re.MULTILINE,
+)
 _KOTLIN_CLASS_RE = re.compile(
     r"^\s*(?:\w+\s+)*(?:class|interface|object|enum)\s+([A-Z]\w*)",
     re.MULTILINE,
@@ -32,7 +40,10 @@ _KOTLIN_FUN_RE = re.compile(
     re.MULTILINE,
 )
 
-_SCALA_IMPORT_RE = re.compile(r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z_]\w*)?)", re.MULTILINE)
+_SCALA_IMPORT_RE = re.compile(
+    r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z_]\w*|\.\*)?)",
+    re.MULTILINE,
+)
 _SCALA_CLASS_RE = re.compile(
     r"^\s*(?:(?:abstract|sealed|final|case|implicit|private|protected)\s+)*(?:class|trait|object)\s+([A-Z]\w*)",
     re.MULTILINE,
@@ -239,22 +250,61 @@ class JVMEdgeBuilder(EdgeBuilder):
         if not jvm_changed:
             return []
 
+        changed_set = set(changed_files)
+        jvm_candidates = [f for f in all_candidate_files if _is_jvm_file(f) and f not in changed_set]
+        discovered_set: set[Path] = set()
+        frontier: list[Path] = list(jvm_changed)
+
+        for _depth in range(_DISCOVERY_MAX_DEPTH):
+            hop_result = self._discover_single_hop(frontier, jvm_candidates, repo_root)
+            new_files = [f for f in hop_result if f not in discovered_set]
+            if not new_files:
+                break
+            discovered_set.update(new_files)
+            frontier = new_files
+
+        return list(discovered_set)
+
+    def _discover_single_hop(
+        self,
+        source_files: list[Path],
+        candidates: list[Path],
+        repo_root: Path | None,
+    ) -> list[Path]:
         type_refs: set[str] = set()
-        for f in jvm_changed:
+        import_packages: set[str] = set()
+        for f in source_files:
             try:
                 content = f.read_text(encoding="utf-8")
                 type_refs.update(_extract_type_refs(content))
+                for imp in _extract_imports(content, f):
+                    if imp.endswith(".*"):
+                        import_packages.add(imp[:-2])
+                    else:
+                        parts = imp.rsplit(".", 1)
+                        if len(parts) == 2:
+                            import_packages.add(parts[0])
             except (OSError, UnicodeDecodeError):
                 pass
 
-        changed_dirs = {f.parent for f in jvm_changed}
-        changed_set = set(changed_files)
+        source_dirs = {f.parent for f in source_files}
+
+        import_dirs: set[Path] = set()
+        if repo_root and import_packages:
+            for pkg in import_packages:
+                pkg_path = repo_root / Path(*pkg.split("."))
+                import_dirs.add(pkg_path)
+                for src_prefix in ("src/main/java", "src/main/kotlin", "src/main/scala"):
+                    import_dirs.add(repo_root / src_prefix / Path(*pkg.split(".")))
+
+        eligible_dirs = source_dirs | import_dirs
+        source_set = set(source_files)
         discovered: list[Path] = []
 
-        for candidate in all_candidate_files:
-            if candidate in changed_set or not _is_jvm_file(candidate):
+        for candidate in candidates:
+            if candidate in source_set:
                 continue
-            if candidate.parent not in changed_dirs:
+            if candidate.parent not in eligible_dirs:
                 continue
             try:
                 content = candidate.read_text(encoding="utf-8")
@@ -305,7 +355,7 @@ class JVMEdgeBuilder(EdgeBuilder):
     ) -> None:
         package_to_frags, class_to_frags, fqn_to_frags = indices
 
-        self._link_imports(jf, fqn_to_frags, class_to_frags, edges)
+        self._link_imports(jf, fqn_to_frags, class_to_frags, edges, package_to_frags)
         self._link_refs(jf, class_to_frags, edges)
         self._link_same_package(jf, package_to_frags, edges)
 
@@ -315,8 +365,17 @@ class JVMEdgeBuilder(EdgeBuilder):
         fqn_to_frags: dict[str, list[FragmentId]],
         class_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
+        package_to_frags: dict[str, list[FragmentId]] | None = None,
     ) -> None:
         for imp in _extract_imports(jf.content, jf.path):
+            if imp.endswith(".*"):
+                if package_to_frags is not None:
+                    pkg_prefix = imp[:-2]
+                    for fid in package_to_frags.get(pkg_prefix, []):
+                        if fid != jf.id:
+                            self.add_edge(edges, jf.id, fid, self.import_weight)
+                continue
+
             imp_lower = imp.lower()
             for fid in fqn_to_frags.get(imp_lower, []):
                 if fid != jf.id:

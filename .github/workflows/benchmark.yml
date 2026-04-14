@@ -123,7 +123,7 @@ jobs:
             --budget "$BENCH_BUDGET" \
             2>&1 | tee results/cb_ppr.txt
         env:
-          DIFFCTX_SCORING: precise
+          DIFFCTX_SCORING: ppr
           BENCH_INSTANCES: ${{ inputs.instances }}
           BENCH_BUDGET: ${{ inputs.budget }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -152,7 +152,7 @@ jobs:
             --budget "$BENCH_BUDGET" \
             2>&1 | tee results/cb_ego.txt
         env:
-          DIFFCTX_SCORING: discover
+          DIFFCTX_SCORING: ego
           BENCH_INSTANCES: ${{ inputs.instances }}
           BENCH_BUDGET: ${{ inputs.budget }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -213,7 +213,7 @@ jobs:
             --output results/loo_ego.json \
             2>&1 | tee results/loo_ego.txt
         env:
-          DIFFCTX_SCORING: discover
+          DIFFCTX_SCORING: ego
           BENCH_INSTANCES: ${{ inputs.instances }}
           BENCH_BUDGET: ${{ inputs.budget }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

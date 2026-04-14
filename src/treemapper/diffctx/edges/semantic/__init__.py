@@ -34,11 +34,13 @@ from .rust import RustEdgeBuilder
 from .shell import ShellEdgeBuilder
 from .sql import SqlEdgeBuilder
 from .swift import SwiftEdgeBuilder
+from .tags import TagsEdgeBuilder
 from .zig import ZigEdgeBuilder
 
 
 def get_semantic_builders() -> list[type]:
     return [
+        TagsEdgeBuilder,
         AnsibleEdgeBuilder,
         BazelEdgeBuilder,
         CFamilyEdgeBuilder,

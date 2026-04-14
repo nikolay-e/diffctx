@@ -5,9 +5,9 @@ from enum import Enum
 
 
 class ScoringMode(Enum):
-    AUTO = "auto"
-    PRECISE = "precise"
-    DISCOVER = "discover"
+    HYBRID = "hybrid"
+    PPR = "ppr"
+    EGO = "ego"
 
 
 @dataclass(frozen=True)
@@ -21,16 +21,16 @@ class PipelineConfig:
 
     @classmethod
     def from_mode(cls, mode: ScoringMode, n_candidate_files: int = 0) -> PipelineConfig:
-        if mode == ScoringMode.PRECISE:
+        if mode == ScoringMode.PPR:
             return cls(
-                discovery="default",
+                discovery="ensemble",
                 scoring="ppr",
-                low_relevance=True,
-                bm25_top_k=0,
+                low_relevance=False,
+                bm25_top_k=1,
                 ego_depth=1,
                 ppr_alpha=0.60,
             )
-        if mode == ScoringMode.DISCOVER:
+        if mode == ScoringMode.EGO:
             return cls(
                 discovery="ensemble",
                 scoring="ego",

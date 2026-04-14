@@ -2,35 +2,25 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import random
-import subprocess
-import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
 
-REPOS_DIR = Path(os.environ.get("LOO_REPOS_DIR", str(Path.home() / ".cache" / "contextbench_repos")))
-REPOS_DIR.mkdir(parents=True, exist_ok=True)
+from common import (
+    WORKERS,
+    apply_as_commit,
+    ensure_repo,
+    patch_files,
+    repos_dir,
+    run_cmd,
+    run_parallel,
+    save_results,
+    warm_cache,
+    worker_dir,
+)
 
-
-def run_cmd(cmd, cwd=None, check=True, timeout=120):
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, timeout=timeout)
-
-
-def patch_files(patch: str) -> set[str]:
-    files: set[str] = set()
-    for line in patch.splitlines():
-        if line.startswith("+++ "):
-            p = line[4:]
-            if p != "/dev/null":
-                files.add(p[2:] if p.startswith("b/") else p)
-        elif line.startswith("--- "):
-            p = line[4:]
-            if p != "/dev/null":
-                files.add(p[2:] if p.startswith("a/") else p)
-    return files
+REPOS_DIR = repos_dir("LOO_REPOS_DIR")
 
 
 def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
@@ -47,40 +37,7 @@ def strip_file_from_patch(patch_text: str, file_to_hide: str) -> str:
     return "\n".join(result)
 
 
-def ensure_repo(repo_url: str, repo_name: str, base_commit: str, repos_dir: Path = REPOS_DIR) -> Path | None:
-    repo_dir = repos_dir / repo_name.replace("/", "__")
-    if not repo_dir.exists():
-        r = run_cmd(["git", "clone", "--quiet", repo_url, str(repo_dir)], check=False, timeout=600)
-        if r.returncode != 0:
-            print(f"  CLONE FAIL: {r.stderr[:200]}")
-            return None
-    r = run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", base_commit], check=False)
-    if r.returncode != 0:
-        run_cmd(["git", "-C", str(repo_dir), "fetch", "--all", "--quiet"], check=False, timeout=600)
-        r = run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", base_commit], check=False)
-        if r.returncode != 0:
-            print(f"  CHECKOUT FAIL: {r.stderr[:200]}")
-            return None
-    return repo_dir
-
-
-def apply_partial_patch(repo_dir: Path, partial_patch: str) -> bool:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
-        f.write(partial_patch)
-        patch_path = f.name
-    try:
-        r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", patch_path], check=False)
-        if r.returncode != 0:
-            r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--3way", patch_path], check=False)
-            if r.returncode != 0:
-                return False
-        run_cmd(["git", "-C", str(repo_dir), "commit", "-m", "partial", "--allow-empty", "--no-verify"], check=False)
-        return True
-    finally:
-        os.unlink(patch_path)
-
-
-def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "auto") -> set[str]:
+def run_diffctx(repo_dir: Path, budget: int, scoring_mode: str = "hybrid") -> set[str]:
     from treemapper.diffctx.pipeline import build_diff_context
 
     try:
@@ -128,7 +85,7 @@ def _pick_distractor(repo_dir: Path, hidden: str) -> str | None:
         return None
 
 
-def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "auto", repos_dir: Path = REPOS_DIR) -> list[dict]:
+def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "hybrid", repos_dir: Path = REPOS_DIR) -> list[dict]:
     iid = inst["instance_id"]
     all_patch_files = patch_files(inst["patch"])
 
@@ -150,7 +107,7 @@ def evaluate_loo(inst: dict, budget: int, scoring_mode: str = "auto", repos_dir:
         run_cmd(["git", "-C", str(repo_dir), "checkout", "--force", inst["base_commit"]], check=False)
         run_cmd(["git", "-C", str(repo_dir), "clean", "-fd"], check=False)
 
-        if not apply_partial_patch(repo_dir, partial):
+        if not apply_as_commit(repo_dir, partial, message="partial"):
             continue
 
         selected = run_diffctx(repo_dir, budget, scoring_mode)
@@ -183,8 +140,7 @@ def _run_one(run_args: tuple[int, dict, int, str, int]) -> list[dict]:
     i, inst, budget, scoring, timeout = run_args
     iid = inst["instance_id"]
     n_files = len(patch_files(inst["patch"]))
-    worker_dir = REPOS_DIR / f"w{os.getpid()}"
-    worker_dir.mkdir(exist_ok=True)
+    wdir = worker_dir(REPOS_DIR)
     print(f"[{i}] {iid} ({n_files} files)", flush=True)
     try:
         import signal
@@ -195,7 +151,7 @@ def _run_one(run_args: tuple[int, dict, int, str, int]) -> list[dict]:
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(timeout)
         try:
-            results = evaluate_loo(inst, budget, scoring, repos_dir=worker_dir)
+            results = evaluate_loo(inst, budget, scoring, repos_dir=wdir)
         finally:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
@@ -218,9 +174,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dataset", default="Contextbench/ContextBench")
     ap.add_argument("--split", default="contextbench_verified")
-    ap.add_argument("--output", type=str, default=None)
-    ap.add_argument("--workers", type=int, default=11)
-    ap.add_argument("--scoring", type=str, default="auto", choices=["auto", "precise", "discover"])
+    ap.add_argument("--scoring", type=str, default="hybrid", choices=["hybrid", "ppr", "ego"])
     ap.add_argument("--timeout", type=int, default=300)
     args = ap.parse_args()
 
@@ -243,25 +197,15 @@ def main():
     multi_file = multi_file[: args.limit]
 
     print(f"Evaluating LOO on {len(multi_file)} instances (budget={args.budget})")
+
+    warm_cache(multi_file)
     print()
 
-    all_results: list[dict] = []
     t0 = time.time()
-
     run_args = [(i, inst, args.budget, args.scoring, args.timeout) for i, inst in enumerate(multi_file, 1)]
-
-    if args.workers > 1:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
-        with ProcessPoolExecutor(max_workers=args.workers) as pool:
-            futures = {pool.submit(_run_one, a): a[0] for a in run_args}
-            for future in as_completed(futures):
-                all_results.extend(future.result())
-    else:
-        for a in run_args:
-            all_results.extend(_run_one(a))
-
+    all_results = run_parallel(_run_one, run_args, WORKERS, collect="extend")
     elapsed = time.time() - t0
+
     print()
     print("=" * 70)
     print(f"LOO RESULTS ({elapsed:.0f}s)")
@@ -301,9 +245,7 @@ def main():
         h = sum(1 for t in trials if t["found"])
         print(f"  {lang:20s} {h}/{len(trials):3d} ({100 * h / len(trials):.0f}%)")
 
-    if args.output:
-        Path(args.output).write_text(json.dumps(all_results, indent=2))
-        print(f"\nResults saved to {args.output}")
+    save_results(all_results, f"loo_{args.scoring}_n{args.limit}_b{args.budget}")
 
 
 if __name__ == "__main__":

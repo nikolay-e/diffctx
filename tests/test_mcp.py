@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
 
-from tests.conftest import GARBAGE_FILES
-from tests.framework.pygit2_backend import Pygit2Repo
+mcp = pytest.importorskip("mcp", reason="mcp package not installed")
+from mcp.server.fastmcp.exceptions import ToolError  # noqa: E402
+
+from tests.conftest import GARBAGE_FILES  # noqa: E402
+from tests.framework.pygit2_backend import Pygit2Repo  # noqa: E402
 
 
 @pytest.fixture
